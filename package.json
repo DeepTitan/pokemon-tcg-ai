@@ -1,0 +1,34 @@
+{
+  "name": "pokemon-tcg-ai",
+  "version": "1.0.0",
+  "description": "Pokemon Trading Card Game AI powered by TensorFlow.js",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "import-cards": "ts-node scripts/import-cards.ts",
+    "train": "ts-node src/train.ts",
+    "play": "node --import tsx scripts/play.ts",
+    "ui": "vite",
+    "benchmark": "ts-node src/benchmark.ts",
+    "test": "node --import tsx src/engine/__tests__/game-engine.test.ts"
+  },
+  "dependencies": {
+    "@tensorflow/tfjs": "^4.11.0",
+    "@tensorflow/tfjs-node": "^4.11.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "tsx": "^4.21.0",
+    "ws": "^8.14.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/react": "^18.2.37",
+    "@types/react-dom": "^18.2.15",
+    "@types/ws": "^8.5.8",
+    "@vitejs/plugin-react": "^4.2.1",
+    "ts-node": "^10.9.1",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.7"
+  }
+}

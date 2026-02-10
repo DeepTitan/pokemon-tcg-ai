@@ -1,0 +1,191 @@
+╔═══════════════════════════════════════════════════════════════════════════╗
+║          POKEMON TCG AI - CARD IMPORT QUICK START GUIDE                    ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+ONE COMMAND TO RULE THEM ALL:
+
+  npm run import-cards
+
+This runs the complete pipeline:
+  1. Fetch Standard-legal cards from Pokemon TCG API
+  2. Auto-map simple effects (pattern matching)
+  3. Compile complex effects with Claude (if ANTHROPIC_API_KEY set)
+  4. Validate everything
+  5. Generate comprehensive report
+
+═════════════════════════════════════════════════════════════════════════════
+
+QUICK COMMANDS:
+
+  npm run import-cards                 # Full pipeline (default)
+  npm run import-cards -- --set sv7    # Import single set
+  npm run import-cards -- --skip-llm   # Pattern matching only (fast)
+  npm run import-cards -- --review     # Review flagged cards interactively
+  npm run import-cards -- --stats      # Show detailed statistics
+  npm run import-cards -- --force      # Force fresh fetch (bypass cache)
+
+═════════════════════════════════════════════════════════════════════════════
+
+SETUP (ONE TIME):
+
+  1. Get Pokemon TCG API key (optional but recommended):
+     https://pokemontcg.io/
+     export POKEMON_TCG_API_KEY=your_key
+
+  2. Get Anthropic API key (required for LLM, costs ~$1-5):
+     https://console.anthropic.com/
+     export ANTHROPIC_API_KEY=sk-ant-...
+
+  3. Run import:
+     npm run import-cards
+
+═════════════════════════════════════════════════════════════════════════════
+
+EXPECTED OUTPUT:
+
+  ✅ Fetching Standard-legal cards...
+  ✅ Fetched 1,337 cards
+
+  🔍 Phase 1: Auto-mapping effects...
+  ✅ 847 cards auto-mapped (63%)
+  ⚠️  490 cards need LLM compilation (37%)
+
+  🤖 Phase 2: LLM compilation (490 cards)...
+  [████████░░░░░░░░░░░░░░░░░░░░░░] 27% (132/490)
+  💰 Estimated API cost: ~$1.50
+
+  🧪 Phase 3: Validating effects...
+  ✅ 1,089 cards passed (81%)
+  ⚠️  187 cards need review (14%)
+  ❌ 61 cards broken (5%)
+
+  📊 Import Complete!
+  Files saved:
+    data/cards.json        (1,337 cards)
+    data/effects.json      (1,276 effect definitions)
+    data/reviews.json      (validation results)
+    data/import-report.txt (full report)
+
+═════════════════════════════════════════════════════════════════════════════
+
+REVIEW PROCESS:
+
+  1. Run import:
+     npm run import-cards
+
+  2. Review flagged cards:
+     npm run import-cards -- --review
+
+  3. Approve/reject cards one by one:
+     ═══════════════════════════════════════════
+     Card: Charizard ex (sv3-125)
+     Status: WARNING
+     Quality Score: 62/100
+
+     Issues:
+       - WARNING: Text says "attach them" but effect sends to hand
+
+     [a]pprove  [r]eject  [s]kip  [q]uit > a
+     Approved. ✅
+
+  4. Corrections saved to data/corrections.json
+
+═════════════════════════════════════════════════════════════════════════════
+
+COST BREAKDOWN:
+
+  Pokemon TCG API:    Free (rate limited to 1 req/sec without key)
+  Claude API:         ~$0.003-0.01 per complex card
+  490 complex cards:  ~$1.50 (Haiku) to $5.00 (Opus)
+                      NOTE: Only charged once! Results are cached permanently
+
+═════════════════════════════════════════════════════════════════════════════
+
+PIPELINE PHASES:
+
+  Phase 1: Fetch Cards
+    ✅ Pulls Standard-legal cards from API
+    ✅ Caches locally (24 hour expiry)
+
+  Phase 2: Pattern Matching
+    ✅ Auto-maps ~63% of cards using regex patterns
+    ⚠️  Flags remaining ~37% for LLM compilation
+
+  Phase 3: LLM Compilation
+    ✅ Sends complex effects to Claude for compilation
+    ✅ Results cached permanently (no re-cost)
+
+  Phase 4: Validation
+    ✅ Runs static validation on all effects
+    ✅ Generates quality scores (0-100)
+
+  Phase 5: Apply Corrections
+    ✅ Loads human corrections from previous runs
+    ✅ Fixes persist across re-imports
+
+  Phase 6: Generate Report
+    ✅ Creates comprehensive import summary
+    ✅ Saves 5 output files (cards, effects, reviews, etc.)
+
+═════════════════════════════════════════════════════════════════════════════
+
+OUTPUT FILES:
+
+  data/cards.json          ← Card definitions
+  data/effects.json        ← Compiled effect definitions
+  data/reviews.json        ← Validation results
+  data/corrections.json    ← Human corrections (persists)
+  data/import-report.txt   ← Human-readable summary
+
+═════════════════════════════════════════════════════════════════════════════
+
+NEXT STEPS:
+
+  1. Review flagged cards:
+     npm run import-cards -- --review
+
+  2. Train the AI on working cards:
+     npm run train
+
+  3. Play against the AI:
+     npm run play
+
+═════════════════════════════════════════════════════════════════════════════
+
+TIPS & TRICKS:
+
+  Fast iteration:
+    npm run import-cards -- --skip-llm   # Skip LLM (pattern matching only)
+
+  Check stats before reviewing:
+    npm run import-cards -- --stats
+
+  Import single set for testing:
+    npm run import-cards -- --set sv7
+
+  Force fresh data (no cache):
+    npm run import-cards -- --force
+
+  Recompile all effects with LLM:
+    npm run import-cards -- --force-recompile
+
+═════════════════════════════════════════════════════════════════════════════
+
+TROUBLESHOOTING:
+
+  ANTHROPIC_API_KEY not set?
+    → LLM phase will be skipped
+    → Set it: export ANTHROPIC_API_KEY=sk-ant-...
+
+  Cache too old?
+    → Use: npm run import-cards -- --force
+
+  Want to see stats without reimporting?
+    → Use: npm run import-cards -- --stats
+
+  Need to review specific cards?
+    → Use: npm run import-cards -- --review
+
+═════════════════════════════════════════════════════════════════════════════
+
+For detailed documentation, see: IMPORT_GUIDE.md
