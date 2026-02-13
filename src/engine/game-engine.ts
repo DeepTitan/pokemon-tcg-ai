@@ -368,8 +368,9 @@ export class GameEngine {
             return true;
           });
         }
-        // Reset retreat prevention at end of turn
+        // Reset per-turn flags at end of turn
         pokemon.cannotRetreat = false;
+        pokemon.isEvolved = false;
       }
     }
 
@@ -629,7 +630,7 @@ export class GameEngine {
     if (!card || card.cardType !== CardType.Pokemon) return state;
 
     const pokemon = card as PokemonCard;
-    const pokemonInPlay = this.createPokemonInPlay(pokemon);
+    const pokemonInPlay = this.createPokemonInPlay(pokemon, state.turnNumber);
 
     if (pokemon.stage === PokemonStage.Basic) {
       // Place Basic on bench (or active if empty)
@@ -860,7 +861,7 @@ export class GameEngine {
 
     // Apply attack effect if present
     if (attack.effect) {
-      attack.effect(newState, attacker, defender);
+      newState = attack.effect(newState, attacker, defender);
     }
 
     // Check for knockouts
@@ -1010,11 +1011,16 @@ export class GameEngine {
         const opponentIndex = playerIndex === 0 ? 1 : 0;
 
         // Current Pokemon is KO'd
-        // Opponent takes prize cards
+        // Opponent takes prize cards (move from prizes to hand)
         const prizeCount = player.active.card.prizeCards;
+        const opponent = newState.players[opponentIndex];
+        const prizesToTake = Math.min(prizeCount, opponent.prizes.length);
+        const takenPrizes = opponent.prizes.slice(0, prizesToTake);
         const newOpponent = {
-          ...newState.players[opponentIndex],
-          prizeCardsRemaining: Math.max(0, newState.players[opponentIndex].prizeCardsRemaining - prizeCount),
+          ...opponent,
+          prizes: opponent.prizes.slice(prizesToTake),
+          hand: [...opponent.hand, ...takenPrizes],
+          prizeCardsRemaining: Math.max(0, opponent.prizeCardsRemaining - prizeCount),
         };
 
         // Move KO'd Pokemon to discard
@@ -1146,14 +1152,14 @@ export class GameEngine {
     const pokemon = card as PokemonCard;
     if (pokemon.stage === PokemonStage.Basic) return false;
 
-    // Cannot evolve on first turn
-    if (state.turnNumber === 1) {
+    // Cannot evolve on first turn of the game
+    if (state.turnNumber <= 1) {
       return false;
     }
 
-    // Find evolution target
-    const target = this.findEvolutionTarget(player, pokemon);
-    return target !== null && !target.isEvolved;
+    // Find evolution target (must not have been played or evolved this turn)
+    const target = this.findEvolutionTarget(player, pokemon, state.turnNumber);
+    return target !== null;
   }
 
   /**
@@ -1161,19 +1167,26 @@ export class GameEngine {
    */
   private static findEvolutionTarget(
     player: PlayerState,
-    evolutionCard: PokemonCard
+    evolutionCard: PokemonCard,
+    currentTurn?: number
   ): PokemonInPlay | null {
     const evolvesFrom = evolutionCard.evolvesFrom;
     if (!evolvesFrom) return null;
 
+    const canTarget = (p: PokemonInPlay) => {
+      if (p.card.name !== evolvesFrom) return false;
+      // Can't evolve a Pokemon that was played or already evolved this turn
+      if (currentTurn !== undefined && (p.turnPlayed === currentTurn || p.isEvolved)) return false;
+      return true;
+    };
+
     // Check Active
-    if (player.active && player.active.card.name === evolvesFrom && !player.active.isEvolved) {
+    if (player.active && canTarget(player.active)) {
       return player.active;
     }
 
     // Check Bench
-    const bench = player.bench.find(p => p.card.name === evolvesFrom && !p.isEvolved);
-    return bench || null;
+    return player.bench.find(canTarget) || null;
   }
 
   /**
@@ -1197,7 +1210,7 @@ export class GameEngine {
   /**
    * Create a PokemonInPlay from a card.
    */
-  private static createPokemonInPlay(card: PokemonCard): PokemonInPlay {
+  private static createPokemonInPlay(card: PokemonCard, turnPlayed: number = 0): PokemonInPlay {
     return {
       card,
       currentHp: card.hp,
@@ -1206,6 +1219,7 @@ export class GameEngine {
       damageCounters: 0,
       attachedTools: [],
       isEvolved: false,
+      turnPlayed,
       damageShields: [],
       cannotRetreat: false,
     };

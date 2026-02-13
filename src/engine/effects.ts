@@ -94,6 +94,7 @@ export type EffectDSL =
   // Damage and Healing
   | { effect: 'damage'; target: Target; amount: ValueSource }
   | { effect: 'heal'; target: Target; amount: ValueSource }
+  | { effect: 'setHp'; target: Target; amount: ValueSource }
   | { effect: 'preventDamage'; target: Target; amount: ValueSource | 'all'; duration: 'nextTurn' | 'thisAttack' }
   | { effect: 'selfDamage'; amount: ValueSource }
   | { effect: 'bonusDamage'; amount: ValueSource; perUnit: ValueSource; countTarget: Target; countProperty: 'energy' | 'damage' | 'benchCount' | 'prizesTaken' | 'trainerCount' }
@@ -282,6 +283,16 @@ export class EffectExecutor {
         const targets = this.resolveTarget(state, effect.target, context);
         const amount = this.resolveValue(state, effect.amount, context);
         return this.applyHeal(state, targets, amount);
+      }
+
+      case 'setHp': {
+        const targets = this.resolveTarget(state, effect.target, context);
+        const amount = this.resolveValue(state, effect.amount, context);
+        const preferredPlayer =
+          effect.target.type === 'self' || (effect.target.type === 'active' && effect.target.player === 'own')
+            ? context.attackingPlayer
+            : undefined;
+        return this.applySetHp(state, targets, amount, preferredPlayer);
       }
 
       case 'preventDamage': {
@@ -657,8 +668,22 @@ export class EffectExecutor {
       case 'self':
         return [context.attackingPokemon];
 
-      case 'opponent':
+      case 'opponent': {
+        const abilityTarget = context.userChoices?.abilityTarget as
+          | { player: 0 | 1; zone: 'active' | 'bench'; benchIndex?: number }
+          | undefined;
+        if (abilityTarget) {
+          const player = abilityTarget.player;
+          if (abilityTarget.zone === 'active') {
+            const active = state.players[player].active;
+            return active ? [active] : [];
+          }
+          const bench = state.players[player].bench;
+          const idx = abilityTarget.benchIndex ?? 0;
+          return bench[idx] ? [bench[idx]] : [];
+        }
         return [context.defendingPokemon];
+      }
 
       case 'active': {
         const player = target.player === 'own' ? context.attackingPlayer : context.defendingPlayer;
@@ -885,6 +910,22 @@ export class EffectExecutor {
       const pokemon = this.findPokemonInState(newState, target.card.id);
       if (pokemon) {
         pokemon.currentHp = Math.min(pokemon.card.hp, pokemon.currentHp + amount);
+      }
+    }
+    return newState;
+  }
+
+  private static applySetHp(
+    state: GameState,
+    targets: PokemonInPlay[],
+    amount: number,
+    preferredPlayer?: 0 | 1
+  ): GameState {
+    const newState = this.cloneGameState(state);
+    for (const target of targets) {
+      const pokemon = this.findPokemonInState(newState, target.card.id, preferredPlayer);
+      if (pokemon) {
+        pokemon.currentHp = Math.max(0, Math.min(pokemon.card.hp, amount));
       }
     }
     return newState;
@@ -1320,7 +1361,17 @@ export class EffectExecutor {
     }
   }
 
-  private static findPokemonInState(state: GameState, cardId: string): PokemonInPlay | null {
+  private static findPokemonInState(
+    state: GameState,
+    cardId: string,
+    preferredPlayer?: 0 | 1
+  ): PokemonInPlay | null {
+    if (preferredPlayer !== undefined) {
+      const p = state.players[preferredPlayer];
+      if (p.active?.card.id === cardId) return p.active;
+      const bench = p.bench.find((b: PokemonInPlay) => b.card.id === cardId);
+      if (bench) return bench;
+    }
     for (const player of state.players) {
       if (player.active?.card.id === cardId) return player.active;
       const bench = player.bench.find((p: PokemonInPlay) => p.card.id === cardId);

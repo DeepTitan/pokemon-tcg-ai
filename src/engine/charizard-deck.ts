@@ -338,10 +338,10 @@ const DUSKULL: PokemonCard = {
   isRulebox: false,
   attacks: [
     {
-      name: 'Ram',
-      cost: [EnergyType.Colorless],
-      damage: 10,
-      description: 'Deal 10 damage.',
+      name: 'Mumble',
+      cost: [EnergyType.Psychic, EnergyType.Psychic],
+      damage: 30,
+      description: 'Deal 30 damage.',
     },
   ],
 };
@@ -398,19 +398,42 @@ const DUSKNOIR: PokemonCard = {
       const opponentIndex = playerIndex === 0 ? 1 : 0;
       const player = clonePlayer(state, playerIndex);
       const opponent = clonePlayer(state, opponentIndex);
-      // Put 130 damage on opponent's active (13 damage counters = 130 damage)
-      if (opponent.active) {
-        opponent.active = { ...opponent.active, currentHp: Math.max(0, opponent.active.currentHp - 130) };
+      // Put 130 damage (13 damage counters) on the best opponent Pokemon target
+      // Pick the one where 130 damage gets a KO, preferring higher prize value; else pick highest HP
+      const targets: { pokemon: PokemonInPlay; zone: 'active' | 'bench'; index: number }[] = [];
+      if (opponent.active) targets.push({ pokemon: opponent.active, zone: 'active', index: -1 });
+      opponent.bench.forEach((p, i) => targets.push({ pokemon: p, zone: 'bench', index: i }));
+      if (targets.length > 0) {
+        // Prefer KO targets, then by prize value, then by HP remaining
+        const bestTarget = targets.reduce((best, cur) => {
+          const curKO = cur.pokemon.currentHp <= 130;
+          const bestKO = best.pokemon.currentHp <= 130;
+          if (curKO && !bestKO) return cur;
+          if (!curKO && bestKO) return best;
+          if (curKO && bestKO) {
+            // Both KO — prefer higher prize value
+            const curPrize = cur.pokemon.card.prizeCards || 1;
+            const bestPrize = best.pokemon.card.prizeCards || 1;
+            if (curPrize !== bestPrize) return curPrize > bestPrize ? cur : best;
+          }
+          // Prefer targeting Pokemon with highest current HP (most value from 130 damage)
+          return cur.pokemon.currentHp > best.pokemon.currentHp ? cur : best;
+        });
+        const targetPokemon = bestTarget.zone === 'active'
+          ? opponent.active!
+          : opponent.bench[bestTarget.index];
+        targetPokemon.currentHp = Math.max(0, targetPokemon.currentHp - 130);
+        // KO own active Pokemon
+        if (player.active) {
+          player.active = { ...player.active, currentHp: 0 };
+        }
+        let newState = { ...state };
+        newState.players[playerIndex] = player;
+        newState.players[opponentIndex] = opponent;
+        newState = { ...newState, gameLog: [...newState.gameLog, `Dusknoir's Cursed Blast places 130 damage on ${bestTarget.pokemon.card.name}! Own active is knocked out.`] };
+        return newState;
       }
-      // KO own active Pokemon
-      if (player.active) {
-        player.active = { ...player.active, currentHp: 0 };
-      }
-      let newState = { ...state };
-      newState.players[playerIndex] = player;
-      newState.players[opponentIndex] = opponent;
-      newState = { ...newState, gameLog: [...newState.gameLog, `Dusknoir's Cursed Blast places 130 damage on opponent's active!`] };
-      return newState;
+      return state;
     },
   },
   attacks: [
@@ -683,6 +706,29 @@ const FEZANDIPITI_EX: PokemonCard = {
       cost: [EnergyType.Colorless, EnergyType.Colorless, EnergyType.Colorless],
       damage: 0,
       description: 'This attack does 100 damage to 1 of your opponent\'s Pokemon.',
+      effect: (state, _attacker, _target) => {
+        // Deal 100 damage to opponent's Pokemon with highest HP (simplification: player chooses)
+        const opponentIdx = state.currentPlayer === 0 ? 1 : 0;
+        const opponent = state.players[opponentIdx];
+        // Collect all opponent Pokemon (active + bench)
+        const targets: { zone: 'active' | 'bench'; index: number; pokemon: PokemonInPlay }[] = [];
+        if (opponent.active) targets.push({ zone: 'active', index: -1, pokemon: opponent.active });
+        opponent.bench.forEach((p, i) => targets.push({ zone: 'bench', index: i, pokemon: p }));
+        if (targets.length === 0) return state;
+        // Pick the target with the most current HP (prioritize bench, then active)
+        const bestTarget = targets.reduce((best, cur) =>
+          cur.pokemon.currentHp > best.pokemon.currentHp ? cur : best
+        );
+        // Apply 100 damage
+        const newOpponent = clonePlayer(state, opponentIdx);
+        const targetPokemon = bestTarget.zone === 'active'
+          ? newOpponent.active!
+          : newOpponent.bench[bestTarget.index];
+        targetPokemon.currentHp = Math.max(0, targetPokemon.currentHp - 100);
+        let newState = updatePlayer(state, opponentIdx, newOpponent);
+        newState = { ...newState, gameLog: [...newState.gameLog, `Cruel Arrow deals 100 damage to ${bestTarget.pokemon.card.name}!`] };
+        return newState;
+      },
     },
   ],
 };
@@ -696,7 +742,7 @@ const DAWN: TrainerCard = {
   name: 'Dawn',
   cardType: CardType.Trainer,
   cardNumber: 'PFL 87',
-  imageUrl: 'https://images.pokemontcg.io/dp5/79.png', // Dawn Stadium placeholder (Dawn Supporter not in API yet)
+  imageUrl: 'https://images.pokemontcg.io/me2/87_hires.png',
   trainerType: TrainerType.Supporter,
   effect: (state, playerIndex) => {
     const player = clonePlayer(state, playerIndex);
@@ -828,6 +874,7 @@ const BUDDY_BUDDY_POFFIN: TrainerCard = {
         damageCounters: 0,
         attachedTools: [],
         isEvolved: false,
+        turnPlayed: state.turnNumber,
         damageShields: [],
         cannotRetreat: false,
       });
@@ -867,11 +914,11 @@ const RARE_CANDY: TrainerCard = {
       // For Dusknoir: evolvesFrom Dusclops, which evolvesFrom Duskull
       // We need to find a Basic Pokemon in play that matches the evolution chain
       const allInPlay: { pokemon: PokemonInPlay; zone: 'active' | 'bench'; index: number }[] = [];
-      if (player.active && player.active.card.stage === PokemonStage.Basic && !player.active.isEvolved) {
+      if (player.active && player.active.card.stage === PokemonStage.Basic && !player.active.isEvolved && player.active.turnPlayed !== state.turnNumber) {
         allInPlay.push({ pokemon: player.active, zone: 'active', index: -1 });
       }
       player.bench.forEach((p, i) => {
-        if (p.card.stage === PokemonStage.Basic && !p.isEvolved) {
+        if (p.card.stage === PokemonStage.Basic && !p.isEvolved && p.turnPlayed !== state.turnNumber) {
           allInPlay.push({ pokemon: p, zone: 'bench', index: i });
         }
       });
@@ -943,6 +990,7 @@ const NEST_BALL: TrainerCard = {
         damageCounters: 0,
         attachedTools: [],
         isEvolved: false,
+        turnPlayed: state.turnNumber,
         damageShields: [],
         cannotRetreat: false,
       });

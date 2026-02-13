@@ -1,12 +1,7 @@
 import type { AISearchResult } from '../ai/ai-bridge.js';
 import type { AIMode } from '../ai/ai-bridge.js';
+import { getModel } from '../ai/ai-bridge.js';
 import type { GameState, Action } from '../engine/types.js';
-
-const MODE_LABELS: Record<AIMode, string> = {
-  heuristic: 'Heuristic',
-  'ismcts-lite': 'ISMCTS Lite',
-  'ismcts-full': 'ISMCTS Full',
-};
 
 function describeActionShort(action: Action, state: GameState | null): string {
   if (!state) return action.type;
@@ -55,7 +50,7 @@ export function AIDebugPanel({
     <div className="flex flex-col h-full text-xs">
       {/* Mode indicator */}
       <div className="px-3 py-2 border-b border-gray-700 flex items-center justify-between">
-        <span className="font-bold text-purple-400">AI: {MODE_LABELS[aiMode]}</span>
+        <span className="font-bold text-purple-400">AI: {getModel(aiMode)?.name ?? aiMode}</span>
         {searchResult && aiMode !== 'heuristic' && (
           <span className="text-gray-500">{searchResult.searchTimeMs.toFixed(0)}ms</span>
         )}

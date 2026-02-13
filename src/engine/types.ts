@@ -152,8 +152,8 @@ export interface Attack {
   cost: EnergyType[];
   /** Damage this attack deals (may be 0 for non-damage effects) */
   damage: number;
-  /** Optional effect function applied when attack resolves */
-  effect?: (state: GameState, attacker: PokemonInPlay, target: PokemonInPlay) => void;
+  /** Optional effect function applied when attack resolves. Returns modified game state. */
+  effect?: (state: GameState, attacker: PokemonInPlay, target: PokemonInPlay) => GameState;
   /** Human-readable description of attack effect */
   description: string;
 }
@@ -286,8 +286,10 @@ export interface PokemonInPlay {
   damageCounters: number;
   /** Tool cards attached to this Pokemon (max 1) */
   attachedTools: TrainerCard[];
-  /** Whether this Pokemon has evolved during the current turn */
+  /** Whether this Pokemon has evolved during the current turn (reset at end of turn) */
   isEvolved: boolean;
+  /** Turn number when this Pokemon entered play (used to enforce same-turn evolution rules) */
+  turnPlayed: number;
   /** Reference to the previous stage Pokemon if evolved */
   previousStage?: PokemonInPlay;
   /** Active damage shields preventing incoming damage */

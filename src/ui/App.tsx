@@ -1,15 +1,19 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { GameEngine } from '../engine/game-engine.js';
 import { buildCharizardDeck } from '../engine/charizard-deck.js';
+import { searchAction, getModels, type AIMode, type AISearchResult } from '../ai/ai-bridge.js';
+import { AIDebugPanel } from './AIDebugPanel.js';
+import { HandZone, DiscardZone } from './CardZone.js';
+import { ActivePokemonDetail } from './ActivePokemonDetail.js';
+import { EnergyStack } from './EnergyStack.js';
+import { FloatingPanel } from './FloatingPanel.js';
+import { JsonTreeView, getVisibleRepresentation, getDefaultExpandedPaths } from './JsonTree.js';
 import type {
   GameState,
   PokemonInPlay,
-  PokemonCard,
-  EnergyCard,
-  Card,
   Action,
 } from '../engine/types.js';
-import { GamePhase, ActionType, CardType } from '../engine/types.js';
+import { GamePhase, ActionType } from '../engine/types.js';
 
 // ============================================================================
 // TYPES
@@ -20,45 +24,6 @@ interface GameLogEntry {
   player: number;
   text: string;
   type: 'attack' | 'play' | 'energy' | 'trainer' | 'ko' | 'pass' | 'info';
-}
-
-// ============================================================================
-// AI ACTION SELECTION (same heuristic as terminal play.ts)
-// ============================================================================
-
-function selectAction(state: GameState, actions: Action[]): Action {
-  if (state.phase === GamePhase.AttackPhase) {
-    const attacks = actions.filter(a => a.type === ActionType.Attack);
-    if (attacks.length > 0) {
-      const active = state.players[state.currentPlayer].active;
-      if (active) {
-        return attacks.reduce((best, a) => {
-          const dmgA = active.card.attacks[a.payload.attackIndex]?.damage ?? 0;
-          const dmgB = active.card.attacks[best.payload.attackIndex]?.damage ?? 0;
-          return dmgA > dmgB ? a : best;
-        });
-      }
-      return attacks[0];
-    }
-    return actions.find(a => a.type === ActionType.Pass) || actions[0];
-  }
-
-  const playPokemon = actions.filter(a => a.type === ActionType.PlayPokemon);
-  const attachEnergy = actions.filter(a => a.type === ActionType.AttachEnergy);
-  const playTrainer = actions.filter(a => a.type === ActionType.PlayTrainer);
-
-  if (playPokemon.length > 0) {
-    return playPokemon[Math.floor(Math.random() * playPokemon.length)];
-  }
-  if (attachEnergy.length > 0) {
-    const toActive = attachEnergy.filter(a => a.payload.target === 'active');
-    if (toActive.length > 0) return toActive[0];
-    return attachEnergy[0];
-  }
-  if (playTrainer.length > 0) {
-    return playTrainer[Math.floor(Math.random() * playTrainer.length)];
-  }
-  return actions.find(a => a.type === ActionType.Pass) || actions[0];
 }
 
 // ============================================================================
@@ -122,107 +87,98 @@ const LOG_COLORS: Record<string, string> = {
 };
 
 // ============================================================================
-// CARD IMAGE COMPONENT
+// BENCH POKEMON DISPLAY (with photo, ability, attacks)
 // ============================================================================
 
-function CardImage({ src, name, className }: { src: string; name: string; className?: string }) {
+function BenchCardPhoto({ src, name }: { src: string; name: string }) {
   const [failed, setFailed] = useState(false);
-
   if (failed || !src || src.includes('example.com')) {
     return (
-      <div className={`bg-gray-700 rounded-lg flex items-center justify-center border border-gray-600 ${className || ''}`}
-        style={{ minHeight: 80 }}>
-        <span className="text-xs text-gray-400 text-center px-1">{name}</span>
+      <div className="w-14 h-20 bg-gray-700 rounded flex items-center justify-center border border-gray-600">
+        <span className="text-[7px] text-gray-400 text-center px-0.5">{name}</span>
       </div>
     );
   }
-
   return (
-    <img
-      src={src}
-      alt={name}
-      className={`rounded-lg shadow-md ${className || ''}`}
-      onError={() => setFailed(true)}
-      loading="lazy"
-    />
+    <img src={src} alt={name} className="w-14 rounded shadow-sm" onError={() => setFailed(true)} loading="lazy" />
   );
 }
 
-// ============================================================================
-// POKEMON CARD DISPLAY
-// ============================================================================
-
-function PokemonDisplay({ pokemon, isActive, label }: {
-  pokemon: PokemonInPlay | null;
-  isActive: boolean;
-  label?: string;
-}) {
+function BenchPokemonDisplay({ pokemon }: { pokemon: PokemonInPlay | null }) {
   if (!pokemon) {
     return (
-      <div className={`${isActive ? 'w-36' : 'w-24'} flex flex-col items-center`}>
-        <div className={`${isActive ? 'w-36 h-48' : 'w-24 h-32'} bg-gray-800 rounded-lg border-2 border-dashed border-gray-700 flex items-center justify-center`}>
-          <span className="text-gray-600 text-xs">Empty</span>
+      <div className="w-28 flex flex-col items-center">
+        <div className="w-28 h-20 bg-gray-800 rounded-lg border-2 border-dashed border-gray-700 flex items-center justify-center">
+          <span className="text-gray-700 text-[8px]">Empty</span>
         </div>
       </div>
     );
   }
 
-  const hpPct = Math.max(0, pokemon.currentHp / pokemon.card.hp);
+  const card = pokemon.card;
+  const hpPct = Math.max(0, pokemon.currentHp / card.hp);
   const hpColor = hpPct > 0.5 ? '#22C55E' : hpPct > 0.25 ? '#EAB308' : '#EF4444';
-  const typeColor = TYPE_COLORS[pokemon.card.type] || TYPE_COLORS.Colorless;
-  const isEx = pokemon.card.isRulebox;
+  const typeColor = TYPE_COLORS[card.type] || TYPE_COLORS.Colorless;
 
   return (
-    <div className={`${isActive ? 'w-36' : 'w-24'} flex flex-col items-center gap-1`}>
-      {label && <div className="text-[10px] text-gray-500 uppercase tracking-wider">{label}</div>}
-
-      {/* Card image */}
-      <div className="relative" style={{ border: isEx ? '2px solid #EAB308' : '2px solid transparent', borderRadius: 10 }}>
-        <CardImage
-          src={pokemon.card.imageUrl}
-          name={pokemon.card.name}
-          className={isActive ? 'w-36' : 'w-24'}
-        />
-        {/* HP overlay */}
-        {isActive && (
-          <div className="absolute bottom-0 left-0 right-0 bg-black/70 rounded-b-lg p-1">
-            <div className="flex justify-between items-center text-[10px] mb-0.5">
-              <span className="font-bold text-white truncate">{pokemon.card.name}</span>
-              <span className="text-gray-300">{pokemon.currentHp}/{pokemon.card.hp}</span>
-            </div>
-            <div className="w-full bg-gray-700 rounded-full h-1.5">
-              <div className="h-1.5 rounded-full transition-all duration-300" style={{ width: `${hpPct * 100}%`, backgroundColor: hpColor }} />
-            </div>
+    <div className="w-28 bg-gray-800 rounded-lg border border-gray-700">
+      {/* Photo + name header */}
+      <div className="flex gap-1 p-1">
+        <div className="relative flex-shrink-0">
+          <BenchCardPhoto src={card.imageUrl} name={card.name} />
+          {pokemon.attachedEnergy.length > 0 && (
+            <EnergyStack energy={pokemon.attachedEnergy} variant="bench" />
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-[8px] text-gray-300 font-bold truncate">{card.name}</div>
+          <div className="flex items-center gap-0.5 mt-px">
+            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: typeColor }} />
+            <span className="text-[7px] text-gray-500">{card.stage}</span>
           </div>
-        )}
+          {/* HP */}
+          <div className="mt-0.5">
+            <div className="w-full bg-gray-700 rounded-full h-1">
+              <div className="h-1 rounded-full" style={{ width: `${hpPct * 100}%`, backgroundColor: hpColor }} />
+            </div>
+            <div className="text-[7px] text-gray-500">{pokemon.currentHp}/{card.hp}</div>
+          </div>
+          {/* Energy is now shown as stacked cards on the card image */}
+        </div>
       </div>
 
-      {/* Energy display */}
-      {pokemon.attachedEnergy.length > 0 && (
-        <div className="flex gap-0.5 flex-wrap justify-center">
-          {pokemon.attachedEnergy.map((e, i) => (
-            <div key={i} className="w-4 h-4 rounded-full border border-gray-600 flex items-center justify-center text-[8px]"
-              style={{ backgroundColor: TYPE_COLORS[e.energyType] || '#666' }}>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Bench: compact name + HP */}
-      {!isActive && (
-        <div className="text-center">
-          <div className="text-[10px] text-gray-300 font-medium truncate w-24">{pokemon.card.name}</div>
-          <div className="w-full bg-gray-700 rounded-full h-1 mt-0.5">
-            <div className="h-1 rounded-full" style={{ width: `${hpPct * 100}%`, backgroundColor: hpColor }} />
+      {/* Ability */}
+      {card.ability && (
+        <div className="px-1 py-0.5 border-t border-gray-700/50">
+          <div className="flex items-center gap-0.5">
+            <span className="text-[6px] px-0.5 rounded font-bold bg-red-900/40 text-red-400">Abl</span>
+            <span className="text-[7px] text-red-300 truncate">{card.ability.name}</span>
           </div>
-          <div className="text-[9px] text-gray-500">{pokemon.currentHp}/{pokemon.card.hp}</div>
         </div>
       )}
 
-      {/* Prize badge */}
-      {isEx && (
-        <div className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: '#EAB30833', color: '#EAB308' }}>
-          {pokemon.card.prizeCards} prizes
+      {/* Attacks (compact) */}
+      <div className="px-1 py-0.5 border-t border-gray-700/50 space-y-px">
+        {card.attacks.map((atk, i) => (
+          <div key={i} className="flex items-center gap-0.5">
+            <div className="flex gap-px flex-shrink-0">
+              {atk.cost.map((energyType, j) => (
+                <div key={j} className="w-2 h-2 rounded-full border border-gray-600"
+                  style={{ backgroundColor: TYPE_COLORS[energyType] || '#666' }} />
+              ))}
+            </div>
+            <span className="text-[7px] text-gray-300 truncate flex-1">{atk.name}</span>
+            {atk.damage > 0 && (
+              <span className="text-[7px] font-bold text-red-400 flex-shrink-0">{atk.damage}</span>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* ex badge */}
+      {card.isRulebox && (
+        <div className="text-[6px] font-bold text-center py-px" style={{ backgroundColor: '#EAB30811', color: '#EAB308' }}>
+          ex &middot; {card.prizeCards} prizes
         </div>
       )}
     </div>
@@ -230,7 +186,7 @@ function PokemonDisplay({ pokemon, isActive, label }: {
 }
 
 // ============================================================================
-// PLAYER BOARD
+// PLAYER BOARD (Active + Bench + Header)
 // ============================================================================
 
 function PlayerBoard({ state, playerIdx, isFlipped }: {
@@ -243,45 +199,40 @@ function PlayerBoard({ state, playerIdx, isFlipped }: {
   const borderColor = isCurrentPlayer ? 'border-yellow-500/50' : 'border-gray-700';
 
   const prizesFilled = player.prizeCardsRemaining;
-  const prizesEmpty = 6 - prizesFilled;
 
   return (
-    <div className={`rounded-xl border-2 ${borderColor} bg-gray-800/80 p-4 transition-all`}>
+    <div className={`rounded-xl border ${borderColor} bg-gray-800/80 p-3 transition-all`}>
       {/* Player header */}
-      <div className="flex justify-between items-center mb-3">
+      <div className="flex justify-between items-center mb-2">
         <div className="flex items-center gap-2">
-          <div className={`w-3 h-3 rounded-full ${isCurrentPlayer ? 'bg-yellow-400 animate-pulse' : 'bg-gray-600'}`} />
-          <span className="font-bold text-white text-sm">Player {playerIdx + 1}</span>
-          {isCurrentPlayer && <span className="text-[10px] text-yellow-400 uppercase">Active</span>}
+          <div className={`w-2.5 h-2.5 rounded-full ${isCurrentPlayer ? 'bg-yellow-400 animate-pulse' : 'bg-gray-600'}`} />
+          <span className="font-bold text-white text-xs">Player {playerIdx + 1}</span>
+          {isCurrentPlayer && <span className="text-[9px] text-yellow-400 uppercase">Active</span>}
         </div>
-        <div className="flex gap-3 text-xs text-gray-400">
-          <span>Hand: <span className="text-white font-bold">{player.hand.length}</span></span>
+        <div className="flex gap-2 text-[10px] text-gray-400">
           <span>Deck: <span className="text-white font-bold">{player.deck.length}</span></span>
-          <span>Discard: <span className="text-white font-bold">{player.discard.length}</span></span>
+          <span className="flex gap-0.5 items-center">
+            Prizes:
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className={`w-3 h-4 rounded-sm border ${i < prizesFilled ? 'bg-yellow-500/20 border-yellow-500/40' : 'bg-gray-900 border-gray-700'}`} />
+            ))}
+          </span>
         </div>
-      </div>
-
-      {/* Prize cards */}
-      <div className="flex gap-1 mb-3">
-        <span className="text-[10px] text-gray-500 mr-1 self-center">Prizes:</span>
-        {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className={`w-5 h-7 rounded-sm border ${i < prizesFilled ? 'bg-yellow-500/20 border-yellow-500/40' : 'bg-gray-900 border-gray-700'}`} />
-        ))}
       </div>
 
       {/* Board layout */}
-      <div className={`flex ${isFlipped ? 'flex-col-reverse' : 'flex-col'} gap-3`}>
+      <div className={`flex ${isFlipped ? 'flex-col-reverse' : 'flex-col'} gap-2`}>
         {/* Active Pokemon */}
         <div className="flex justify-center">
-          <PokemonDisplay pokemon={player.active} isActive={true} label="Active" />
+          <ActivePokemonDetail pokemon={player.active} playerIndex={playerIdx} />
         </div>
 
         {/* Bench */}
         <div>
-          <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1 text-center">Bench</div>
-          <div className="flex justify-center gap-2">
+          <div className="text-[9px] text-gray-500 uppercase tracking-wider mb-1 text-center">Bench</div>
+          <div className="flex justify-center gap-1 flex-wrap">
             {Array.from({ length: 5 }).map((_, i) => (
-              <PokemonDisplay key={i} pokemon={player.bench[i] || null} isActive={false} />
+              <BenchPokemonDisplay key={i} pokemon={player.bench[i] || null} />
             ))}
           </div>
         </div>
@@ -300,17 +251,55 @@ const App = () => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [speed, setSpeed] = useState(3);
   const [seed, setSeed] = useState(420);
-  const [stateHistory, setStateHistory] = useState<GameState[]>([]);
-  const [historyIndex, setHistoryIndex] = useState(-1);
+
+  // AI state
+  const [aiMode, setAiMode] = useState<AIMode>('heuristic');
+  const [aiThinking, setAiThinking] = useState(false);
+  const [searchProgress, setSearchProgress] = useState(0);
+  const [lastSearchResult, setLastSearchResult] = useState<AISearchResult | null>(null);
+
+  // UI state
+  const [rightPanel, setRightPanel] = useState<'log' | 'ai'>('log');
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
+  const [debugExpandedPaths, setDebugExpandedPaths] = useState<Set<string>>(() => new Set(['']));
+  const [copyFeedback, setCopyFeedback] = useState<'visible' | 'full' | null>(null);
+  const [showP1Hand, setShowP1Hand] = useState(true);
+  const [showP2Hand, setShowP2Hand] = useState(true);
+  const [showP1Discard, setShowP1Discard] = useState(false);
+  const [showP2Discard, setShowP2Discard] = useState(false);
 
   const intervalRef = useRef<number | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
   const actionQueueRef = useRef<{ state: GameState; done: boolean }>({ state: null as any, done: false });
+  const steppingRef = useRef(false);
+  const debugPanelOpenedRef = useRef(false);
 
   // Auto-scroll log
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [gameLog]);
+
+  // Reset debug tree expansion only when panel is first opened
+  useEffect(() => {
+    if (!showDebugPanel) {
+      debugPanelOpenedRef.current = false;
+      return;
+    }
+    if (!debugPanelOpenedRef.current && gameState != null) {
+      setDebugExpandedPaths(getDefaultExpandedPaths(gameState, 2));
+      debugPanelOpenedRef.current = true;
+    }
+  }, [showDebugPanel, gameState]);
+
+  const copyToClipboard = useCallback((text: string, kind: 'visible' | 'full') => {
+    navigator.clipboard.writeText(text).then(
+      () => {
+        setCopyFeedback(kind);
+        setTimeout(() => setCopyFeedback(null), 1500);
+      },
+      () => {}
+    );
+  }, []);
 
   // Start a new game
   const startNewGame = useCallback(() => {
@@ -319,26 +308,95 @@ const App = () => {
     const state = GameEngine.createGame(deck1, deck2, seed);
     setGameState(state);
     setGameLog([{ turn: 0, player: -1, text: `Game started (seed: ${seed})`, type: 'info' }]);
-    setStateHistory([state]);
-    setHistoryIndex(0);
     actionQueueRef.current = { state, done: false };
     setIsPlaying(false);
+    setLastSearchResult(null);
+    setAiThinking(false);
+    setSearchProgress(0);
   }, [seed]);
 
   // Execute one simulation step (one action)
-  const step = useCallback(() => {
+  const step = useCallback(async () => {
+    if (steppingRef.current) return;
     const ref = actionQueueRef.current;
     if (!ref.state || ref.done) return;
 
-    let state = ref.state;
+    steppingRef.current = true;
 
-    // Draw phase -> start turn
-    if (state.phase === GamePhase.DrawPhase) {
-      state = GameEngine.startTurn(state);
+    try {
+      let state = ref.state;
+
+      // Draw phase -> start turn
+      if (state.phase === GamePhase.DrawPhase) {
+        state = GameEngine.startTurn(state);
+        if (GameEngine.isGameOver(state)) {
+          ref.state = state;
+          ref.done = true;
+          setGameState(state);
+          setGameLog(prev => [...prev, {
+            turn: state.turnNumber,
+            player: -1,
+            text: `Game Over! Player ${(GameEngine.getWinner(state) ?? 0) + 1} wins!`,
+            type: 'ko',
+          }]);
+          setIsPlaying(false);
+          return;
+        }
+      }
+
+      // Play one action in current phase
+      if (state.phase === GamePhase.MainPhase || state.phase === GamePhase.AttackPhase) {
+        const actions = GameEngine.getLegalActions(state);
+        if (actions.length > 0) {
+          let action: Action;
+
+          if (aiMode !== 'heuristic') {
+            setAiThinking(true);
+            setSearchProgress(0);
+            const result = await searchAction(state, actions, aiMode, (det, total) => {
+              setSearchProgress(det / total);
+            });
+            action = result.action;
+            setLastSearchResult(result);
+            setAiThinking(false);
+          } else {
+            const result = await searchAction(state, actions, 'heuristic');
+            action = result.action;
+          }
+
+          const logEntry = describeAction(action, state);
+
+          // Only log non-pass actions or passes that change phase
+          if (action.type !== ActionType.Pass || state.phase === GamePhase.AttackPhase) {
+            setGameLog(prev => [...prev, logEntry]);
+          }
+
+          state = GameEngine.applyAction(state, action);
+        }
+      }
+
+      // Between turns -> end turn
+      if (state.phase === GamePhase.BetweenTurns) {
+        state = GameEngine.endTurn(state);
+      }
+
+      // Check for knockouts in log
+      const prevState = ref.state;
+      for (let p = 0; p < 2; p++) {
+        if (prevState.players[p].prizeCardsRemaining > state.players[p].prizeCardsRemaining) {
+          const taken = prevState.players[p].prizeCardsRemaining - state.players[p].prizeCardsRemaining;
+          setGameLog(prev => [...prev, {
+            turn: state.turnNumber,
+            player: p,
+            text: `Takes ${taken} prize card(s)! (${state.players[p].prizeCardsRemaining} remaining)`,
+            type: 'ko',
+          }]);
+        }
+      }
+
+      // Check game over
       if (GameEngine.isGameOver(state)) {
-        ref.state = state;
         ref.done = true;
-        setGameState(state);
         setGameLog(prev => [...prev, {
           turn: state.turnNumber,
           player: -1,
@@ -346,76 +404,54 @@ const App = () => {
           type: 'ko',
         }]);
         setIsPlaying(false);
-        return;
       }
+
+      ref.state = state;
+      setGameState(state);
+    } finally {
+      steppingRef.current = false;
     }
+  }, [aiMode]);
 
-    // Play one action in current phase
-    if (state.phase === GamePhase.MainPhase || state.phase === GamePhase.AttackPhase) {
-      const actions = GameEngine.getLegalActions(state);
-      if (actions.length > 0) {
-        const action = selectAction(state, actions);
-        const logEntry = describeAction(action, state);
-
-        // Only log non-pass actions or passes that change phase
-        if (action.type !== ActionType.Pass || state.phase === GamePhase.AttackPhase) {
-          setGameLog(prev => [...prev, logEntry]);
-        }
-
-        state = GameEngine.applyAction(state, action);
-      }
-    }
-
-    // Between turns -> end turn
-    if (state.phase === GamePhase.BetweenTurns) {
-      state = GameEngine.endTurn(state);
-    }
-
-    // Check for knockouts in log
-    const prevState = ref.state;
-    for (let p = 0; p < 2; p++) {
-      if (prevState.players[p].prizeCardsRemaining > state.players[p].prizeCardsRemaining) {
-        const taken = prevState.players[p].prizeCardsRemaining - state.players[p].prizeCardsRemaining;
-        setGameLog(prev => [...prev, {
-          turn: state.turnNumber,
-          player: p,
-          text: `Takes ${taken} prize card(s)! (${state.players[p].prizeCardsRemaining} remaining)`,
-          type: 'ko',
-        }]);
-      }
-    }
-
-    // Check game over
-    if (GameEngine.isGameOver(state)) {
-      ref.done = true;
-      setGameLog(prev => [...prev, {
-        turn: state.turnNumber,
-        player: -1,
-        text: `Game Over! Player ${(GameEngine.getWinner(state) ?? 0) + 1} wins!`,
-        type: 'ko',
-      }]);
-      setIsPlaying(false);
-    }
-
-    ref.state = state;
-    setGameState(state);
-    setStateHistory(prev => [...prev, state]);
-    setHistoryIndex(prev => prev + 1);
-  }, []);
-
-  // Auto-play timer
+  // Auto-play loop
   useEffect(() => {
-    if (isPlaying) {
-      const ms = Math.max(50, 1000 / speed);
-      intervalRef.current = window.setInterval(step, ms);
-    } else if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
+    if (!isPlaying) {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      return;
     }
+
+    if (aiMode === 'heuristic') {
+      // Heuristic: use interval for fast playback
+      const ms = Math.max(50, 1000 / speed);
+      intervalRef.current = window.setInterval(() => {
+        step();
+      }, ms);
+    } else {
+      // ISMCTS: sequential async loop
+      let cancelled = false;
+      const loop = async () => {
+        while (!cancelled && isPlaying) {
+          await step();
+          const ref = actionQueueRef.current;
+          if (ref.done) break;
+          // Small delay between steps for readability
+          await new Promise(resolve => setTimeout(resolve, Math.max(100, 500 / speed)));
+        }
+      };
+      loop();
+      return () => { cancelled = true; };
+    }
+
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
     };
-  }, [isPlaying, speed, step]);
+  }, [isPlaying, speed, step, aiMode]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -429,49 +465,89 @@ const App = () => {
   }, [step, startNewGame]);
 
   const winner = gameState ? GameEngine.getWinner(gameState) : null;
-
-  // Cap log at 200 entries to prevent bloat
   const visibleLog = gameLog.slice(-200);
+  const isDisabled = !gameState || winner !== null || aiThinking;
 
   return (
     <div className="fixed inset-0 bg-gray-900 text-white flex flex-col overflow-hidden">
-      {/* Header — fixed height */}
-      <div className="flex-shrink-0 bg-gray-800 border-b border-gray-700 px-6 py-2 flex justify-between items-center h-14">
+      {/* Header */}
+      <div className="flex-shrink-0 bg-gray-800 border-b border-gray-700 px-4 py-1.5 flex justify-between items-center h-12">
         <div className="min-w-0">
-          <h1 className="text-lg font-bold leading-tight">Pokemon TCG AI Simulator</h1>
-          <p className="text-gray-400 text-[11px] truncate">
+          <div className="flex items-center gap-2">
+            <h1 className="text-sm font-bold leading-tight">Pokemon TCG AI Simulator</h1>
+          </div>
+          <p className="text-gray-400 text-[10px] truncate">
             {gameState
-              ? `Turn ${gameState.turnNumber} | ${gameState.phase} | Player ${gameState.currentPlayer + 1}'s turn`
+              ? `Turn ${gameState.turnNumber} | ${gameState.phase.replace('Phase', '')} | Player ${gameState.currentPlayer + 1}'s turn`
               : 'Click "New Game" to start a Charizard mirror match'}
           </p>
         </div>
-        {winner !== null && (
-          <div className="flex-shrink-0 bg-yellow-500/20 border border-yellow-500/50 rounded-lg px-4 py-1.5 text-yellow-400 font-bold text-sm">
-            Player {winner + 1} Wins!
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          {aiThinking && (
+            <div className="text-[10px] text-yellow-400 flex items-center gap-1">
+              <span className="animate-spin">&#9881;</span> AI thinking...
+            </div>
+          )}
+          {winner !== null && (
+            <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-lg px-3 py-1 text-yellow-400 font-bold text-xs">
+              Player {winner + 1} Wins!
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Main content — fills remaining height */}
+      {/* Main content */}
       <div className="flex-1 flex min-h-0">
-        {/* Game Board — scrolls independently */}
-        <div className="flex-1 min-w-0 overflow-y-auto p-4">
+        {/* Game Board */}
+        <div className="flex-1 min-w-0 overflow-y-auto p-3">
           {gameState ? (
-            <div className="flex flex-col gap-3 max-w-4xl mx-auto">
-              {/* Player 2 (top, flipped) */}
+            <div className="flex flex-col gap-2 max-w-4xl mx-auto">
+              {/* P2 Hand */}
+              <HandZone
+                cards={gameState.players[1].hand}
+                title={`Player 2 Hand`}
+                expanded={showP2Hand}
+                onToggle={() => setShowP2Hand(p => !p)}
+              />
+
+              {/* P2 Discard */}
+              <DiscardZone
+                cards={gameState.players[1].discard}
+                title="P2 Discard"
+                expanded={showP2Discard}
+                onToggle={() => setShowP2Discard(p => !p)}
+              />
+
+              {/* Player 2 Board */}
               <PlayerBoard state={gameState} playerIdx={1} isFlipped={true} />
 
               {/* VS divider */}
               <div className="flex items-center gap-3 px-4 flex-shrink-0">
                 <div className="flex-1 h-px bg-gray-700" />
-                <div className="text-xs text-gray-500 font-bold px-3 py-1 rounded-full bg-gray-800 border border-gray-700 whitespace-nowrap">
+                <div className="text-[10px] text-gray-500 font-bold px-3 py-0.5 rounded-full bg-gray-800 border border-gray-700 whitespace-nowrap">
                   Turn {gameState.turnNumber} &middot; {gameState.phase.replace('Phase', '')}
                 </div>
                 <div className="flex-1 h-px bg-gray-700" />
               </div>
 
-              {/* Player 1 (bottom) */}
+              {/* Player 1 Board */}
               <PlayerBoard state={gameState} playerIdx={0} isFlipped={false} />
+
+              {/* P1 Discard */}
+              <DiscardZone
+                cards={gameState.players[0].discard}
+                title="P1 Discard"
+                expanded={showP1Discard}
+                onToggle={() => setShowP1Discard(p => !p)}
+              />
+
+              {/* P1 Hand */}
+              <HandZone
+                cards={gameState.players[0].hand}
+                title={`Player 1 Hand`}
+                expanded={showP1Hand}
+                onToggle={() => setShowP1Hand(p => !p)}
+              />
             </div>
           ) : (
             <div className="h-full flex items-center justify-center">
@@ -490,63 +566,109 @@ const App = () => {
           )}
         </div>
 
-        {/* Right Sidebar — Game Log, fixed width, never collapses */}
-        <div className="w-64 flex-shrink-0 bg-gray-800 border-l border-gray-700 flex flex-col min-h-0">
-          <div className="flex-shrink-0 px-3 py-2 border-b border-gray-700 flex justify-between items-center">
-            <h2 className="font-bold text-xs text-cyan-400">Game Log</h2>
-            <span className="text-[10px] text-gray-600">{gameLog.length} events</span>
+        {/* Right Sidebar — tabbed (Log / AI) */}
+        <div className="w-72 flex-shrink-0 bg-gray-800 border-l border-gray-700 flex flex-col min-h-0">
+          {/* Tab bar */}
+          <div className="flex-shrink-0 flex border-b border-gray-700">
+            <button
+              className={`flex-1 px-2 py-1.5 text-xs font-bold transition-colors ${rightPanel === 'log' ? 'text-cyan-400 border-b-2 border-cyan-400' : 'text-gray-500 hover:text-gray-300'}`}
+              onClick={() => setRightPanel('log')}
+            >
+              Log <span className="text-[9px] font-normal text-gray-600">({gameLog.length})</span>
+            </button>
+            <button
+              className={`flex-1 px-2 py-1.5 text-xs font-bold transition-colors ${rightPanel === 'ai' ? 'text-purple-400 border-b-2 border-purple-400' : 'text-gray-500 hover:text-gray-300'}`}
+              onClick={() => setRightPanel('ai')}
+            >
+              AI
+            </button>
           </div>
+
+          {/* Tab content */}
           <div className="flex-1 overflow-y-auto min-h-0">
-            <div className="px-2 py-1">
-              {visibleLog.length === 0 ? (
-                <div className="text-gray-600 text-center mt-8 text-xs">No events yet</div>
-              ) : (
-                visibleLog.map((entry, i) => (
-                  <div key={i} className="py-0.5 text-[11px] leading-tight flex gap-1.5" style={{ borderBottom: '1px solid rgba(55,65,81,0.3)' }}>
-                    <span className="text-gray-600 w-5 text-right flex-shrink-0 font-mono" style={{ fontSize: 9 }}>
-                      {entry.turn > 0 ? entry.turn : ''}
-                    </span>
-                    <span className="min-w-0 break-words" style={{ color: LOG_COLORS[entry.type] || '#999' }}>
-                      {entry.player >= 0 && <span className="font-bold">P{entry.player + 1} </span>}
-                      {entry.text}
-                    </span>
-                  </div>
-                ))
-              )}
-              <div ref={logEndRef} />
-            </div>
+            {rightPanel === 'log' ? (
+              <div className="px-2 py-1">
+                {visibleLog.length === 0 ? (
+                  <div className="text-gray-600 text-center mt-8 text-xs">No events yet</div>
+                ) : (
+                  visibleLog.map((entry, i) => (
+                    <div key={i} className="py-0.5 text-[11px] leading-tight flex gap-1.5" style={{ borderBottom: '1px solid rgba(55,65,81,0.3)' }}>
+                      <span className="text-gray-600 w-5 text-right flex-shrink-0 font-mono" style={{ fontSize: 9 }}>
+                        {entry.turn > 0 ? entry.turn : ''}
+                      </span>
+                      <span className="min-w-0 break-words" style={{ color: LOG_COLORS[entry.type] || '#999' }}>
+                        {entry.player >= 0 && <span className="font-bold">P{entry.player + 1} </span>}
+                        {entry.text}
+                      </span>
+                    </div>
+                  ))
+                )}
+                <div ref={logEndRef} />
+              </div>
+            ) : (
+              <AIDebugPanel
+                searchResult={lastSearchResult}
+                isSearching={aiThinking}
+                searchProgress={searchProgress}
+                aiMode={aiMode}
+                gameState={gameState}
+              />
+            )}
           </div>
         </div>
       </div>
 
-      {/* Bottom Controls — fixed height */}
-      <div className="flex-shrink-0 bg-gray-800 border-t border-gray-700 px-4 py-2 flex items-center justify-between h-12">
-        <div className="flex gap-2">
+      {/* Bottom Controls */}
+      <div className="flex-shrink-0 bg-gray-800 border-t border-gray-700 px-4 py-1.5 flex items-center justify-between h-11">
+        <div className="flex gap-1.5">
           <button
             onClick={startNewGame}
-            className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 rounded text-xs font-bold transition-colors"
+            className="px-2.5 py-1 bg-purple-600 hover:bg-purple-700 rounded text-[10px] font-bold transition-colors"
           >
             New Game
           </button>
           <button
             onClick={() => setIsPlaying(!isPlaying)}
-            disabled={!gameState || winner !== null}
-            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 rounded text-xs font-bold disabled:opacity-40 transition-colors"
+            disabled={isDisabled}
+            className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 rounded text-[10px] font-bold disabled:opacity-40 transition-colors"
           >
             {isPlaying ? 'Pause' : 'Play'}
           </button>
           <button
-            onClick={step}
-            disabled={!gameState || winner !== null}
-            className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-xs disabled:opacity-40 transition-colors"
+            onClick={() => step()}
+            disabled={isDisabled}
+            className="px-2.5 py-1 bg-gray-700 hover:bg-gray-600 rounded text-[10px] disabled:opacity-40 transition-colors"
           >
             Step
           </button>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-1.5">
-            <label className="text-[10px] text-gray-400">Speed</label>
+        {/* AI Mode selector */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] text-gray-400 font-bold mr-0.5">AI Model:</span>
+          {getModels().map(model => (
+            <button
+              key={model.id}
+              onClick={() => setAiMode(model.id)}
+              title={model.description}
+              className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all ${aiMode === model.id
+                ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/50 ring-1 ring-purple-400/30'
+                : 'bg-gray-700 text-gray-400 hover:text-white hover:bg-gray-600'
+              }`}
+            >
+              {model.name}
+              {model.ismctsConfig && (
+                <span className="ml-1 text-[8px] opacity-60">
+                  {model.ismctsConfig.determinizations}×{model.ismctsConfig.simulations}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1">
+            <label className="text-[9px] text-gray-500">Speed</label>
             <input
               type="range"
               min="1"
@@ -554,26 +676,90 @@ const App = () => {
               step="1"
               value={speed}
               onChange={(e) => setSpeed(parseInt((e.target as HTMLInputElement).value, 10))}
-              className="w-20"
+              className="w-16"
             />
-            <span className="text-[10px] font-mono w-6">{speed}x</span>
+            <span className="text-[9px] font-mono w-5">{speed}x</span>
           </div>
 
-          <div className="flex items-center gap-1.5">
-            <label className="text-[10px] text-gray-400">Seed</label>
+          <div className="flex items-center gap-1">
+            <label className="text-[9px] text-gray-500">Seed</label>
             <input
               type="number"
               value={seed}
               onChange={(e) => setSeed(parseInt((e.target as HTMLInputElement).value, 10) || 0)}
-              className="w-16 bg-gray-700 rounded px-1.5 py-0.5 text-[11px] text-white border border-gray-600"
+              className="w-14 bg-gray-700 rounded px-1 py-0.5 text-[10px] text-white border border-gray-600"
             />
           </div>
 
-          <div className="text-[10px] text-gray-600 hidden lg:block">
-            Space=play | Right=step | N=new
+          <div className="text-[9px] text-gray-600 hidden xl:block">
+            Space=play | &#8594;=step | N=new
           </div>
+
+          <button
+            onClick={() => setShowDebugPanel((p) => !p)}
+            className={`px-3 py-1 rounded-md text-[10px] font-bold transition-all ${showDebugPanel ? 'bg-amber-600 text-white ring-1 ring-amber-400/50' : 'bg-gray-700 text-gray-400 hover:text-amber-400 hover:bg-gray-600'}`}
+            title="Toggle state debugger"
+          >
+            Debug
+          </button>
         </div>
       </div>
+
+      {/* Floating state debugger */}
+      {showDebugPanel && (
+        <FloatingPanel
+          title="Game state (PlayerBoard)"
+          onClose={() => setShowDebugPanel(false)}
+          defaultPosition={{ x: 24, y: 60 }}
+          defaultSize={{ width: 400, height: 420 }}
+        >
+          {gameState == null ? (
+            <div className="p-4 text-gray-500 text-sm">No game — start a game to see state.</div>
+          ) : (
+            <>
+              <div className="flex-shrink-0 flex items-center gap-2 px-2 py-1.5 border-b border-gray-700 bg-gray-800/80">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const visible = getVisibleRepresentation(gameState, debugExpandedPaths);
+                    copyToClipboard(JSON.stringify(visible, null, 2), 'visible');
+                  }}
+                  className="px-2.5 py-1 rounded text-[10px] font-bold bg-amber-600 hover:bg-amber-500 text-white transition-colors"
+                  title="Copy only the currently expanded nodes as JSON"
+                >
+                  Copy visible
+                </button>
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(JSON.stringify(gameState, null, 2), 'full')}
+                  className="px-2.5 py-1 rounded text-[10px] font-bold bg-gray-600 hover:bg-gray-500 text-white transition-colors"
+                  title="Copy full game state as JSON"
+                >
+                  Copy full
+                </button>
+                {copyFeedback && (
+                  <span className="text-[10px] text-green-400 font-medium">
+                    Copied {copyFeedback}!
+                  </span>
+                )}
+              </div>
+              <JsonTreeView
+                data={gameState}
+                defaultExpandedDepth={2}
+                expandedPaths={debugExpandedPaths}
+                onTogglePath={(path) => {
+                  setDebugExpandedPaths((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(path)) next.delete(path);
+                    else next.add(path);
+                    return next;
+                  });
+                }}
+              />
+            </>
+          )}
+        </FloatingPanel>
+      )}
     </div>
   );
 };
