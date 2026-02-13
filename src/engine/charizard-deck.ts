@@ -22,7 +22,6 @@ import {
   TrainerType,
   PokemonStage,
   PokemonInPlay,
-  PlayerState,
   GameState,
   Attack,
   Ability,
@@ -31,52 +30,11 @@ import {
 
 import {
   EffectDSL,
-  EffectExecutor,
   Target,
   ValueSource,
   CardFilter,
   Condition,
 } from './effects.js';
-
-// ============================================================================
-// HELPER FUNCTIONS FOR CARD EFFECTS
-// ============================================================================
-
-/** Clone a PokemonInPlay preserving card object references (which have functions) */
-function clonePokemon(p: PokemonInPlay): PokemonInPlay {
-  return {
-    ...p,
-    attachedEnergy: [...p.attachedEnergy],
-    statusConditions: [...p.statusConditions],
-    attachedTools: [...p.attachedTools],
-    damageShields: p.damageShields.map(s => ({ ...s })),
-    // card keeps its original reference (preserves ability/attack functions)
-  };
-}
-
-/** Deep clone a player state preserving card function references */
-function clonePlayer(state: GameState, playerIndex: number): PlayerState {
-  const p = state.players[playerIndex];
-  return {
-    ...p,
-    deck: [...p.deck],
-    hand: [...p.hand],
-    discard: [...p.discard],
-    prizes: [...p.prizes],
-    lostZone: [...p.lostZone],
-    active: p.active ? clonePokemon(p.active) : null,
-    bench: p.bench.map(clonePokemon),
-    abilitiesUsedThisTurn: [...p.abilitiesUsedThisTurn],
-  };
-}
-
-/** Update a player in state immutably */
-function updatePlayer(state: GameState, playerIndex: number, player: PlayerState): GameState {
-  const players = [...state.players] as [PlayerState, PlayerState];
-  players[playerIndex] = player;
-  return { ...state, players };
-}
-
 
 // ============================================================================
 // TYPE HELPERS
@@ -386,15 +344,10 @@ const FAN_ROTOM: PokemonCard = {
     trigger: 'oncePerTurn',
     description:
       'Once during your first turn, you may search your deck for up to 3 Colorless Pokemon with 100 HP or less, reveal them, and put them into your hand. Then, shuffle your deck.',
+    abilityCondition: { check: 'turnNumber', comparison: '<=', value: 2 },
     effects: [
-      {
-        effect: 'conditional',
-        condition: { check: 'turnNumber', comparison: '<=', value: 2 },
-        then: [
-          { effect: 'search', player: 'own', from: 'deck', filter: { filter: 'and', filters: [{ filter: 'type', cardType: CardType.Pokemon }, { filter: 'hpBelow', maxHp: 100 }, { filter: 'pokemonType', energyType: EnergyType.Colorless }] }, count: { type: 'constant', value: 3 }, destination: 'hand' },
-          { effect: 'shuffle', player: 'own', zone: 'deck' },
-        ],
-      },
+      { effect: 'search', player: 'own', from: 'deck', filter: { filter: 'and', filters: [{ filter: 'type', cardType: CardType.Pokemon }, { filter: 'hpBelow', maxHp: 100 }, { filter: 'pokemonType', energyType: EnergyType.Colorless }] }, count: { type: 'constant', value: 3 }, destination: 'hand' },
+      { effect: 'shuffle', player: 'own', zone: 'deck' },
     ],
   },
   attacks: [
@@ -420,6 +373,7 @@ const TERAPAGOS_EX: PokemonCard = {
   retreatCost: 2,
   prizeCards: 2,
   isRulebox: true,
+  isTera: true,
   attacks: [
     {
       name: 'Unified Beatdown',
@@ -644,6 +598,7 @@ const BRIAR: TrainerCard = {
   cardNumber: 'SCR 132',
   imageUrl: 'https://images.pokemontcg.io/sv7/132.png',
   trainerType: TrainerType.Supporter,
+  playCondition: { check: 'prizeCount', player: 'opponent', comparison: '==', value: 2 },
   effects: [
     { effect: 'addGameFlag', flag: 'briarExtraPrize', duration: 'nextTurn' },
   ],
@@ -669,73 +624,9 @@ const RARE_CANDY: TrainerCard = {
   cardNumber: 'SVI 191',
   imageUrl: 'https://images.pokemontcg.io/sv1/191.png', // Scarlet & Violet Rare Candy
   trainerType: TrainerType.Item,
-  effect: (state, playerIndex) => {
-    if (state.turnNumber <= 1) return state; // Can't evolve turn 1
-    const player = clonePlayer(state, playerIndex);
-    // Find a Stage 2 (or ex that evolves from Stage 1) in hand
-    const stage2InHand = player.hand.filter(c =>
-      c.cardType === CardType.Pokemon && (
-        (c as PokemonCard).stage === PokemonStage.Stage2 ||
-        ((c as PokemonCard).stage === PokemonStage.ex && (c as PokemonCard).evolvesFrom)
-      )
-    ) as PokemonCard[];
-    for (const stage2 of stage2InHand) {
-      // Find the Stage 1 it evolves from
-      const stage1Name = stage2.evolvesFrom;
-      if (!stage1Name) continue;
-      // Find what Basic the Stage 1 evolves from (check card database)
-      // For Charizard ex: evolvesFrom Charmeleon, which evolvesFrom Charmander
-      // For Pidgeot ex: evolvesFrom Pidgeotto, which evolvesFrom Pidgey
-      // For Dusknoir: evolvesFrom Dusclops, which evolvesFrom Duskull
-      // We need to find a Basic Pokemon in play that matches the evolution chain
-      const allInPlay: { pokemon: PokemonInPlay; zone: 'active' | 'bench'; index: number }[] = [];
-      if (player.active && player.active.card.stage === PokemonStage.Basic && !player.active.isEvolved && player.active.turnPlayed !== state.turnNumber) {
-        allInPlay.push({ pokemon: player.active, zone: 'active', index: -1 });
-      }
-      player.bench.forEach((p, i) => {
-        if (p.card.stage === PokemonStage.Basic && !p.isEvolved && p.turnPlayed !== state.turnNumber) {
-          allInPlay.push({ pokemon: p, zone: 'bench', index: i });
-        }
-      });
-      // Check if any Basic in play is part of the evolution chain
-      // The chain is: Basic -> Stage1 (stage1Name) -> Stage2 (stage2)
-      // We need to know what the Stage1 evolves from
-      const stage1Cards = [CHARMELEON, DUSCLOPS, PIDGEOTTO];
-      const stage1Card = stage1Cards.find(s1 => s1.name === stage1Name);
-      if (!stage1Card || !stage1Card.evolvesFrom) continue;
-      const basicName = stage1Card.evolvesFrom;
-      const target = allInPlay.find(p => p.pokemon.card.name === basicName);
-      if (!target) continue;
-      // Evolve! Remove stage2 from hand, evolve basic to stage2
-      const handIdx = player.hand.indexOf(stage2);
-      if (handIdx < 0) continue;
-      player.hand.splice(handIdx, 1);
-      const evolved: PokemonInPlay = {
-        ...target.pokemon,
-        card: stage2,
-        currentHp: target.pokemon.currentHp + (stage2.hp - target.pokemon.card.hp),
-        isEvolved: true,
-        previousStage: target.pokemon,
-        statusConditions: [],
-        cannotRetreat: false,
-      };
-      evolved.currentHp = Math.min(evolved.currentHp, stage2.hp);
-      if (target.zone === 'active') {
-        player.active = evolved;
-      } else {
-        player.bench[target.index] = evolved;
-      }
-      let newState = updatePlayer(state, playerIndex, player);
-      newState = { ...newState, gameLog: [...newState.gameLog, `Rare Candy evolves ${basicName} directly to ${stage2.name}!`] };
-      // Trigger on-evolve ability
-      if (stage2.ability && stage2.ability.trigger === 'onEvolve') {
-        newState = { ...newState, gameLog: [...newState.gameLog, `${stage2.name}'s ${stage2.ability.name} activates!`] };
-        newState = EffectExecutor.executeAbility(newState, stage2.ability.effects, evolved, playerIndex as 0 | 1);
-      }
-      return newState;
-    }
-    return state; // No valid target found
-  },
+  effects: [
+    { effect: 'rareCandy' },
+  ],
 };
 
 const NEST_BALL: TrainerCard = {

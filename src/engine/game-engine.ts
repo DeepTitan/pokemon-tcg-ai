@@ -37,8 +37,9 @@ import {
   AnyCard,
   EncodedGameState,
   Zone,
+  PendingChoice,
 } from './types.js';
-import { EffectExecutor } from './effects.js';
+import { EffectExecutor, EffectDSL, Condition } from './effects.js';
 
 // ============================================================================
 // SEEDED RANDOM NUMBER GENERATOR
@@ -404,6 +405,26 @@ export class GameEngine {
     // Only generate actions if game is ongoing
     if (state.winner !== null) return actions;
 
+    // If pending choice exists (search, discard, switch, evolve), only offer ChooseCard actions
+    if (state.pendingChoice && state.pendingChoice.options.length > 0) {
+      const choice = state.pendingChoice;
+      for (const option of choice.options) {
+        actions.push({
+          type: ActionType.ChooseCard,
+          player: choice.playerIndex,
+          payload: { choiceId: option.id, label: option.label },
+        });
+      }
+      if (choice.canSkip) {
+        actions.push({
+          type: ActionType.ChooseCard,
+          player: choice.playerIndex,
+          payload: { choiceId: 'skip', label: 'Done' },
+        });
+      }
+      return actions;
+    }
+
     // If pending attachments exist (from searchAndAttach), only offer target selection
     if (state.pendingAttachments && state.pendingAttachments.cards.length > 0) {
       const pendingPlayer = state.players[state.pendingAttachments.playerIndex];
@@ -506,6 +527,22 @@ export class GameEngine {
               payload: { handIndex: i },
             });
           } else if (trainer.trainerType === TrainerType.Supporter && !player.supporterPlayedThisTurn) {
+            // Check play condition (e.g., Briar requires opponent to have exactly 2 prizes)
+            if (trainer.playCondition) {
+              const cp = state.currentPlayer as 0 | 1;
+              const op = (1 - cp) as 0 | 1;
+              const dummyPokemon = player.active || { card: {} as PokemonCard, currentHp: 0, attachedEnergy: [], statusConditions: [], damageCounters: 0, attachedTools: [], isEvolved: false, turnPlayed: 0, damageShields: [], cannotRetreat: false };
+              const ctx = {
+                attackingPlayer: cp,
+                defendingPlayer: op,
+                attackingPokemon: dummyPokemon,
+                defendingPokemon: (state.players[op].active || dummyPokemon),
+                rng: () => 0,
+              };
+              if (!EffectExecutor.checkCondition(state, trainer.playCondition, ctx)) {
+                continue; // play condition not met — skip this card
+              }
+            }
             actions.push({
               type: ActionType.PlayTrainer,
               player: state.currentPlayer,
@@ -529,6 +566,19 @@ export class GameEngine {
       for (const { pokemon, zone, index } of allInPlay) {
         if (pokemon.card.ability && pokemon.card.ability.trigger === 'oncePerTurn') {
           if (!player.abilitiesUsedThisTurn.includes(pokemon.card.ability.name) && !this.isAbilityBlocked(state, pokemon)) {
+            // Check abilityCondition if present (e.g. Fan Call's first-turn restriction)
+            if (pokemon.card.ability.abilityCondition) {
+              const dummyContext = {
+                attackingPlayer: state.currentPlayer as 0 | 1,
+                defendingPlayer: (1 - state.currentPlayer) as 0 | 1,
+                attackingPokemon: pokemon,
+                defendingPokemon: state.players[(1 - state.currentPlayer) as 0 | 1].active!,
+                rng: () => 0.5,
+              };
+              if (!EffectExecutor.checkCondition(state, pokemon.card.ability.abilityCondition, dummyContext)) {
+                continue; // Condition not met — skip this ability
+              }
+            }
             actions.push({
               type: ActionType.UseAbility,
               player: state.currentPlayer,
@@ -644,6 +694,11 @@ export class GameEngine {
             gameLog: [...newState.gameLog, `Energy attached to ${targetPokemon.card.name}.`],
           };
         }
+        break;
+      }
+      case ActionType.ChooseCard: {
+        if (!newState.pendingChoice) break;
+        newState = this.resolveChoice(newState, action.payload.choiceId);
         break;
       }
       case ActionType.Pass:
@@ -862,7 +917,7 @@ export class GameEngine {
 
     // Apply trainer effect: DSL takes priority, fallback to legacy function
     if (trainer.effects) {
-      newState = EffectExecutor.executeTrainer(newState, trainer.effects, state.currentPlayer as 0 | 1);
+      newState = EffectExecutor.executeTrainer(newState, trainer.effects, state.currentPlayer as 0 | 1, trainer.name);
     } else if (trainer.effect) {
       newState = trainer.effect(newState, state.currentPlayer);
     }
@@ -1074,7 +1129,28 @@ export class GameEngine {
 
         // Current Pokemon is KO'd
         // Opponent takes prize cards (move from prizes to hand)
-        const prizeCount = player.active.card.prizeCards;
+        let prizeCount = player.active.card.prizeCards;
+
+        // Briar: +1 extra prize if opponent's Tera Pokemon KO'd the active via attack
+        const briarFlagIndex = newState.gameFlags.findIndex(
+          f => f.flag === 'briarExtraPrize' && f.setByPlayer === opponentIndex
+        );
+        if (briarFlagIndex >= 0) {
+          const opponentActive = newState.players[opponentIndex].active;
+          if (opponentActive && opponentActive.card.isTera) {
+            prizeCount += 1;
+            newState.gameLog = [
+              ...newState.gameLog,
+              `Briar's effect: Player ${opponentIndex} takes 1 extra prize card!`,
+            ];
+            // Consume the flag (single use per KO)
+            newState = {
+              ...newState,
+              gameFlags: newState.gameFlags.filter((_, i) => i !== briarFlagIndex),
+            };
+          }
+        }
+
         const opponent = newState.players[opponentIndex];
         const prizesToTake = Math.min(prizeCount, opponent.prizes.length);
         const takenPrizes = opponent.prizes.slice(0, prizesToTake);
@@ -1162,6 +1238,220 @@ export class GameEngine {
    */
   static getWinner(state: GameState): 0 | 1 | null {
     return state.winner;
+  }
+
+  // ============================================================================
+  // PENDING CHOICE RESOLUTION
+  // ============================================================================
+
+  /**
+   * Resolve a ChooseCard action against the current pendingChoice.
+   * Moves the selected card/target, decrements selectionsRemaining,
+   * and resumes remaining effects when all picks are done.
+   */
+  private static resolveChoice(state: GameState, choiceId: string): GameState {
+    const choice = state.pendingChoice;
+    if (!choice) return state;
+
+    let newState = { ...state };
+
+    // Handle "skip" (done choosing early for "up to N" effects)
+    if (choiceId === 'skip') {
+      newState = { ...newState, pendingChoice: undefined };
+      newState = this.resumeEffects(newState, choice);
+      return newState;
+    }
+
+    const selectedOption = choice.options.find(o => o.id === choiceId);
+    if (!selectedOption) return state;
+
+    // Handle switch target choice
+    if (choice.choiceType === 'switchTarget' && selectedOption.benchIndex !== undefined) {
+      const switchPlayer = choice.switchPlayerIndex ?? choice.playerIndex;
+      const playerState = newState.players[switchPlayer];
+      if (playerState.active && playerState.bench.length > 0) {
+        const benchIdx = selectedOption.benchIndex;
+        const newActive = playerState.bench[benchIdx];
+        if (newActive) {
+          const oldActiveName = playerState.active.card.name;
+          const newActiveName = newActive.card.name;
+          const newBench = [...playerState.bench];
+          newBench[benchIdx] = playerState.active;
+          const updatedPlayer = { ...playerState, active: newActive, bench: newBench };
+          const players = [...newState.players] as [PlayerState, PlayerState];
+          players[switchPlayer] = updatedPlayer;
+          newState = {
+            ...newState,
+            players,
+            pendingChoice: undefined,
+            gameLog: [...newState.gameLog, `Switched ${oldActiveName} to bench, ${newActiveName} now active.`],
+          };
+        }
+      }
+      newState = this.resumeEffects(newState, choice);
+      return newState;
+    }
+
+    // Handle evolve target choice (Rare Candy)
+    if (choice.choiceType === 'evolveTarget' && selectedOption.card) {
+      const stage2 = selectedOption.card as PokemonCard;
+      const targetZone = selectedOption.zone || 'active';
+      const targetBenchIdx = selectedOption.benchIndex ?? -1;
+      const playerIdx = choice.playerIndex;
+      const playerState = newState.players[playerIdx];
+
+      // Find the target Pokemon
+      let targetPokemon: PokemonInPlay | undefined;
+      if (targetZone === 'active') {
+        targetPokemon = playerState.active || undefined;
+      } else if (targetBenchIdx >= 0 && targetBenchIdx < playerState.bench.length) {
+        targetPokemon = playerState.bench[targetBenchIdx];
+      }
+
+      if (targetPokemon) {
+        const basicName = targetPokemon.card.name;
+
+        // Use EffectExecutor.executeRareCandyEvolve via the public executeTrainer path
+        // But since it's a private method, we'll do the evolution inline here
+        const players = [...newState.players] as [PlayerState, PlayerState];
+        const player = { ...players[playerIdx] };
+
+        // Remove Stage2 from hand
+        const handIdx = player.hand.findIndex(c => c.id === stage2.id);
+        if (handIdx >= 0) {
+          player.hand = [...player.hand.slice(0, handIdx), ...player.hand.slice(handIdx + 1)];
+
+          // Build evolved Pokemon
+          const evolved: PokemonInPlay = {
+            ...targetPokemon,
+            card: stage2,
+            currentHp: Math.min(targetPokemon.currentHp + (stage2.hp - targetPokemon.card.hp), stage2.hp),
+            isEvolved: true,
+            previousStage: targetPokemon,
+            statusConditions: [],
+            cannotRetreat: false,
+          };
+
+          // Place evolved Pokemon
+          if (targetZone === 'active') {
+            player.active = evolved;
+          } else {
+            const newBench = [...player.bench];
+            newBench[targetBenchIdx] = evolved;
+            player.bench = newBench;
+          }
+
+          players[playerIdx] = player;
+          newState = {
+            ...newState,
+            players,
+            pendingChoice: undefined,
+            gameLog: [...newState.gameLog, `Rare Candy evolves ${basicName} directly to ${stage2.name}!`],
+          };
+
+          // Trigger onEvolve ability
+          if (stage2.ability && stage2.ability.trigger === 'onEvolve') {
+            newState = { ...newState, gameLog: [...newState.gameLog, `${stage2.name}'s ${stage2.ability.name} activates!`] };
+            newState = EffectExecutor.executeAbility(newState, stage2.ability.effects, evolved, playerIdx);
+          }
+        }
+      }
+
+      newState = this.resumeEffects(newState, choice);
+      return newState;
+    }
+
+    // Handle card selection (search, discard)
+    if (selectedOption.card) {
+      const card = selectedOption.card;
+      const playerIdx = choice.playerIndex;
+      const players = [...newState.players] as [PlayerState, PlayerState];
+      const player = { ...players[playerIdx] };
+
+      // Remove card from source zone
+      if (choice.sourceZone === 'deck') {
+        const idx = player.deck.findIndex(c => c.id === card.id);
+        if (idx >= 0) player.deck = [...player.deck.slice(0, idx), ...player.deck.slice(idx + 1)];
+      } else if (choice.sourceZone === 'discard') {
+        const idx = player.discard.findIndex(c => c.id === card.id);
+        if (idx >= 0) player.discard = [...player.discard.slice(0, idx), ...player.discard.slice(idx + 1)];
+      } else if (choice.sourceZone === 'hand') {
+        const idx = player.hand.findIndex(c => c.id === card.id);
+        if (idx >= 0) player.hand = [...player.hand.slice(0, idx), ...player.hand.slice(idx + 1)];
+      }
+
+      // Add card to destination
+      if (choice.destination === 'hand') {
+        player.hand = [...player.hand, card];
+      } else if (choice.destination === 'bench') {
+        if (card.cardType === CardType.Pokemon && player.bench.length < 5) {
+          const pokemon = card as PokemonCard;
+          player.bench = [...player.bench, {
+            card: pokemon,
+            currentHp: pokemon.hp,
+            attachedEnergy: [],
+            statusConditions: [],
+            damageCounters: 0,
+            attachedTools: [],
+            isEvolved: false,
+            turnPlayed: newState.turnNumber,
+            damageShields: [],
+            cannotRetreat: false,
+          }];
+        }
+      } else if (choice.destination === 'deck') {
+        player.deck = [...player.deck, card];
+      } else if (choice.destination === 'discard') {
+        player.discard = [...player.discard, card];
+      }
+
+      players[playerIdx] = player;
+      newState = {
+        ...newState,
+        players,
+        gameLog: [...newState.gameLog, `${choice.sourceCardName}: ${choice.choiceType === 'discardCard' ? 'discarded' : 'searched for'} ${card.name}.`],
+      };
+    }
+
+    // Track the selection and decrement remaining
+    const selectedSoFar = [...choice.selectedSoFar, ...(selectedOption.card ? [selectedOption.card] : [])];
+    const remaining = choice.selectionsRemaining - 1;
+
+    if (remaining > 0) {
+      // More selections needed — remove the chosen option by ID (each card has unique ID)
+      const newOptions = choice.options.filter(o => o.id !== choiceId);
+      newState = {
+        ...newState,
+        pendingChoice: {
+          ...choice,
+          selectionsRemaining: remaining,
+          selectedSoFar,
+          options: newOptions,
+        },
+      };
+    } else {
+      // All selections made — clear pendingChoice and resume remaining effects
+      newState = { ...newState, pendingChoice: undefined };
+      newState = this.resumeEffects(newState, { ...choice, selectedSoFar });
+    }
+
+    return newState;
+  }
+
+  /**
+   * Resume remaining DSL effects after a pendingChoice is fully resolved.
+   * Reconstructs the EffectExecutionContext and re-enters EffectExecutor.execute().
+   * The remaining effects may create another pendingChoice (e.g., Dawn's 3 searches).
+   */
+  private static resumeEffects(state: GameState, choice: PendingChoice): GameState {
+    if (choice.remainingEffects.length === 0) return state;
+
+    return EffectExecutor.executeTrainer(
+      state,
+      choice.remainingEffects,
+      choice.effectContext.attackingPlayer,
+      choice.sourceCardName
+    );
   }
 
   /**

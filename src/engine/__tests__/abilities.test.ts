@@ -92,16 +92,18 @@ describe('Charizard Deck — Abilities', () => {
   });
 
   // ---------- Pidgeot ex — Quick Search ----------
-  it('Quick Search: search 1 card from deck to hand', () => {
+  it('Quick Search: creates PendingChoice for 1 card search from deck', () => {
     const state = createRealState();
     const s = putPokemonAsActive(state, 0, 'Pidgeot ex');
-    const handBefore = s.players[0].hand.length;
-    const deckBefore = s.players[0].deck.length;
 
     const after = EffectExecutor.executeAbility(s, s.players[0].active!.card.ability!.effects, s.players[0].active!, 0);
 
-    assert.equal(after.players[0].hand.length, handBefore + 1);
-    assert.equal(after.players[0].deck.length, deckBefore - 1);
+    // Should create PendingChoice since deck has many cards
+    assert.ok(after.pendingChoice, 'Should create PendingChoice for Quick Search');
+    assert.equal(after.pendingChoice!.choiceType, 'searchCard');
+    assert.equal(after.pendingChoice!.selectionsRemaining, 1);
+    assert.equal(after.pendingChoice!.destination, 'hand');
+    assert.ok(after.pendingChoice!.options.length > 0, 'Should have options');
   });
 
   // ---------- Charizard ex — Infernal Reign ----------
@@ -121,13 +123,12 @@ describe('Charizard Deck — Abilities', () => {
   });
 
   // ---------- Noctowl — Jewel Seeker ----------
-  it('Jewel Seeker: searches 2 Trainers when Terapagos is in play', () => {
+  it('Jewel Seeker: creates PendingChoice for 2 Trainers when Terapagos is in play', () => {
     const state = createRealState();
     let s = putPokemonAsActive(state, 0, 'Noctowl');
     // Ensure Terapagos is on bench
     const hasTerapagos = s.players[0].bench.some(p => p.card.name.includes('Terapagos'));
     if (!hasTerapagos) {
-      // Put Terapagos on bench from deck
       const tIdx = s.players[0].deck.findIndex(c => c.name.includes('Terapagos'));
       if (tIdx >= 0) {
         const terapCard = s.players[0].deck[tIdx] as import('../types.js').PokemonCard;
@@ -139,15 +140,20 @@ describe('Charizard Deck — Abilities', () => {
       }
     }
 
-    const handBefore = s.players[0].hand.length;
-    const deckBefore = s.players[0].deck.length;
-    // Count trainers in deck
     const trainersInDeck = s.players[0].deck.filter(c => c.cardType === CardType.Trainer).length;
-
     const after = EffectExecutor.executeAbility(s, s.players[0].active!.card.ability!.effects, s.players[0].active!, 0);
 
-    const expectedSearch = Math.min(2, trainersInDeck);
-    assert.equal(after.players[0].hand.length, handBefore + expectedSearch);
+    // Should create PendingChoice for Trainer search if more than 2 trainers exist
+    if (trainersInDeck > 2) {
+      assert.ok(after.pendingChoice, 'Should create PendingChoice for Jewel Seeker');
+      assert.equal(after.pendingChoice!.choiceType, 'searchCard');
+      assert.equal(after.pendingChoice!.selectionsRemaining, 2);
+      // All options should be Trainer cards
+      for (const opt of after.pendingChoice!.options) {
+        assert.ok(opt.card, 'Option should have a card');
+        assert.equal(opt.card!.cardType, CardType.Trainer, `${opt.label} should be a Trainer`);
+      }
+    }
   });
 
   it('Jewel Seeker: no effect without Terapagos in play', () => {
@@ -163,28 +169,44 @@ describe('Charizard Deck — Abilities', () => {
   });
 
   // ---------- Fan Rotom — Fan Call ----------
-  it('Fan Call: searches Colorless Pokemon on first turn', () => {
+  it('Fan Call: creates PendingChoice for Colorless Pokemon on first turn', () => {
     const state = createRealState();
     let s = putPokemonAsActive(state, 0, 'Fan Rotom');
     s = { ...s, turnNumber: 1 }; // first turn
-    const handBefore = s.players[0].hand.length;
 
     const after = EffectExecutor.executeAbility(s, s.players[0].active!.card.ability!.effects, s.players[0].active!, 0);
 
-    // Should find up to 3 Colorless Pokemon with HP <= 100
-    assert.ok(after.players[0].hand.length > handBefore, 'Should find at least 1 Colorless Pokemon');
-    assert.ok(after.players[0].hand.length <= handBefore + 3, 'Should find at most 3');
+    // Should create PendingChoice for Colorless Pokemon search
+    assert.ok(after.pendingChoice, 'Should create PendingChoice for Fan Call');
+    assert.equal(after.pendingChoice!.choiceType, 'searchCard');
+    assert.ok(after.pendingChoice!.canSkip, 'Should be skippable (up to 3)');
+    assert.ok(after.pendingChoice!.options.length > 0, 'Should have Colorless Pokemon options');
   });
 
-  it('Fan Call: no effect after first turn', () => {
+  it('Fan Call: not offered as legal action after first turn (abilityCondition)', () => {
     const state = createRealState();
     let s = putPokemonAsActive(state, 0, 'Fan Rotom');
+    s = setupMainPhase(s, 0);
     s = { ...s, turnNumber: 5 }; // not first turn
-    const handBefore = s.players[0].hand.length;
 
-    const after = EffectExecutor.executeAbility(s, s.players[0].active!.card.ability!.effects, s.players[0].active!, 0);
+    const actions = GameEngine.getLegalActions(s);
+    const fanCallAction = actions.find(a =>
+      a.type === ActionType.UseAbility && a.payload.abilityName === 'Fan Call'
+    );
+    assert.equal(fanCallAction, undefined, 'Fan Call should not be offered after turn 1');
+  });
 
-    assert.equal(after.players[0].hand.length, handBefore);
+  it('Fan Call: offered as legal action on first turn', () => {
+    const state = createRealState();
+    let s = putPokemonAsActive(state, 0, 'Fan Rotom');
+    s = setupMainPhase(s, 0);
+    s = { ...s, turnNumber: 1 }; // first turn
+
+    const actions = GameEngine.getLegalActions(s);
+    const fanCallAction = actions.find(a =>
+      a.type === ActionType.UseAbility && a.payload.abilityName === 'Fan Call'
+    );
+    assert.ok(fanCallAction, 'Fan Call should be offered on first turn');
   });
 
   // ---------- Klefki — Mischievous Lock ----------
@@ -214,12 +236,10 @@ describe('Charizard Deck — Abilities', () => {
     assert.equal(after.players[0].hand.length, handBefore + 3);
   });
 
-  it('Quick Search via UseAbility action: hand +1, deck -1', () => {
+  it('Quick Search via UseAbility action: creates PendingChoice', () => {
     let state = createRealState();
     state = putPokemonAsActive(state, 0, 'Pidgeot ex');
     state = setupMainPhase(state, 0);
-    const handBefore = state.players[0].hand.length;
-    const deckBefore = state.players[0].deck.length;
 
     const actions = GameEngine.getLegalActions(state);
     const useAbilityAction = actions.find(a =>
@@ -228,8 +248,16 @@ describe('Charizard Deck — Abilities', () => {
     assert.ok(useAbilityAction, 'Quick Search should be in legal actions');
 
     const after = GameEngine.applyAction(state, useAbilityAction!);
-    assert.equal(after.players[0].hand.length, handBefore + 1);
-    assert.equal(after.players[0].deck.length, deckBefore - 1);
+
+    // Quick Search should create a PendingChoice for card selection
+    assert.ok(after.pendingChoice, 'Should create PendingChoice for Quick Search');
+    assert.equal(after.pendingChoice!.choiceType, 'searchCard');
+    assert.equal(after.pendingChoice!.selectionsRemaining, 1);
+
+    // getLegalActions should only return ChooseCard actions
+    const legalAfter = GameEngine.getLegalActions(after);
+    assert.ok(legalAfter.length > 0, 'Should have ChooseCard actions');
+    assert.ok(legalAfter.every(a => a.type === ActionType.ChooseCard), 'All should be ChooseCard');
   });
 
   it('Cursed Blast via UseAbility: opponent takes damage, own active KO triggers knockout', () => {
