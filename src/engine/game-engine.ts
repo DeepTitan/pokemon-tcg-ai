@@ -119,9 +119,11 @@ export class GameEngine {
   static createGame(deck1: Card[], deck2: Card[], seed: number = 0): GameState {
     const rng = new SeededRandom(seed);
 
-    // Clone and shuffle both decks
-    const shuffledDeck1 = rng.shuffle([...deck1]);
-    const shuffledDeck2 = rng.shuffle([...deck2]);
+    // Clone decks with unique card IDs per player, then shuffle
+    const prefixIds = (cards: Card[], prefix: string): Card[] =>
+      cards.map(c => ({ ...c, id: `${prefix}-${c.id}` }));
+    const shuffledDeck1 = rng.shuffle(prefixIds(deck1, 'p0'));
+    const shuffledDeck2 = rng.shuffle(prefixIds(deck2, 'p1'));
 
     // Initialize player states
     const player0: PlayerState = {
