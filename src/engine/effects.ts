@@ -288,11 +288,7 @@ export class EffectExecutor {
       case 'setHp': {
         const targets = this.resolveTarget(state, effect.target, context);
         const amount = this.resolveValue(state, effect.amount, context);
-        const preferredPlayer =
-          effect.target.type === 'self' || (effect.target.type === 'active' && effect.target.player === 'own')
-            ? context.attackingPlayer
-            : undefined;
-        return this.applySetHp(state, targets, amount, preferredPlayer);
+        return this.applySetHp(state, targets, amount);
       }
 
       case 'preventDamage': {
@@ -918,12 +914,11 @@ export class EffectExecutor {
   private static applySetHp(
     state: GameState,
     targets: PokemonInPlay[],
-    amount: number,
-    preferredPlayer?: 0 | 1
+    amount: number
   ): GameState {
     const newState = this.cloneGameState(state);
     for (const target of targets) {
-      const pokemon = this.findPokemonInState(newState, target.card.id, preferredPlayer);
+      const pokemon = this.findPokemonInState(newState, target.card.id);
       if (pokemon) {
         pokemon.currentHp = Math.max(0, Math.min(pokemon.card.hp, amount));
       }
@@ -1363,15 +1358,8 @@ export class EffectExecutor {
 
   private static findPokemonInState(
     state: GameState,
-    cardId: string,
-    preferredPlayer?: 0 | 1
+    cardId: string
   ): PokemonInPlay | null {
-    if (preferredPlayer !== undefined) {
-      const p = state.players[preferredPlayer];
-      if (p.active?.card.id === cardId) return p.active;
-      const bench = p.bench.find((b: PokemonInPlay) => b.card.id === cardId);
-      if (bench) return bench;
-    }
     for (const player of state.players) {
       if (player.active?.card.id === cardId) return player.active;
       const bench = player.bench.find((p: PokemonInPlay) => p.card.id === cardId);
