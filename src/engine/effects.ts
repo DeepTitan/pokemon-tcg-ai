@@ -32,6 +32,7 @@ import {
   GameFlag,
   EnergySubtype,
   AbilityTarget,
+  PendingChoiceOption,
 } from './types.js';
 
 // ============================================================================
@@ -151,6 +152,9 @@ export type EffectDSL =
   // Game Flags
   | { effect: 'addGameFlag'; flag: string; duration: 'nextTurn' | 'thisAttack' }
 
+  // Evolution
+  | { effect: 'rareCandy' }  // Skip Stage 1 evolution: evolve Basic directly to Stage 2
+
   // Control Flow
   | { effect: 'conditional'; condition: Condition; then: EffectDSL[]; else?: EffectDSL[] }
   | { effect: 'choice'; options: { label?: string; effects: EffectDSL[] }[] }  // player chooses one path
@@ -248,6 +252,7 @@ export interface EffectExecutionContext {
   defendingPokemon: PokemonInPlay;
   rng: () => number;  // seeded RNG returning [0, 1)
   userChoices?: Record<string, any>;  // for choice effects
+  sourceCardName?: string;  // name of the card that triggered these effects (for PendingChoice logging)
 }
 
 // ============================================================================
@@ -269,8 +274,20 @@ export class EffectExecutor {
   ): GameState {
     let newState = this.cloneGameState(state);
 
-    for (const effect of effects) {
-      newState = this.executeEffect(newState, effect, context);
+    for (let i = 0; i < effects.length; i++) {
+      newState = this.executeEffect(newState, effects[i], context);
+
+      // If a pending choice was created, store remaining effects and stop execution.
+      // The game engine will resume these effects via resumeEffects() after the choice resolves.
+      if (newState.pendingChoice) {
+        if (newState.pendingChoice.remainingEffects.length === 0) {
+          newState.pendingChoice = {
+            ...newState.pendingChoice,
+            remainingEffects: effects.slice(i + 1),
+          };
+        }
+        return newState;
+      }
     }
 
     return newState;
@@ -318,7 +335,8 @@ export class EffectExecutor {
   static executeTrainer(
     state: GameState,
     effects: EffectDSL[],
-    playerIndex: 0 | 1
+    playerIndex: 0 | 1,
+    sourceCardName?: string
   ): GameState {
     const defendingPlayer = (1 - playerIndex) as 0 | 1;
     const attackingPokemon = state.players[playerIndex].active;
@@ -334,6 +352,7 @@ export class EffectExecutor {
       attackingPokemon: attackingPokemon || dummyPokemon,
       defendingPokemon: defendingPokemon || dummyPokemon,
       rng: () => Math.random(),
+      sourceCardName,
     };
     return this.execute(state, effects, context);
   }
@@ -438,7 +457,51 @@ export class EffectExecutor {
         const player = effect.player === 'own' ? context.attackingPlayer : context.defendingPlayer;
         const from = effect.from;
         const count = this.resolveValue(state, effect.count, context);
-        return this.searchCards(state, player, from, effect.filter, count, effect.destination);
+
+        // Collect ALL matching cards from the zone
+        const zone = from === 'deck' ? state.players[player].deck : state.players[player].discard;
+        const allMatching: Card[] = [];
+        for (const card of zone) {
+          if (!effect.filter || this.matchesFilter(card, effect.filter)) {
+            allMatching.push(card);
+          }
+        }
+
+        // 0 matches → nothing to select
+        if (allMatching.length === 0) {
+          return state;
+        }
+
+        // matches ≤ count → auto-select all (no choice needed)
+        if (allMatching.length <= count) {
+          return this.searchCards(state, player, from, effect.filter, count, effect.destination);
+        }
+
+        // matches > count → create PendingChoice with ALL matching options
+        // No deduplication — player might want multiple copies (e.g., 2 Hoothoots via Poffin)
+        const options: PendingChoiceOption[] = allMatching.map(card => ({
+          id: card.id,
+          label: card.name,
+          card,
+        }));
+
+        const dest = effect.destination === 'topOfDeck' ? 'deck' : effect.destination;
+        const newState = this.cloneGameState(state);
+        newState.pendingChoice = {
+          choiceType: 'searchCard',
+          playerIndex: player,
+          options,
+          selectionsRemaining: count,
+          destination: dest as 'hand' | 'bench' | 'deck' | 'discard' | 'active',
+          sourceZone: from,
+          selectedSoFar: [],
+          remainingEffects: [], // will be filled by execute() loop
+          effectContext: { attackingPlayer: context.attackingPlayer, defendingPlayer: context.defendingPlayer },
+          sourceCardName: context.sourceCardName || 'Trainer',
+          canSkip: true, // "up to N" — player can stop early
+        };
+
+        return newState;
       }
 
       case 'mill': {
@@ -480,7 +543,49 @@ export class EffectExecutor {
       case 'discardFromHand': {
         const player = effect.player === 'own' ? context.attackingPlayer : context.defendingPlayer;
         const count = this.resolveValue(state, effect.count, context);
-        return this.discardFromPlayerHand(state, player, count, effect.filter);
+
+        // Collect all matching cards in hand
+        const handCards = state.players[player].hand;
+        const matching: Card[] = [];
+        for (const card of handCards) {
+          if (!effect.filter || this.matchesFilter(card, effect.filter)) {
+            matching.push(card);
+          }
+        }
+
+        // 0 matches → nothing to discard
+        if (matching.length === 0) {
+          return state;
+        }
+
+        // matches ≤ count → auto-discard all (no choice needed)
+        if (matching.length <= count) {
+          return this.discardFromPlayerHand(state, player, count, effect.filter);
+        }
+
+        // matches > count → create PendingChoice for player to pick what to discard
+        const options: PendingChoiceOption[] = matching.map(card => ({
+          id: card.id,
+          label: card.name,
+          card,
+        }));
+
+        const newState = this.cloneGameState(state);
+        newState.pendingChoice = {
+          choiceType: 'discardCard',
+          playerIndex: player,
+          options,
+          selectionsRemaining: count,
+          destination: 'discard',
+          sourceZone: 'hand',
+          selectedSoFar: [],
+          remainingEffects: [], // will be filled by execute() loop
+          effectContext: { attackingPlayer: context.attackingPlayer, defendingPlayer: context.defendingPlayer },
+          sourceCardName: context.sourceCardName || 'Trainer',
+          canSkip: false, // must discard exactly N
+        };
+
+        return newState;
       }
 
       // ---- Energy Management ----
@@ -516,8 +621,43 @@ export class EffectExecutor {
 
       // ---- Pokemon Switching ----
       case 'forceSwitch': {
-        const player = effect.player === 'own' ? context.attackingPlayer : context.defendingPlayer;
-        return this.switchActivePokemon(state, player, effect.chosenBench);
+        const switchPlayer = effect.player === 'own' ? context.attackingPlayer : context.defendingPlayer;
+        const switchPlayerState = state.players[switchPlayer];
+
+        // No bench Pokemon → nothing to switch
+        if (!switchPlayerState.active || switchPlayerState.bench.length === 0) {
+          return state;
+        }
+
+        // Exactly 1 bench Pokemon → auto-select (no choice needed)
+        if (switchPlayerState.bench.length === 1) {
+          return this.switchActivePokemon(state, switchPlayer, 0);
+        }
+
+        // 2+ bench Pokemon → create PendingChoice for the current player to pick
+        const options: PendingChoiceOption[] = switchPlayerState.bench.map((pokemon, idx) => ({
+          id: `bench-${idx}`,
+          label: pokemon.card.name,
+          benchIndex: idx,
+        }));
+
+        const newState = this.cloneGameState(state);
+        newState.pendingChoice = {
+          choiceType: 'switchTarget',
+          playerIndex: context.attackingPlayer, // current player picks the target
+          options,
+          selectionsRemaining: 1,
+          destination: 'active',
+          sourceZone: 'bench',
+          selectedSoFar: [],
+          remainingEffects: [], // will be filled by execute() loop
+          effectContext: { attackingPlayer: context.attackingPlayer, defendingPlayer: context.defendingPlayer },
+          sourceCardName: context.sourceCardName || 'Trainer',
+          canSkip: false,
+          switchPlayerIndex: switchPlayer, // whose bench is being switched
+        };
+
+        return newState;
       }
 
       case 'selfSwitch': {
@@ -592,6 +732,11 @@ export class EffectExecutor {
       // ---- Game Flags ----
       case 'addGameFlag': {
         return this.addGameFlag(state, effect.flag, effect.duration);
+      }
+
+      // ---- Evolution ----
+      case 'rareCandy': {
+        return this.handleRareCandy(state, context);
       }
 
       // ---- Control Flow ----
@@ -1153,6 +1298,13 @@ export class EffectExecutor {
       playerState.deck.push(...matching);
     }
 
+    // Log what was found
+    if (matching.length > 0) {
+      const names = matching.map(c => c.name).join(', ');
+      const destLabel = destination === 'hand' ? 'hand' : destination === 'bench' ? 'bench' : 'deck';
+      newState.gameLog = [...newState.gameLog, `Searched ${from} and found ${names} → ${destLabel}.`];
+    }
+
     return newState;
   }
 
@@ -1420,8 +1572,12 @@ export class EffectExecutor {
     const newActive = playerState.bench[benchIndex ?? 0];
     if (!newActive) return newState;
 
+    const oldActiveName = playerState.active.card.name;
+    const newActiveName = newActive.card.name;
     playerState.bench[benchIndex ?? 0] = playerState.active;
     playerState.active = newActive;
+
+    newState.gameLog = [...newState.gameLog, `Switched ${oldActiveName} to bench, ${newActiveName} now active.`];
 
     return newState;
   }
@@ -1477,6 +1633,160 @@ export class EffectExecutor {
       `Game flag set: ${flag} (duration: ${duration}).`,
     ];
     return newState;
+  }
+
+  /**
+   * Handle Rare Candy: find all valid (Stage2-in-hand, Basic-in-play) pairs.
+   * Walks evolution chains via evolvesFrom fields — no hardcoded card names.
+   * If 0 valid → return state. If 1 → auto-evolve. If 2+ → create PendingChoice.
+   */
+  private static handleRareCandy(state: GameState, context: EffectExecutionContext): GameState {
+    if (state.turnNumber <= 1) return state; // Can't evolve turn 1
+
+    const playerIdx = context.attackingPlayer;
+    const player = state.players[playerIdx];
+
+    // Find all Stage2/ex cards in hand that evolve from a Stage1
+    const stage2InHand = player.hand.filter(c =>
+      c.cardType === CardType.Pokemon && (
+        (c as PokemonCard).stage === PokemonStage.Stage2 ||
+        ((c as PokemonCard).stage === PokemonStage.ex && (c as PokemonCard).evolvesFrom)
+      )
+    ) as PokemonCard[];
+
+    if (stage2InHand.length === 0) return state;
+
+    // Collect all Pokemon cards from ALL zones to look up Stage1 evolvesFrom
+    const allCards: Card[] = [
+      ...player.deck, ...player.hand, ...player.discard,
+      ...(player.active ? [player.active.card] : []),
+      ...player.bench.map(p => p.card),
+    ];
+
+    // Collect all Basics in play that can be evolved (not placed this turn, not already evolved)
+    const basicsInPlay: { pokemon: PokemonInPlay; zone: 'active' | 'bench'; benchIndex: number }[] = [];
+    if (player.active && player.active.card.stage === PokemonStage.Basic &&
+        !player.active.isEvolved && player.active.turnPlayed !== state.turnNumber) {
+      basicsInPlay.push({ pokemon: player.active, zone: 'active', benchIndex: -1 });
+    }
+    player.bench.forEach((p, i) => {
+      if (p.card.stage === PokemonStage.Basic && !p.isEvolved && p.turnPlayed !== state.turnNumber) {
+        basicsInPlay.push({ pokemon: p, zone: 'bench', benchIndex: i });
+      }
+    });
+
+    if (basicsInPlay.length === 0) return state;
+
+    // Build valid (Stage2, target) pairs
+    interface EvolvePair {
+      stage2: PokemonCard;
+      target: { pokemon: PokemonInPlay; zone: 'active' | 'bench'; benchIndex: number };
+      basicName: string;
+    }
+    const validPairs: EvolvePair[] = [];
+
+    for (const stage2 of stage2InHand) {
+      const stage1Name = stage2.evolvesFrom;
+      if (!stage1Name) continue;
+
+      // Find the Stage1 card to get what Basic it evolves from
+      const stage1Card = allCards.find(c =>
+        c.cardType === CardType.Pokemon &&
+        c.name === stage1Name &&
+        (c as PokemonCard).evolvesFrom
+      ) as PokemonCard | undefined;
+
+      if (!stage1Card || !stage1Card.evolvesFrom) continue;
+      const basicName = stage1Card.evolvesFrom;
+
+      // Find matching Basics in play
+      for (const basic of basicsInPlay) {
+        if (basic.pokemon.card.name === basicName) {
+          validPairs.push({ stage2, target: basic, basicName });
+        }
+      }
+    }
+
+    if (validPairs.length === 0) return state;
+
+    // Exactly 1 valid pair → auto-evolve
+    if (validPairs.length === 1) {
+      return this.executeRareCandyEvolve(state, playerIdx, validPairs[0].stage2, validPairs[0].target, validPairs[0].basicName);
+    }
+
+    // Multiple valid pairs → create PendingChoice with evolveTarget type
+    const options: PendingChoiceOption[] = validPairs.map((pair, idx) => ({
+      id: `evolve-${idx}-${pair.stage2.id}-${pair.target.zone}-${pair.target.benchIndex}`,
+      label: `${pair.stage2.name} → ${pair.target.pokemon.card.name} (${pair.target.zone})`,
+      card: pair.stage2,
+      benchIndex: pair.target.benchIndex,
+      zone: pair.target.zone,
+    }));
+
+    const newState = this.cloneGameState(state);
+    newState.pendingChoice = {
+      choiceType: 'evolveTarget',
+      playerIndex: playerIdx,
+      options,
+      selectionsRemaining: 1,
+      destination: 'active', // not really used for evolve, but needed by type
+      sourceZone: 'hand',
+      selectedSoFar: [],
+      remainingEffects: [],
+      effectContext: { attackingPlayer: context.attackingPlayer, defendingPlayer: context.defendingPlayer },
+      sourceCardName: context.sourceCardName || 'Rare Candy',
+      canSkip: false,
+    };
+
+    return newState;
+  }
+
+  /**
+   * Execute a Rare Candy evolution: remove Stage2 from hand, evolve Basic, trigger onEvolve.
+   */
+  private static executeRareCandyEvolve(
+    state: GameState,
+    playerIdx: 0 | 1,
+    stage2: PokemonCard,
+    target: { pokemon: PokemonInPlay; zone: 'active' | 'bench'; benchIndex: number },
+    basicName: string
+  ): GameState {
+    const newState = this.cloneGameState(state);
+    const player = newState.players[playerIdx];
+
+    // Remove Stage2 from hand
+    const handIdx = player.hand.findIndex(c => c.id === stage2.id);
+    if (handIdx < 0) return state;
+    player.hand.splice(handIdx, 1);
+
+    // Build evolved Pokemon
+    const evolved: PokemonInPlay = {
+      ...target.pokemon,
+      card: stage2,
+      currentHp: Math.min(target.pokemon.currentHp + (stage2.hp - target.pokemon.card.hp), stage2.hp),
+      isEvolved: true,
+      previousStage: target.pokemon,
+      statusConditions: [],
+      cannotRetreat: false,
+    };
+
+    // Place evolved Pokemon
+    if (target.zone === 'active') {
+      player.active = evolved;
+    } else {
+      player.bench[target.benchIndex] = evolved;
+    }
+
+    newState.gameLog = [...newState.gameLog, `Rare Candy evolves ${basicName} directly to ${stage2.name}!`];
+
+    // Trigger onEvolve ability
+    let result: GameState = newState;
+    if (stage2.ability && stage2.ability.trigger === 'onEvolve') {
+      result = { ...result, gameLog: [...result.gameLog, `${stage2.name}'s ${stage2.ability.name} activates!`] };
+      result = EffectExecutor.executeAbility(result, stage2.ability.effects, evolved, playerIdx);
+    }
+
+    return result;
   }
 
   private static preventRetreat(

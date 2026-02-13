@@ -518,11 +518,108 @@ function scoreAttackAction(state: GameState, action: Action): number {
 // MAIN EXPORT
 // ============================================================================
 
+// ============================================================================
+// CHOOSE CARD HEURISTIC (PendingChoice)
+// ============================================================================
+
+function scoreChooseCardAction(state: GameState, action: Action): number {
+  if (action.type !== ActionType.ChooseCard) return 0;
+  const { choiceId, label } = action.payload;
+  const choice = state.pendingChoice;
+  if (!choice) return 0;
+
+  // Skip action: usually bad unless we've already picked good cards
+  if (choiceId === 'skip') {
+    return choice.selectedSoFar.length > 0 ? 10 : -50;
+  }
+
+  switch (choice.choiceType) {
+    case 'searchCard': {
+      // Prioritize by strategic value
+      if (CHARIZARD_LINE.has(label)) return 95;
+      if (label === 'Pidgeot ex') return 93;
+      if (label === 'Pidgeotto') return 88;
+      if (label === 'Rare Candy') return 90;
+      if (label === "Boss's Orders") return 85;
+      if (label === 'Terapagos ex') return 84;
+      if (label === 'Pidgey') return 82;
+      if (label === 'Noctowl') {
+        return hasTerapagosInPlay(state) ? 82 : 60;
+      }
+      if (label === 'Hoothoot') return 75;
+      if (label === 'Dusknoir') return 68;
+      if (label === 'Dusclops') return 55;
+      if (label === 'Duskull') return 50;
+      if (label === 'Fan Rotom') return 45;
+      if (label === 'Klefki') return 40;
+      if (label.includes('Energy')) return 40;
+      // Generic Pokemon
+      if (SUPPORT_POKEMON.has(label)) return 75;
+      return 50;
+    }
+
+    case 'discardCard': {
+      // When forced to discard (Ultra Ball), prefer discarding expendable cards
+      // Lower score = MORE preferred to discard (we invert: higher score = card we WANT to discard)
+      if (label.includes('Energy')) return 70; // Energy is expendable
+      if (CHARIZARD_LINE.has(label)) return -80; // Never discard Charizard line
+      if (label === 'Rare Candy') return -60;
+      if (label === "Boss's Orders") return -40;
+      if (label === 'Pidgeot ex') return -50;
+      // Duplicates and basics are OK to discard
+      if (SUPPORT_POKEMON.has(label)) return 30;
+      return 20;
+    }
+
+    case 'switchTarget': {
+      // When gusting opponent's bench: prioritize KO-able high-prize targets
+      const selectedOption = choice.options.find(o => o.id === choiceId);
+      if (!selectedOption || selectedOption.benchIndex === undefined) return 50;
+
+      const switchPlayer = choice.switchPlayerIndex ?? choice.playerIndex;
+      const targetBench = state.players[switchPlayer].bench;
+      const target = targetBench[selectedOption.benchIndex];
+      if (!target) return 50;
+
+      let score = 50;
+      // High-prize targets
+      if (target.card.prizeCards >= 2) score += 30;
+      // KO-able?
+      const attacker = state.players[state.currentPlayer].active;
+      if (attacker) {
+        const topAttackDmg = Math.max(...attacker.card.attacks.map(a => a.damage));
+        if (topAttackDmg >= target.currentHp) score += 40;
+      }
+      // Strand high-retreat Pokemon
+      if (target.card.retreatCost >= 2) score += 20;
+      // Important targets
+      if (target.card.name === 'Charizard ex' || target.card.name === 'Pidgeot ex') score += 15;
+      return score;
+    }
+
+    case 'evolveTarget': {
+      // For Rare Candy: prioritize key evolutions
+      if (label.includes('Charizard ex')) return 97;
+      if (label.includes('Pidgeot ex')) return 93;
+      if (label.includes('Dusknoir')) return 68;
+      return 50;
+    }
+  }
+
+  return 0;
+}
+
 export function heuristicSelectAction(state: GameState, actions: Action[]): Action {
   if (actions.length === 1) return actions[0];
 
-  const isAttackPhase = state.phase === GamePhase.AttackPhase;
-  const scoreFn = isAttackPhase ? scoreAttackAction : scoreMainAction;
+  // Use ChooseCard scoring when pendingChoice is active
+  let scoreFn: (state: GameState, action: Action) => number;
+  if (state.pendingChoice) {
+    scoreFn = scoreChooseCardAction;
+  } else {
+    const isAttackPhase = state.phase === GamePhase.AttackPhase;
+    scoreFn = isAttackPhase ? scoreAttackAction : scoreMainAction;
+  }
 
   let bestAction = actions[0];
   let bestScore = -Infinity;

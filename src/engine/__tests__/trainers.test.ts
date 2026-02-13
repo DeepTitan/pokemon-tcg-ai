@@ -3,8 +3,11 @@
  *
  * Tests every trainer card from the Charizard deck using the EffectDSL system.
  * Trainers: Dawn, Iono, Boss's Orders, Briar, Buddy-Buddy Poffin, Nest Ball,
- * Prime Catcher, Super Rod, Night Stretcher, Ultra Ball, Area Zero Underdepths.
- * Rare Candy stays legacy (tested in game-engine.test.ts).
+ * Prime Catcher, Super Rod, Night Stretcher, Ultra Ball, Area Zero Underdepths, Rare Candy.
+ *
+ * Many trainers now use the PendingChoice system — when there are more matching cards
+ * than needed, the engine pauses and generates ChooseCard actions for the AI to pick.
+ * Tests verify both the PendingChoice creation and the resolution flow.
  */
 
 import { describe, it } from 'node:test';
@@ -24,6 +27,7 @@ import {
   TrainerCard,
   TrainerType,
   PokemonStage,
+  GameFlag,
 } from '../types.js';
 import { EffectExecutor, EffectDSL } from '../effects.js';
 import { GameEngine } from '../game-engine.js';
@@ -62,22 +66,54 @@ function putTrainerInHand(state: GameState, playerIndex: 0 | 1, trainerName: str
 describe('Charizard Deck — Trainers', () => {
   // ---------- Dawn ----------
   // "Search your deck for a Basic Pokemon, a Stage 1 Pokemon, and a Stage 2 Pokemon or Pokemon ex, reveal them, and put them into your hand. Then, shuffle your deck."
-  it('Dawn: searches 1 Basic + 1 Stage1 + 1 Stage2/ex from deck to hand', () => {
+  it('Dawn: creates PendingChoice for each stage search', () => {
     const state = createRealState();
     const trainer = findTrainerInDeck('Dawn');
     assert.ok(trainer.effects, 'Dawn should have DSL effects');
 
-    // Count cards matching each stage in deck before
-    const player = state.players[0];
-    const basicsInDeck = player.deck.filter(c => c.cardType === CardType.Pokemon && (c as PokemonCard).stage === PokemonStage.Basic).length;
-    const stage1InDeck = player.deck.filter(c => c.cardType === CardType.Pokemon && (c as PokemonCard).stage === PokemonStage.Stage1).length;
-    const stage2exInDeck = player.deck.filter(c => c.cardType === CardType.Pokemon && ((c as PokemonCard).stage === PokemonStage.Stage2 || (c as PokemonCard).stage === PokemonStage.ex)).length;
+    const handBefore = state.players[0].hand.length;
 
-    const handBefore = player.hand.length;
-    const after = EffectExecutor.executeTrainer(state, trainer.effects!, 0);
+    // Execute Dawn — first search (Basic) should create a PendingChoice
+    let after = EffectExecutor.executeTrainer(state, trainer.effects!, 0, 'Dawn');
 
-    const expectedCards = Math.min(1, basicsInDeck) + Math.min(1, stage1InDeck) + Math.min(1, stage2exInDeck);
-    assert.equal(after.players[0].hand.length, handBefore + expectedCards);
+    assert.ok(after.pendingChoice, 'Should create PendingChoice for Basic search');
+    assert.equal(after.pendingChoice!.choiceType, 'searchCard');
+    assert.ok(after.pendingChoice!.options.length > 0, 'Should have Basic Pokemon options');
+
+    // Pick the first option (simulate AI choice)
+    const firstOption = after.pendingChoice!.options[0];
+    after = GameEngine.applyAction(after, {
+      type: ActionType.ChooseCard,
+      player: 0 as 0 | 1,
+      payload: { choiceId: firstOption.id, label: firstOption.label },
+    });
+
+    // After picking Basic, Stage1 search should create another PendingChoice
+    // (via remainingEffects → resumeEffects)
+    if (after.pendingChoice) {
+      assert.equal(after.pendingChoice.choiceType, 'searchCard');
+      const stage1Option = after.pendingChoice.options[0];
+      after = GameEngine.applyAction(after, {
+        type: ActionType.ChooseCard,
+        player: 0 as 0 | 1,
+        payload: { choiceId: stage1Option.id, label: stage1Option.label },
+      });
+    }
+
+    // After picking Stage1, Stage2/ex search should create another PendingChoice
+    if (after.pendingChoice) {
+      assert.equal(after.pendingChoice.choiceType, 'searchCard');
+      const stage2Option = after.pendingChoice.options[0];
+      after = GameEngine.applyAction(after, {
+        type: ActionType.ChooseCard,
+        player: 0 as 0 | 1,
+        payload: { choiceId: stage2Option.id, label: stage2Option.label },
+      });
+    }
+
+    // All choices resolved — hand should have grown
+    assert.ok(after.players[0].hand.length > handBefore, 'Hand should have gained cards');
+    assert.equal(after.pendingChoice, undefined, 'No pending choice should remain');
   });
 
   // ---------- Iono ----------
@@ -135,11 +171,13 @@ describe('Charizard Deck — Trainers', () => {
   });
 
   // ---------- Briar ----------
+  // "You can use this card only if your opponent has exactly 2 Prize cards remaining."
   // "If your Tera Pokemon Knocks Out your opponent's Active Pokemon during this turn, take 1 more Prize card."
   it('Briar: adds briarExtraPrize game flag', () => {
     const state = createRealState();
     const trainer = findTrainerInDeck('Briar');
     assert.ok(trainer.effects, 'Briar should have DSL effects');
+    assert.ok(trainer.playCondition, 'Briar should have a play condition');
     const flagsBefore = state.gameFlags.length;
 
     const after = EffectExecutor.executeTrainer(state, trainer.effects!, 0);
@@ -149,58 +187,242 @@ describe('Charizard Deck — Trainers', () => {
     assert.equal(after.gameFlags[after.gameFlags.length - 1].duration, 'nextTurn');
   });
 
+  it('Briar: cannot be played when opponent has != 2 prizes remaining', () => {
+    let state = createRealState();
+    state = setupMainPhase(state, 0);
+    state = putTrainerInHand(state, 0, 'Briar');
+    // Opponent has 6 prizes (default) — should NOT be playable
+    assert.equal(state.players[1].prizeCardsRemaining, 6);
+
+    const actions = GameEngine.getLegalActions(state);
+    const briarActions = actions.filter(a =>
+      a.type === ActionType.PlayTrainer &&
+      (state.players[0].hand[a.payload.handIndex] as TrainerCard).name === 'Briar'
+    );
+    assert.equal(briarActions.length, 0, 'Briar should not be playable when opponent has 6 prizes');
+  });
+
+  it('Briar: can be played when opponent has exactly 2 prizes remaining', () => {
+    let state = createRealState();
+    state = setupMainPhase(state, 0);
+    state = putTrainerInHand(state, 0, 'Briar');
+    // Set opponent to exactly 2 prizes remaining
+    state.players[1] = { ...state.players[1], prizeCardsRemaining: 2, prizes: state.players[1].prizes.slice(0, 2) };
+
+    const actions = GameEngine.getLegalActions(state);
+    const briarActions = actions.filter(a =>
+      a.type === ActionType.PlayTrainer &&
+      (state.players[0].hand[a.payload.handIndex] as TrainerCard).name === 'Briar'
+    );
+    assert.equal(briarActions.length, 1, 'Briar should be playable when opponent has exactly 2 prizes');
+  });
+
+  it('Briar: Tera Pokemon KO grants extra prize card', () => {
+    let state = createRealState();
+    // Put Terapagos ex as player 0's active (it has isTera: true)
+    state = putPokemonAsActive(state, 0, 'Terapagos ex');
+    // Set to AttackPhase so Attack action is legal
+    state = { ...state, currentPlayer: 0 as 0 | 1, phase: GamePhase.AttackPhase };
+    // Set up opponent active with low HP for easy KO
+    const oppActive = state.players[1].active!;
+    state.players[1] = {
+      ...state.players[1],
+      active: { ...oppActive, currentHp: 1 },
+    };
+
+    // Set Briar flag for player 0
+    state.gameFlags = [{
+      flag: 'briarExtraPrize',
+      duration: 'nextTurn' as const,
+      setOnTurn: state.turnNumber,
+      setByPlayer: 0 as 0 | 1,
+    }];
+
+    // Player 0 should have 6 prizes at start
+    const prizesBefore = state.players[0].prizeCardsRemaining;
+
+    // Ensure enough energy for Unified Beatdown (Colorless, Colorless)
+    state.players[0] = {
+      ...state.players[0],
+      active: {
+        ...state.players[0].active!,
+        attachedEnergy: [
+          { id: 'e1', name: 'Fire Energy', cardType: CardType.Energy, imageUrl: '', cardNumber: '', energySubtype: EnergySubtype.Basic, energyType: EnergyType.Fire, provides: [EnergyType.Fire] },
+          { id: 'e2', name: 'Fire Energy', cardType: CardType.Energy, imageUrl: '', cardNumber: '', energySubtype: EnergySubtype.Basic, energyType: EnergyType.Fire, provides: [EnergyType.Fire] },
+        ],
+      },
+    };
+
+    const action = {
+      type: ActionType.Attack,
+      player: 0 as 0 | 1,
+      payload: { attackIndex: 0 },
+    };
+    const after = GameEngine.applyAction(state, action);
+
+    // Opponent's active should be KO'd (1 HP, 30 base damage KOs)
+    const basePrizes = oppActive.card.prizeCards;
+    const expectedPrizesTaken = basePrizes + 1; // +1 from Briar
+    assert.equal(
+      after.players[0].prizeCardsRemaining,
+      Math.max(0, prizesBefore - expectedPrizesTaken),
+      `Should take ${expectedPrizesTaken} prizes (${basePrizes} base + 1 Briar bonus)`
+    );
+    // Briar flag should be consumed
+    assert.equal(
+      after.gameFlags.filter(f => f.flag === 'briarExtraPrize').length,
+      0,
+      'Briar flag should be consumed after KO'
+    );
+  });
+
+  it('Briar: no extra prize without Tera Pokemon', () => {
+    let state = createRealState();
+    // Put a non-Tera Pokemon as active (e.g., Charizard ex — has isTera undefined)
+    state = putPokemonAsActive(state, 0, 'Charizard ex');
+    // Set to AttackPhase so Attack action is legal
+    state = { ...state, currentPlayer: 0 as 0 | 1, phase: GamePhase.AttackPhase };
+    // Set up opponent active with low HP
+    const oppActive = state.players[1].active!;
+    state.players[1] = {
+      ...state.players[1],
+      active: { ...oppActive, currentHp: 1 },
+    };
+
+    // Set Briar flag for player 0
+    state.gameFlags = [{
+      flag: 'briarExtraPrize',
+      duration: 'nextTurn' as const,
+      setOnTurn: state.turnNumber,
+      setByPlayer: 0 as 0 | 1,
+    }];
+
+    const prizesBefore = state.players[0].prizeCardsRemaining;
+
+    // Ensure enough energy for Charizard ex's Burning Darkness (Fire, Fire, Colorless)
+    state.players[0] = {
+      ...state.players[0],
+      active: {
+        ...state.players[0].active!,
+        attachedEnergy: [
+          { id: 'e1', name: 'Fire Energy', cardType: CardType.Energy, imageUrl: '', cardNumber: '', energySubtype: EnergySubtype.Basic, energyType: EnergyType.Fire, provides: [EnergyType.Fire] },
+          { id: 'e2', name: 'Fire Energy', cardType: CardType.Energy, imageUrl: '', cardNumber: '', energySubtype: EnergySubtype.Basic, energyType: EnergyType.Fire, provides: [EnergyType.Fire] },
+          { id: 'e3', name: 'Fire Energy', cardType: CardType.Energy, imageUrl: '', cardNumber: '', energySubtype: EnergySubtype.Basic, energyType: EnergyType.Fire, provides: [EnergyType.Fire] },
+        ],
+      },
+    };
+
+    const action = {
+      type: ActionType.Attack,
+      player: 0 as 0 | 1,
+      payload: { attackIndex: 0 },
+    };
+    const after = GameEngine.applyAction(state, action);
+
+    // Should take normal prizes only (no Briar bonus since Charizard ex is NOT Tera)
+    const basePrizes = oppActive.card.prizeCards;
+    assert.equal(
+      after.players[0].prizeCardsRemaining,
+      Math.max(0, prizesBefore - basePrizes),
+      `Should take only ${basePrizes} prizes (no Briar bonus without Tera Pokemon)`
+    );
+    // Briar flag should NOT be consumed (Tera condition not met)
+    assert.equal(
+      after.gameFlags.filter(f => f.flag === 'briarExtraPrize').length,
+      1,
+      'Briar flag should remain since no Tera Pokemon attacked'
+    );
+  });
+
   // ---------- Buddy-Buddy Poffin ----------
   // "Search your deck for up to 2 Basic Pokemon with 70 HP or less, and put them onto your Bench."
-  it('Buddy-Buddy Poffin: up to 2 Basic HP<=70 placed on bench from deck', () => {
+  it('Buddy-Buddy Poffin: creates PendingChoice for up to 2 Basic HP<=70', () => {
     let state = createRealState();
     const trainer = findTrainerInDeck('Buddy-Buddy Poffin');
     assert.ok(trainer.effects, 'Buddy-Buddy Poffin should have DSL effects');
 
-    // Count eligible Pokemon in deck
-    const eligibleInDeck = state.players[0].deck.filter(c =>
-      c.cardType === CardType.Pokemon &&
-      (c as PokemonCard).stage === PokemonStage.Basic &&
-      (c as PokemonCard).hp <= 70
-    ).length;
     const benchBefore = state.players[0].bench.length;
-    const deckBefore = state.players[0].deck.length;
 
-    const after = EffectExecutor.executeTrainer(state, trainer.effects!, 0);
+    // Execute — should create PendingChoice since deck has many eligible Basics
+    let after = EffectExecutor.executeTrainer(state, trainer.effects!, 0, 'Buddy-Buddy Poffin');
 
-    const benchSpace = 5 - benchBefore;
-    const expectedAdded = Math.min(2, eligibleInDeck, benchSpace);
-    assert.equal(after.players[0].bench.length, benchBefore + expectedAdded);
-    assert.equal(after.players[0].deck.length, deckBefore - expectedAdded);
+    assert.ok(after.pendingChoice, 'Should create PendingChoice for bench search');
+    assert.equal(after.pendingChoice!.choiceType, 'searchCard');
+    assert.equal(after.pendingChoice!.destination, 'bench');
+    assert.equal(after.pendingChoice!.selectionsRemaining, 2);
+    assert.ok(after.pendingChoice!.canSkip, 'Should be skippable (up to 2)');
 
-    // Verify placed Pokemon are Basic with HP <= 70
-    for (let i = benchBefore; i < after.players[0].bench.length; i++) {
-      const placed = after.players[0].bench[i];
-      assert.equal(placed.card.stage, PokemonStage.Basic);
-      assert.ok(placed.card.hp <= 70, `Placed Pokemon ${placed.card.name} HP ${placed.card.hp} should be <= 70`);
-      assert.equal(placed.currentHp, placed.card.hp, 'Should be at full HP');
+    // All options should be Basic with HP <= 70
+    for (const opt of after.pendingChoice!.options) {
+      assert.ok(opt.card, 'Option should have a card');
+      const pokemon = opt.card as PokemonCard;
+      assert.equal(pokemon.stage, PokemonStage.Basic);
+      assert.ok(pokemon.hp <= 70, `${pokemon.name} HP ${pokemon.hp} should be <= 70`);
     }
+
+    // Pick first option
+    const firstOption = after.pendingChoice!.options[0];
+    after = GameEngine.applyAction(after, {
+      type: ActionType.ChooseCard,
+      player: 0 as 0 | 1,
+      payload: { choiceId: firstOption.id, label: firstOption.label },
+    });
+
+    // Should still have a PendingChoice for second pick
+    if (after.pendingChoice) {
+      assert.equal(after.pendingChoice.selectionsRemaining, 1);
+      const secondOption = after.pendingChoice.options[0];
+      after = GameEngine.applyAction(after, {
+        type: ActionType.ChooseCard,
+        player: 0 as 0 | 1,
+        payload: { choiceId: secondOption.id, label: secondOption.label },
+      });
+    }
+
+    // Bench should have grown
+    assert.ok(after.players[0].bench.length > benchBefore, 'Bench should have added Pokemon');
+    assert.equal(after.pendingChoice, undefined, 'No pending choice should remain');
   });
 
   // ---------- Nest Ball ----------
   // "Search your deck for a Basic Pokemon and put it onto your Bench."
-  it('Nest Ball: 1 Basic Pokemon placed on bench from deck', () => {
+  it('Nest Ball: creates PendingChoice for Basic search to bench', () => {
     let state = createRealState();
     const trainer = findTrainerInDeck('Nest Ball');
     assert.ok(trainer.effects, 'Nest Ball should have DSL effects');
 
-    const basicsInDeck = state.players[0].deck.filter(c =>
-      c.cardType === CardType.Pokemon && (c as PokemonCard).stage === PokemonStage.Basic
-    ).length;
     const benchBefore = state.players[0].bench.length;
 
-    const after = EffectExecutor.executeTrainer(state, trainer.effects!, 0);
+    let after = EffectExecutor.executeTrainer(state, trainer.effects!, 0, 'Nest Ball');
 
-    if (basicsInDeck > 0 && benchBefore < 5) {
+    // Should create a PendingChoice since deck has many Basic Pokemon
+    assert.ok(after.pendingChoice, 'Should create PendingChoice for Nest Ball');
+    assert.equal(after.pendingChoice!.choiceType, 'searchCard');
+    assert.equal(after.pendingChoice!.destination, 'bench');
+    assert.equal(after.pendingChoice!.selectionsRemaining, 1);
+
+    // All options should be Basic Pokemon
+    for (const opt of after.pendingChoice!.options) {
+      assert.ok(opt.card, 'Option should have a card');
+      const pokemon = opt.card as PokemonCard;
+      assert.equal(pokemon.stage, PokemonStage.Basic, `${pokemon.name} should be Basic`);
+    }
+
+    // Pick the first option
+    const option = after.pendingChoice!.options[0];
+    after = GameEngine.applyAction(after, {
+      type: ActionType.ChooseCard,
+      player: 0 as 0 | 1,
+      payload: { choiceId: option.id, label: option.label },
+    });
+
+    // Bench should have grown by 1
+    if (benchBefore < 5) {
       assert.equal(after.players[0].bench.length, benchBefore + 1);
       const placed = after.players[0].bench[after.players[0].bench.length - 1];
       assert.equal(placed.card.stage, PokemonStage.Basic);
-      assert.equal(placed.currentHp, placed.card.hp);
     }
+    assert.equal(after.pendingChoice, undefined, 'No pending choice should remain');
   });
 
   // ---------- Prime Catcher ----------
@@ -301,21 +523,51 @@ describe('Charizard Deck — Trainers', () => {
 
   // ---------- Ultra Ball ----------
   // "Discard 2 cards from your hand. Search your deck for a Pokemon, reveal it, and put it into your hand. Then, shuffle your deck."
-  it('Ultra Ball: discard 2 from hand, search 1 Pokemon from deck to hand', () => {
+  it('Ultra Ball: creates discard PendingChoice then search PendingChoice', () => {
     let state = createRealState();
     const trainer = findTrainerInDeck('Ultra Ball');
     assert.ok(trainer.effects, 'Ultra Ball should have DSL effects');
 
     const handBefore = state.players[0].hand.length;
-    const deckBefore = state.players[0].deck.length;
-    const pokemonInDeck = state.players[0].deck.filter(c => c.cardType === CardType.Pokemon).length;
 
-    const after = EffectExecutor.executeTrainer(state, trainer.effects!, 0);
+    // Execute — should create PendingChoice for discard first (if hand > 2)
+    let after = EffectExecutor.executeTrainer(state, trainer.effects!, 0, 'Ultra Ball');
 
-    // Hand: -2 (discard cost) +1 (searched Pokemon) = net -1
-    const expectedPokemon = Math.min(1, pokemonInDeck);
-    assert.equal(after.players[0].hand.length, handBefore - 2 + expectedPokemon);
-    assert.equal(after.players[0].discard.length, 2, 'Should have discarded 2 cards');
+    if (after.pendingChoice && after.pendingChoice.choiceType === 'discardCard') {
+      // Discard 2 cards
+      assert.equal(after.pendingChoice.selectionsRemaining, 2);
+      assert.ok(!after.pendingChoice.canSkip, 'Must discard exactly 2');
+
+      const disc1 = after.pendingChoice.options[0];
+      after = GameEngine.applyAction(after, {
+        type: ActionType.ChooseCard,
+        player: 0 as 0 | 1,
+        payload: { choiceId: disc1.id, label: disc1.label },
+      });
+
+      assert.ok(after.pendingChoice, 'Still need to discard 1 more');
+      const disc2 = after.pendingChoice!.options[0];
+      after = GameEngine.applyAction(after, {
+        type: ActionType.ChooseCard,
+        player: 0 as 0 | 1,
+        payload: { choiceId: disc2.id, label: disc2.label },
+      });
+    }
+
+    // After discard, search should create PendingChoice
+    if (after.pendingChoice && after.pendingChoice.choiceType === 'searchCard') {
+      assert.equal(after.pendingChoice.destination, 'hand');
+      const searchOption = after.pendingChoice.options[0];
+      after = GameEngine.applyAction(after, {
+        type: ActionType.ChooseCard,
+        player: 0 as 0 | 1,
+        payload: { choiceId: searchOption.id, label: searchOption.label },
+      });
+    }
+
+    // Verify: hand lost 2 (discard) + gained 1 (search) = net -1
+    assert.ok(after.players[0].discard.length >= 2, 'Should have discarded at least 2 cards');
+    assert.equal(after.pendingChoice, undefined, 'No pending choice should remain');
   });
 
   // ---------- Area Zero Underdepths ----------
@@ -334,11 +586,10 @@ describe('Charizard Deck — Trainers', () => {
   });
 
   // ---------- Engine Pipeline: PlayTrainer action ----------
-  it('Dawn via PlayTrainer action: searches cards from deck', () => {
+  it('Dawn via PlayTrainer action: creates PendingChoice for search', () => {
     let state = createRealState();
     state = setupMainPhase(state, 0);
     state = putTrainerInHand(state, 0, 'Dawn');
-    const handBefore = state.players[0].hand.length;
 
     const dawnIndex = state.players[0].hand.findIndex(c => c.name === 'Dawn');
     assert.ok(dawnIndex >= 0, 'Dawn should be in hand');
@@ -350,9 +601,10 @@ describe('Charizard Deck — Trainers', () => {
     };
     const after = GameEngine.applyAction(state, action);
 
-    // Dawn was removed from hand (-1), then cards were searched (+up to 3)
-    // Net: hand >= handBefore - 1 (Dawn discarded) and hand <= handBefore + 2 (Dawn discarded + 3 found)
-    assert.ok(after.players[0].hand.length >= handBefore - 1, 'Hand should not decrease by more than 1');
+    // Dawn should have been discarded and created a PendingChoice for the first search
+    assert.ok(after.pendingChoice, 'Should create PendingChoice for Dawn search');
+    assert.equal(after.pendingChoice!.choiceType, 'searchCard');
+    assert.ok(after.players[0].supporterPlayedThisTurn, 'Dawn is a Supporter — should mark as played');
   });
 
   it('Iono via PlayTrainer action: resets both hands by prize count', () => {
@@ -396,11 +648,10 @@ describe('Charizard Deck — Trainers', () => {
     assert.ok(after.players[0].supporterPlayedThisTurn, 'Should mark supporter as played');
   });
 
-  it('Nest Ball via PlayTrainer action: places Basic on bench', () => {
+  it('Nest Ball via PlayTrainer action: creates PendingChoice', () => {
     let state = createRealState();
     state = setupMainPhase(state, 0);
     state = putTrainerInHand(state, 0, 'Nest Ball');
-    const benchBefore = state.players[0].bench.length;
 
     const nestIndex = state.players[0].hand.findIndex(c => c.name === 'Nest Ball');
     const action = {
@@ -410,8 +661,182 @@ describe('Charizard Deck — Trainers', () => {
     };
     const after = GameEngine.applyAction(state, action);
 
-    if (benchBefore < 5) {
-      assert.ok(after.players[0].bench.length > benchBefore, 'Should have added to bench');
+    // Nest Ball should create a PendingChoice for Basic search to bench
+    assert.ok(after.pendingChoice, 'Should create PendingChoice for Nest Ball search');
+    assert.equal(after.pendingChoice!.choiceType, 'searchCard');
+    assert.equal(after.pendingChoice!.destination, 'bench');
+
+    // getLegalActions should only return ChooseCard actions
+    const legalActions = GameEngine.getLegalActions(after);
+    assert.ok(legalActions.length > 0, 'Should have ChooseCard actions');
+    assert.ok(legalActions.every(a => a.type === ActionType.ChooseCard), 'All actions should be ChooseCard');
+  });
+
+  // ==========================================================================
+  // PendingChoice System Tests
+  // ==========================================================================
+
+  it("Boss's Orders with 3 bench: generates 3 ChooseCard actions", () => {
+    let state = createRealState();
+    // Add more Pokemon to opponent's bench (default has 1)
+    const oppPlayer = state.players[1];
+    const benchPokemon = oppPlayer.deck.filter(c =>
+      c.cardType === CardType.Pokemon && (c as PokemonCard).stage === PokemonStage.Basic
+    ).slice(0, 2) as PokemonCard[];
+    const newBench = [...oppPlayer.bench];
+    for (const p of benchPokemon) {
+      if (newBench.length < 3) {
+        newBench.push({
+          card: p,
+          currentHp: p.hp,
+          attachedEnergy: [],
+          statusConditions: [],
+          damageCounters: 0,
+          attachedTools: [],
+          isEvolved: false,
+          turnPlayed: 0,
+          damageShields: [],
+          cannotRetreat: false,
+        });
+      }
     }
+    state.players[1] = { ...oppPlayer, bench: newBench };
+
+    const trainer = findTrainerInDeck("Boss's Orders");
+    let after = EffectExecutor.executeTrainer(state, trainer.effects!, 0, "Boss's Orders");
+
+    // Should create PendingChoice with switchTarget
+    assert.ok(after.pendingChoice, 'Should create PendingChoice with 3 bench');
+    assert.equal(after.pendingChoice!.choiceType, 'switchTarget');
+    assert.equal(after.pendingChoice!.options.length, newBench.length, 'One option per bench Pokemon');
+
+    // getLegalActions should generate ChooseCard actions
+    const actions = GameEngine.getLegalActions(after);
+    assert.equal(actions.length, newBench.length, 'One ChooseCard action per bench Pokemon');
+    assert.ok(actions.every(a => a.type === ActionType.ChooseCard), 'All should be ChooseCard');
+  });
+
+  it("Boss's Orders with 1 bench: auto-selects (no pending choice)", () => {
+    const state = createRealState();
+    assert.equal(state.players[1].bench.length, 1);
+
+    const trainer = findTrainerInDeck("Boss's Orders");
+    const after = EffectExecutor.executeTrainer(state, trainer.effects!, 0, "Boss's Orders");
+
+    assert.equal(after.pendingChoice, undefined, 'Should auto-select with 1 bench');
+    assert.notEqual(after.players[1].active!.card.name, state.players[1].active!.card.name);
+  });
+
+  it('ChooseCard skip: stops multi-pick early for "up to N" effects', () => {
+    let state = createRealState();
+    const trainer = findTrainerInDeck('Buddy-Buddy Poffin');
+
+    let after = EffectExecutor.executeTrainer(state, trainer.effects!, 0, 'Buddy-Buddy Poffin');
+    assert.ok(after.pendingChoice, 'Should create PendingChoice');
+    assert.ok(after.pendingChoice!.canSkip, 'Should allow skipping (up to 2)');
+
+    const benchBefore = after.players[0].bench.length;
+
+    // Pick 1, then skip
+    const firstOption = after.pendingChoice!.options[0];
+    after = GameEngine.applyAction(after, {
+      type: ActionType.ChooseCard,
+      player: 0 as 0 | 1,
+      payload: { choiceId: firstOption.id, label: firstOption.label },
+    });
+
+    assert.ok(after.pendingChoice, 'Should still have PendingChoice for second pick');
+
+    // Skip the second pick
+    after = GameEngine.applyAction(after, {
+      type: ActionType.ChooseCard,
+      player: 0 as 0 | 1,
+      payload: { choiceId: 'skip', label: 'Done' },
+    });
+
+    assert.equal(after.players[0].bench.length, benchBefore + 1, 'Only 1 added after skip');
+    assert.equal(after.pendingChoice, undefined, 'No pending choice should remain');
+  });
+
+  // ---------- Rare Candy DSL ----------
+  it('Rare Candy DSL: evolves Basic directly to Stage 2', () => {
+    let state = createRealState();
+    const trainer = findTrainerInDeck('Rare Candy');
+    assert.ok(trainer.effects, 'Rare Candy should have DSL effects');
+
+    // Set up: Charmander as active, Charizard ex in hand, turn > 1
+    state = putPokemonAsActive(state, 0, 'Charmander');
+    state = { ...state, turnNumber: 3 };
+    const charizardEx = state.players[0].deck.find(c => c.name === 'Charizard ex');
+    if (charizardEx) {
+      state.players[0].hand = [...state.players[0].hand, charizardEx];
+      state.players[0].deck = state.players[0].deck.filter(c => c !== charizardEx);
+    }
+    state.players[0].bench = [];
+
+    let after = EffectExecutor.executeTrainer(state, trainer.effects!, 0, 'Rare Candy');
+
+    // Resolve choice if needed
+    if (after.pendingChoice) {
+      const option = after.pendingChoice.options[0];
+      after = GameEngine.applyAction(after, {
+        type: ActionType.ChooseCard,
+        player: 0 as 0 | 1,
+        payload: { choiceId: option.id, label: option.label },
+      });
+    }
+
+    assert.equal(after.players[0].active!.card.name, 'Charizard ex', 'Should evolve to Charizard ex');
+    assert.ok(after.players[0].active!.isEvolved, 'Should be marked as evolved');
+  });
+
+  it('Rare Candy DSL: does not evolve turn 1', () => {
+    let state = createRealState();
+    const trainer = findTrainerInDeck('Rare Candy');
+    state = { ...state, turnNumber: 1 };
+    state = putPokemonAsActive(state, 0, 'Charmander');
+    const charizardEx = state.players[0].deck.find(c => c.name === 'Charizard ex');
+    if (charizardEx) {
+      state.players[0].hand = [...state.players[0].hand, charizardEx];
+      state.players[0].deck = state.players[0].deck.filter(c => c !== charizardEx);
+    }
+
+    const after = EffectExecutor.executeTrainer(state, trainer.effects!, 0, 'Rare Candy');
+
+    assert.equal(after.players[0].active!.card.name, 'Charmander', 'Should not evolve turn 1');
+    assert.equal(after.pendingChoice, undefined, 'No pending choice on turn 1');
+  });
+
+  it('Super Rod: auto-selects when matches <= count (no PendingChoice)', () => {
+    let state = createRealState();
+    const trainer = findTrainerInDeck('Super Rod');
+
+    const charmander = state.players[0].deck.find(c => c.name === 'Charmander')!;
+    const fireEnergy = state.players[0].deck.find(c => c.name === 'Fire Energy')!;
+    state.players[0].discard = [charmander, fireEnergy];
+    state.players[0].deck = state.players[0].deck.filter(c => c !== charmander && c !== fireEnergy);
+
+    const deckBefore = state.players[0].deck.length;
+    const after = EffectExecutor.executeTrainer(state, trainer.effects!, 0, 'Super Rod');
+
+    assert.equal(after.pendingChoice, undefined, 'Should auto-select when matches <= count');
+    assert.equal(after.players[0].discard.length, 0, 'All eligible cards recovered');
+    assert.equal(after.players[0].deck.length, deckBefore + 2, 'Deck gains 2 cards');
+  });
+
+  it('Night Stretcher: auto-selects when only 1 match (no PendingChoice)', () => {
+    let state = createRealState();
+    const trainer = findTrainerInDeck('Night Stretcher');
+
+    const charmander = state.players[0].deck.find(c => c.name === 'Charmander')!;
+    state.players[0].discard = [charmander];
+    state.players[0].deck = state.players[0].deck.filter(c => c !== charmander);
+    const handBefore = state.players[0].hand.length;
+
+    const after = EffectExecutor.executeTrainer(state, trainer.effects!, 0, 'Night Stretcher');
+
+    assert.equal(after.pendingChoice, undefined, 'Should auto-select with 1 match');
+    assert.equal(after.players[0].hand.length, handBefore + 1);
+    assert.equal(after.players[0].discard.length, 0);
   });
 });

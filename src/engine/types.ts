@@ -187,6 +187,10 @@ export interface Ability {
   description: string;
   /** For targeted abilities (e.g. Cursed Blast), returns possible targets */
   getTargets?: (state: GameState, pokemon: PokemonInPlay, playerIndex: number) => AbilityTarget[];
+  /** Optional condition checked in getLegalActions before offering this ability.
+   *  If set, the ability only appears as a legal action when the condition is met.
+   *  E.g. Fan Call: { check: 'turnNumber', comparison: '<=', value: 2 } */
+  abilityCondition?: import('./effects.js').Condition;
 }
 
 /**
@@ -219,6 +223,8 @@ export interface PokemonCard extends Card {
   prizeCards: 1 | 2 | 3;
   /** Whether this Pokemon is a Rule Box card (ex, V, VMAX, VSTAR) */
   isRulebox: boolean;
+  /** Whether this Pokemon has the Tera trait (relevant for Briar extra prize) */
+  isTera?: boolean;
 }
 
 /**
@@ -233,6 +239,8 @@ export interface TrainerCard extends Card {
   effects?: import('./effects.js').EffectDSL[];
   /** Legacy function implementing the Trainer's effect. Used when effects DSL is not defined. */
   effect?: (state: GameState, player: number) => GameState;
+  /** Optional DSL condition that must be met for this card to be playable (checked in getLegalActions) */
+  playCondition?: import('./effects.js').Condition;
 }
 
 /**
@@ -371,6 +379,64 @@ export interface GameState {
   gameFlags: GameFlag[];
   /** Pending energy attachments from abilities like Infernal Reign (player chooses targets) */
   pendingAttachments?: { cards: Card[], playerIndex: 0 | 1 };
+  /** Pending choice for card/target selection (searches, force switches, discards, evolves) */
+  pendingChoice?: PendingChoice;
+}
+
+// ============================================================================
+// PENDING CHOICE SYSTEM
+// ============================================================================
+
+/**
+ * A single option within a pending choice.
+ * Represents one card or target the player can select.
+ */
+export interface PendingChoiceOption {
+  /** Unique identifier for this option (card id, "bench-0", or deduped card name) */
+  id: string;
+  /** Display name for UI/logging */
+  label: string;
+  /** For card choices: the card being offered */
+  card?: Card;
+  /** For switch target choices: bench index of the Pokemon */
+  benchIndex?: number;
+  /** For evolve target choices: zone where the target Pokemon is */
+  zone?: 'active' | 'bench';
+}
+
+/**
+ * Represents a pending choice that must be resolved before the game continues.
+ * Created by effects that require player selection (search, discard, force switch, evolve).
+ * When present on GameState, getLegalActions generates only ChooseCard actions.
+ *
+ * Architecture: pause effect → enumerate choices as actions → AI picks → resume.
+ * Validated by deckgym-core (Rust), ryuu-play (TS), and sethkarten/tcg (C/Python).
+ */
+export interface PendingChoice {
+  /** What kind of choice this is */
+  choiceType: 'searchCard' | 'discardCard' | 'switchTarget' | 'evolveTarget';
+  /** Player who must make the choice */
+  playerIndex: 0 | 1;
+  /** Available options to pick from (deduplicated by card name for searches) */
+  options: PendingChoiceOption[];
+  /** How many more selections the player needs to make */
+  selectionsRemaining: number;
+  /** Where the chosen card goes */
+  destination: 'hand' | 'bench' | 'deck' | 'discard' | 'active';
+  /** Where the card is being chosen from */
+  sourceZone: 'deck' | 'discard' | 'hand' | 'bench';
+  /** Cards already selected in this multi-pick (for "choose up to N") */
+  selectedSoFar: Card[];
+  /** Remaining DSL effects to execute after all picks are resolved */
+  remainingEffects: import('./effects.js').EffectDSL[];
+  /** Minimal context needed to resume effect execution */
+  effectContext: { attackingPlayer: 0 | 1; defendingPlayer: 0 | 1 };
+  /** Name of the card that created this choice (for logging) */
+  sourceCardName: string;
+  /** Whether the player can choose to stop picking early ("up to N" effects) */
+  canSkip: boolean;
+  /** For forceSwitch: whose bench is being switched (may differ from playerIndex) */
+  switchPlayerIndex?: 0 | 1;
 }
 
 /**
