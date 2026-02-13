@@ -152,15 +152,27 @@ export interface Attack {
   cost: EnergyType[];
   /** Damage this attack deals (may be 0 for non-damage effects) */
   damage: number;
-  /** Optional effect function applied when attack resolves. Returns modified game state. */
+  /** DSL-based effect definition executed by EffectExecutor (preferred over legacy effect) */
+  effects?: import('./effects.js').EffectDSL[];
+  /** Optional legacy effect function applied when attack resolves. Used when effects DSL is not defined. */
   effect?: (state: GameState, attacker: PokemonInPlay, target: PokemonInPlay) => GameState;
   /** Human-readable description of attack effect */
   description: string;
 }
 
 /**
+ * Target for an ability effect (e.g. which opponent Pokemon to hit).
+ */
+export interface AbilityTarget {
+  player: 0 | 1;
+  zone: 'active' | 'bench';
+  benchIndex?: number;
+}
+
+/**
  * Ability definition for Pokemon cards.
  * Abilities can be triggered at various times (Ability, Poke-Power, Poke-Body).
+ * Effects are defined using the EffectDSL system from effects.ts.
  */
 export interface Ability {
   /** Ability name */
@@ -168,11 +180,13 @@ export interface Ability {
   /** Type of ability affecting when it can be used */
   type: 'ability' | 'pokebody' | 'pokepower';
   /** When this ability triggers: 'onEvolve' for evolution triggers, 'oncePerTurn' for active abilities, 'passive' for static effects */
-  trigger: 'onEvolve' | 'oncePerTurn' | 'passive' | 'onPlay';
-  /** Function implementing the ability effect. Returns modified game state. */
-  effect: (state: GameState, pokemon: PokemonInPlay, playerIndex: number) => GameState;
+  trigger: 'onEvolve' | 'oncePerTurn' | 'passive';
+  /** DSL-based effect definition executed by EffectExecutor */
+  effects: import('./effects.js').EffectDSL[];
   /** Human-readable description */
   description: string;
+  /** For targeted abilities (e.g. Cursed Blast), returns possible targets */
+  getTargets?: (state: GameState, pokemon: PokemonInPlay, playerIndex: number) => AbilityTarget[];
 }
 
 /**
@@ -215,8 +229,10 @@ export interface TrainerCard extends Card {
   cardType: CardType.Trainer;
   /** Subtype of Trainer card (Item, Supporter, Tool, Stadium) */
   trainerType: TrainerType;
-  /** Function implementing the Trainer's effect. Returns modified game state. */
-  effect: (state: GameState, player: number) => GameState;
+  /** DSL-based effect definition executed by EffectExecutor (preferred over legacy effect) */
+  effects?: import('./effects.js').EffectDSL[];
+  /** Legacy function implementing the Trainer's effect. Used when effects DSL is not defined. */
+  effect?: (state: GameState, player: number) => GameState;
 }
 
 /**
@@ -353,6 +369,8 @@ export interface GameState {
   gameLog: string[];
   /** Active game flags (temporary rule modifications like "opponent can't attack") */
   gameFlags: GameFlag[];
+  /** Pending energy attachments from abilities like Infernal Reign (player chooses targets) */
+  pendingAttachments?: { cards: Card[], playerIndex: 0 | 1 };
 }
 
 /**

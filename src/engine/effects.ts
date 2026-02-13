@@ -31,6 +31,7 @@ import {
   DamageShield,
   GameFlag,
   EnergySubtype,
+  AbilityTarget,
 } from './types.js';
 
 // ============================================================================
@@ -101,7 +102,7 @@ export type EffectDSL =
 
   // Drawing and Searching
   | { effect: 'draw'; player: 'own' | 'opponent'; count: ValueSource }
-  | { effect: 'search'; player: 'own' | 'opponent'; from: 'deck' | 'discard'; filter?: CardFilter; count: ValueSource; destination: 'hand' | 'bench' | 'topOfDeck' | 'field' }
+  | { effect: 'search'; player: 'own' | 'opponent'; from: 'deck' | 'discard'; filter?: CardFilter; count: ValueSource; destination: 'hand' | 'bench' | 'topOfDeck' | 'deck' }
   | { effect: 'mill'; player: 'own' | 'opponent'; count: ValueSource }  // discard from top of deck
   | { effect: 'shuffle'; player: 'own' | 'opponent'; zone: 'deck' | 'hand' }
 
@@ -141,6 +142,15 @@ export type EffectDSL =
   | { effect: 'lookAtCards'; player: 'own' | 'opponent'; from: 'deck' | 'prizes'; count: ValueSource }
   | { effect: 'revealCards'; player: 'own' | 'opponent'; from: 'hand' | 'deck'; count: ValueSource }
 
+  // Multi-step Effects
+  | { effect: 'searchAndAttach'; player: 'own' | 'opponent'; from: 'deck' | 'discard'; filter: CardFilter; count: ValueSource }
+
+  // Hand/Deck Management
+  | { effect: 'shuffleHandIntoDeck'; player: 'own' | 'opponent' }
+
+  // Game Flags
+  | { effect: 'addGameFlag'; flag: string; duration: 'nextTurn' | 'thisAttack' }
+
   // Control Flow
   | { effect: 'conditional'; condition: Condition; then: EffectDSL[]; else?: EffectDSL[] }
   | { effect: 'choice'; options: { label?: string; effects: EffectDSL[] }[] }  // player chooses one path
@@ -168,6 +178,8 @@ export type Condition =
   | { check: 'damageOnPokemon'; target: Target; comparison: '>=' | '<=' | '=='; value: number }
   | { check: 'hasAbility'; target: Target }
   | { check: 'isRuleBox'; target: Target }
+  | { check: 'hasPokemonInPlay'; player: 'own' | 'opponent'; filter: CardFilter }
+  | { check: 'turnNumber'; comparison: '>=' | '<=' | '=='; value: number }
   | { check: 'and'; conditions: Condition[] }
   | { check: 'or'; conditions: Condition[] };
 
@@ -182,7 +194,7 @@ export type Condition =
 export type CardFilter =
   | { filter: 'type'; cardType: CardType }
   | { filter: 'trainerType'; trainerType: TrainerType }
-  | { filter: 'energyType'; energyType: EnergyType }
+  | { filter: 'energyType'; energyType: EnergyType; energySubtype?: EnergySubtype }
   | { filter: 'pokemonType'; energyType: EnergyType }
   | { filter: 'stage'; stage: PokemonStage }
   | { filter: 'name'; name: string }
@@ -192,6 +204,7 @@ export type CardFilter =
   | { filter: 'isRuleBox' }
   | { filter: 'hpBelow'; maxHp: number }
   | { filter: 'hpAbove'; minHp: number }
+  | { filter: 'basicEnergy' }
   | { filter: 'and'; filters: CardFilter[] }
   | { filter: 'or'; filters: CardFilter[] }
   | { filter: 'not'; inner: CardFilter };
@@ -261,6 +274,90 @@ export class EffectExecutor {
     }
 
     return newState;
+  }
+
+  /**
+   * Execute an ability's DSL effects with proper context setup.
+   * Bridges between engine's ability invocation and DSL execution.
+   */
+  static executeAbility(
+    state: GameState,
+    effects: EffectDSL[],
+    sourcePokemon: PokemonInPlay,
+    playerIndex: 0 | 1,
+    abilityTarget?: AbilityTarget
+  ): GameState {
+    const defendingPlayer = (1 - playerIndex) as 0 | 1;
+    let defendingPokemon = state.players[defendingPlayer].active;
+    if (abilityTarget) {
+      if (abilityTarget.zone === 'active') {
+        defendingPokemon = state.players[abilityTarget.player].active;
+      } else {
+        defendingPokemon = state.players[abilityTarget.player].bench[abilityTarget.benchIndex ?? 0];
+      }
+    }
+    // Use a dummy defending pokemon if none exists (e.g. opponent has no active)
+    if (!defendingPokemon) {
+      defendingPokemon = sourcePokemon;
+    }
+    const context: EffectExecutionContext = {
+      attackingPlayer: playerIndex,
+      defendingPlayer,
+      attackingPokemon: sourcePokemon,
+      defendingPokemon,
+      rng: () => Math.random(),
+      userChoices: abilityTarget ? { abilityTarget } : undefined,
+    };
+    return this.execute(state, effects, context);
+  }
+
+  /**
+   * Execute a trainer card's DSL effects with proper context setup.
+   * Bridges between engine's trainer invocation and DSL execution.
+   */
+  static executeTrainer(
+    state: GameState,
+    effects: EffectDSL[],
+    playerIndex: 0 | 1
+  ): GameState {
+    const defendingPlayer = (1 - playerIndex) as 0 | 1;
+    const attackingPokemon = state.players[playerIndex].active;
+    const defendingPokemon = state.players[defendingPlayer].active;
+    // Use dummy pokemon if no active (trainers don't always need them)
+    const dummyPokemon: PokemonInPlay = {
+      card: { id: 'dummy', name: 'Dummy', cardType: CardType.Pokemon, imageUrl: '', cardNumber: '', hp: 1, stage: PokemonStage.Basic, type: EnergyType.Colorless, retreatCost: 0, attacks: [], prizeCards: 1, isRulebox: false } as any,
+      currentHp: 1, attachedEnergy: [], statusConditions: [], damageCounters: 0, attachedTools: [], isEvolved: false, turnPlayed: 0, damageShields: [], cannotRetreat: false,
+    };
+    const context: EffectExecutionContext = {
+      attackingPlayer: playerIndex,
+      defendingPlayer,
+      attackingPokemon: attackingPokemon || dummyPokemon,
+      defendingPokemon: defendingPokemon || dummyPokemon,
+      rng: () => Math.random(),
+    };
+    return this.execute(state, effects, context);
+  }
+
+  /**
+   * Execute an attack's DSL effects with proper context setup.
+   * Bridges between engine's attack invocation and DSL execution.
+   */
+  static executeAttack(
+    state: GameState,
+    effects: EffectDSL[],
+    attacker: PokemonInPlay,
+    defender: PokemonInPlay,
+    playerIndex: 0 | 1
+  ): GameState {
+    const defendingPlayer = (1 - playerIndex) as 0 | 1;
+    const context: EffectExecutionContext = {
+      attackingPlayer: playerIndex,
+      defendingPlayer,
+      attackingPokemon: attacker,
+      defendingPokemon: defender,
+      rng: () => Math.random(),
+    };
+    return this.execute(state, effects, context);
   }
 
   /**
@@ -397,7 +494,7 @@ export class EffectExecutor {
       case 'addEnergy': {
         const targets = this.resolveTarget(state, effect.target, context);
         const count = this.resolveValue(state, effect.count, context);
-        return this.addEnergyToTarget(state, targets, effect.energyType, count, effect.from);
+        return this.addEnergyToTarget(state, targets, effect.energyType, count, effect.from, context.attackingPlayer);
       }
 
       case 'removeEnergy': {
@@ -486,6 +583,17 @@ export class EffectExecutor {
         return state;
       }
 
+      // ---- Hand/Deck Management ----
+      case 'shuffleHandIntoDeck': {
+        const player = effect.player === 'own' ? context.attackingPlayer : context.defendingPlayer;
+        return this.shuffleHandIntoDeck(state, player);
+      }
+
+      // ---- Game Flags ----
+      case 'addGameFlag': {
+        return this.addGameFlag(state, effect.flag, effect.duration);
+      }
+
       // ---- Control Flow ----
       case 'conditional': {
         const condition = this.checkCondition(state, effect.condition, context);
@@ -510,6 +618,25 @@ export class EffectExecutor {
         const times = this.resolveValue(state, effect.times, context);
         for (let i = 0; i < times; i++) {
           newState = this.execute(newState, effect.effects, context);
+        }
+        return newState;
+      }
+
+      case 'searchAndAttach': {
+        const playerIdx = effect.player === 'own' ? context.attackingPlayer : context.defendingPlayer;
+        const count = this.resolveValue(state, effect.count, context);
+        const newState = this.cloneGameState(state);
+        const playerState = newState.players[playerIdx];
+        const zone = effect.from === 'deck' ? playerState.deck : playerState.discard;
+        const found: Card[] = [];
+        for (let i = zone.length - 1; i >= 0 && found.length < count; i--) {
+          if (this.matchesFilter(zone[i], effect.filter)) {
+            found.push(zone[i]);
+            zone.splice(i, 1);
+          }
+        }
+        if (found.length > 0) {
+          newState.pendingAttachments = { cards: found, playerIndex: playerIdx };
         }
         return newState;
       }
@@ -811,6 +938,18 @@ export class EffectExecutor {
         return targets.some(t => t.card.isRulebox);
       }
 
+      case 'hasPokemonInPlay': {
+        const playerIdx = condition.player === 'own' ? context.attackingPlayer : context.defendingPlayer;
+        const playerState = state.players[playerIdx];
+        const allInPlay: PokemonInPlay[] = [];
+        if (playerState.active) allInPlay.push(playerState.active);
+        allInPlay.push(...playerState.bench);
+        return allInPlay.some(p => this.matchesFilter(p.card, condition.filter));
+      }
+
+      case 'turnNumber':
+        return this.compareValues(state.turnNumber, condition.value, condition.comparison);
+
       case 'and':
         return condition.conditions.every(c => this.checkCondition(state, c, context));
 
@@ -834,7 +973,10 @@ export class EffectExecutor {
         return card.cardType === CardType.Trainer && (card as TrainerCard).trainerType === filter.trainerType;
 
       case 'energyType':
-        return card.cardType === CardType.Energy && (card as EnergyCard).energyType === filter.energyType;
+        if (card.cardType !== CardType.Energy) return false;
+        if ((card as EnergyCard).energyType !== filter.energyType) return false;
+        if (filter.energySubtype && (card as EnergyCard).energySubtype !== filter.energySubtype) return false;
+        return true;
 
       case 'pokemonType':
         return card.cardType === CardType.Pokemon && (card as PokemonCard).type === filter.energyType;
@@ -843,7 +985,7 @@ export class EffectExecutor {
         return card.cardType === CardType.Pokemon && (card as PokemonCard).stage === filter.stage;
 
       case 'name':
-        return card.name === filter.name;
+        return card.name.includes(filter.name);
 
       case 'hasAbility':
         return card.cardType === CardType.Pokemon && (card as PokemonCard).ability !== undefined;
@@ -858,10 +1000,13 @@ export class EffectExecutor {
         return card.cardType === CardType.Pokemon && (card as PokemonCard).isRulebox;
 
       case 'hpBelow':
-        return card.cardType === CardType.Pokemon && (card as PokemonCard).hp < filter.maxHp;
+        return card.cardType === CardType.Pokemon && (card as PokemonCard).hp <= filter.maxHp;
 
       case 'hpAbove':
         return card.cardType === CardType.Pokemon && (card as PokemonCard).hp >= filter.minHp;
+
+      case 'basicEnergy':
+        return card.cardType === CardType.Energy && (card as EnergyCard).energySubtype === EnergySubtype.Basic;
 
       case 'and':
         return filter.filters.every(f => this.matchesFilter(card, f));
@@ -986,6 +1131,26 @@ export class EffectExecutor {
       playerState.hand.push(...matching);
     } else if (destination === 'topOfDeck') {
       playerState.deck.push(...matching);
+    } else if (destination === 'bench') {
+      for (const card of matching) {
+        if (card.cardType === CardType.Pokemon && playerState.bench.length < 5) {
+          const pokemon = card as PokemonCard;
+          playerState.bench.push({
+            card: pokemon,
+            currentHp: pokemon.hp,
+            attachedEnergy: [],
+            statusConditions: [],
+            damageCounters: 0,
+            attachedTools: [],
+            isEvolved: false,
+            turnPlayed: state.turnNumber,
+            damageShields: [],
+            cannotRetreat: false,
+          });
+        }
+      }
+    } else if (destination === 'deck') {
+      playerState.deck.push(...matching);
     }
 
     return newState;
@@ -1068,6 +1233,19 @@ export class EffectExecutor {
     return this.discardEnergyFromPokemon(state, targets, count);
   }
 
+  private static shuffleHandIntoDeck(state: GameState, player: 0 | 1): GameState {
+    const newState = this.cloneGameState(state);
+    const playerState = newState.players[player];
+    playerState.deck.push(...playerState.hand);
+    playerState.hand = [];
+    // Fisher-Yates shuffle
+    for (let i = playerState.deck.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [playerState.deck[i], playerState.deck[j]] = [playerState.deck[j], playerState.deck[i]];
+    }
+    return newState;
+  }
+
   private static discardEntireHand(state: GameState, player: 0 | 1): GameState {
     const newState = this.cloneGameState(state);
     const playerState = newState.players[player];
@@ -1145,9 +1323,9 @@ export class EffectExecutor {
     targets: PokemonInPlay[],
     energyType: EnergyType,
     count: number,
-    from: 'deck' | 'discard' | 'create'
+    from: 'deck' | 'discard' | 'create',
+    playerIndex: 0 | 1
   ): GameState {
-    // Simplified: create energy cards
     const newState = this.cloneGameState(state);
 
     for (const target of targets) {
@@ -1155,17 +1333,29 @@ export class EffectExecutor {
       if (!pokemon) continue;
 
       for (let i = 0; i < count; i++) {
-        const energy: EnergyCard = {
-          id: `energy-${Date.now()}-${i}`,
-          name: `${energyType} Energy`,
-          cardType: CardType.Energy,
-          imageUrl: '',
-          cardNumber: '',
-          energySubtype: EnergySubtype.Basic,
-          energyType,
-          provides: [energyType],
-        };
-        pokemon.attachedEnergy.push(energy);
+        if (from === 'create') {
+          const energy: EnergyCard = {
+            id: `energy-${Date.now()}-${i}`,
+            name: `${energyType} Energy`,
+            cardType: CardType.Energy,
+            imageUrl: '',
+            cardNumber: '',
+            energySubtype: EnergySubtype.Basic,
+            energyType,
+            provides: [energyType],
+          };
+          pokemon.attachedEnergy.push(energy);
+        } else {
+          const playerState = newState.players[playerIndex];
+          const zone = from === 'deck' ? playerState.deck : playerState.discard;
+          const idx = zone.findIndex(c =>
+            c.cardType === CardType.Energy && (c as EnergyCard).energyType === energyType
+          );
+          if (idx >= 0) {
+            const [card] = zone.splice(idx, 1);
+            pokemon.attachedEnergy.push(card as EnergyCard);
+          }
+        }
       }
     }
 

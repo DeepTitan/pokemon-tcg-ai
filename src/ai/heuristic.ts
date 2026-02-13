@@ -453,6 +453,25 @@ function scoreMainAction(state: GameState, action: Action): number {
       return 5;
     }
 
+    case ActionType.SelectTarget: {
+      // Scoring for pending energy attachments (from searchAndAttach)
+      const targetPokemon = action.payload.zone === 'active'
+        ? getPlayer(state).active
+        : getPlayer(state).bench[action.payload.benchIndex];
+      if (!targetPokemon) return 0;
+
+      let score = 10;
+      // Prefer attaching to Fire-type Pokemon (Charizard line wants energy)
+      if (targetPokemon.card.type === EnergyType.Fire) score += 30;
+      // Prefer Pokemon in the Charizard line
+      if (CHARIZARD_LINE.has(targetPokemon.card.name)) score += 40;
+      // Prefer active if it can attack
+      if (action.payload.zone === 'active') score += 10;
+      // Prefer Pokemon with fewer energy attached (spread if needed)
+      if (targetPokemon.attachedEnergy.length === 0) score += 20;
+      return score;
+    }
+
     case ActionType.Pass:
       return 0;
 

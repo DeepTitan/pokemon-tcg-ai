@@ -38,6 +38,7 @@ import {
   EncodedGameState,
   Zone,
 } from './types.js';
+import { EffectExecutor } from './effects.js';
 
 // ============================================================================
 // SEEDED RANDOM NUMBER GENERATOR
@@ -403,6 +404,26 @@ export class GameEngine {
     // Only generate actions if game is ongoing
     if (state.winner !== null) return actions;
 
+    // If pending attachments exist (from searchAndAttach), only offer target selection
+    if (state.pendingAttachments && state.pendingAttachments.cards.length > 0) {
+      const pendingPlayer = state.players[state.pendingAttachments.playerIndex];
+      if (pendingPlayer.active) {
+        actions.push({
+          type: ActionType.SelectTarget,
+          player: state.pendingAttachments.playerIndex,
+          payload: { zone: 'active' },
+        });
+      }
+      pendingPlayer.bench.forEach((_, i) => {
+        actions.push({
+          type: ActionType.SelectTarget,
+          player: state.pendingAttachments!.playerIndex,
+          payload: { zone: 'bench', benchIndex: i },
+        });
+      });
+      return actions;
+    }
+
     // Phase-dependent action generation
     if (state.phase === GamePhase.DrawPhase) {
       // Must transition to MainPhase after draw (already handled by startTurn)
@@ -507,7 +528,7 @@ export class GameEngine {
 
       for (const { pokemon, zone, index } of allInPlay) {
         if (pokemon.card.ability && pokemon.card.ability.trigger === 'oncePerTurn') {
-          if (!player.abilitiesUsedThisTurn.includes(pokemon.card.ability.name)) {
+          if (!player.abilitiesUsedThisTurn.includes(pokemon.card.ability.name) && !this.isAbilityBlocked(state, pokemon)) {
             actions.push({
               type: ActionType.UseAbility,
               player: state.currentPlayer,
@@ -606,6 +627,25 @@ export class GameEngine {
       case ActionType.Retreat:
         newState = this.retreat(newState, action.payload.benchIndex);
         break;
+      case ActionType.SelectTarget: {
+        if (!newState.pendingAttachments || newState.pendingAttachments.cards.length === 0) break;
+        const { cards, playerIndex } = newState.pendingAttachments;
+        const card = cards[0];
+        const remaining = cards.slice(1);
+        const targetPlayer = newState.players[playerIndex];
+        const targetPokemon = action.payload.zone === 'active'
+          ? targetPlayer.active
+          : targetPlayer.bench[action.payload.benchIndex];
+        if (targetPokemon && card.cardType === CardType.Energy) {
+          targetPokemon.attachedEnergy.push(card as EnergyCard);
+          newState = {
+            ...newState,
+            pendingAttachments: remaining.length > 0 ? { cards: remaining, playerIndex } : undefined,
+            gameLog: [...newState.gameLog, `Energy attached to ${targetPokemon.card.name}.`],
+          };
+        }
+        break;
+      }
       case ActionType.Pass:
         // Transition phase
         if (newState.phase === GamePhase.MainPhase) {
@@ -725,12 +765,12 @@ export class GameEngine {
         }
 
         // Trigger on-evolve abilities
-        if (pokemon.ability && pokemon.ability.trigger === 'onEvolve') {
+        if (pokemon.ability && pokemon.ability.trigger === 'onEvolve' && !this.isAbilityBlocked(newState, evolved)) {
           newState = {
             ...newState,
             gameLog: [...newState.gameLog, `${pokemon.name}'s ${pokemon.ability.name} activates!`],
           };
-          newState = pokemon.ability.effect(newState, evolved, state.currentPlayer);
+          newState = EffectExecutor.executeAbility(newState, pokemon.ability.effects, evolved, state.currentPlayer as 0 | 1);
         }
 
         return newState;
@@ -820,8 +860,10 @@ export class GameEngine {
 
     newState.players[state.currentPlayer] = newPlayer;
 
-    // Apply trainer effect (if it has one)
-    if (trainer.effect) {
+    // Apply trainer effect: DSL takes priority, fallback to legacy function
+    if (trainer.effects) {
+      newState = EffectExecutor.executeTrainer(newState, trainer.effects, state.currentPlayer as 0 | 1);
+    } else if (trainer.effect) {
       newState = trainer.effect(newState, state.currentPlayer);
     }
 
@@ -861,8 +903,10 @@ export class GameEngine {
       damage
     );
 
-    // Apply attack effect if present
-    if (attack.effect) {
+    // Apply attack effect: DSL takes priority, fallback to legacy function
+    if (attack.effects) {
+      newState = EffectExecutor.executeAttack(newState, attack.effects, attacker, defender, state.currentPlayer as 0 | 1);
+    } else if (attack.effect) {
       newState = attack.effect(newState, attacker, defender);
     }
 
@@ -912,6 +956,21 @@ export class GameEngine {
   }
 
   /**
+   * Check if a Pokemon's ability is blocked by a passive ability (e.g. Mischievous Lock).
+   */
+  private static isAbilityBlocked(state: GameState, pokemon: PokemonInPlay): boolean {
+    for (let p = 0; p < 2; p++) {
+      const active = state.players[p].active;
+      if (active?.card.ability?.name === 'Mischievous Lock' && active.card.ability.trigger === 'passive') {
+        if (pokemon.card.stage === PokemonStage.Basic && pokemon.card.ability?.name !== 'Mischievous Lock') {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
    * Use a Pokemon's ability.
    */
   private static useAbility(state: GameState, zone: 'active' | 'bench', benchIndex?: number): GameState {
@@ -922,6 +981,7 @@ export class GameEngine {
     const ability = pokemon.card.ability;
     if (ability.trigger !== 'oncePerTurn') return state;
     if (player.abilitiesUsedThisTurn.includes(ability.name)) return state;
+    if (this.isAbilityBlocked(state, pokemon)) return state;
 
     // Mark ability as used
     let newState = {
@@ -934,8 +994,8 @@ export class GameEngine {
     };
     newState.players[state.currentPlayer] = newPlayer;
 
-    // Execute ability effect
-    newState = ability.effect(newState, pokemon, state.currentPlayer);
+    // Execute ability effect via DSL
+    newState = EffectExecutor.executeAbility(newState, ability.effects, pokemon, state.currentPlayer as 0 | 1);
 
     // Check for knockouts (some abilities cause self-KO like Dusknoir)
     newState = this.checkKnockouts(newState);

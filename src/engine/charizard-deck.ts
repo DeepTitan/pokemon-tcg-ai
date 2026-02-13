@@ -26,10 +26,12 @@ import {
   GameState,
   Attack,
   Ability,
+  AbilityTarget,
 } from './types.js';
 
 import {
   EffectDSL,
+  EffectExecutor,
   Target,
   ValueSource,
   CardFilter,
@@ -75,30 +77,6 @@ function updatePlayer(state: GameState, playerIndex: number, player: PlayerState
   return { ...state, players };
 }
 
-/** Shuffle an array in place (Fisher-Yates) */
-function shuffleArray<T>(arr: T[]): T[] {
-  for (let i = arr.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [arr[i], arr[j]] = [arr[j], arr[i]];
-  }
-  return arr;
-}
-
-/** Search a deck for cards matching a filter, remove them, return [found, remainingDeck] */
-function searchDeck(
-  deck: Card[],
-  filter: (card: Card) => boolean,
-  count: number
-): [Card[], Card[]] {
-  const found: Card[] = [];
-  const remaining = [...deck];
-  for (let i = remaining.length - 1; i >= 0 && found.length < count; i--) {
-    if (filter(remaining[i])) {
-      found.push(...remaining.splice(i, 1));
-    }
-  }
-  return [found, remaining];
-}
 
 // ============================================================================
 // TYPE HELPERS
@@ -162,26 +140,16 @@ const NOCTOWL: PokemonCard = {
     trigger: 'onEvolve',
     description:
       'When this Pokemon evolves, if you have a Tera Pokemon in play, you may search your deck for up to 2 Trainer cards and put them into your hand. Then, shuffle your deck.',
-    effect: (state, pokemon, playerIndex) => {
-      const player = clonePlayer(state, playerIndex);
-      // Check for Tera Pokemon in play (Terapagos ex counts)
-      const allInPlay = [player.active, ...player.bench].filter(Boolean) as PokemonInPlay[];
-      const hasTera = allInPlay.some(p => p.card.name.includes('Terapagos'));
-      if (!hasTera) return state;
-      // Search deck for up to 2 Trainer cards
-      const [found, remaining] = searchDeck(
-        player.deck,
-        (c) => c.cardType === CardType.Trainer,
-        2
-      );
-      player.deck = shuffleArray(remaining);
-      player.hand.push(...found);
-      let newState = updatePlayer(state, playerIndex, player);
-      if (found.length > 0) {
-        newState = { ...newState, gameLog: [...newState.gameLog, `${pokemon.card.name}'s Jewel Seeker finds ${found.length} Trainer card(s).`] };
-      }
-      return newState;
-    },
+    effects: [
+      {
+        effect: 'conditional',
+        condition: { check: 'hasPokemonInPlay', player: 'own', filter: { filter: 'name', name: 'Terapagos' } },
+        then: [
+          { effect: 'search', player: 'own', from: 'deck', filter: { filter: 'type', cardType: CardType.Trainer }, count: { type: 'constant', value: 2 }, destination: 'hand' },
+          { effect: 'shuffle', player: 'own', zone: 'deck' },
+        ],
+      },
+    ],
   },
   attacks: [
     {
@@ -283,32 +251,10 @@ const CHARIZARD_EX: PokemonCard = {
     trigger: 'onEvolve',
     description:
       'When this Pokemon evolves, search your deck for up to 3 basic Fire Energy cards and attach them to your Pokemon in any way you like. Then, shuffle your deck.',
-    effect: (state, pokemon, playerIndex) => {
-      const player = clonePlayer(state, playerIndex);
-      // Search deck for up to 3 basic Fire Energy
-      const [found, remaining] = searchDeck(
-        player.deck,
-        (c) => c.cardType === CardType.Energy && (c as EnergyCard).energyType === EnergyType.Fire && (c as EnergyCard).energySubtype === EnergySubtype.Basic,
-        3
-      );
-      player.deck = shuffleArray(remaining);
-      // Distribute energy: prioritize active, then bench Pokemon that need it
-      const allInPlay: PokemonInPlay[] = [];
-      if (player.active) allInPlay.push(player.active);
-      allInPlay.push(...player.bench);
-      for (const energy of found) {
-        // Prefer Pokemon that need fire energy for attacks
-        const target = allInPlay.find(p => p.card.type === EnergyType.Fire) || allInPlay[0];
-        if (target) {
-          target.attachedEnergy.push(energy as EnergyCard);
-        }
-      }
-      let newState = updatePlayer(state, playerIndex, player);
-      if (found.length > 0) {
-        newState = { ...newState, gameLog: [...newState.gameLog, `Charizard ex's Infernal Reign attaches ${found.length} Fire Energy!`] };
-      }
-      return newState;
-    },
+    effects: [
+      { effect: 'searchAndAttach', player: 'own', from: 'deck', filter: { filter: 'energyType', energyType: EnergyType.Fire, energySubtype: EnergySubtype.Basic }, count: { type: 'constant', value: 3 } },
+      { effect: 'shuffle', player: 'own', zone: 'deck' },
+    ],
   },
   attacks: [
     {
@@ -394,46 +340,18 @@ const DUSKNOIR: PokemonCard = {
     trigger: 'oncePerTurn',
     description:
       'Once during your turn, you may put 13 damage counters on 1 of your opponent\'s Pokemon, then your Active Pokemon is Knocked Out.',
-    effect: (state, _pokemon, playerIndex) => {
-      const opponentIndex = playerIndex === 0 ? 1 : 0;
-      const player = clonePlayer(state, playerIndex);
-      const opponent = clonePlayer(state, opponentIndex);
-      // Put 130 damage (13 damage counters) on the best opponent Pokemon target
-      // Pick the one where 130 damage gets a KO, preferring higher prize value; else pick highest HP
-      const targets: { pokemon: PokemonInPlay; zone: 'active' | 'bench'; index: number }[] = [];
-      if (opponent.active) targets.push({ pokemon: opponent.active, zone: 'active', index: -1 });
-      opponent.bench.forEach((p, i) => targets.push({ pokemon: p, zone: 'bench', index: i }));
-      if (targets.length > 0) {
-        // Prefer KO targets, then by prize value, then by HP remaining
-        const bestTarget = targets.reduce((best, cur) => {
-          const curKO = cur.pokemon.currentHp <= 130;
-          const bestKO = best.pokemon.currentHp <= 130;
-          if (curKO && !bestKO) return cur;
-          if (!curKO && bestKO) return best;
-          if (curKO && bestKO) {
-            // Both KO — prefer higher prize value
-            const curPrize = cur.pokemon.card.prizeCards || 1;
-            const bestPrize = best.pokemon.card.prizeCards || 1;
-            if (curPrize !== bestPrize) return curPrize > bestPrize ? cur : best;
-          }
-          // Prefer targeting Pokemon with highest current HP (most value from 130 damage)
-          return cur.pokemon.currentHp > best.pokemon.currentHp ? cur : best;
-        });
-        const targetPokemon = bestTarget.zone === 'active'
-          ? opponent.active!
-          : opponent.bench[bestTarget.index];
-        targetPokemon.currentHp = Math.max(0, targetPokemon.currentHp - 130);
-        // KO own active Pokemon
-        if (player.active) {
-          player.active = { ...player.active, currentHp: 0 };
-        }
-        let newState = { ...state };
-        newState.players[playerIndex] = player;
-        newState.players[opponentIndex] = opponent;
-        newState = { ...newState, gameLog: [...newState.gameLog, `Dusknoir's Cursed Blast places 130 damage on ${bestTarget.pokemon.card.name}! Own active is knocked out.`] };
-        return newState;
-      }
-      return state;
+    effects: [
+      { effect: 'sequence', effects: [
+        { effect: 'damage', target: { type: 'opponent' }, amount: { type: 'constant', value: 130 } },
+        { effect: 'setHp', target: { type: 'active', player: 'own' }, amount: { type: 'constant', value: 0 } },
+      ]},
+    ],
+    getTargets: (state: GameState, _pokemon: PokemonInPlay, playerIndex: number) => {
+      const opp = (1 - playerIndex) as 0 | 1;
+      const targets: AbilityTarget[] = [];
+      if (state.players[opp].active) targets.push({ player: opp, zone: 'active' });
+      state.players[opp].bench.forEach((_, i) => targets.push({ player: opp, zone: 'bench', benchIndex: i }));
+      return targets;
     },
   },
   attacks: [
@@ -465,26 +383,19 @@ const FAN_ROTOM: PokemonCard = {
   ability: {
     name: 'Fan Call',
     type: 'ability',
-    trigger: 'onPlay',
+    trigger: 'oncePerTurn',
     description:
-      'When you play this Pokemon from your hand onto your Bench during your first turn, you may search your deck for up to 3 Pokemon with 100 HP or less that are Colorless and put them into your hand. Then, shuffle your deck. (You can\'t use more than 1 Fan Call Ability during your turn.)',
-    effect: (state, _pokemon, playerIndex) => {
-      // Only works on first turn
-      if (state.turnNumber > 2) return state;
-      const player = clonePlayer(state, playerIndex);
-      const [found, remaining] = searchDeck(
-        player.deck,
-        (c) => c.cardType === CardType.Pokemon && (c as PokemonCard).hp <= 100 && (c as PokemonCard).type === EnergyType.Colorless,
-        3
-      );
-      player.deck = shuffleArray(remaining);
-      player.hand.push(...found);
-      let newState = updatePlayer(state, playerIndex, player);
-      if (found.length > 0) {
-        newState = { ...newState, gameLog: [...newState.gameLog, `Fan Rotom's Fan Call finds ${found.length} Pokemon!`] };
-      }
-      return newState;
-    },
+      'Once during your first turn, you may search your deck for up to 3 Colorless Pokemon with 100 HP or less, reveal them, and put them into your hand. Then, shuffle your deck.',
+    effects: [
+      {
+        effect: 'conditional',
+        condition: { check: 'turnNumber', comparison: '<=', value: 2 },
+        then: [
+          { effect: 'search', player: 'own', from: 'deck', filter: { filter: 'and', filters: [{ filter: 'type', cardType: CardType.Pokemon }, { filter: 'hpBelow', maxHp: 100 }, { filter: 'pokemonType', energyType: EnergyType.Colorless }] }, count: { type: 'constant', value: 3 }, destination: 'hand' },
+          { effect: 'shuffle', player: 'own', zone: 'deck' },
+        ],
+      },
+    ],
   },
   attacks: [
     {
@@ -598,34 +509,10 @@ const PIDGEOT_EX: PokemonCard = {
     trigger: 'oncePerTurn',
     description:
       'Once during your turn, you may search your deck for any 1 card, reveal it, and put it into your hand. Then, shuffle your deck.',
-    effect: (state, _pokemon, playerIndex) => {
-      const player = clonePlayer(state, playerIndex);
-      if (player.deck.length === 0) return state;
-      // AI heuristic: search for most needed card
-      // Priority: energy if active needs it, evolution cards, then trainers
-      let foundIndex = -1;
-      const active = player.active;
-      // 1. Look for fire energy if active needs it
-      if (active && active.card.type === EnergyType.Fire) {
-        foundIndex = player.deck.findIndex(c => c.cardType === CardType.Energy && (c as EnergyCard).energyType === EnergyType.Fire);
-      }
-      // 2. Look for Rare Candy or evolution cards
-      if (foundIndex < 0) {
-        foundIndex = player.deck.findIndex(c => c.cardType === CardType.Trainer && c.name === 'Rare Candy');
-      }
-      // 3. Look for any Supporter
-      if (foundIndex < 0) {
-        foundIndex = player.deck.findIndex(c => c.cardType === CardType.Trainer && (c as TrainerCard).trainerType === TrainerType.Supporter);
-      }
-      // 4. Just take the first card
-      if (foundIndex < 0) foundIndex = 0;
-      const found = player.deck.splice(foundIndex, 1);
-      player.deck = shuffleArray(player.deck);
-      player.hand.push(...found);
-      let newState = updatePlayer(state, playerIndex, player);
-      newState = { ...newState, gameLog: [...newState.gameLog, `Pidgeot ex's Quick Search finds ${found[0]?.name || 'a card'}.`] };
-      return newState;
-    },
+    effects: [
+      { effect: 'search', player: 'own', from: 'deck', count: { type: 'constant', value: 1 }, destination: 'hand' },
+      { effect: 'shuffle', player: 'own', zone: 'deck' },
+    ],
   },
   attacks: [
     {
@@ -656,10 +543,7 @@ const KLEFKI: PokemonCard = {
     trigger: 'passive',
     description:
       'As long as this Pokemon is your Active Pokemon, the Abilities of all Basic Pokemon (both yours and your opponent\'s) except Mischievous Lock are nullified.',
-    effect: (state, _pokemon, _playerIndex) => {
-      // Passive ability - checked during ability resolution
-      return state;
-    },
+    effects: [{ effect: 'noop' }],
   },
   attacks: [
     {
@@ -690,15 +574,9 @@ const FEZANDIPITI_EX: PokemonCard = {
     trigger: 'oncePerTurn',
     description:
       'Once during your turn, if your Active Pokemon was Knocked Out by damage from an opponent\'s attack during their last turn, you may draw 3 cards. (You can\'t use more than 1 Flip the Script Ability during your turn.)',
-    effect: (state, _pokemon, playerIndex) => {
-      // Simplified: draw 3 cards (condition check would need KO tracking)
-      const player = clonePlayer(state, playerIndex);
-      const drawn = player.deck.splice(0, Math.min(3, player.deck.length));
-      player.hand.push(...drawn);
-      let newState = updatePlayer(state, playerIndex, player);
-      newState = { ...newState, gameLog: [...newState.gameLog, `Fezandipiti ex's Flip the Script draws ${drawn.length} cards.`] };
-      return newState;
-    },
+    effects: [
+      { effect: 'draw', player: 'own', count: { type: 'constant', value: 3 } },
+    ],
   },
   attacks: [
     {
@@ -706,29 +584,9 @@ const FEZANDIPITI_EX: PokemonCard = {
       cost: [EnergyType.Colorless, EnergyType.Colorless, EnergyType.Colorless],
       damage: 0,
       description: 'This attack does 100 damage to 1 of your opponent\'s Pokemon.',
-      effect: (state, _attacker, _target) => {
-        // Deal 100 damage to opponent's Pokemon with highest HP (simplification: player chooses)
-        const opponentIdx = state.currentPlayer === 0 ? 1 : 0;
-        const opponent = state.players[opponentIdx];
-        // Collect all opponent Pokemon (active + bench)
-        const targets: { zone: 'active' | 'bench'; index: number; pokemon: PokemonInPlay }[] = [];
-        if (opponent.active) targets.push({ zone: 'active', index: -1, pokemon: opponent.active });
-        opponent.bench.forEach((p, i) => targets.push({ zone: 'bench', index: i, pokemon: p }));
-        if (targets.length === 0) return state;
-        // Pick the target with the most current HP (prioritize bench, then active)
-        const bestTarget = targets.reduce((best, cur) =>
-          cur.pokemon.currentHp > best.pokemon.currentHp ? cur : best
-        );
-        // Apply 100 damage
-        const newOpponent = clonePlayer(state, opponentIdx);
-        const targetPokemon = bestTarget.zone === 'active'
-          ? newOpponent.active!
-          : newOpponent.bench[bestTarget.index];
-        targetPokemon.currentHp = Math.max(0, targetPokemon.currentHp - 100);
-        let newState = updatePlayer(state, opponentIdx, newOpponent);
-        newState = { ...newState, gameLog: [...newState.gameLog, `Cruel Arrow deals 100 damage to ${bestTarget.pokemon.card.name}!`] };
-        return newState;
-      },
+      effects: [
+        { effect: 'damage', target: { type: 'anyPokemon', player: 'opponent' }, amount: { type: 'constant', value: 100 } },
+      ],
     },
   ],
 };
@@ -744,21 +602,12 @@ const DAWN: TrainerCard = {
   cardNumber: 'PFL 87',
   imageUrl: 'https://images.pokemontcg.io/me2/87_hires.png',
   trainerType: TrainerType.Supporter,
-  effect: (state, playerIndex) => {
-    const player = clonePlayer(state, playerIndex);
-    // Search deck for 1 Basic, 1 Stage 1, 1 Stage 2
-    const [basics, deck1] = searchDeck(player.deck, (c) => c.cardType === CardType.Pokemon && (c as PokemonCard).stage === PokemonStage.Basic, 1);
-    const [stage1s, deck2] = searchDeck(deck1, (c) => c.cardType === CardType.Pokemon && (c as PokemonCard).stage === PokemonStage.Stage1, 1);
-    const [stage2s, deck3] = searchDeck(deck2, (c) => c.cardType === CardType.Pokemon && ((c as PokemonCard).stage === PokemonStage.Stage2 || (c as PokemonCard).stage === PokemonStage.ex), 1);
-    player.deck = shuffleArray(deck3);
-    const found = [...basics, ...stage1s, ...stage2s];
-    player.hand.push(...found);
-    let newState = updatePlayer(state, playerIndex, player);
-    if (found.length > 0) {
-      newState = { ...newState, gameLog: [...newState.gameLog, `Dawn searches for ${found.map(c => c.name).join(', ')}.`] };
-    }
-    return newState;
-  },
+  effects: [
+    { effect: 'search', player: 'own', from: 'deck', filter: { filter: 'stage', stage: PokemonStage.Basic }, count: { type: 'constant', value: 1 }, destination: 'hand' },
+    { effect: 'search', player: 'own', from: 'deck', filter: { filter: 'stage', stage: PokemonStage.Stage1 }, count: { type: 'constant', value: 1 }, destination: 'hand' },
+    { effect: 'search', player: 'own', from: 'deck', filter: { filter: 'or', filters: [{ filter: 'stage', stage: PokemonStage.Stage2 }, { filter: 'stage', stage: PokemonStage.ex }] }, count: { type: 'constant', value: 1 }, destination: 'hand' },
+    { effect: 'shuffle', player: 'own', zone: 'deck' },
+  ],
 };
 
 const IONO: TrainerCard = {
@@ -768,29 +617,12 @@ const IONO: TrainerCard = {
   cardNumber: 'PAL 185',
   imageUrl: 'https://images.pokemontcg.io/sv2/185.png',
   trainerType: TrainerType.Supporter,
-  effect: (state, playerIndex) => {
-    const opponentIndex = playerIndex === 0 ? 1 : 0;
-    const player = clonePlayer(state, playerIndex);
-    const opponent = clonePlayer(state, opponentIndex);
-    // Both players shuffle hand into deck, then draw cards equal to remaining prizes
-    player.deck.push(...player.hand);
-    player.hand = [];
-    player.deck = shuffleArray(player.deck);
-    const playerDraw = Math.min(player.prizeCardsRemaining, player.deck.length);
-    player.hand = player.deck.splice(0, playerDraw);
-
-    opponent.deck.push(...opponent.hand);
-    opponent.hand = [];
-    opponent.deck = shuffleArray(opponent.deck);
-    const opponentDraw = Math.min(opponent.prizeCardsRemaining, opponent.deck.length);
-    opponent.hand = opponent.deck.splice(0, opponentDraw);
-
-    let newState = { ...state };
-    newState.players[playerIndex] = player;
-    newState.players[opponentIndex] = opponent;
-    newState = { ...newState, gameLog: [...newState.gameLog, `Iono! Both players shuffle hands and draw by prizes. P${playerIndex} draws ${playerDraw}, P${opponentIndex} draws ${opponentDraw}.`] };
-    return newState;
-  },
+  effects: [
+    { effect: 'shuffleHandIntoDeck', player: 'own' },
+    { effect: 'draw', player: 'own', count: { type: 'countPrizeCards', player: 'own' } },
+    { effect: 'shuffleHandIntoDeck', player: 'opponent' },
+    { effect: 'draw', player: 'opponent', count: { type: 'countPrizeCards', player: 'opponent' } },
+  ],
 };
 
 const BOSSS_ORDERS: TrainerCard = {
@@ -798,28 +630,11 @@ const BOSSS_ORDERS: TrainerCard = {
   name: 'Boss\'s Orders',
   cardType: CardType.Trainer,
   cardNumber: 'PAL 172',
-  imageUrl: 'https://images.pokemontcg.io/sv2/172.png', // Paldea Evolved Boss's Orders
+  imageUrl: 'https://images.pokemontcg.io/sv2/172.png',
   trainerType: TrainerType.Supporter,
-  effect: (state, playerIndex) => {
-    const opponentIndex = playerIndex === 0 ? 1 : 0;
-    const opponent = clonePlayer(state, opponentIndex);
-    if (!opponent.active || opponent.bench.length === 0) return state;
-    // AI heuristic: pull weakest bench Pokemon to active (easiest KO)
-    let bestIdx = 0;
-    let lowestHp = Infinity;
-    for (let i = 0; i < opponent.bench.length; i++) {
-      if (opponent.bench[i].currentHp < lowestHp) {
-        lowestHp = opponent.bench[i].currentHp;
-        bestIdx = i;
-      }
-    }
-    const oldActive = opponent.active;
-    opponent.active = opponent.bench[bestIdx];
-    opponent.bench[bestIdx] = oldActive;
-    let newState = updatePlayer(state, opponentIndex, opponent);
-    newState = { ...newState, gameLog: [...newState.gameLog, `Boss's Orders forces ${opponent.active.card.name} to the active spot!`] };
-    return newState;
-  },
+  effects: [
+    { effect: 'forceSwitch', player: 'opponent' },
+  ],
 };
 
 const BRIAR: TrainerCard = {
@@ -829,20 +644,9 @@ const BRIAR: TrainerCard = {
   cardNumber: 'SCR 132',
   imageUrl: 'https://images.pokemontcg.io/sv7/132.png',
   trainerType: TrainerType.Supporter,
-  effect: (state, _playerIndex) => {
-    // Briar sets a flag: next KO by Tera Pokemon gives +1 prize
-    // Simplified: just add a game flag (actual prize bonus would need more tracking)
-    return {
-      ...state,
-      gameFlags: [...state.gameFlags, {
-        flag: 'briarExtraPrize',
-        duration: 'nextTurn' as const,
-        setOnTurn: state.turnNumber,
-        setByPlayer: state.currentPlayer,
-      }],
-      gameLog: [...state.gameLog, 'Briar is in effect! Next Tera Pokemon KO grants an extra prize.'],
-    };
-  },
+  effects: [
+    { effect: 'addGameFlag', flag: 'briarExtraPrize', duration: 'nextTurn' },
+  ],
 };
 
 const BUDDY_BUDDY_POFFIN: TrainerCard = {
@@ -852,39 +656,10 @@ const BUDDY_BUDDY_POFFIN: TrainerCard = {
   cardNumber: 'TEF 144',
   imageUrl: 'https://images.pokemontcg.io/sv5/144.png',
   trainerType: TrainerType.Item,
-  effect: (state, playerIndex) => {
-    const player = clonePlayer(state, playerIndex);
-    const benchSpace = 5 - player.bench.length;
-    if (benchSpace <= 0) return state;
-    // Search deck for up to 2 Basic Pokemon with 70 HP or less
-    const [found, remaining] = searchDeck(
-      player.deck,
-      (c) => c.cardType === CardType.Pokemon && (c as PokemonCard).stage === PokemonStage.Basic && (c as PokemonCard).hp <= 70,
-      Math.min(2, benchSpace)
-    );
-    player.deck = shuffleArray(remaining);
-    // Place found Pokemon on bench
-    for (const card of found) {
-      const pokemon = card as PokemonCard;
-      player.bench.push({
-        card: pokemon,
-        currentHp: pokemon.hp,
-        attachedEnergy: [],
-        statusConditions: [],
-        damageCounters: 0,
-        attachedTools: [],
-        isEvolved: false,
-        turnPlayed: state.turnNumber,
-        damageShields: [],
-        cannotRetreat: false,
-      });
-    }
-    let newState = updatePlayer(state, playerIndex, player);
-    if (found.length > 0) {
-      newState = { ...newState, gameLog: [...newState.gameLog, `Buddy-Buddy Poffin finds ${found.map(c => c.name).join(', ')} and puts them on bench!`] };
-    }
-    return newState;
-  },
+  effects: [
+    { effect: 'search', player: 'own', from: 'deck', filter: { filter: 'and', filters: [{ filter: 'isBasic' }, { filter: 'hpBelow', maxHp: 70 }] }, count: { type: 'constant', value: 2 }, destination: 'bench' },
+    { effect: 'shuffle', player: 'own', zone: 'deck' },
+  ],
 };
 
 const RARE_CANDY: TrainerCard = {
@@ -955,7 +730,7 @@ const RARE_CANDY: TrainerCard = {
       // Trigger on-evolve ability
       if (stage2.ability && stage2.ability.trigger === 'onEvolve') {
         newState = { ...newState, gameLog: [...newState.gameLog, `${stage2.name}'s ${stage2.ability.name} activates!`] };
-        newState = stage2.ability.effect(newState, evolved, playerIndex);
+        newState = EffectExecutor.executeAbility(newState, stage2.ability.effects, evolved, playerIndex as 0 | 1);
       }
       return newState;
     }
@@ -970,37 +745,10 @@ const NEST_BALL: TrainerCard = {
   cardNumber: 'SVI 181',
   imageUrl: 'https://images.pokemontcg.io/sv1/181.png',
   trainerType: TrainerType.Item,
-  effect: (state, playerIndex) => {
-    const player = clonePlayer(state, playerIndex);
-    if (player.bench.length >= 5) return state;
-    // Search deck for 1 Basic Pokemon, put on bench
-    const [found, remaining] = searchDeck(
-      player.deck,
-      (c) => c.cardType === CardType.Pokemon && (c as PokemonCard).stage === PokemonStage.Basic,
-      1
-    );
-    player.deck = shuffleArray(remaining);
-    for (const card of found) {
-      const pokemon = card as PokemonCard;
-      player.bench.push({
-        card: pokemon,
-        currentHp: pokemon.hp,
-        attachedEnergy: [],
-        statusConditions: [],
-        damageCounters: 0,
-        attachedTools: [],
-        isEvolved: false,
-        turnPlayed: state.turnNumber,
-        damageShields: [],
-        cannotRetreat: false,
-      });
-    }
-    let newState = updatePlayer(state, playerIndex, player);
-    if (found.length > 0) {
-      newState = { ...newState, gameLog: [...newState.gameLog, `Nest Ball finds ${found[0].name} and puts it on bench.`] };
-    }
-    return newState;
-  },
+  effects: [
+    { effect: 'search', player: 'own', from: 'deck', filter: { filter: 'isBasic' }, count: { type: 'constant', value: 1 }, destination: 'bench' },
+    { effect: 'shuffle', player: 'own', zone: 'deck' },
+  ],
 };
 
 const PRIME_CATCHER: TrainerCard = {
@@ -1010,26 +758,9 @@ const PRIME_CATCHER: TrainerCard = {
   cardNumber: 'TEF 157',
   imageUrl: 'https://images.pokemontcg.io/sv5/157.png',
   trainerType: TrainerType.Item,
-  effect: (state, playerIndex) => {
-    const opponentIndex = playerIndex === 0 ? 1 : 0;
-    const opponent = clonePlayer(state, opponentIndex);
-    if (!opponent.active || opponent.bench.length === 0) return state;
-    // AI: pull weakest bench Pokemon to active
-    let bestIdx = 0;
-    let lowestHp = Infinity;
-    for (let i = 0; i < opponent.bench.length; i++) {
-      if (opponent.bench[i].currentHp < lowestHp) {
-        lowestHp = opponent.bench[i].currentHp;
-        bestIdx = i;
-      }
-    }
-    const oldActive = opponent.active;
-    opponent.active = opponent.bench[bestIdx];
-    opponent.bench[bestIdx] = oldActive;
-    let newState = updatePlayer(state, opponentIndex, opponent);
-    newState = { ...newState, gameLog: [...newState.gameLog, `Prime Catcher forces ${opponent.active.card.name} to the active spot!`] };
-    return newState;
-  },
+  effects: [
+    { effect: 'forceSwitch', player: 'opponent' },
+  ],
 };
 
 const SUPER_ROD: TrainerCard = {
@@ -1039,28 +770,10 @@ const SUPER_ROD: TrainerCard = {
   cardNumber: 'PAL 188',
   imageUrl: 'https://images.pokemontcg.io/sv2/188.png',
   trainerType: TrainerType.Item,
-  effect: (state, playerIndex) => {
-    const player = clonePlayer(state, playerIndex);
-    // Recover up to 3 Pokemon and/or basic Energy from discard into deck
-    const recovered: Card[] = [];
-    const newDiscard = [...player.discard];
-    let count = 0;
-    for (let i = newDiscard.length - 1; i >= 0 && count < 3; i--) {
-      const card = newDiscard[i];
-      if (card.cardType === CardType.Pokemon || (card.cardType === CardType.Energy && (card as EnergyCard).energySubtype === EnergySubtype.Basic)) {
-        recovered.push(...newDiscard.splice(i, 1));
-        count++;
-      }
-    }
-    player.discard = newDiscard;
-    player.deck.push(...recovered);
-    player.deck = shuffleArray(player.deck);
-    let newState = updatePlayer(state, playerIndex, player);
-    if (recovered.length > 0) {
-      newState = { ...newState, gameLog: [...newState.gameLog, `Super Rod recovers ${recovered.map(c => c.name).join(', ')} into deck.`] };
-    }
-    return newState;
-  },
+  effects: [
+    { effect: 'search', player: 'own', from: 'discard', filter: { filter: 'or', filters: [{ filter: 'type', cardType: CardType.Pokemon }, { filter: 'basicEnergy' }] }, count: { type: 'constant', value: 3 }, destination: 'deck' },
+    { effect: 'shuffle', player: 'own', zone: 'deck' },
+  ],
 };
 
 const NIGHT_STRETCHER: TrainerCard = {
@@ -1070,20 +783,9 @@ const NIGHT_STRETCHER: TrainerCard = {
   cardNumber: 'SFA 61',
   imageUrl: 'https://images.pokemontcg.io/sv6pt5/61.png',
   trainerType: TrainerType.Item,
-  effect: (state, playerIndex) => {
-    const player = clonePlayer(state, playerIndex);
-    // Recover 1 Pokemon or 1 basic Energy from discard to hand
-    const idx = player.discard.findIndex(c =>
-      c.cardType === CardType.Pokemon ||
-      (c.cardType === CardType.Energy && (c as EnergyCard).energySubtype === EnergySubtype.Basic)
-    );
-    if (idx < 0) return state;
-    const recovered = player.discard.splice(idx, 1);
-    player.hand.push(...recovered);
-    let newState = updatePlayer(state, playerIndex, player);
-    newState = { ...newState, gameLog: [...newState.gameLog, `Night Stretcher recovers ${recovered[0].name} to hand.`] };
-    return newState;
-  },
+  effects: [
+    { effect: 'search', player: 'own', from: 'discard', filter: { filter: 'or', filters: [{ filter: 'type', cardType: CardType.Pokemon }, { filter: 'basicEnergy' }] }, count: { type: 'constant', value: 1 }, destination: 'hand' },
+  ],
 };
 
 const ULTRA_BALL: TrainerCard = {
@@ -1091,40 +793,13 @@ const ULTRA_BALL: TrainerCard = {
   name: 'Ultra Ball',
   cardType: CardType.Trainer,
   cardNumber: 'SVI 196',
-  imageUrl: 'https://images.pokemontcg.io/sv1/196.png', // Scarlet & Violet Ultra Ball
+  imageUrl: 'https://images.pokemontcg.io/sv1/196.png',
   trainerType: TrainerType.Item,
-  effect: (state, playerIndex) => {
-    const player = clonePlayer(state, playerIndex);
-    // Cost: discard 2 cards from hand
-    if (player.hand.length < 2) return state;
-    // AI: discard least useful cards (energy dupes, extra trainers)
-    // Simple heuristic: discard last 2 non-Pokemon cards, or last 2 cards
-    let discarded = 0;
-    for (let i = player.hand.length - 1; i >= 0 && discarded < 2; i--) {
-      if (player.hand[i].cardType !== CardType.Pokemon) {
-        player.discard.push(...player.hand.splice(i, 1));
-        discarded++;
-      }
-    }
-    // If we couldn't discard 2 non-Pokemon, discard any remaining
-    for (let i = player.hand.length - 1; i >= 0 && discarded < 2; i--) {
-      player.discard.push(...player.hand.splice(i, 1));
-      discarded++;
-    }
-    // Search deck for any 1 Pokemon
-    const [found, remaining] = searchDeck(
-      player.deck,
-      (c) => c.cardType === CardType.Pokemon,
-      1
-    );
-    player.deck = shuffleArray(remaining);
-    player.hand.push(...found);
-    let newState = updatePlayer(state, playerIndex, player);
-    if (found.length > 0) {
-      newState = { ...newState, gameLog: [...newState.gameLog, `Ultra Ball discards 2 cards, searches for ${found[0].name}.`] };
-    }
-    return newState;
-  },
+  effects: [
+    { effect: 'discardFromHand', player: 'own', count: { type: 'constant', value: 2 } },
+    { effect: 'search', player: 'own', from: 'deck', filter: { filter: 'type', cardType: CardType.Pokemon }, count: { type: 'constant', value: 1 }, destination: 'hand' },
+    { effect: 'shuffle', player: 'own', zone: 'deck' },
+  ],
 };
 
 const AREA_ZERO_UNDERDEPTHS: TrainerCard = {
@@ -1134,15 +809,9 @@ const AREA_ZERO_UNDERDEPTHS: TrainerCard = {
   cardNumber: 'SCR 131',
   imageUrl: 'https://images.pokemontcg.io/sv7/131.png',
   trainerType: TrainerType.Stadium,
-  effect: (state, _playerIndex) => {
-    // Stadium effect: if Tera Pokemon in play, max bench size is 8
-    // This is a passive effect checked by the engine when placing bench Pokemon
-    // For now, just log it
-    return {
-      ...state,
-      gameLog: [...state.gameLog, 'Area Zero Underdepths is now in play!'],
-    };
-  },
+  effects: [
+    { effect: 'noop' },
+  ],
 };
 
 // ============================================================================

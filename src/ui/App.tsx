@@ -552,7 +552,58 @@ const App = () => {
           ) : (
             <div className="h-full flex items-center justify-center">
               <div className="text-center">
-                <div className="text-6xl mb-4">&#127868;</div>
+                <div className="mb-4 flex justify-center">
+                  <svg width="96" height="96" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    {/* Outer ring */}
+                    <circle cx="48" cy="48" r="44" stroke="#e53e3e" strokeWidth="4" fill="none" />
+                    {/* Top half - red */}
+                    <path d="M4 48 A44 44 0 0 1 92 48" fill="#e53e3e" />
+                    {/* Bottom half - white */}
+                    <path d="M4 48 A44 44 0 0 0 92 48" fill="#f7fafc" />
+                    {/* Center band */}
+                    <rect x="4" y="45" width="88" height="6" fill="#2d3748" />
+                    {/* Center button outer */}
+                    <circle cx="48" cy="48" r="14" fill="#2d3748" />
+                    {/* Center button inner - AI glow */}
+                    <circle cx="48" cy="48" r="10" fill="#1a202c">
+                      <animate attributeName="fill" values="#1a202c;#2b6cb0;#1a202c" dur="3s" repeatCount="indefinite" />
+                    </circle>
+                    {/* AI circuit lines inside button */}
+                    <circle cx="48" cy="48" r="4" fill="#63b3ed">
+                      <animate attributeName="opacity" values="1;0.4;1" dur="2s" repeatCount="indefinite" />
+                    </circle>
+                    <line x1="48" y1="40" x2="48" y2="44" stroke="#63b3ed" strokeWidth="1.5" strokeLinecap="round">
+                      <animate attributeName="opacity" values="1;0.3;1" dur="2s" begin="0.2s" repeatCount="indefinite" />
+                    </line>
+                    <line x1="48" y1="52" x2="48" y2="56" stroke="#63b3ed" strokeWidth="1.5" strokeLinecap="round">
+                      <animate attributeName="opacity" values="1;0.3;1" dur="2s" begin="0.4s" repeatCount="indefinite" />
+                    </line>
+                    <line x1="40" y1="48" x2="44" y2="48" stroke="#63b3ed" strokeWidth="1.5" strokeLinecap="round">
+                      <animate attributeName="opacity" values="1;0.3;1" dur="2s" begin="0.6s" repeatCount="indefinite" />
+                    </line>
+                    <line x1="52" y1="48" x2="56" y2="48" stroke="#63b3ed" strokeWidth="1.5" strokeLinecap="round">
+                      <animate attributeName="opacity" values="1;0.3;1" dur="2s" begin="0.8s" repeatCount="indefinite" />
+                    </line>
+                    {/* Diagonal circuit traces */}
+                    <line x1="42" y1="42" x2="44.5" y2="44.5" stroke="#63b3ed" strokeWidth="1" strokeLinecap="round">
+                      <animate attributeName="opacity" values="0.8;0.2;0.8" dur="2.5s" begin="0.3s" repeatCount="indefinite" />
+                    </line>
+                    <line x1="54" y1="42" x2="51.5" y2="44.5" stroke="#63b3ed" strokeWidth="1" strokeLinecap="round">
+                      <animate attributeName="opacity" values="0.8;0.2;0.8" dur="2.5s" begin="0.5s" repeatCount="indefinite" />
+                    </line>
+                    <line x1="42" y1="54" x2="44.5" y2="51.5" stroke="#63b3ed" strokeWidth="1" strokeLinecap="round">
+                      <animate attributeName="opacity" values="0.8;0.2;0.8" dur="2.5s" begin="0.7s" repeatCount="indefinite" />
+                    </line>
+                    <line x1="54" y1="54" x2="51.5" y2="51.5" stroke="#63b3ed" strokeWidth="1" strokeLinecap="round">
+                      <animate attributeName="opacity" values="0.8;0.2;0.8" dur="2.5s" begin="0.9s" repeatCount="indefinite" />
+                    </line>
+                    {/* Outer glow ring */}
+                    <circle cx="48" cy="48" r="46" stroke="#63b3ed" strokeWidth="1" fill="none" opacity="0.3">
+                      <animate attributeName="opacity" values="0.3;0.6;0.3" dur="3s" repeatCount="indefinite" />
+                      <animate attributeName="r" values="46;47;46" dur="3s" repeatCount="indefinite" />
+                    </circle>
+                  </svg>
+                </div>
                 <h2 className="text-2xl font-bold mb-2">Pokemon TCG AI</h2>
                 <p className="text-gray-400 mb-6">Charizard ex Mirror Match Simulator</p>
                 <button
