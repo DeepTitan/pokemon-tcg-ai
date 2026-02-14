@@ -224,6 +224,13 @@ describe('Charizard Deck — Abilities', () => {
     let state = createRealState();
     state = putPokemonAsActive(state, 0, 'Fezandipiti ex');
     state = setupMainPhase(state, 0);
+    // Flip the Script requires opponent's active to have been KO'd last turn
+    state.gameFlags = [{
+      flag: 'activeKnockedOut-p0',
+      duration: 'nextTurn' as const,
+      setOnTurn: state.turnNumber - 1,
+      setByPlayer: 1 as 0 | 1,
+    }];
     const handBefore = state.players[0].hand.length;
 
     const actions = GameEngine.getLegalActions(state);

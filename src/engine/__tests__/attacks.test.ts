@@ -88,16 +88,16 @@ describe('Charizard Deck — Attacks', () => {
 
   // ---------- Charizard ex — Burning Darkness ----------
   // "180 damage. This attack does 30 more damage for each Prize card your opponent has taken."
-  // Note: Burning Darkness has no effect DSL — it's pure base damage (180) with scaling
-  // handled at the game level. But the damage calculation is worth testing.
-  it('Burning Darkness: base 180 damage with no prizes taken', () => {
+  it('Burning Darkness: base 180 damage with bonusDamage effect for prizes taken', () => {
     let state = createRealState();
     state = putPokemonAsActive(state, 0, 'Charizard ex');
     const attacker = state.players[0].active!;
     const attack = attacker.card.attacks.find(a => a.name === 'Burning Darkness')!;
 
     assert.equal(attack.damage, 180, 'Burning Darkness base damage should be 180');
-    assert.equal(attack.effects, undefined, 'Burning Darkness has no DSL effects (scaling is future work)');
+    assert.ok(attack.effects, 'Burning Darkness should have DSL effects for prize scaling');
+    assert.equal(attack.effects!.length, 1, 'Should have 1 bonusDamage effect');
+    assert.equal((attack.effects![0] as any).effect, 'bonusDamage', 'Effect should be bonusDamage');
   });
 
   // ---------- Integration: Cruel Arrow via Attack action ----------

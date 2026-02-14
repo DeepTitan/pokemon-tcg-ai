@@ -184,6 +184,7 @@ export type Condition =
   | { check: 'isRuleBox'; target: Target }
   | { check: 'hasPokemonInPlay'; player: 'own' | 'opponent'; filter: CardFilter }
   | { check: 'turnNumber'; comparison: '>=' | '<=' | '=='; value: number }
+  | { check: 'hasGameFlag'; flag: string; player: 'own' | 'opponent' }
   | { check: 'and'; conditions: Condition[] }
   | { check: 'or'; conditions: Condition[] };
 
@@ -433,7 +434,7 @@ export class EffectExecutor {
           countValue = state.players[player].bench.length;
         } else if (effect.countProperty === 'prizesTaken') {
           const player = effect.countTarget.type === 'hand' ? (effect.countTarget.player === 'own' ? context.attackingPlayer : context.defendingPlayer) : 0;
-          countValue = state.players[player].prizes.length - state.players[player].prizeCardsRemaining;
+          countValue = 6 - state.players[player].prizeCardsRemaining;
         } else if (effect.countProperty === 'trainerCount') {
           // Count trainer cards in the target zone (typically opponent's hand for Poltergeist)
           if (effect.countTarget.type === 'hand') {
@@ -841,8 +842,7 @@ export class EffectExecutor {
 
       case 'countPrizeTaken': {
         const player = value.player === 'own' ? context.attackingPlayer : context.defendingPlayer;
-        const totalPrizes = state.players[player].prizes.length + state.players[player].prizeCardsRemaining;
-        return totalPrizes - state.players[player].prizeCardsRemaining;
+        return 6 - state.players[player].prizeCardsRemaining;
       }
 
       case 'countDiscard': {
@@ -1094,6 +1094,12 @@ export class EffectExecutor {
 
       case 'turnNumber':
         return this.compareValues(state.turnNumber, condition.value, condition.comparison);
+
+      case 'hasGameFlag': {
+        const flagPlayer = condition.player === 'own' ? context.attackingPlayer : context.defendingPlayer;
+        const flagName = condition.flag.replace('{player}', `p${flagPlayer}`);
+        return state.gameFlags.some(f => f.flag === flagName);
+      }
 
       case 'and':
         return condition.conditions.every(c => this.checkCondition(state, c, context));

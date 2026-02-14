@@ -121,19 +121,27 @@ export class GameEngine {
   static createGame(deck1: Card[], deck2: Card[], seed: number = 0): GameState {
     const rng = new SeededRandom(seed);
 
-    // Clone decks with unique card IDs per player, then shuffle
-    const prefixIds = (cards: Card[], prefix: string): Card[] =>
-      cards.map(c => ({ ...c, id: `${prefix}-${c.id}` }));
+    // Clone decks with unique card IDs per player, then shuffle.
+    // Cards with the same base id (e.g. multiple copies of Fire Energy) get a
+    // copy index appended so every card in the game has a unique id.
+    const prefixIds = (cards: Card[], prefix: string): Card[] => {
+      const idCounts = new Map<string, number>();
+      return cards.map(c => {
+        const count = idCounts.get(c.id) || 0;
+        idCounts.set(c.id, count + 1);
+        return { ...c, id: `${prefix}-${c.id}-${count}` };
+      });
+    };
     const shuffledDeck1 = rng.shuffle(prefixIds(deck1, 'p0'));
     const shuffledDeck2 = rng.shuffle(prefixIds(deck2, 'p1'));
 
     // Initialize player states
     const player0: PlayerState = {
-      deck: shuffledDeck1.slice(14), // After drawing 7 and setting aside 6 prizes + 1 active
+      deck: shuffledDeck1.slice(13), // After drawing 7 hand + 6 prizes = 13 cards
       hand: shuffledDeck1.slice(0, 7),
       active: null,
       bench: [],
-      prizes: shuffledDeck1.slice(8, 14), // Cards 8-13 (6 prizes)
+      prizes: shuffledDeck1.slice(7, 13), // Cards 7-12 (6 prizes)
       discard: [],
       lostZone: [],
       supporterPlayedThisTurn: false,
@@ -145,11 +153,11 @@ export class GameEngine {
     };
 
     const player1: PlayerState = {
-      deck: shuffledDeck2.slice(14),
+      deck: shuffledDeck2.slice(13),
       hand: shuffledDeck2.slice(0, 7),
       active: null,
       bench: [],
-      prizes: shuffledDeck2.slice(8, 14),
+      prizes: shuffledDeck2.slice(7, 13),
       discard: [],
       lostZone: [],
       supporterPlayedThisTurn: false,
@@ -311,9 +319,9 @@ export class GameEngine {
         );
       }
 
-      // Burn: flip coin for 20 damage
+      // Burn: flip coin for 20 damage (use deterministic seed based on turn + player)
       if (pokemon.statusConditions.includes(StatusCondition.Burned)) {
-        if (new SeededRandom().coinFlip()) {
+        if (new SeededRandom(newState.turnNumber * 31 + playerIndex * 7 + 13).coinFlip()) {
           newState = this.applyDamage(
             newState,
             { player: playerIndex, zone: 'active' },
@@ -548,7 +556,7 @@ export class GameEngine {
               player: state.currentPlayer,
               payload: { handIndex: i },
             });
-          } else if (trainer.trainerType === TrainerType.Stadium && !state.stadium) {
+          } else if (trainer.trainerType === TrainerType.Stadium && (!state.stadium || state.stadium.name !== trainer.name)) {
             actions.push({
               type: ActionType.PlayTrainer,
               player: state.currentPlayer,
@@ -907,11 +915,18 @@ export class GameEngine {
     }
 
     if (trainer.trainerType === TrainerType.Stadium) {
+      // If there's already a stadium in play, discard it to its owner's discard
+      if (newState.stadium) {
+        const oldStadium = newState.stadium;
+        // Stadium is shared — discard to current player's pile (the one replacing it)
+        newPlayer = { ...newPlayer, discard: [...newPlayer.discard, oldStadium] };
+      }
       newState = { ...newState, stadium: trainer };
+      // Stadium stays on the field, not in discard
+    } else {
+      // Non-stadium trainers go to discard after use
+      newPlayer = { ...newPlayer, discard: [...newPlayer.discard, trainer] };
     }
-
-    // Move card to discard
-    newPlayer = { ...newPlayer, discard: [...newPlayer.discard, trainer] };
 
     newState.players[state.currentPlayer] = newPlayer;
 
@@ -940,8 +955,8 @@ export class GameEngine {
 
     // Calculate damage
     let damage = attack.damage;
-    damage = this.applyWeakness(damage, attack, defender);
-    damage = this.applyResistance(damage, attack, defender);
+    damage = this.applyWeakness(damage, attacker, defender);
+    damage = this.applyResistance(damage, attacker, defender);
 
     let newState = {
       ...state,
@@ -997,7 +1012,7 @@ export class GameEngine {
     const newActive = { ...benched };
     const newBench = player.bench.map((p, i) => (i === benchIndex ? { ...active, attachedEnergy: remainingEnergy } : p));
 
-    const newPlayer = { ...player, active: newActive, bench: newBench };
+    const newPlayer = { ...player, active: newActive, bench: newBench, discard: [...player.discard, ...energyToDiscard] };
     const newPlayers = [
       state.currentPlayer === 0 ? newPlayer : state.players[0],
       state.currentPlayer === 1 ? newPlayer : state.players[1],
@@ -1161,10 +1176,27 @@ export class GameEngine {
           prizeCardsRemaining: Math.max(0, opponent.prizeCardsRemaining - prizeCount),
         };
 
-        // Move KO'd Pokemon to discard
+        // Move KO'd Pokemon, its attached energy/tools, and previous stage Pokemon cards to discard.
+        // Energy/tools belong to the top-level evolved Pokemon (shared reference with previousStage),
+        // so we only collect the Pokemon card itself from each previousStage to avoid duplicates.
+        const collectPreviousPokemonCards = (pokemon: PokemonInPlay): Card[] => {
+          const cards: Card[] = [pokemon.card]; // only the Pokemon card, not energy/tools
+          if (pokemon.previousStage) {
+            cards.push(...collectPreviousPokemonCards(pokemon.previousStage));
+          }
+          return cards;
+        };
+        const koDiscards: Card[] = [
+          player.active.card,
+          ...player.active.attachedEnergy,
+          ...player.active.attachedTools,
+        ];
+        if (player.active.previousStage) {
+          koDiscards.push(...collectPreviousPokemonCards(player.active.previousStage));
+        }
         let newPlayer: PlayerState = {
           ...player,
-          discard: [...player.discard, player.active.card],
+          discard: [...player.discard, ...koDiscards],
           active: null,
         };
 
@@ -1184,6 +1216,17 @@ export class GameEngine {
         newState.gameLog = [
           ...newState.gameLog,
           `Player ${playerIndex}'s ${player.active.card.name} is knocked out. Player ${opponentIndex} takes ${prizeCount} prize card(s).`,
+        ];
+
+        // Track that this player's active was KO'd (for Flip the Script etc.)
+        newState.gameFlags = [
+          ...newState.gameFlags,
+          {
+            flag: `activeKnockedOut-p${playerIndex}`,
+            duration: 'nextTurn' as const,
+            setOnTurn: newState.turnNumber,
+            setByPlayer: opponentIndex,
+          },
         ];
       }
     }
@@ -1579,15 +1622,13 @@ export class GameEngine {
 
   /**
    * Apply weakness (2x in modern format).
+   * Weakness is determined by the attacking Pokemon's TYPE, not the attack's energy cost.
    */
-  private static applyWeakness(damage: number, attack: Attack, defender: PokemonInPlay): number {
+  private static applyWeakness(damage: number, attacker: PokemonInPlay, defender: PokemonInPlay): number {
     if (!defender.card.weakness) return damage;
 
-    // Simplified: check if any energy in attack cost matches weakness
-    for (const cost of attack.cost) {
-      if (cost === defender.card.weakness) {
-        return damage * 2;
-      }
+    if (attacker.card.type === defender.card.weakness) {
+      return damage * 2;
     }
 
     return damage;
@@ -1595,15 +1636,14 @@ export class GameEngine {
 
   /**
    * Apply resistance (-30 in standard, configurable).
+   * Resistance is determined by the attacking Pokemon's TYPE, not the attack's energy cost.
    */
-  private static applyResistance(damage: number, attack: Attack, defender: PokemonInPlay): number {
+  private static applyResistance(damage: number, attacker: PokemonInPlay, defender: PokemonInPlay): number {
     if (!defender.card.resistance) return damage;
 
-    for (const cost of attack.cost) {
-      if (cost === defender.card.resistance) {
-        const reduction = defender.card.resistanceValue || 20;
-        return Math.max(0, damage - reduction);
-      }
+    if (attacker.card.type === defender.card.resistance) {
+      const reduction = defender.card.resistanceValue || 20;
+      return Math.max(0, damage - reduction);
     }
 
     return damage;
@@ -1980,7 +2020,9 @@ export class GameEngine {
       counts[etype] = 0;
     }
     for (const energy of energies) {
-      counts[energy.energyType]++;
+      // Count each energy card once by its primary type.
+      // For special energy that provides multiple types, count each provided type.
+      // Use provides[] as the source of truth (it includes the primary type).
       for (const provides of energy.provides) {
         counts[provides]++;
       }

@@ -6,7 +6,7 @@
  */
 
 import { GameEngine } from '../src/engine/game-engine.js';
-import { buildStarterDeck } from '../src/engine/cards.js';
+import { buildCharizardDeck } from '../src/engine/charizard-deck.js';
 import { GameState } from '../src/engine/types.js';
 
 /**

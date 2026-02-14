@@ -220,6 +220,15 @@ const CHARIZARD_EX: PokemonCard = {
       cost: [EnergyType.Fire, EnergyType.Fire],
       damage: 180,
       description: 'This attack does 30 more damage for each Prize card your opponent has taken.',
+      effects: [
+        {
+          effect: 'bonusDamage',
+          amount: { type: 'constant', value: 30 },
+          perUnit: { type: 'constant', value: 1 },
+          countTarget: { type: 'hand', player: 'opponent' },
+          countProperty: 'prizesTaken',
+        } as EffectDSL,
+      ],
     },
   ],
 };
@@ -318,6 +327,13 @@ const DUSKNOIR: PokemonCard = {
       cost: [EnergyType.Psychic, EnergyType.Psychic, EnergyType.Colorless],
       damage: 150,
       description: 'During your opponent\'s next turn, the Defending Pokemon cannot retreat.',
+      effects: [
+        {
+          effect: 'cannotRetreat',
+          target: { type: 'opponent' },
+          duration: 'nextTurn',
+        } as EffectDSL,
+      ],
     },
   ],
 };
@@ -378,14 +394,31 @@ const TERAPAGOS_EX: PokemonCard = {
     {
       name: 'Unified Beatdown',
       cost: [EnergyType.Colorless, EnergyType.Colorless],
-      damage: 30,
+      damage: 0,
       description: 'This attack does 30 damage for each Benched Pokemon you have. (This attack can\'t be used if you went second and it\'s your first turn.)',
+      effects: [
+        {
+          effect: 'bonusDamage',
+          amount: { type: 'constant', value: 30 },
+          perUnit: { type: 'constant', value: 1 },
+          countTarget: { type: 'bench', player: 'own' },
+          countProperty: 'benchCount',
+        } as EffectDSL,
+      ],
     },
     {
       name: 'Crown Opal',
       cost: [EnergyType.Grass, EnergyType.Water, EnergyType.Lightning],
       damage: 180,
       description: 'During your opponent\'s next turn, prevent all damage done to this Pokemon by attacks from Basic Pokemon that aren\'t Colorless.',
+      effects: [
+        {
+          effect: 'preventDamage',
+          target: { type: 'self' },
+          amount: 'all',
+          duration: 'nextTurn',
+        } as EffectDSL,
+      ],
     },
   ],
 };
@@ -472,8 +505,15 @@ const PIDGEOT_EX: PokemonCard = {
     {
       name: 'Blustering Gale',
       cost: [EnergyType.Colorless, EnergyType.Colorless, EnergyType.Colorless],
-      damage: 120,
+      damage: 0,
       description: 'This attack does 120 damage to 1 of your opponent\'s Benched Pokemon.',
+      effects: [
+        {
+          effect: 'damage',
+          target: { type: 'anyPokemon', player: 'opponent' },
+          amount: { type: 'constant', value: 120 },
+        } as EffectDSL,
+      ],
     },
   ],
 };
@@ -528,6 +568,7 @@ const FEZANDIPITI_EX: PokemonCard = {
     trigger: 'oncePerTurn',
     description:
       'Once during your turn, if your Active Pokemon was Knocked Out by damage from an opponent\'s attack during their last turn, you may draw 3 cards. (You can\'t use more than 1 Flip the Script Ability during your turn.)',
+    abilityCondition: { check: 'hasGameFlag', flag: 'activeKnockedOut-{player}', player: 'own' },
     effects: [
       { effect: 'draw', player: 'own', count: { type: 'constant', value: 3 } },
     ],
