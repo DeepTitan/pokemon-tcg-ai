@@ -75,8 +75,9 @@ def read_trajectory(path):
 
 def load_all_trajectories(data_dir):
     """Load all trajectory files from a directory."""
-    # Search both direct .bin files and iter_*/ subdirs (replay buffer)
+    # Search direct .bin files, imitation data (always kept), and iter_*/ subdirs (replay buffer)
     files = sorted(glob.glob(os.path.join(data_dir, '*.bin')))
+    files += sorted(glob.glob(os.path.join(data_dir, 'imitation', '*.bin')))
     files += sorted(glob.glob(os.path.join(data_dir, 'iter_*', '*.bin')))
     all_samples = []
     for f in files:

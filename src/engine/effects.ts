@@ -1177,12 +1177,54 @@ export class EffectExecutor {
   // HELPER METHODS - Game State Modification
   // ============================================================================
 
+  private static clonePokemonInPlay(pokemon: PokemonInPlay): PokemonInPlay {
+    return {
+      ...pokemon,
+      attachedEnergy: [...pokemon.attachedEnergy],
+      statusConditions: [...pokemon.statusConditions],
+      attachedTools: [...pokemon.attachedTools],
+      damageShields: pokemon.damageShields.map(s => ({ ...s })),
+      // card is immutable — keep the same reference to preserve functions (getTargets, abilityCondition, etc.)
+      // previousStage is also an immutable snapshot — keep reference
+    };
+  }
+
+  private static clonePlayerState(player: PlayerState): PlayerState {
+    return {
+      ...player,
+      deck: [...player.deck],
+      hand: [...player.hand],
+      active: player.active ? this.clonePokemonInPlay(player.active) : null,
+      bench: player.bench.map(p => this.clonePokemonInPlay(p)),
+      prizes: [...player.prizes],
+      discard: [...player.discard],
+      lostZone: [...player.lostZone],
+      abilitiesUsedThisTurn: [...player.abilitiesUsedThisTurn],
+    };
+  }
+
   private static cloneGameState(state: GameState): GameState {
-    return JSON.parse(JSON.stringify(state));
+    return {
+      ...state,
+      players: [this.clonePlayerState(state.players[0]), this.clonePlayerState(state.players[1])],
+      turnActions: [...state.turnActions],
+      gameLog: [...state.gameLog],
+      gameFlags: state.gameFlags.map(f => ({ ...f })),
+      pendingAttachments: state.pendingAttachments ? {
+        ...state.pendingAttachments,
+        cards: [...state.pendingAttachments.cards],
+      } : undefined,
+      pendingChoice: state.pendingChoice ? {
+        ...state.pendingChoice,
+        options: state.pendingChoice.options.map(o => ({ ...o })),
+        selectedSoFar: [...state.pendingChoice.selectedSoFar],
+        remainingEffects: [...state.pendingChoice.remainingEffects],
+      } : undefined,
+    };
   }
 
   private static clonePokemon(pokemon: PokemonInPlay): PokemonInPlay {
-    return JSON.parse(JSON.stringify(pokemon));
+    return this.clonePokemonInPlay(pokemon);
   }
 
   private static applyDamage(state: GameState, targets: PokemonInPlay[], amount: number): GameState {

@@ -12,6 +12,9 @@ set -e
 export PATH="$HOME/.fnm:$PATH"
 eval "$(fnm env --use-on-cd --shell bash 2>/dev/null || true)"
 
+# Unbuffered Python output for real-time logging
+export PYTHONUNBUFFERED=1
+
 cd "$(dirname "$0")/.."
 
 MODELS_DIR="models"
@@ -56,6 +59,10 @@ else
   node --import tsx scripts/evaluate.ts \
     --weights "$MODELS_DIR/latest_weights.json" \
     --games 100
+
+  # Save imitation checkpoint (never overwritten by self-play)
+  cp "$MODELS_DIR/latest_weights.json" "$MODELS_DIR/imitation_checkpoint.json"
+  log "  Saved imitation checkpoint: imitation_checkpoint.json"
 
   log "=== Phase 1 complete! ==="
 fi
@@ -111,13 +118,13 @@ for iter in $(seq $START_ITER $MAX_ITER); do
     --data "$DATA_DIR" \
     --weights "$MODELS_DIR/latest_weights.json" \
     --output "$MODELS_DIR/latest_weights.json" \
-    --epochs 1 \
+    --epochs 2 \
     --batch-size 512 \
     --lr "$LR" \
     --entropy-coef 0.02
 
   # Step 3: Delete old iteration data (keep last 8 as replay buffer)
-  OLD_ITER=$((iter - 8))
+  OLD_ITER=$((iter - 12))
   if [ $OLD_ITER -gt 0 ] && [ -d "$DATA_DIR/iter_$OLD_ITER" ]; then
     rm -rf "$DATA_DIR/iter_$OLD_ITER"
   fi

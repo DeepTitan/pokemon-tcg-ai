@@ -256,12 +256,23 @@ export function encodeAction(action: Action, state: GameState): Float32Array {
     }
 
     case ActionType.UseAbility: {
-      const zone = action.payload.zone as string;
-      if (zone === 'active') {
-        buffer[targetOffset + 0] = 1.0;
+      const abilityTarget = action.payload.abilityTarget;
+      if (abilityTarget) {
+        // Targeted ability: encode the OPPONENT target position
+        if (abilityTarget.zone === 'active') {
+          buffer[targetOffset + 0] = 1.0;
+        } else {
+          buffer[targetOffset + 1 + (abilityTarget.benchIndex ?? 0)] = 1.0;
+        }
       } else {
-        const bi = action.payload.benchIndex as number;
-        buffer[targetOffset + 1 + bi] = 1.0;
+        // Non-targeted ability: encode source Pokemon position
+        const zone = action.payload.zone as string;
+        if (zone === 'active') {
+          buffer[targetOffset + 0] = 1.0;
+        } else {
+          const bi = action.payload.benchIndex as number;
+          buffer[targetOffset + 1 + bi] = 1.0;
+        }
       }
       break;
     }

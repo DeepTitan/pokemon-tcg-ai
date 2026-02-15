@@ -3,6 +3,7 @@
  *
  * Loads trained weights and plays games using the neural network
  * (greedy policy, no ISMCTS) against the heuristic AI.
+ * Prints per-game summaries with turn count, prize progression, and KO timeline.
  *
  * Usage: node --import tsx scripts/evaluate.ts [--weights models/latest_weights.json] [--games 100]
  */
@@ -16,6 +17,22 @@ import { loadWeightsFromFile } from '../src/ai/training/weight-loader.js';
 import { ISMCTS } from '../src/ai/ismcts/ismcts.js';
 import { GamePhase } from '../src/engine/types.js';
 import type { GameState, Action } from '../src/engine/types.js';
+
+interface KnockoutEvent {
+  turn: number;
+  attacker: 0 | 1;      // player who scored the KO
+  pokemon: string;       // name of KO'd pokemon
+  prizesTaken: number;
+}
+
+interface GameResult {
+  winner: 0 | 1 | null;
+  turns: number;
+  neuralPlayer: 0 | 1;
+  prizesRemaining: [number, number];
+  knockouts: KnockoutEvent[];
+  winReason: string;
+}
 
 function selectNetworkAction(
   adapter: NetworkISMCTSAdapter,
@@ -58,13 +75,58 @@ async function selectISMCTSAction(
   return result.action;
 }
 
+/** Parse game log entries to extract knockout events with turn context */
+function extractKnockouts(gameLog: string[], turnNumber: number): KnockoutEvent[] {
+  const knockouts: KnockoutEvent[] = [];
+  // Track current turn as we scan through the log
+  let currentTurn = 0;
+
+  for (const entry of gameLog) {
+    // Track turn progression from draw messages
+    const drawMatch = entry.match(/^Player \d draws a card/);
+    if (drawMatch) {
+      currentTurn++;
+    }
+
+    // Match: "Player X's PokemonName is knocked out. Player Y takes N prize card(s)."
+    const koMatch = entry.match(
+      /^Player (\d)'s (.+?) is knocked out\. Player (\d) takes (\d+) prize card/
+    );
+    if (koMatch) {
+      const koPlayer = parseInt(koMatch[1]) as 0 | 1;
+      const pokemon = koMatch[2];
+      const attacker = parseInt(koMatch[3]) as 0 | 1;
+      const prizesTaken = parseInt(koMatch[4]);
+      knockouts.push({
+        turn: currentTurn,
+        attacker,
+        pokemon,
+        prizesTaken,
+      });
+    }
+  }
+
+  return knockouts;
+}
+
+/** Determine win reason from game log */
+function extractWinReason(gameLog: string[]): string {
+  for (let i = gameLog.length - 1; i >= Math.max(0, gameLog.length - 10); i--) {
+    const entry = gameLog[i];
+    if (entry.includes('wins by taking all prize cards')) return 'prizes';
+    if (entry.includes('cannot draw')) return 'deck-out';
+    if (entry.includes('Opponent has no Pokemon')) return 'no-pokemon';
+  }
+  return 'unknown';
+}
+
 async function playGame(
   adapter: NetworkISMCTSAdapter,
   seed: number,
   neuralPlayer: 0 | 1,
   useISMCTS: boolean = false,
   ismcts?: ISMCTS,
-): Promise<{ winner: 0 | 1 | null; moves: number }> {
+): Promise<GameResult> {
   const deck1 = buildCharizardDeck();
   const deck2 = buildCharizardDeck();
   let state = GameEngine.createGame(deck1, deck2, seed);
@@ -111,7 +173,47 @@ async function playGame(
     turnCount++;
   }
 
-  return { winner: state.winner as 0 | 1 | null, moves: turnCount };
+  const knockouts = extractKnockouts(state.gameLog, state.turnNumber);
+  const winReason = state.winner !== null ? extractWinReason(state.gameLog) : 'draw';
+
+  return {
+    winner: state.winner as 0 | 1 | null,
+    turns: state.turnNumber,
+    neuralPlayer,
+    prizesRemaining: [
+      state.players[0].prizes.length,
+      state.players[1].prizes.length,
+    ],
+    knockouts,
+    winReason,
+  };
+}
+
+/** Format a single game result as a compact one-line summary */
+function formatGameSummary(gameNum: number, result: GameResult): string {
+  const np = result.neuralPlayer;
+  const hp = np === 0 ? 1 : 0;
+  const neuralWon = result.winner === np;
+  const heuristicWon = result.winner === hp;
+  const outcome = neuralWon ? 'WIN ' : heuristicWon ? 'LOSS' : 'DRAW';
+
+  // Prize counts: how many prizes were taken (6 - remaining)
+  const neuralPrizesTaken = 6 - result.prizesRemaining[np];
+  const heuristicPrizesTaken = 6 - result.prizesRemaining[hp];
+
+  // KO timeline — show KOs scored by the neural player with ">" and heuristic with "<"
+  const koSummary = result.knockouts
+    .map(ko => {
+      const marker = ko.attacker === np ? '>' : '<';
+      return `T${ko.turn}${marker}${ko.pokemon}(${ko.prizesTaken})`;
+    })
+    .join(' ');
+
+  const reason = result.winReason !== 'prizes' && result.winReason !== 'unknown'
+    ? ` [${result.winReason}]`
+    : '';
+
+  return `  G${String(gameNum).padStart(2)} Neural(P${np}) ${outcome} | ${String(result.turns).padStart(3)} turns | Prizes ${neuralPrizesTaken}-${heuristicPrizesTaken} | ${koSummary}${reason}`;
 }
 
 async function main() {
@@ -148,36 +250,48 @@ async function main() {
   let neuralWins = 0;
   let heuristicWins = 0;
   let draws = 0;
-  let totalMoves = 0;
+  let totalTurns = 0;
+  let totalNeuralPrizes = 0;
+  let totalHeuristicPrizes = 0;
   const startTime = performance.now();
 
   for (let g = 0; g < numGames; g++) {
     // Alternate which player is neural
     const neuralPlayer = (g % 2) as 0 | 1;
-    const { winner, moves } = await playGame(adapter, g * 7777 + 13, neuralPlayer, useISMCTS, ismcts);
-    totalMoves += moves;
+    const result = await playGame(adapter, g * 7777 + 13, neuralPlayer, useISMCTS, ismcts);
+    const hp = neuralPlayer === 0 ? 1 : 0;
 
-    if (winner === neuralPlayer) neuralWins++;
-    else if (winner !== null) heuristicWins++;
+    totalTurns += result.turns;
+    totalNeuralPrizes += 6 - result.prizesRemaining[neuralPlayer];
+    totalHeuristicPrizes += 6 - result.prizesRemaining[hp];
+
+    if (result.winner === neuralPlayer) neuralWins++;
+    else if (result.winner !== null) heuristicWins++;
     else draws++;
 
+    // Print per-game summary
+    console.log(formatGameSummary(g + 1, result));
+
+    // Print running totals every 20 games
     if ((g + 1) % 20 === 0) {
       const total = g + 1;
       const wr = ((neuralWins / total) * 100).toFixed(1);
       console.log(
-        `  ${total}/${numGames} | Neural: ${neuralWins} (${wr}%) | Heuristic: ${heuristicWins} | Draws: ${draws}`
+        `  --- ${total}/${numGames} | Neural: ${neuralWins} (${wr}%) | Heuristic: ${heuristicWins} | Draws: ${draws} | Avg turns: ${(totalTurns / total).toFixed(1)}`
       );
     }
   }
 
   const elapsed = (performance.now() - startTime) / 1000;
   const winRate = ((neuralWins / numGames) * 100).toFixed(1);
-  console.log(`\n${'='.repeat(50)}`);
+  console.log(`\n${'='.repeat(60)}`);
   console.log(`Results (${numGames} games):`);
   console.log(`  Neural wins:    ${neuralWins} (${winRate}%)`);
   console.log(`  Heuristic wins: ${heuristicWins} (${((heuristicWins / numGames) * 100).toFixed(1)}%)`);
   console.log(`  Draws:          ${draws}`);
-  console.log(`  Avg moves/game: ${(totalMoves / numGames).toFixed(1)}`);
+  console.log(`  Avg turns/game: ${(totalTurns / numGames).toFixed(1)}`);
+  console.log(`  Avg neural prizes taken:    ${(totalNeuralPrizes / numGames).toFixed(1)}/6`);
+  console.log(`  Avg heuristic prizes taken: ${(totalHeuristicPrizes / numGames).toFixed(1)}/6`);
   console.log(`  Time: ${elapsed.toFixed(1)}s`);
 }
 

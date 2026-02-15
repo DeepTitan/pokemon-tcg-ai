@@ -1,18 +1,16 @@
 /**
  * Smart Heuristic AI for the Charizard ex deck.
  *
- * Deck Strategy:
- * 1. Turn 1: Play Fan Rotom, use Fan Call to search Colorless setup Pokemon
- * 2. Get Terapagos ex on bench (Tera enabler for Noctowl)
- * 3. Evolve Hoothoot → Noctowl with Terapagos in play → Jewel Seeker (2 Trainers!)
- * 4. Evolve Charmander → Charmeleon → Charizard ex (or Rare Candy skip)
- *    Charizard ex's Infernal Reign attaches 3 Fire Energy on evolve!
- * 5. Evolve Pidgey → Pidgeotto → Pidgeot ex for Quick Search every turn
- * 6. Charizard ex attacks with Burning Darkness (180 + 30 per opponent prize taken)
- * 7. Dusknoir's Cursed Blast: put 130 damage on ANY opponent Pokemon, KO your active.
- *    Use strategically to snipe key targets or close out games.
+ * Competitive Charizard ex Strategy (2-2-2 prize pattern):
+ * T1: Buddy-Buddy Poffin → Fan Rotom + Charmander, Fan Call → Pidgey + Hoothoot + Noctowl
+ * T2: Dawn → Terapagos ex + Noctowl + Charizard ex, evolve Noctowl (Jewel Seeker → Rare Candy),
+ *     Rare Candy → Charizard ex (Infernal Reign → 3 Fire), attack with Burning Darkness (180 dmg)
+ * T3+: Pidgeot ex Quick Search → Boss's Orders / Prime Catcher, gust bench ex, attack for KO
+ *
+ * Turn numbering: turnNumber is global. P0's first turn = 1, P1's first = 2, P0's second = 3, etc.
+ * Fan Call condition: turnNumber <= 2 (each player's FIRST turn only)
  */
-import type { GameState, Action, PokemonInPlay, PokemonCard, EnergyCard, Card } from '../engine/types.js';
+import type { GameState, Action, PokemonInPlay, PokemonCard, EnergyCard, Card, PendingChoice } from '../engine/types.js';
 import { ActionType, EnergyType, PokemonStage, CardType, GamePhase } from '../engine/types.js';
 
 // ============================================================================
@@ -97,9 +95,40 @@ function hasTerapagosInPlay(state: GameState): boolean {
   return getAllInPlay(state).some(p => p.card.name.includes('Terapagos'));
 }
 
-/** Is this the early game (first few turns)? */
-function isEarlyGame(state: GameState): boolean {
-  return state.turnNumber <= 4;
+// ============================================================================
+// TURN-PHASE HELPERS
+// ============================================================================
+
+/** Turn 1: each player's first turn (global turnNumber 1-2) */
+function isT1(state: GameState): boolean {
+  return state.turnNumber <= 2;
+}
+
+/** Turn 2: each player's second turn (global turnNumber 3-4) */
+function isT2(state: GameState): boolean {
+  return state.turnNumber >= 3 && state.turnNumber <= 4;
+}
+
+/** Turn 3+: aggressive phase (global turnNumber 5+) */
+function isT3Plus(state: GameState): boolean {
+  return state.turnNumber >= 5;
+}
+
+/** Check if we have any Charizard line member in play */
+function hasCharizardLine(state: GameState): boolean {
+  const n = inPlayNames(state);
+  return n.has('Charmander') || n.has('Charmeleon') || n.has('Charizard ex');
+}
+
+/** Detect which phase of Dawn's 3-part search we're in */
+function getDawnSearchPhase(choice: PendingChoice): 'basic' | 'stage1' | 'stage2ex' {
+  const firstOption = choice.options[0];
+  if (!firstOption || !firstOption.card) return 'basic';
+  const card = firstOption.card as PokemonCard;
+  if (card.cardType !== CardType.Pokemon) return 'basic';
+  if (card.stage === PokemonStage.Basic) return 'basic';
+  if (card.stage === PokemonStage.Stage1) return 'stage1';
+  return 'stage2ex'; // Stage2 or ex
 }
 
 // ============================================================================
@@ -114,7 +143,6 @@ const DECK_SEARCH_TRAINERS = new Set([
 function scoreMainAction(state: GameState, action: Action): number {
   const player = getPlayer(state);
   const names = inPlayNames(state);
-  const earlyGame = isEarlyGame(state);
 
   // Deck safety: severely penalize deck-thinning actions when deck is small
   const deckSize = player.deck.length;
@@ -127,53 +155,77 @@ function scoreMainAction(state: GameState, action: Action): number {
 
       // ----- EVOLUTIONS -----
       if (card.stage !== PokemonStage.Basic) {
-        if (CHARIZARD_LINE.has(card.name)) return 95;
-        if (card.name === 'Pidgeot ex') return 93;
-        if (card.name === 'Pidgeotto') return 88;
-        // Noctowl: higher priority if Terapagos is in play (Jewel Seeker activates!)
+        // Charizard ex: highest evolution priority always
+        if (card.name === 'Charizard ex') return isT2(state) ? 99 : 97;
+        // Noctowl: critical on T2 with Terapagos (Jewel Seeker → 2 Trainers)
         if (card.name === 'Noctowl') {
-          return hasTerapagosInPlay(state) ? 92 : 65;
+          if (hasTerapagosInPlay(state)) return isT2(state) ? 97 : 80;
+          return isT2(state) ? 65 : 55;
         }
-        if (card.name === 'Dusknoir') return 70;
-        if (card.name === 'Dusclops') return 60;
+        // Pidgeot ex: Quick Search engine, more valuable T3+
+        if (card.name === 'Pidgeot ex') return isT3Plus(state) ? 95 : 88;
+        if (card.name === 'Pidgeotto') return isT3Plus(state) ? 88 : 82;
+        // Charmeleon: only if no Rare Candy path
+        if (card.name === 'Charmeleon') return isT2(state) ? 75 : 70;
+        // Dusknoir: late-game snipe piece
+        if (card.name === 'Dusknoir') return isT3Plus(state) ? 80 : 55;
+        if (card.name === 'Dusclops') return isT3Plus(state) ? 60 : 45;
         return 55;
       }
 
       // ----- BASICS TO BENCH -----
       if (player.bench.length >= 5) return -100; // Can't bench more
 
+      // Fan Rotom: THE key T1 play for Fan Call
+      if (card.name === 'Fan Rotom') {
+        if (isT1(state)) return 98;
+        if (isT2(state)) return 25;
+        return 15;
+      }
       // Charmander is highest priority if we don't have Charizard line in play
       if (card.name === 'Charmander') {
-        if (!names.has('Charmander') && !names.has('Charmeleon') && !names.has('Charizard ex')) return 86;
-        return 60; // Second Charmander is backup
+        if (!names.has('Charmander') && !names.has('Charmeleon') && !names.has('Charizard ex')) {
+          if (isT1(state)) return 95;
+          if (isT2(state)) return 90;
+          return 85;
+        }
+        return isT1(state) ? 55 : 40; // Second Charmander is backup
+      }
+      // Hoothoot: needed for Noctowl → Jewel Seeker on T2
+      if (card.name === 'Hoothoot') {
+        if (!names.has('Hoothoot') && !names.has('Noctowl')) {
+          if (isT1(state)) return 92;
+          if (isT2(state)) return 80;
+          return 45;
+        }
+        return 25;
       }
       // Pidgey for the Pidgeot ex engine
       if (card.name === 'Pidgey') {
-        if (!names.has('Pidgey') && !names.has('Pidgeotto') && !names.has('Pidgeot ex')) return 83;
+        if (!names.has('Pidgey') && !names.has('Pidgeotto') && !names.has('Pidgeot ex')) {
+          if (isT1(state)) return 90;
+          if (isT2(state)) return 85;
+          return 75;
+        }
         return 35;
       }
       // Terapagos ex: needed to enable Noctowl's Jewel Seeker
       if (card.name === 'Terapagos ex') {
         if (!names.has('Terapagos ex')) {
-          // Higher priority if we have Hoothoot/Noctowl to evolve
-          const hasNoctowlLine = names.has('Hoothoot') || player.hand.some(c => c.name === 'Noctowl');
-          return hasNoctowlLine ? 84 : 72;
+          if (isT1(state)) return 88;
+          if (isT2(state)) return 90; // Slightly higher T2 — needed before Noctowl evolves
+          return 50;
         }
         return 30;
       }
-      // Hoothoot: needed for Noctowl which searches 2 Trainers
-      if (card.name === 'Hoothoot') {
-        if (!names.has('Hoothoot') && !names.has('Noctowl')) return 75;
-        return 25;
-      }
       // Duskull for late-game Dusknoir snipe
       if (card.name === 'Duskull') {
-        if (!names.has('Duskull') && !names.has('Dusclops') && !names.has('Dusknoir')) return 55;
+        if (!names.has('Duskull') && !names.has('Dusclops') && !names.has('Dusknoir')) {
+          if (isT1(state)) return 40;
+          if (isT2(state)) return 50;
+          return 65;
+        }
         return 20;
-      }
-      // Fan Rotom: great turn 1 for Fan Call, less useful later
-      if (card.name === 'Fan Rotom') {
-        return earlyGame ? 78 : 25;
       }
       // Fezandipiti ex: Flip the Script draw
       if (card.name === 'Fezandipiti ex') return 40;
@@ -192,12 +244,32 @@ function scoreMainAction(state: GameState, action: Action): number {
 
       const targetName = target.card.name;
 
+      // Jet Energy: special Colorless — don't waste on Charizard (only needs Fire)
+      if (energyCard.name === 'Jet Energy') {
+        // Active support needing retreat with Charizard ready on bench
+        if (isToActive && SUPPORT_POKEMON.has(targetName)) {
+          const retreatCost = target.card.retreatCost || 0;
+          const currentEnergy = countTotalEnergy(target);
+          if (currentEnergy < retreatCost) {
+            const hasReadyAttacker = player.bench.some(
+              b => b.card.name === 'Charizard ex' && canAttackWith(b)
+            );
+            if (hasReadyAttacker) return 94; // Retreat to Charizard!
+          }
+        }
+        // Jet Energy on Charizard ex is wasted (only 2 Fire needed, no Colorless in cost)
+        if (targetName === 'Charizard ex') return -5;
+        // Attach to support for retreat potential
+        if (isToActive && SUPPORT_POKEMON.has(targetName)) return 15;
+        return 10;
+      }
+
       // Fire energy to Charizard line is top priority
       if (WANTS_FIRE_ENERGY.has(targetName) && energyCard.energyType === EnergyType.Fire) {
         const fireCount = countFireEnergy(target);
         if (targetName === 'Charizard ex') {
           if (fireCount === 0) return 98;
-          if (fireCount === 1) return 96; // Can attack with 2 Fire!
+          if (fireCount === 1) return 97; // Can attack with 2 Fire!
           return 35; // Already powered up
         }
         if (targetName === 'Charmeleon') {
@@ -241,13 +313,24 @@ function scoreMainAction(state: GameState, action: Action): number {
       // Apply deck-thinning penalty for search trainers
       const searchPenalty = DECK_SEARCH_TRAINERS.has(name) ? deckDangerPenalty : 0;
 
+      // --- Buddy-Buddy Poffin: bench 2 basics ≤70 HP ---
+      if (name === 'Buddy-Buddy Poffin') {
+        if (player.bench.length >= 4) return -20;
+        if (player.bench.length >= 5) return -50;
+        if (isT1(state)) return 100 + searchPenalty; // HIGHEST T1 priority
+        if (isT2(state)) return 65 + searchPenalty;
+        return 40 + searchPenalty;
+      }
+
       // --- Rare Candy: skip to Stage 2 ---
       if (name === 'Rare Candy') {
         const hasCharmanderInPlay = getAllInPlay(state).some(
           p => p.card.name === 'Charmander' && p.turnPlayed !== state.turnNumber
         );
         const hasCharizardInHand = player.hand.some(c => c.name === 'Charizard ex');
-        if (hasCharmanderInPlay && hasCharizardInHand) return 97;
+        if (hasCharmanderInPlay && hasCharizardInHand) {
+          return isT2(state) ? 99 : 97; // T2 Rare Candy is critical for the gameplan
+        }
         const hasDuskullInPlay = getAllInPlay(state).some(
           p => p.card.name === 'Duskull' && p.turnPlayed !== state.turnNumber
         );
@@ -256,14 +339,29 @@ function scoreMainAction(state: GameState, action: Action): number {
         return -50; // No valid target, don't waste it
       }
 
+      // --- Dawn: search for Basic + Stage1 + Stage2/ex ---
+      if (name === 'Dawn') {
+        if (isT1(state)) return 60 + searchPenalty; // Playable T1 but Poffin+Fan Call is better
+        if (isT2(state)) {
+          // T2 Dawn is critical: search Terapagos + Noctowl + Charizard ex
+          if (!names.has('Charizard ex')) return 98 + searchPenalty;
+          if (!names.has('Pidgeot ex')) return 85 + searchPenalty;
+          return 70 + searchPenalty;
+        }
+        // T3+: only if missing key pieces
+        if (!names.has('Charizard ex') || !names.has('Pidgeot ex')) return 75 + searchPenalty;
+        return -20;
+      }
+
       // --- Nest Ball: search Basic Pokemon ---
       if (name === 'Nest Ball') {
         if (player.bench.length >= 5) return -50;
-        if (!names.has('Charmander') && !names.has('Charmeleon') && !names.has('Charizard ex')) return 82 + searchPenalty;
-        if (!names.has('Pidgey') && !names.has('Pidgeotto') && !names.has('Pidgeot ex')) return 78 + searchPenalty;
-        if (!names.has('Terapagos ex')) return 72 + searchPenalty;
-        if (!names.has('Hoothoot') && !names.has('Noctowl')) return 68 + searchPenalty;
-        if (!names.has('Duskull') && !names.has('Dusclops') && !names.has('Dusknoir')) return 50 + searchPenalty;
+        const baseScore = isT1(state) ? 88 : isT2(state) ? 78 : 65;
+        if (!names.has('Charmander') && !names.has('Charmeleon') && !names.has('Charizard ex')) return baseScore + searchPenalty;
+        if (!names.has('Pidgey') && !names.has('Pidgeotto') && !names.has('Pidgeot ex')) return (baseScore - 4) + searchPenalty;
+        if (!names.has('Terapagos ex')) return (baseScore - 8) + searchPenalty;
+        if (!names.has('Hoothoot') && !names.has('Noctowl')) return (baseScore - 12) + searchPenalty;
+        if (!names.has('Duskull') && !names.has('Dusclops') && !names.has('Dusknoir')) return (baseScore - 20) + searchPenalty;
         return -20 + searchPenalty;
       }
 
@@ -275,45 +373,53 @@ function scoreMainAction(state: GameState, action: Action): number {
         return -20;
       }
 
-      // --- Buddy-Buddy Poffin: bench 2 basics ≤70 HP ---
-      if (name === 'Buddy-Buddy Poffin') {
-        if (player.bench.length >= 4) return -20;
-        if (player.bench.length >= 5) return -50;
-        if (earlyGame) return 76 + searchPenalty;
-        return 40 + searchPenalty;
-      }
-
       // --- Boss's Orders: gust for KO ---
       if (name === "Boss's Orders") {
+        // Never waste supporter slot during setup turns
+        if (isT1(state) || isT2(state)) return -30;
+
         const opponent = getOpponent(state);
         if (player.active && opponent.bench.length > 0) {
           const activeDamage = getMaxDamage(player.active, state);
           // Look for KO-able bench Pokemon, prioritize by prize value
-          const koTarget = opponent.bench
+          const koTargets = opponent.bench
             .filter(p => p.currentHp <= activeDamage)
-            .sort((a, b) => (b.card.prizeCards || 1) - (a.card.prizeCards || 1))[0];
-          if (koTarget) {
-            const prizeValue = koTarget.card.prizeCards || 1;
-            return 88 + prizeValue * 2; // Higher for ex KOs
+            .sort((a, b) => (b.card.prizeCards || 1) - (a.card.prizeCards || 1));
+          if (koTargets.length > 0) {
+            const prizeValue = koTargets[0].card.prizeCards || 1;
+            return 90 + prizeValue * 5; // 95 for 1-prize, 100 for 2-prize ex KO
           }
+          // Even without KO, consider stranding a high-retreat ex
+          const strandTargets = opponent.bench.filter(
+            p => p.card.retreatCost >= 2 && (p.card.prizeCards || 1) >= 2
+          );
+          if (strandTargets.length > 0) return 40; // Strand a big ex
         }
-        return -20; // Don't waste Boss if no KO opportunity
+        return -20; // Don't waste Boss if no opportunity
       }
 
       // --- Prime Catcher: gust + switch (costs 1 card discard) ---
       if (name === 'Prime Catcher') {
+        // Don't use during setup
+        if (isT1(state) || isT2(state)) return -20;
         if (player.hand.length < 2) return -50;
         const opponent = getOpponent(state);
         if (player.active && opponent.bench.length > 0) {
           const activeDamage = getMaxDamage(player.active, state);
-          const canKOBench = opponent.bench.some(p => p.currentHp <= activeDamage);
-          if (canKOBench) return 89;
+          const koTargets = opponent.bench.filter(p => p.currentHp <= activeDamage);
+          if (koTargets.length > 0) {
+            const bestPrize = Math.max(...koTargets.map(p => p.card.prizeCards || 1));
+            return 88 + bestPrize * 3; // 91 for 1-prize, 94 for 2-prize
+          }
         }
         return -20;
       }
 
       // --- Iono: hand shuffle ---
       if (name === 'Iono') {
+        // Never use during setup — we need our hand
+        if (isT1(state)) return -40;
+        if (isT2(state)) return -30;
         const opponent = getOpponent(state);
         // Great disruption when opponent has a big hand
         if (opponent.hand.length >= 6) return 72;
@@ -324,13 +430,7 @@ function scoreMainAction(state: GameState, action: Action): number {
         return -10;
       }
 
-      // --- Dawn: search for evolution line ---
-      if (name === 'Dawn') {
-        if (!names.has('Charizard ex') || !names.has('Pidgeot ex')) return 73 + searchPenalty;
-        return -20;
-      }
-
-      // --- Super Rod: shuffle Pokemon/Energy back to deck (shuffles INTO deck, safe) ---
+      // --- Super Rod: shuffle Pokemon/Energy back to deck ---
       if (name === 'Super Rod') {
         const hasKeyDiscard = player.discard.some(c =>
           c.name === 'Charizard ex' || c.name === 'Pidgeot ex' || c.name === 'Rare Candy'
@@ -358,7 +458,7 @@ function scoreMainAction(state: GameState, action: Action): number {
 
       // --- Briar: +1 prize on Tera KO ---
       if (name === 'Briar') {
-        // Only good if Terapagos is active and can KO something
+        if (isT1(state) || isT2(state)) return -30;
         if (player.active?.card.name.includes('Terapagos')) return 45;
         return -20;
       }
@@ -367,7 +467,7 @@ function scoreMainAction(state: GameState, action: Action): number {
       if (name === 'Area Zero Underdepths') {
         if (state.stadium) return 15; // Replace opponent's stadium
         if (names.has('Terapagos ex')) return 20; // Synergy with Tera
-        return -20; // Not worth playing without good reason
+        return -20;
       }
 
       return -10; // Unknown trainers: don't play randomly
@@ -379,38 +479,55 @@ function scoreMainAction(state: GameState, action: Action): number {
       // Pidgeot ex Quick Search: best ability in the deck, always use
       if (abilityName === 'Quick Search') return 99;
 
-      // Fan Rotom Fan Call: great early game setup
-      if (abilityName === 'Fan Call') return 90;
+      // Fan Rotom Fan Call: MUST use on T1 (condition blocks it after turnNumber > 2)
+      if (abilityName === 'Fan Call') return 99;
 
       // Dusknoir Cursed Blast: 130 damage to any opponent Pokemon, self-KO
       if (abilityName === 'Cursed Blast') {
-        const opponent = getOpponent(state);
-        const allOpponent: PokemonInPlay[] = [];
-        if (opponent.active) allOpponent.push(opponent.active);
-        allOpponent.push(...opponent.bench);
+        // Never use during setup
+        if (isT1(state) || isT2(state)) return -100;
 
-        // Check if 130 damage KOs any opponent Pokemon
-        const koTargets = allOpponent.filter(p => p.currentHp <= 130);
-        if (koTargets.length > 0) {
-          // Best target: highest prize value KO
-          const bestKO = koTargets.reduce((a, b) =>
-            (b.card.prizeCards || 1) > (a.card.prizeCards || 1) ? b : a
-          );
-          const prizeValue = bestKO.card.prizeCards || 1;
-          // KOing a 2-prize ex is amazing; KOing a 1-prize basic is okay
-          if (prizeValue >= 2) return 93;
-          // Only KO 1-prize if we're close to winning
-          if (player.prizes.length <= 2) return 85;
-          return 70;
+        const opponent = getOpponent(state);
+        const abilityTarget = action.payload.abilityTarget;
+        if (!abilityTarget) return -100;
+
+        // Resolve which Pokemon is being targeted
+        const targetPokemon = abilityTarget.zone === 'active'
+          ? opponent.active
+          : opponent.bench[abilityTarget.benchIndex ?? 0];
+        if (!targetPokemon) return -100;
+
+        const targetHp = targetPokemon.currentHp;
+        const targetPrizeValue = targetPokemon.card.prizeCards || 1;
+
+        // Case 1: Direct KO
+        if (targetHp <= 130) {
+          if (targetPrizeValue >= 2) return 96; // KO a 2-prize ex
+          if (player.prizes.length <= 2) return 88; // Close to winning, any KO helps
+          return 72; // KO a 1-prize basic
         }
-        // No KO available — don't sacrifice your active for nothing
+
+        // Case 2: Soften for Charizard KO next turn
+        const hasCharizardOnBench = player.bench.some(
+          p => p.card.name === 'Charizard ex' && countFireEnergy(p) >= 2
+        );
+        if (hasCharizardOnBench) {
+          const prizesTaken = 6 - opponent.prizes.length;
+          const burningDarknessDmg = 180 + prizesTaken * 30;
+          const hpAfterCursed = targetHp - 130;
+          if (hpAfterCursed > 0 && hpAfterCursed <= burningDarknessDmg) {
+            if (targetPrizeValue >= 2) return 85; // Set up 2-prize KO
+            return 60;
+          }
+        }
+
+        // Case 3: No strategic value — don't sacrifice for nothing
         return -100;
       }
 
       // Fezandipiti ex Flip the Script: draw 3
       if (abilityName === 'Flip the Script') return 65;
 
-      // Noctowl Jewel Seeker (triggered on evolve, shouldn't appear as use)
       // Klefki Mischievous Lock (passive)
       if (abilityName === 'Mischievous Lock') return 55;
 
@@ -426,7 +543,7 @@ function scoreMainAction(state: GameState, action: Action): number {
 
       // Retreat support Pokemon for a powered-up Charizard ex
       if (SUPPORT_POKEMON.has(activeName) && benchTargetName === 'Charizard ex' && canAttackWith(benchTarget)) {
-        return 96; // Top priority: get Charizard attacking!
+        return 98; // Top priority: get Charizard attacking!
       }
 
       // Retreat for any Charizard line member that can attack
@@ -454,22 +571,23 @@ function scoreMainAction(state: GameState, action: Action): number {
     }
 
     case ActionType.SelectTarget: {
-      // Scoring for pending energy attachments (from searchAndAttach)
+      // Scoring for pending energy attachments (from Infernal Reign searchAndAttach)
       const targetPokemon = action.payload.zone === 'active'
         ? getPlayer(state).active
         : getPlayer(state).bench[action.payload.benchIndex];
       if (!targetPokemon) return 0;
 
-      let score = 10;
-      // Prefer attaching to Fire-type Pokemon (Charizard line wants energy)
-      if (targetPokemon.card.type === EnergyType.Fire) score += 30;
-      // Prefer Pokemon in the Charizard line
-      if (CHARIZARD_LINE.has(targetPokemon.card.name)) score += 40;
-      // Prefer active if it can attack
-      if (action.payload.zone === 'active') score += 10;
-      // Prefer Pokemon with fewer energy attached (spread if needed)
-      if (targetPokemon.attachedEnergy.length === 0) score += 20;
-      return score;
+      // Always attach fire to Charizard ex first
+      if (targetPokemon.card.name === 'Charizard ex') {
+        const fireCount = countFireEnergy(targetPokemon);
+        if (fireCount < 2) return 100; // Charizard needs 2 fire to attack
+        return 60; // Extra fire is insurance
+      }
+      // Backup: attach to other Charizard line members
+      if (CHARIZARD_LINE.has(targetPokemon.card.name)) return 50;
+      // Don't waste fire energy on support Pokemon
+      if (SUPPORT_POKEMON.has(targetPokemon.card.name)) return 5;
+      return 10;
     }
 
     case ActionType.Pass:
@@ -510,16 +628,12 @@ function scoreAttackAction(state: GameState, action: Action): number {
     return 50 + damage;
   }
 
-  // Pass in attack phase — only if we can't attack
-  return -10;
+  // Pass in attack phase — NEVER pass if an attack is available
+  return -1000;
 }
 
 // ============================================================================
-// MAIN EXPORT
-// ============================================================================
-
-// ============================================================================
-// CHOOSE CARD HEURISTIC (PendingChoice)
+// CHOOSE CARD HEURISTIC (PendingChoice) — Source-Aware
 // ============================================================================
 
 function scoreChooseCardAction(state: GameState, action: Action): number {
@@ -528,17 +642,190 @@ function scoreChooseCardAction(state: GameState, action: Action): number {
   const choice = state.pendingChoice;
   if (!choice) return 0;
 
-  // Skip action: usually bad unless we've already picked good cards
+  const source = choice.sourceCardName;
+  const names = inPlayNames(state);
+  const player = getPlayer(state);
+
+  // Skip action
   if (choiceId === 'skip') {
-    return choice.selectedSoFar.length > 0 ? 10 : -50;
+    if (choice.selectedSoFar.length > 0) return 5; // Already picked good stuff
+    // Never skip first pick for important sources
+    if (source === 'Dawn' || source === 'Buddy-Buddy Poffin') return -100;
+    return -50;
   }
 
   switch (choice.choiceType) {
     case 'searchCard': {
-      // Prioritize by strategic value
+      // === BUDDY-BUDDY POFFIN: 2 basics ≤70HP to bench ===
+      if (source === 'Buddy-Buddy Poffin') {
+        if (label === 'Fan Rotom') {
+          if (isT1(state) && !names.has('Fan Rotom')) return 100;
+          return 40;
+        }
+        if (label === 'Charmander') {
+          if (!names.has('Charmander') && !names.has('Charmeleon') && !names.has('Charizard ex')) return 95;
+          return 50;
+        }
+        if (label === 'Hoothoot') {
+          if (!names.has('Hoothoot') && !names.has('Noctowl')) return 85;
+          return 35;
+        }
+        if (label === 'Pidgey') {
+          if (!names.has('Pidgey') && !names.has('Pidgeotto') && !names.has('Pidgeot ex')) return 80;
+          return 30;
+        }
+        if (label === 'Duskull') return 45;
+        if (label === 'Klefki') return 25;
+        return 30;
+      }
+
+      // === FAN CALL: up to 3 Colorless ≤100HP to hand ===
+      if (source === 'Fan Rotom' || source === 'Fan Call') {
+        if (label === 'Pidgey') {
+          if (!names.has('Pidgey') && !names.has('Pidgeotto') && !names.has('Pidgeot ex')) return 95;
+          return 30;
+        }
+        if (label === 'Hoothoot') {
+          if (!names.has('Hoothoot') && !names.has('Noctowl')) return 93;
+          return 60; // Extra Hoothoot for more Noctowl evolves
+        }
+        if (label === 'Noctowl') return 85; // Great to get directly to hand for T2 evolve
+        if (label === 'Pidgeotto') return 75;
+        return 40;
+      }
+
+      // === DAWN: 3-part search (Basic, Stage1, Stage2/ex) ===
+      if (source === 'Dawn') {
+        const phase = getDawnSearchPhase(choice);
+
+        if (phase === 'basic') {
+          if (label === 'Terapagos ex' || label.includes('Terapagos')) {
+            if (!names.has('Terapagos ex')) return 100; // Critical for Jewel Seeker
+            return 30;
+          }
+          if (label === 'Charmander') {
+            if (!hasCharizardLine(state)) return 90;
+            return 45;
+          }
+          if (label === 'Pidgey') {
+            if (!names.has('Pidgey') && !names.has('Pidgeotto') && !names.has('Pidgeot ex')) return 80;
+            return 25;
+          }
+          if (label === 'Duskull') return 50;
+          if (label === 'Fan Rotom') return 20; // Fan Call only works T1, Dawn is T2+
+          if (label === 'Hoothoot') return 70;
+          if (label === 'Fezandipiti ex') return 35;
+          return 35;
+        }
+
+        if (phase === 'stage1') {
+          if (label === 'Noctowl') {
+            if (hasTerapagosInPlay(state)) return 100; // Jewel Seeker activates!
+            return 70;
+          }
+          if (label === 'Pidgeotto') return 75;
+          if (label === 'Charmeleon') return 50; // Only if no Rare Candy
+          if (label === 'Dusclops') return 40;
+          return 35;
+        }
+
+        // stage2ex
+        if (label === 'Charizard ex') {
+          if (!names.has('Charizard ex')) return 100;
+          return 50;
+        }
+        if (label === 'Pidgeot ex') {
+          if (!names.has('Pidgeot ex')) return 90;
+          return 30;
+        }
+        if (label === 'Dusknoir') return 60;
+        return 40;
+      }
+
+      // === JEWEL SEEKER (Noctowl onEvolve): up to 2 Trainers ===
+      if (source === 'Noctowl') {
+        if (label === 'Rare Candy') {
+          const hasCharmander = getAllInPlay(state).some(
+            p => p.card.name === 'Charmander' && p.turnPlayed !== state.turnNumber
+          );
+          if (hasCharmander) return 100; // Rare Candy to evolve Charmander → Charizard ex
+          return 75;
+        }
+        if (label === "Boss's Orders") {
+          if (isT3Plus(state)) return 88;
+          return 65;
+        }
+        if (label === 'Prime Catcher') return 85;
+        if (label === 'Nest Ball') return 70;
+        if (label === 'Ultra Ball') return 68;
+        if (label === 'Buddy-Buddy Poffin') return 60;
+        if (label === 'Night Stretcher') return 55;
+        if (label === 'Super Rod') return 50;
+        if (label === 'Iono') return 45;
+        if (label === 'Dawn') return 40;
+        if (label === 'Briar') return 35;
+        return 35;
+      }
+
+      // === QUICK SEARCH (Pidgeot ex): any 1 card ===
+      if (source === 'Pidgeot ex' || source === 'Quick Search') {
+        const opponent = getOpponent(state);
+        const activeDamage = player.active ? getMaxDamage(player.active, state) : 0;
+
+        // If we can KO a bench ex with Boss's Orders
+        if (opponent.bench.some(p => p.currentHp <= activeDamage && (p.card.prizeCards || 1) >= 2)) {
+          if (label === "Boss's Orders") return 100;
+          if (label === 'Prime Catcher') return 98;
+        }
+
+        // If Charizard ex is not set up, prioritize Rare Candy / Charizard
+        if (!names.has('Charizard ex')) {
+          if (label === 'Rare Candy') return 95;
+          if (label === 'Charizard ex') return 93;
+        }
+
+        // Default T3+ priorities
+        if (label === "Boss's Orders") return 88;
+        if (label === 'Prime Catcher') return 86;
+        if (label === 'Rare Candy') return 80;
+        if (CHARIZARD_LINE.has(label)) return 78;
+        if (label === 'Iono') return 65;
+        if (label.includes('Fire') && label.includes('Energy')) return 60;
+        return 50;
+      }
+
+      // === NEST BALL: 1 Basic to bench ===
+      if (source === 'Nest Ball') {
+        if (label === 'Fan Rotom' && isT1(state) && !names.has('Fan Rotom')) return 95;
+        if (label === 'Charmander' && !hasCharizardLine(state)) return 92;
+        if (label === 'Pidgey' && !names.has('Pidgey') && !names.has('Pidgeotto') && !names.has('Pidgeot ex')) return 88;
+        if ((label === 'Terapagos ex' || label.includes('Terapagos')) && !names.has('Terapagos ex')) return 85;
+        if (label === 'Hoothoot' && !names.has('Hoothoot') && !names.has('Noctowl')) return 80;
+        if (label === 'Duskull') return 55;
+        return 40;
+      }
+
+      // === ULTRA BALL: 1 Pokemon from deck ===
+      if (source === 'Ultra Ball') {
+        if (label === 'Charizard ex' && !names.has('Charizard ex')) return 100;
+        if (label === 'Pidgeot ex' && !names.has('Pidgeot ex')) return 92;
+        if ((label === 'Terapagos ex' || label.includes('Terapagos')) && !names.has('Terapagos ex')) return 85;
+        if (label === 'Noctowl') return 80;
+        return 50;
+      }
+
+      // === NIGHT STRETCHER / SUPER ROD: recover from discard ===
+      if (source === 'Night Stretcher' || source === 'Super Rod') {
+        if (label === 'Charizard ex') return 100;
+        if (label === 'Pidgeot ex') return 90;
+        if (label === 'Fire Energy') return 70;
+        if (label === 'Rare Candy') return 65;
+        return 40;
+      }
+
+      // === FALLBACK: generic search scoring ===
       if (CHARIZARD_LINE.has(label)) return 95;
       if (label === 'Pidgeot ex') return 93;
-      if (label === 'Pidgeotto') return 88;
       if (label === 'Rare Candy') return 90;
       if (label === "Boss's Orders") return 85;
       if (label === 'Terapagos ex') return 84;
@@ -553,21 +840,30 @@ function scoreChooseCardAction(state: GameState, action: Action): number {
       if (label === 'Fan Rotom') return 45;
       if (label === 'Klefki') return 40;
       if (label.includes('Energy')) return 40;
-      // Generic Pokemon
       if (SUPPORT_POKEMON.has(label)) return 75;
       return 50;
     }
 
     case 'discardCard': {
-      // When forced to discard (Ultra Ball), prefer discarding expendable cards
-      // Lower score = MORE preferred to discard (we invert: higher score = card we WANT to discard)
-      if (label.includes('Energy')) return 70; // Energy is expendable
-      if (CHARIZARD_LINE.has(label)) return -80; // Never discard Charizard line
-      if (label === 'Rare Candy') return -60;
-      if (label === "Boss's Orders") return -40;
-      if (label === 'Pidgeot ex') return -50;
-      // Duplicates and basics are OK to discard
-      if (SUPPORT_POKEMON.has(label)) return 30;
+      // When forced to discard (Ultra Ball), higher score = MORE preferred to discard
+      if (CHARIZARD_LINE.has(label)) return -100; // NEVER discard Charizard line
+      if (label === 'Rare Candy') return -80;
+      if (label === 'Pidgeot ex') return -70;
+      if (label === "Boss's Orders") return -50;
+      if (label === 'Dawn') {
+        // Dawn is expendable T3+ if Charizard is already set up
+        if (isT3Plus(state) && names.has('Charizard ex')) return 30;
+        return -30;
+      }
+      // Energy: Jet is least important, Fire more valuable
+      if (label === 'Jet Energy') return 80;
+      if (label.includes('Energy')) return 60;
+      // Fan Rotom is expendable after T1
+      if (label === 'Fan Rotom') return isT1(state) ? -40 : 75;
+      // Extra copies of support basics
+      if (label === 'Hoothoot' && names.has('Hoothoot')) return 70;
+      if (label === 'Buddy-Buddy Poffin' && !isT1(state)) return 65;
+      if (SUPPORT_POKEMON.has(label)) return 40;
       return 20;
     }
 
@@ -582,18 +878,29 @@ function scoreChooseCardAction(state: GameState, action: Action): number {
       if (!target) return 50;
 
       let score = 50;
-      // High-prize targets
-      if (target.card.prizeCards >= 2) score += 30;
+      const prizeValue = target.card.prizeCards || 1;
+
+      // High-prize targets (ex Pokemon)
+      if (prizeValue >= 2) score += 40;
+
       // KO-able?
       const attacker = state.players[state.currentPlayer].active;
       if (attacker) {
-        const topAttackDmg = Math.max(...attacker.card.attacks.map(a => a.damage));
-        if (topAttackDmg >= target.currentHp) score += 40;
+        const maxDmg = getMaxDamage(attacker, state);
+        if (maxDmg >= target.currentHp) {
+          score += 50; // Can KO!
+          score += prizeValue * 20; // More prizes = better
+        }
       }
+
       // Strand high-retreat Pokemon
-      if (target.card.retreatCost >= 2) score += 20;
-      // Important targets
-      if (target.card.name === 'Charizard ex' || target.card.name === 'Pidgeot ex') score += 15;
+      if (target.card.retreatCost >= 2) score += 15;
+
+      // Target priority by name
+      if (target.card.name === 'Charizard ex') score += 20;
+      if (target.card.name === 'Pidgeot ex') score += 15;
+      if (target.card.name === 'Terapagos ex') score += 10;
+
       return score;
     }
 

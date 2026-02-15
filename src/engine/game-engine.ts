@@ -588,11 +588,26 @@ export class GameEngine {
                 continue; // Condition not met — skip this ability
               }
             }
-            actions.push({
-              type: ActionType.UseAbility,
-              player: state.currentPlayer,
-              payload: { zone, benchIndex: index, abilityName: pokemon.card.ability.name },
-            });
+            // For targeted abilities (e.g. Cursed Blast), generate one action per target
+            if (pokemon.card.ability.getTargets) {
+              const targets = pokemon.card.ability.getTargets(state, pokemon, state.currentPlayer as 0 | 1);
+              for (const target of targets) {
+                actions.push({
+                  type: ActionType.UseAbility,
+                  player: state.currentPlayer,
+                  payload: {
+                    zone, benchIndex: index, abilityName: pokemon.card.ability.name,
+                    abilityTarget: target,
+                  },
+                });
+              }
+            } else {
+              actions.push({
+                type: ActionType.UseAbility,
+                player: state.currentPlayer,
+                payload: { zone, benchIndex: index, abilityName: pokemon.card.ability.name },
+              });
+            }
           }
         }
       }
@@ -678,7 +693,7 @@ export class GameEngine {
         newState = this.playTrainer(newState, action.payload.handIndex);
         break;
       case ActionType.UseAbility:
-        newState = this.useAbility(newState, action.payload.zone, action.payload.benchIndex);
+        newState = this.useAbility(newState, action.payload.zone, action.payload.benchIndex, action.payload.abilityTarget);
         break;
       case ActionType.Attack:
         newState = this.attack(newState, action.payload.attackIndex);
@@ -1044,7 +1059,7 @@ export class GameEngine {
   /**
    * Use a Pokemon's ability.
    */
-  private static useAbility(state: GameState, zone: 'active' | 'bench', benchIndex?: number): GameState {
+  private static useAbility(state: GameState, zone: 'active' | 'bench', benchIndex?: number, abilityTarget?: { player: 0 | 1; zone: 'active' | 'bench'; benchIndex?: number }): GameState {
     const player = state.players[state.currentPlayer];
     const pokemon = zone === 'active' ? player.active : player.bench[benchIndex!];
     if (!pokemon || !pokemon.card.ability) return state;
@@ -1066,7 +1081,7 @@ export class GameEngine {
     newState.players[state.currentPlayer] = newPlayer;
 
     // Execute ability effect via DSL
-    newState = EffectExecutor.executeAbility(newState, ability.effects, pokemon, state.currentPlayer as 0 | 1);
+    newState = EffectExecutor.executeAbility(newState, ability.effects, pokemon, state.currentPlayer as 0 | 1, abilityTarget);
 
     // Check for knockouts (some abilities cause self-KO like Dusknoir)
     newState = this.checkKnockouts(newState);
