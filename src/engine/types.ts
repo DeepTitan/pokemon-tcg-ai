@@ -518,15 +518,24 @@ export interface GameConfig {
  *   421:     Deck size
  *   422:     Discard pile size
  *
- * GAME STATE (423-430):
- *   423:    Current player (0 or 1, as 0-1 float)
- *   424:    Turn number (normalized to typical game length)
- *   425:    Game phase (0-5 mapped to GamePhase enum)
- *   426:    Whose turn started first (0 or 1)
- *   427:    Stadium card active (0-1)
- *   428-430: [Reserved]
+ * GAME STATE (412-430):
+ *   412:    Current player (0 or 1, as 0-1 float)
+ *   413:    Turn number (normalized to typical game length)
+ *   414:    Game phase (0-5 mapped to GamePhase enum)
+ *   415:    Opponent hand size / 20
+ *   416:    Stadium card active (0-1)
+ *   417:    Opponent deck size / 60
+ *   418:    Opponent discard pile size / 60
+ *   419:    Opponent prize cards remaining / 6
+ *   420-430: [Reserved/padding]
  *
- * TOTAL VECTOR SIZE: 431 floats
+ * PER-CARD DISCARD TRACKING (431-500):
+ *   431-459: Own discard — per-card count/max for 29 unique cards (CARD_NAMES order)
+ *   460:     [Reserved]
+ *   461-489: Opponent discard — per-card count/max for 29 unique cards
+ *   490-500: [Reserved]
+ *
+ * TOTAL VECTOR SIZE: 501 floats
  *
  * All values are normalized to [0, 1] range where applicable:
  * - HP ratios: currentHp / maxHp
@@ -537,7 +546,7 @@ export interface GameConfig {
  * - Turn number: min(turn, 30) / 30 (most games under 30 turns)
  */
 export interface EncodedGameState {
-  /** The flat Float32Array encoding the game state (size: 431) */
+  /** The flat Float32Array encoding the game state (size: 501) */
   buffer: Float32Array;
   /** Metadata: timestamp when encoding was created */
   timestamp: number;

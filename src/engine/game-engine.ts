@@ -40,6 +40,7 @@ import {
   PendingChoice,
 } from './types.js';
 import { EffectExecutor, EffectDSL, Condition } from './effects.js';
+import { CARD_NAME_INDEX, MAX_CARD_COPIES, NUM_CARD_NAMES } from '../ai/training/action-encoding.js';
 
 // ============================================================================
 // SEEDED RANDOM NUMBER GENERATOR
@@ -1764,12 +1765,12 @@ export class GameEngine {
 
   /**
    * Encode game state for neural network.
-   * Produces a 431-element Float32Array following the spec in types.ts.
+   * Produces a 501-element Float32Array following the spec in types.ts.
    *
    * Takes perspective of one player; encodes visible info plus uncertainty bounds.
    */
   static encodeState(state: GameState, perspective: 0 | 1): EncodedGameState {
-    const buffer = new Float32Array(431);
+    const buffer = new Float32Array(501);
     const perspectivePlayer = state.players[perspective];
     const opponent = state.players[perspective === 0 ? 1 : 0];
 
@@ -1991,17 +1992,40 @@ export class GameEngine {
       }
     }
 
-    // ========== GAME STATE (423-430) ==========
+    // ========== GAME STATE ==========
     buffer[idx++] = state.currentPlayer; // 0 or 1
     buffer[idx++] = Math.min(state.turnNumber, 30) / 30;
     buffer[idx++] = this.encodePhase(state.phase) / 5;
-    buffer[idx++] = 0; // who started first (simplified; not tracked currently)
+    buffer[idx++] = Math.min(opponent.hand.length, 20) / 20; // Opponent hand size (public info)
     buffer[idx++] = state.stadium ? 1 : 0;
+    buffer[idx++] = Math.min(opponent.deck.length, 60) / 60; // Opponent deck size (public info)
+    buffer[idx++] = Math.min(opponent.discard.length, 60) / 60; // Opponent discard total
+    buffer[idx++] = opponent.prizeCardsRemaining / 6; // Opponent prizes remaining
 
-    // Reserved
-    buffer[idx++] = 0;
-    buffer[idx++] = 0;
-    buffer[idx++] = 0;
+    // Pad to idx=431 to maintain alignment with old encoding up to this point
+    while (idx < 431) buffer[idx++] = 0;
+
+    // ========== PER-CARD DISCARD TRACKING (431-500) ==========
+    // Own discard pile: 29 card slots (count_in_discard / max_copies)
+    const ownDiscardIdx = 431;
+    for (const card of perspectivePlayer.discard) {
+      const nameIdx = CARD_NAME_INDEX.get(card.name);
+      if (nameIdx !== undefined && nameIdx < NUM_CARD_NAMES) {
+        buffer[ownDiscardIdx + nameIdx] += 1.0 / MAX_CARD_COPIES[nameIdx];
+      }
+    }
+
+    // [460] reserved
+    // Opponent discard pile: 29 card slots (count_in_discard / max_copies)
+    const oppDiscardIdx = 461;
+    for (const card of opponent.discard) {
+      const nameIdx = CARD_NAME_INDEX.get(card.name);
+      if (nameIdx !== undefined && nameIdx < NUM_CARD_NAMES) {
+        buffer[oppDiscardIdx + nameIdx] += 1.0 / MAX_CARD_COPIES[nameIdx];
+      }
+    }
+
+    // [490-500] reserved
 
     return {
       buffer,

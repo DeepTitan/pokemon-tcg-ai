@@ -932,12 +932,12 @@ describe('Effect Tracking - Retreat Prevention', () => {
 // ============================================================================
 
 describe('State Encoding', () => {
-  it('should encode state to a 431-element Float32Array', () => {
+  it('should encode state to a 501-element Float32Array', () => {
     const state = GameEngine.createGame(makeTestDeck(), makeTestDeck(), 42);
     const encoded = GameEngine.encodeState(state, 0);
 
     assert.ok(encoded.buffer instanceof Float32Array, 'Buffer should be Float32Array');
-    assert.equal(encoded.buffer.length, 431, 'Should encode to 431 floats');
+    assert.equal(encoded.buffer.length, 501, 'Should encode to 501 floats');
     assert.equal(encoded.perspectivePlayer, 0, 'Perspective should be player 0');
     assert.ok(encoded.timestamp > 0, 'Should have a timestamp');
   });
@@ -949,7 +949,7 @@ describe('State Encoding', () => {
 
     // They should differ because different player's info is in the "own" section
     let differences = 0;
-    for (let i = 0; i < 431; i++) {
+    for (let i = 0; i < 501; i++) {
       if (encoded0.buffer[i] !== encoded1.buffer[i]) differences++;
     }
     assert.ok(

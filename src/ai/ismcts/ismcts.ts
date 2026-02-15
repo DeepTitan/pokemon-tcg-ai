@@ -36,6 +36,8 @@ export interface ISMCTSConfig {
   temperatureEnd: number;       // Final temperature after annealing (default: 0.1)
   maxDepth: number;             // Maximum depth of tree (default: 30)
   useNeuralNetPrior: boolean;   // Whether to use NN priors (default: true)
+  dirichletAlpha: number;       // Dirichlet noise alpha for root exploration (default: 0, disabled)
+  dirichletEpsilon: number;     // Fraction of noise vs prior at root (default: 0.25)
   encodeStateFn?: (state: GameState, perspective: 0 | 1) => EncodedGameState;
   evaluateTerminalFn?: (state: GameState, currentPlayer: 0 | 1) => number;
 }
@@ -68,6 +70,8 @@ export interface PolicyValueNetwork {
     policy: Map<string, number>;
     value: number;
   };
+  /** Set context for action-scoring networks that need legal actions to compute policy */
+  setContext?(state: GameState, legalActions: Action[]): void;
 }
 
 const DEFAULT_PREDICTION = { policy: new Map<string, number>(), value: 0.0 };
@@ -101,6 +105,8 @@ export class ISMCTS {
       temperatureEnd: config.temperatureEnd ?? 0.1,
       maxDepth: config.maxDepth ?? 30,
       useNeuralNetPrior: config.useNeuralNetPrior ?? true,
+      dirichletAlpha: config.dirichletAlpha ?? 0,
+      dirichletEpsilon: config.dirichletEpsilon ?? 0.25,
     };
 
     // Validate configuration
@@ -213,6 +219,17 @@ export class ISMCTS {
 
       onProgress?.(workDone, totalWork);
 
+      // Add Dirichlet noise to root priors after first determinization
+      if (detIdx === 0 && this.config.dirichletAlpha > 0 && root.children.size > 0) {
+        const epsilon = this.config.dirichletEpsilon;
+        const noise = this.sampleDirichlet(root.children.size, this.config.dirichletAlpha);
+        let i = 0;
+        for (const child of root.children.values()) {
+          child.prior = (1 - epsilon) * child.prior + epsilon * noise[i];
+          i++;
+        }
+      }
+
       // Yield between determinizations
       if (detIdx < this.config.numDeterminizations - 1) {
         await new Promise(resolve => setTimeout(resolve, 0));
@@ -321,6 +338,8 @@ export class ISMCTS {
       // Max depth cutoff
       if (path.length >= this.config.maxDepth) {
         // Use neural network to evaluate state
+        const maxDepthActions = getLegalActions(currentState);
+        network.setContext?.(currentState, maxDepthActions);
         const encoded = this.encodeState(currentState, currentPlayerInSim);
         const { value } = await network.predict(encoded);
         this.backpropagate(path, value, 1, currentPlayerInSim);
@@ -330,6 +349,7 @@ export class ISMCTS {
 
     // Expansion: create children for all legal actions
     const legalActions = getLegalActions(currentState);
+    network.setContext?.(currentState, legalActions);
     const encoded = this.encodeState(currentState, currentPlayerInSim);
     const { policy: priors } = await network.predict(encoded);
 
@@ -360,6 +380,8 @@ export class ISMCTS {
     currentPlayerInSim = currentPlayerInSim === 0 ? 1 : 0;
 
     // Evaluation: use neural network for value estimate
+    const evalActions = getLegalActions(currentState);
+    network.setContext?.(currentState, evalActions);
     const evaluatedState = this.encodeState(currentState, currentPlayerInSim);
     const { value } = await network.predict(evaluatedState);
 
@@ -380,7 +402,7 @@ export class ISMCTS {
     applyAction: (state: GameState, action: Action) => GameState,
     currentPlayer: 0 | 1,
   ): void {
-    const predictSync = network.predictSync!;
+    const predictSync = network.predictSync!.bind(network);
     const path: MCTSNode[] = [];
     let currentNode = root;
     let currentState = state;
@@ -413,6 +435,8 @@ export class ISMCTS {
       currentPlayerInSim = currentPlayerInSim === 0 ? 1 : 0;
 
       if (path.length >= this.config.maxDepth) {
+        const maxDepthActions = getLegalActions(currentState);
+        network.setContext?.(currentState, maxDepthActions);
         const encoded = this.encodeState(currentState, currentPlayerInSim);
         const { value } = predictSync(encoded);
         this.backpropagate(path, value, 1, currentPlayerInSim);
@@ -421,6 +445,7 @@ export class ISMCTS {
     }
 
     const legalActions = getLegalActions(currentState);
+    network.setContext?.(currentState, legalActions);
     const encoded = this.encodeState(currentState, currentPlayerInSim);
     const { policy: priors } = predictSync(encoded);
 
@@ -444,6 +469,8 @@ export class ISMCTS {
     currentState = applyAction(currentState, selectedAction);
     currentPlayerInSim = currentPlayerInSim === 0 ? 1 : 0;
 
+    const evalActions = getLegalActions(currentState);
+    network.setContext?.(currentState, evalActions);
     const evaluatedState = this.encodeState(currentState, currentPlayerInSim);
     const { value } = predictSync(evaluatedState);
     this.backpropagate(path, value, 1, currentPlayerInSim);
@@ -571,7 +598,62 @@ export class ISMCTS {
     if (this.config.encodeStateFn) {
       return this.config.encodeStateFn(state, perspective);
     }
-    return { buffer: new Float32Array(431) } as EncodedGameState;
+    return { buffer: new Float32Array(501) } as EncodedGameState;
+  }
+
+  /**
+   * Sample from Dirichlet distribution using Gamma sampling
+   */
+  private sampleDirichlet(n: number, alpha: number): number[] {
+    const samples: number[] = [];
+    let sum = 0;
+    for (let i = 0; i < n; i++) {
+      // Gamma(alpha, 1) via Marsaglia and Tsang's method (simplified for alpha >= 1)
+      // For alpha < 1, use Gamma(alpha+1, 1) * U^(1/alpha)
+      let gamma: number;
+      if (alpha >= 1) {
+        const d = alpha - 1 / 3;
+        const c = 1 / Math.sqrt(9 * d);
+        while (true) {
+          let x: number, v: number;
+          do {
+            x = this.randn();
+            v = 1 + c * x;
+          } while (v <= 0);
+          v = v * v * v;
+          const u = Math.random();
+          if (u < 1 - 0.0331 * x * x * x * x) { gamma = d * v; break; }
+          if (Math.log(u) < 0.5 * x * x + d * (1 - v + Math.log(v))) { gamma = d * v; break; }
+        }
+      } else {
+        // alpha < 1: sample Gamma(alpha+1) then scale
+        const d = alpha + 1 - 1 / 3;
+        const c = 1 / Math.sqrt(9 * d);
+        while (true) {
+          let x: number, v: number;
+          do {
+            x = this.randn();
+            v = 1 + c * x;
+          } while (v <= 0);
+          v = v * v * v;
+          const u = Math.random();
+          if (u < 1 - 0.0331 * x * x * x * x) { gamma = d * v * Math.pow(Math.random(), 1 / alpha); break; }
+          if (Math.log(u) < 0.5 * x * x + d * (1 - v + Math.log(v))) { gamma = d * v * Math.pow(Math.random(), 1 / alpha); break; }
+        }
+      }
+      samples.push(gamma);
+      sum += gamma;
+    }
+    // Normalize to get Dirichlet sample
+    for (let i = 0; i < n; i++) samples[i] /= sum;
+    return samples;
+  }
+
+  /** Standard normal via Box-Muller */
+  private randn(): number {
+    const u1 = Math.random();
+    const u2 = Math.random();
+    return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
   }
 
   /**
@@ -593,20 +675,39 @@ export class ISMCTS {
    * where N(a) is visit count and T is temperature
    */
   private selectAction(root: MCTSNode, legalActions: Action[], temperature: number): Action {
-    let maxVisits = 0;
-    let bestAction = legalActions[0];
+    // Pure exploitation: argmax (for production play or near-zero temperature)
+    if (temperature < 0.01) {
+      let maxVisits = 0;
+      let bestAction = legalActions[0];
+      for (const action of legalActions) {
+        const key = this.actionToKey(action);
+        const child = root.children.get(key);
+        if (child && child.visitCount > maxVisits) {
+          maxVisits = child.visitCount;
+          bestAction = action;
+        }
+      }
+      return bestAction;
+    }
 
+    // Temperature-based sampling: policy ∝ N(a)^(1/T)
+    const invT = 1.0 / temperature;
+    const powered: number[] = [];
     for (const action of legalActions) {
       const key = this.actionToKey(action);
       const child = root.children.get(key);
-
-      if (child && child.visitCount > maxVisits) {
-        maxVisits = child.visitCount;
-        bestAction = action;
-      }
+      const visits = child?.visitCount ?? 0;
+      powered.push(Math.pow(Math.max(visits, 1), invT));
     }
 
-    return bestAction;
+    const sum = powered.reduce((a, b) => a + b, 0);
+    const rand = Math.random() * sum;
+    let cumulative = 0;
+    for (let i = 0; i < legalActions.length; i++) {
+      cumulative += powered[i];
+      if (rand < cumulative) return legalActions[i];
+    }
+    return legalActions[legalActions.length - 1];
   }
 
   /**

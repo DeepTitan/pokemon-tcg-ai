@@ -1,8 +1,9 @@
 import { GameEngine } from '../engine/game-engine.js';
-import { ISMCTS, type ISMCTSConfig, type ChildStat } from './ismcts/ismcts.js';
+import { ISMCTS, type ISMCTSConfig, type ChildStat, type PolicyValueNetwork } from './ismcts/ismcts.js';
 import type { GameState, Action } from '../engine/types.js';
 import { heuristicSelectAction } from './heuristic.js';
 import { getModel } from './model-registry.js';
+import { NetworkISMCTSAdapter, type ModelWeights } from './training/network-adapter.js';
 
 export type { AIModel } from './model-registry.js';
 export { getModels, getModel, getModelIds, registerModel } from './model-registry.js';
@@ -24,6 +25,17 @@ function evaluateTerminal(state: GameState, currentPlayer: 0 | 1): number {
 }
 
 let deterministicSeed = 0;
+let cachedNetworkAdapter: NetworkISMCTSAdapter | null = null;
+
+/** Load neural network weights for ISMCTS. Call before using neural-ismcts mode. */
+export function loadNeuralWeights(weights: ModelWeights): void {
+  cachedNetworkAdapter = new NetworkISMCTSAdapter(weights);
+}
+
+/** Check if neural weights are loaded. */
+export function hasNeuralWeights(): boolean {
+  return cachedNetworkAdapter !== null;
+}
 
 export async function searchAction(
   state: GameState,
@@ -54,11 +66,17 @@ export async function searchAction(
     evaluateTerminalFn: evaluateTerminal,
   });
 
+  // Use neural network adapter if available and mode requests it
+  const useNeural = model.useNeural && cachedNetworkAdapter;
+  const network: PolicyValueNetwork | undefined = useNeural
+    ? cachedNetworkAdapter!
+    : undefined;
+
   const startTime = performance.now();
 
   const result = await ismcts.search(
     state,
-    undefined, // no neural network yet - uses DefaultNetwork (uniform priors)
+    network,
     GameEngine.getLegalActions.bind(GameEngine),
     GameEngine.applyAction.bind(GameEngine),
     state.currentPlayer as 0 | 1,

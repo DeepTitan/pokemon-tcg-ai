@@ -11,6 +11,8 @@ export interface AIModel {
   hasProgress: boolean;
   /** ISMCTS config if applicable */
   ismctsConfig?: { determinizations: number; simulations: number };
+  /** Whether to use neural network priors (requires loaded weights) */
+  useNeural?: boolean;
 }
 
 const models: AIModel[] = [
@@ -36,6 +38,15 @@ const models: AIModel[] = [
     async: true,
     hasProgress: true,
     ismctsConfig: { determinizations: 15, simulations: 100 },
+  },
+  {
+    id: 'neural-ismcts',
+    name: 'Neural',
+    description: 'Neural ISMCTS 5×50 (trained network)',
+    async: true,
+    hasProgress: true,
+    ismctsConfig: { determinizations: 5, simulations: 50 },
+    useNeural: true,
   },
 ];
 
