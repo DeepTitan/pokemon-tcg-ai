@@ -2,6 +2,9 @@ name: Trace Windows E2E
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - codex/windows-e2e
 
 jobs:
   build-and-test:
