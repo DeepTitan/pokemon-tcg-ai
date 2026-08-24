@@ -1,9 +1,19 @@
 use serde::Serialize;
 use std::{
+    ffi::OsString,
     fs,
     net::{IpAddr, ToSocketAddrs},
+    os::windows::ffi::OsStringExt,
     path::{Path, PathBuf},
     process::Command,
+    thread,
+    time::Duration,
+};
+use windows_sys::Win32::{
+    Foundation::CloseHandle,
+    System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
+    },
 };
 
 pub const GAME_HOST: &str = "api.us-east-1.studio-prod.pokemon.com";
@@ -47,7 +57,7 @@ pub fn install_helper(certificate_path: &Path) -> Result<(), String> {
         );
     }
     let output = Command::new("certutil.exe")
-        .args(["-user", "-addstore", "-f", "Root"])
+        .args(["-addstore", "-f", "Root"])
         .arg(certificate_path)
         .output()
         .map_err(|error| format!("Could not install the local capture certificate: {error}"))?;
@@ -61,6 +71,41 @@ pub fn install_helper(certificate_path: &Path) -> Result<(), String> {
             error
         })
     }
+}
+
+fn process_image_path(pid: u32) -> Result<PathBuf, String> {
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if handle.is_null() {
+            return Err("Could not inspect the running Pokémon client.".to_owned());
+        }
+        let mut buffer = vec![0u16; 32_768];
+        let mut length = buffer.len() as u32;
+        let result = QueryFullProcessImageNameW(handle, 0, buffer.as_mut_ptr(), &mut length);
+        let _ = CloseHandle(handle);
+        if result == 0 || length == 0 {
+            return Err("Could not locate the running Pokémon client.".to_owned());
+        }
+        buffer.truncate(length as usize);
+        Ok(PathBuf::from(OsString::from_wide(&buffer)))
+    }
+}
+
+pub fn restart_pokemon_client(pid: u32) -> Result<(), String> {
+    let executable = process_image_path(pid)?;
+    let stopped = Command::new("taskkill.exe")
+        .args(["/PID", &pid.to_string(), "/T", "/F"])
+        .output()
+        .map_err(|error| format!("Could not reconnect Pokémon TCG Live: {error}"))?;
+    if !stopped.status.success() {
+        return Err("Could not reconnect the already-running Pokémon client.".to_owned());
+    }
+    thread::sleep(Duration::from_millis(350));
+    Command::new("explorer.exe")
+        .arg(executable)
+        .spawn()
+        .map_err(|error| format!("Could not relaunch Pokémon TCG Live: {error}"))?;
+    Ok(())
 }
 
 pub fn helper_ready() -> bool {
@@ -136,9 +181,7 @@ pub fn enable_route(
     let contents = fs::read_to_string(&path)
         .map_err(|error| format!("Could not read the Windows hosts file: {error}"))?;
     let clean = hosts_without_override(&contents);
-    let routed = format!(
-        "{clean}{HOSTS_BEGIN}\r\n127.0.0.1 {GAME_HOST}\r\n{HOSTS_END}\r\n"
-    );
+    let routed = format!("{clean}{HOSTS_BEGIN}\r\n127.0.0.1 {GAME_HOST}\r\n{HOSTS_END}\r\n");
     fs::write(&path, routed)
         .map_err(|error| format!("Could not enable the Pokémon capture route: {error}"))?;
     flush_dns_cache();
