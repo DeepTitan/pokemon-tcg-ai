@@ -1,28 +1,39 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { parseBattleLog } from '../battle-log-parser.js';
+import { DEMO_BATTLE_LOG } from '../demo-log.js';
 
-const fixture = '/Users/theisaiahw/.codex/attachments/e3b6f214-ea79-43f9-b1b6-c00ae5ad4173/pasted-text.txt';
-const review = parseBattleLog(readFileSync(fixture, 'utf8'));
+const smokeReview = parseBattleLog(DEMO_BATTLE_LOG);
+assert.deepEqual(smokeReview.players, ['isaiahw', 'Yo_Allan']);
+assert.equal(smokeReview.localPlayer, 'isaiahw');
+assert.equal(smokeReview.opponent, 'Yo_Allan');
+assert.equal(smokeReview.turns.length, 4);
+assert.equal(smokeReview.turns[0].snapshot.players.isaiahw.active?.name, 'Dreepy');
+assert.equal(smokeReview.turns.at(-1)!.snapshot.players.isaiahw.active?.name, 'Budew');
 
-assert.deepEqual(review.players, ['isaiahw', 'Yo_Allan']);
-assert.equal(review.localPlayer, 'isaiahw');
-assert.equal(review.opponent, 'Yo_Allan');
-assert.equal(review.winner, 'Yo_Allan');
-assert.equal(review.turns.length, 14);
+const fixture = process.env.TRACE_BATTLE_LOG_FIXTURE;
+if (fixture) {
+  const review = parseBattleLog(readFileSync(fixture, 'utf8'));
 
-const setup = review.turns[0].snapshot;
-assert.equal(setup.players.isaiahw.active?.name, 'Dreepy');
-assert.equal(setup.players.Yo_Allan.active?.name, 'Latias ex');
+  assert.deepEqual(review.players, ['isaiahw', 'Yo_Allan']);
+  assert.equal(review.localPlayer, 'isaiahw');
+  assert.equal(review.opponent, 'Yo_Allan');
+  assert.equal(review.winner, 'Yo_Allan');
+  assert.equal(review.turns.length, 14);
 
-const firstIsaiahTurn = review.turns[2].snapshot;
-assert.equal(firstIsaiahTurn.players.isaiahw.active?.name, 'Budew');
-assert.equal(firstIsaiahTurn.players.Yo_Allan.active?.name, 'Latias ex');
-assert.equal(firstIsaiahTurn.stadium, 'Risky Ruins');
+  const setup = review.turns[0].snapshot;
+  assert.equal(setup.players.isaiahw.active?.name, 'Dreepy');
+  assert.equal(setup.players.Yo_Allan.active?.name, 'Latias ex');
 
-const final = review.turns.at(-1)!.snapshot;
-assert.equal(final.winner, 'Yo_Allan');
-assert.equal(final.players.Yo_Allan.prizesTaken, 6);
-assert.equal(final.players.isaiahw.active, null);
+  const firstIsaiahTurn = review.turns[2].snapshot;
+  assert.equal(firstIsaiahTurn.players.isaiahw.active?.name, 'Budew');
+  assert.equal(firstIsaiahTurn.players.Yo_Allan.active?.name, 'Latias ex');
+  assert.equal(firstIsaiahTurn.stadium, 'Risky Ruins');
 
-console.log(`battle-log-parser: ${review.turns.length - 1} turns reconstructed successfully`);
+  const final = review.turns.at(-1)!.snapshot;
+  assert.equal(final.winner, 'Yo_Allan');
+  assert.equal(final.players.Yo_Allan.prizesTaken, 6);
+  assert.equal(final.players.isaiahw.active, null);
+}
+
+console.log(`battle-log-parser: portable ${smokeReview.turns.length - 1}-turn reconstruction passed`);
