@@ -10,7 +10,6 @@ use std::{
     fs::{self, OpenOptions},
     io::{BufReader, Read, Write},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpStream as StdTcpStream},
-    os::unix::{fs::PermissionsExt, net::UnixStream},
     path::PathBuf,
     process::Command,
     sync::{
@@ -19,6 +18,8 @@ use std::{
     },
     time::{SystemTime, UNIX_EPOCH},
 };
+#[cfg(target_os = "macos")]
+use std::os::unix::fs::PermissionsExt;
 use tauri::{AppHandle, Emitter, Manager};
 use time::{Duration, OffsetDateTime};
 use tokio::{
@@ -35,7 +36,10 @@ use tokio_rustls::{
     TlsAcceptor, TlsConnector,
 };
 
+#[cfg(target_os = "macos")]
 const OBSERVER_PORT: u16 = 8899;
+#[cfg(target_os = "windows")]
+const OBSERVER_PORT: u16 = 443;
 const UPSTREAM_PORT_START: u16 = 49_000;
 const UPSTREAM_PORT_END: u16 = 49_099;
 const CA_COMMON_NAME: &str = privileged::CA_COMMON_NAME;
@@ -57,7 +61,7 @@ pub struct CaptureState {
     pub last_error: Mutex<Option<String>>,
     pub upstream_ips: Mutex<Vec<IpAddr>>,
     pub observer_shutdown: Mutex<Option<oneshot::Sender<()>>>,
-    pub route_stream: Mutex<Option<UnixStream>>,
+    pub route_stream: Mutex<Option<privileged::RouteHandle>>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -168,14 +172,17 @@ fn ensure_ca(app: &AppHandle) -> Result<CaptureAuthorityPaths, String> {
     // Earlier builds used a login-keychain trust entry. Unity's WebSocket stack
     // ignores user-domain trust, so rotate that CA before installing the
     // system-scoped, DNS-constrained root used by current builds.
-    if let Some(keychain) = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .map(|home| home.join("Library/Keychains/login.keychain-db"))
+    #[cfg(target_os = "macos")]
     {
-        let _ = Command::new("/usr/bin/security")
-            .args(["delete-certificate", "-c", CA_COMMON_NAME])
-            .arg(keychain)
-            .output();
+        if let Some(keychain) = std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .map(|home| home.join("Library/Keychains/login.keychain-db"))
+        {
+            let _ = Command::new("/usr/bin/security")
+                .args(["delete-certificate", "-c", CA_COMMON_NAME])
+                .arg(keychain)
+                .output();
+        }
     }
 
     let now = OffsetDateTime::now_utc();
@@ -231,6 +238,7 @@ fn ensure_ca(app: &AppHandle) -> Result<CaptureAuthorityPaths, String> {
     fs::write(&paths.issuer_cert, issuer.pem()).map_err(|error| error.to_string())?;
     fs::write(&paths.issuer_key, issuer_key.serialize_pem())
         .map_err(|error| error.to_string())?;
+    #[cfg(target_os = "macos")]
     fs::set_permissions(&paths.issuer_key, fs::Permissions::from_mode(0o600))
         .map_err(|error| error.to_string())?;
     fs::write(
@@ -241,6 +249,7 @@ fn ensure_ca(app: &AppHandle) -> Result<CaptureAuthorityPaths, String> {
     Ok(paths)
 }
 
+#[cfg(target_os = "macos")]
 fn certificate_sha1(cert_path: &PathBuf) -> Option<String> {
     let output = Command::new("/usr/bin/openssl")
         .args(["x509", "-in"])
@@ -256,6 +265,7 @@ fn certificate_sha1(cert_path: &PathBuf) -> Option<String> {
         .map(|(_, fingerprint)| fingerprint.trim().replace(':', "").to_uppercase())
 }
 
+#[cfg(target_os = "macos")]
 fn trust_domain_contains(
     app: &AppHandle,
     cert_path: &PathBuf,
@@ -300,11 +310,18 @@ fn trust_domain_contains(
         .unwrap_or(false)
 }
 
+#[cfg(target_os = "macos")]
 fn certificate_has_trust(app: &AppHandle, cert_path: &PathBuf) -> bool {
     trust_domain_contains(app, cert_path, false)
         || trust_domain_contains(app, cert_path, true)
 }
 
+#[cfg(target_os = "windows")]
+fn certificate_has_trust(_app: &AppHandle, cert_path: &PathBuf) -> bool {
+    certificate_installed(cert_path)
+}
+
+#[cfg(target_os = "macos")]
 fn mono_user_trust_path(cert_path: &PathBuf) -> Result<PathBuf, String> {
     // TCG Live ships Unity's Mono/BoringTLS stack. Unlike native macOS
     // networking, that stack reads its current-user roots from the XDG
@@ -339,6 +356,7 @@ fn mono_user_trust_path(cert_path: &PathBuf) -> Result<PathBuf, String> {
         .join(format!("{hash}.0")))
 }
 
+#[cfg(target_os = "macos")]
 fn ensure_mono_certificate_trust(cert_path: &PathBuf) -> Result<(), String> {
     let destination = mono_user_trust_path(cert_path)?;
     let expected = fs::read(cert_path).map_err(|error| error.to_string())?;
@@ -352,6 +370,12 @@ fn ensure_mono_certificate_trust(cert_path: &PathBuf) -> Result<(), String> {
     fs::write(destination, expected).map_err(|error| error.to_string())
 }
 
+#[cfg(target_os = "windows")]
+fn ensure_mono_certificate_trust(_cert_path: &PathBuf) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
 fn mono_certificate_ready(cert_path: &PathBuf) -> bool {
     let Ok(destination) = mono_user_trust_path(cert_path) else {
         return false;
@@ -359,6 +383,12 @@ fn mono_certificate_ready(cert_path: &PathBuf) -> bool {
     fs::read(cert_path).ok() == fs::read(destination).ok()
 }
 
+#[cfg(target_os = "windows")]
+fn mono_certificate_ready(_cert_path: &PathBuf) -> bool {
+    true
+}
+
+#[cfg(target_os = "macos")]
 fn request_user_certificate_trust(cert_path: &PathBuf) -> Result<(), String> {
     let keychain = std::env::var_os("HOME")
         .map(PathBuf::from)
@@ -382,6 +412,26 @@ fn request_user_certificate_trust(cert_path: &PathBuf) -> Result<(), String> {
     }
 }
 
+#[cfg(target_os = "windows")]
+fn request_user_certificate_trust(cert_path: &PathBuf) -> Result<(), String> {
+    let output = Command::new("certutil.exe")
+        .args(["-user", "-addstore", "-f", "Root"])
+        .arg(cert_path)
+        .output()
+        .map_err(|error| format!("Could not open the Windows certificate store: {error}"))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        let error = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+        Err(if error.is_empty() {
+            "Windows did not trust the local capture certificate.".to_owned()
+        } else {
+            error
+        })
+    }
+}
+
+#[cfg(target_os = "macos")]
 fn certificate_installed(cert_path: &PathBuf) -> bool {
     let Ok(expected) = fs::read_to_string(&cert_path) else {
         return false;
@@ -401,6 +451,18 @@ fn certificate_installed(cert_path: &PathBuf) -> bool {
                 })
                 .unwrap_or(false)
         })
+}
+
+#[cfg(target_os = "windows")]
+fn certificate_installed(_cert_path: &PathBuf) -> bool {
+    Command::new("certutil.exe")
+        .args(["-user", "-store", "Root", CA_COMMON_NAME])
+        .output()
+        .map(|output| {
+            output.status.success()
+                && String::from_utf8_lossy(&output.stdout).contains(CA_COMMON_NAME)
+        })
+        .unwrap_or(false)
 }
 
 fn certificate_ready(app: &AppHandle) -> bool {
@@ -982,6 +1044,7 @@ fn release_route(state: &Arc<CaptureState>) {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn ensure_manager(state: &Arc<CaptureState>) {
     if state.manager_running.swap(true, Ordering::Relaxed) {
         return;
@@ -1066,6 +1129,9 @@ fn ensure_manager(state: &Arc<CaptureState>) {
     });
 }
 
+#[cfg(target_os = "windows")]
+fn ensure_manager(_state: &Arc<CaptureState>) {}
+
 pub async fn start(app: AppHandle) -> Result<CaptureStatus, String> {
     if !permission_ready(&app) {
         return Err("Trace needs its one-time local capture permission first.".to_owned());
@@ -1073,6 +1139,24 @@ pub async fn start(app: AppHandle) -> Result<CaptureStatus, String> {
     stage_apple_tls_provider(&app)?;
     let state = app.state::<Arc<CaptureState>>().inner().clone();
     ensure_observer(&app, &state).await?;
+    #[cfg(target_os = "windows")]
+    if !state.route_active.load(Ordering::Relaxed) {
+        let (reply, stream) = privileged::enable_route(
+            std::process::id(),
+            crate::pokemon_client_pid().unwrap_or_default(),
+        )?;
+        if let Ok(mut upstream_ips) = state.upstream_ips.lock() {
+            *upstream_ips = reply
+                .server_ips
+                .iter()
+                .filter_map(|ip| ip.parse::<IpAddr>().ok())
+                .collect();
+        }
+        if let Ok(mut route) = state.route_stream.lock() {
+            *route = Some(stream);
+        }
+        state.route_active.store(true, Ordering::Relaxed);
+    }
     state.terminate.store(false, Ordering::Relaxed);
     state.enabled.store(true, Ordering::Relaxed);
     if let Ok(mut last_error) = state.last_error.lock() {
