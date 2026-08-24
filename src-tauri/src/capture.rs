@@ -373,11 +373,12 @@ fn ensure_mono_certificate_trust(cert_path: &PathBuf) -> Result<(), String> {
 fn mono_certificate_der(cert_path: &PathBuf) -> Result<Vec<u8>, String> {
     let pem = fs::read(cert_path).map_err(|error| error.to_string())?;
     let mut reader = BufReader::new(pem.as_slice());
-    rustls_pemfile::certs(&mut reader)
+    let certificate = rustls_pemfile::certs(&mut reader)
         .next()
         .ok_or("The local capture root did not contain a certificate.".to_owned())?
         .map(|certificate| certificate.as_ref().to_vec())
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+    Ok(certificate)
 }
 
 #[cfg(target_os = "windows")]
