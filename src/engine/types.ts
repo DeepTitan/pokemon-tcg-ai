@@ -344,14 +344,34 @@ export interface PlayerState {
   supporterPlayedThisTurn: boolean;
   /** Whether player has attached an Energy card this turn */
   energyAttachedThisTurn: boolean;
+  /** Whether player has manually retreated this turn */
+  retreatedThisTurn: boolean;
   /** Number of prize cards remaining to win the game */
   prizeCardsRemaining: number;
   /** Whether this player gets an extra turn after the current one */
   extraTurn: boolean;
   /** Whether this player's next turn should be skipped */
   skipNextTurn: boolean;
-  /** Ability names used this turn (to enforce once-per-turn) */
+  /** Per-Pokemon ability use keys for this turn (card id + ability name) */
   abilitiesUsedThisTurn: string[];
+}
+
+/**
+ * Opening setup state.
+ * Tracks the pre-game decisions that happen after opening hands are dealt and
+ * before the first turn begins.
+ */
+export interface SetupState {
+  /** Current setup step for the acting player */
+  stage: 'chooseActive' | 'chooseBench' | 'mulliganBonus';
+  /** Coin-flip winner / player who will take the first turn once setup ends */
+  firstPlayer: 0 | 1;
+  /** Whether each player has finished Active + optional Bench setup */
+  playersReady: [boolean, boolean];
+  /** Number of no-Basic opening hands each player redrew */
+  mulligans: [number, number];
+  /** Optional draw allowance after extra opposing mulligans cancel out */
+  bonusDrawsAvailable: [number, number];
 }
 
 /**
@@ -378,9 +398,19 @@ export interface GameState {
   /** Active game flags (temporary rule modifications like "opponent can't attack") */
   gameFlags: GameFlag[];
   /** Pending energy attachments from abilities like Infernal Reign (player chooses targets) */
-  pendingAttachments?: { cards: Card[], playerIndex: 0 | 1 };
+  pendingAttachments?: {
+    cards: Card[];
+    playerIndex: 0 | 1;
+    sourceZone?: 'deck' | 'discard';
+    canSkip?: boolean;
+    remainingEffects?: import('./effects.js').EffectDSL[];
+    effectContext?: { attackingPlayer: 0 | 1; defendingPlayer: 0 | 1 };
+    sourceCardName?: string;
+  };
   /** Pending choice for card/target selection (searches, force switches, discards, evolves) */
   pendingChoice?: PendingChoice;
+  /** Opening setup choices, present only while phase === GamePhase.Setup */
+  setup?: SetupState;
 }
 
 // ============================================================================
@@ -422,7 +452,7 @@ export interface PendingChoice {
   /** How many more selections the player needs to make */
   selectionsRemaining: number;
   /** Where the chosen card goes */
-  destination: 'hand' | 'bench' | 'deck' | 'discard' | 'active';
+  destination: 'hand' | 'bench' | 'deck' | 'discard' | 'active' | 'attach';
   /** Where the card is being chosen from */
   sourceZone: 'deck' | 'discard' | 'hand' | 'bench';
   /** Cards already selected in this multi-pick (for "choose up to N") */
@@ -435,6 +465,8 @@ export interface PendingChoice {
   sourceCardName: string;
   /** Whether the player can choose to stop picking early ("up to N" effects) */
   canSkip: boolean;
+  /** Minimum number of selections required before skipping is legal */
+  minSelections?: number;
   /** For forceSwitch: whose bench is being switched (may differ from playerIndex) */
   switchPlayerIndex?: 0 | 1;
 }
@@ -470,83 +502,18 @@ export interface GameConfig {
 /**
  * Encoded game state for neural network input.
  *
- * Converts the game state into a flat Float32Array suitable for neural network processing.
- * This encoding is designed to be normalized and feature-complete.
- *
- * Encoding scheme (indices):
- * ────────────────────────────────────────────────────────────────────────────
- *
- * PLAYER 0 (Current Player) - Active Pokemon Features (0-31):
- *   0-4:    HP ratio per energy type (Fire, Water, Grass, Lightning, Psychic)
- *   5-9:    HP ratio per energy type (Fighting, Dark, Metal, Dragon, Fairy)
- *   10:     Energy count (Colorless)
- *   11-20:  Energy counts per type (Fire, Water, Grass, Lightning, Psychic, Fighting, Dark, Metal, Dragon, Fairy)
- *   21:     Status condition flags (bitmask: poisoned=1, burned=2, asleep=4, confused=8, paralyzed=16)
- *   22:     Prize cards value (1, 2, or 3)
- *   23-26:  Maximum attack damage across all attacks (normalized 0-1)
- *   27:     Is active Pokemon a rule box (0-1)
- *   28:     Current HP ratio (0-1)
- *   29:     Total attached tools count (max 1)
- *   30-31:  [Reserved for future use]
- *
- * PLAYER 0 Bench Pokemon (32-192, 5 Pokemon * 32 features each):
- *   Structure mirrors active pokemon (32 features each)
- *   Unused bench slots filled with zeros
- *
- * PLAYER 0 Hand & Resources (192-220):
- *   192:    Number of Pokemon cards in hand
- *   193:    Number of Trainer cards in hand
- *   194:    Number of Energy cards in hand
- *   195:    Number of Supporter cards in hand (from visible cards)
- *   196:    Number of Item cards in hand
- *   197:    Number of Tool cards in hand
- *   198:    Number of Stadium cards in hand
- *   199:    Available energy types count (cards that can be played)
- *   200-209: Energy card count in hand per type (F, W, G, L, P, F, D, M, D, Fa)
- *   210:    Deck size remaining
- *   211:    Discard pile size
- *   212:    Prize cards remaining
- *   213:    Supporter used this turn (0-1)
- *   214:    Energy attached this turn (0-1)
- *   215-219: [Reserved]
- *
- * PLAYER 1 (Opponent) - Known Information (220-380):
- *   220-251: Active Pokemon features (same as player 0 active, indices 0-31)
- *   252-412: Bench Pokemon features (same as player 0 bench, indices 32-192, 5 * 32)
- *   413-419: Hand summary (card type counts, can only see count, not composition)
- *   420:     Prize cards remaining
- *   421:     Deck size
- *   422:     Discard pile size
- *
- * GAME STATE (412-430):
- *   412:    Current player (0 or 1, as 0-1 float)
- *   413:    Turn number (normalized to typical game length)
- *   414:    Game phase (0-5 mapped to GamePhase enum)
- *   415:    Opponent hand size / 20
- *   416:    Stadium card active (0-1)
- *   417:    Opponent deck size / 60
- *   418:    Opponent discard pile size / 60
- *   419:    Opponent prize cards remaining / 6
- *   420-430: [Reserved/padding]
- *
- * PER-CARD DISCARD TRACKING (431-500):
- *   431-459: Own discard — per-card count/max for 29 unique cards (CARD_NAMES order)
- *   460:     [Reserved]
- *   461-489: Opponent discard — per-card count/max for 29 unique cards
- *   490-500: [Reserved]
- *
- * TOTAL VECTOR SIZE: 501 floats
- *
- * All values are normalized to [0, 1] range where applicable:
- * - HP ratios: currentHp / maxHp
- * - Energy counts: min(count, 10) / 10 to handle variable numbers
- * - Damage: min(damage, 300) / 300 (most attacks deal <= 300 damage)
- * - Card counts: min(count, 20) / 20 for hand, deck, discard
- * - Prize cards: count / 6
- * - Turn number: min(turn, 30) / 30 (most games under 30 turns)
+ * Converts the game state into the v3 4096-float full-state schema used by
+ * self-play and training. The layout is centralized in
+ * src/ai/training/encoding-schema.ts and currently includes:
+ * - global turn/phase/winner/flag features
+ * - own and opponent resource summaries
+ * - exact active/bench Pokemon identity and board state for all 12 slots
+ * - exact card-count vectors for both players' hand, deck, prizes, discard,
+ *   lost zone, plus the active stadium
+ * - pending choice/attachment flags
  */
 export interface EncodedGameState {
-  /** The flat Float32Array encoding the game state (size: 501) */
+  /** The flat Float32Array encoding the game state (size: 4096) */
   buffer: Float32Array;
   /** Metadata: timestamp when encoding was created */
   timestamp: number;

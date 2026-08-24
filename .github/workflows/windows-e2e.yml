@@ -1,0 +1,40 @@
+name: Trace Windows E2E
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install frontend dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Test tracker reducer and review engine
+        run: npm run tracker:test
+
+      - name: Build Windows NSIS package
+        run: npm run tauri:build -- --bundles nsis
+
+      - name: Upload Windows package and executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: trace-windows-x64
+          if-no-files-found: error
+          path: |
+            src-tauri/target/release/match-lens.exe
+            src-tauri/target/release/bundle/nsis/*.exe

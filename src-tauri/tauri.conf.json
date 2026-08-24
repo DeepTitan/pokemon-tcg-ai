@@ -1,0 +1,49 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Trace",
+  "version": "0.1.16",
+  "identifier": "com.isaiahw.matchlens",
+  "build": {
+    "beforeDevCommand": "npm run ui -- --host 127.0.0.1",
+    "devUrl": "http://127.0.0.1:3000/tracker.html",
+    "beforeBuildCommand": "npm run tracker:build",
+    "frontendDist": "../dist/ui"
+  },
+  "app": {
+    "trayIcon": {
+      "id": "trace-mascot",
+      "iconPath": "icons/icon.png",
+      "iconAsTemplate": false,
+      "showMenuOnLeftClick": false,
+      "tooltip": "Trace"
+    },
+    "windows": [
+      {
+        "title": "Trace",
+        "url": "tracker.html",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 680,
+        "resizable": true,
+        "fullscreen": false,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
+      }
+    ],
+    "security": {
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$APPCACHE/card-art/**"]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "Entertainment",
+    "shortDescription": "Trace every turn of a local match",
+    "longDescription": "An unofficial companion that captures exact local Pokémon TCG Live match operations and reconstructs the board turn by turn."
+  }
+}
