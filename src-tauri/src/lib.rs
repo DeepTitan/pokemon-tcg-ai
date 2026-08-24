@@ -1,12 +1,15 @@
 mod cards;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "windows"))]
 mod capture;
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 #[path = "capture_unsupported.rs"]
 mod capture;
 #[cfg(target_os = "macos")]
 mod privileged;
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+#[path = "privileged_windows.rs"]
+mod privileged;
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 #[path = "privileged_unsupported.rs"]
 mod privileged;
 mod storage;
@@ -114,7 +117,7 @@ fn capture_mode() -> &'static str {
     }
     #[cfg(target_os = "windows")]
     {
-        "windows-review"
+        "existing-client"
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {

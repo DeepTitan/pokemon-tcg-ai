@@ -44,6 +44,8 @@ const OBSERVER_PORT: u16 = 8899;
 const UPSTREAM_PORT_START: u16 = 49_000;
 const UPSTREAM_PORT_END: u16 = 49_099;
 
+pub type RouteHandle = UnixStream;
+
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(tag = "command", rename_all = "camelCase")]
 pub enum HelperCommand {
@@ -217,7 +219,7 @@ pub fn helper_status() -> Result<HelperReply, String> {
 pub fn enable_route(
     app_pid: u32,
     pokemon_pid: u32,
-) -> Result<(HelperReply, UnixStream), String> {
+) -> Result<(HelperReply, RouteHandle), String> {
     let (reply, stream) = send_command(
         HelperCommand::Enable {
             app_pid,
@@ -234,7 +236,7 @@ pub fn enable_route(
     Ok((reply, stream))
 }
 
-pub fn disable_route(stream: &mut UnixStream) {
+pub fn disable_route(stream: &mut RouteHandle) {
     if let Ok(line) = serde_json::to_string(&HelperCommand::Disable) {
         let _ = writeln!(stream, "{line}");
         let _ = stream.flush();
