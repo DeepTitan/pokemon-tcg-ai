@@ -577,6 +577,7 @@ fn certificate_installed(cert_path: &PathBuf) -> bool {
             output.status.success()
                 && String::from_utf8_lossy(&output.stdout)
                     .replace(' ', "")
+                    .to_uppercase()
                     .contains(&fingerprint)
         })
         .unwrap_or(false)
