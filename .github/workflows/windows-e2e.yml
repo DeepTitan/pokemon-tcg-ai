@@ -30,6 +30,9 @@ jobs:
       - name: Test tracker reducer and review engine
         run: npm run tracker:test
 
+      - name: Test live capture transport
+        run: cargo test --manifest-path src-tauri/Cargo.toml preserves_permessage_deflate_context_across_server_messages
+
       - name: Build Windows NSIS package
         run: npm run tauri:build -- --bundles nsis
 
