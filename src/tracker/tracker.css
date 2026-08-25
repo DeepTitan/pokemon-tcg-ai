@@ -135,6 +135,16 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(47, 126, 203
 .session-copy em.victory { color: #347847; background: #dcefdc; }
 .session-copy em.defeat { color: #b64135; background: #ffe1da; }
 .session-copy em.incomplete { color: #7e6b45; background: #eee6d4; }
+.session-copy em.recording { color: #247a45; background: #dcf2df; }
+.session-card.recording .session-board { border-color: #84bd91; box-shadow: 0 0 0 2px rgba(73, 164, 94, .12), 0 3px 7px rgba(80, 56, 30, .13); }
+.session-card.recording .session-copy em::before { content: ''; width: 6px; height: 6px; margin-right: 5px; display: inline-block; border-radius: 50%; background: #39a75d; animation: recording-pulse 1.4s ease-in-out infinite; }
+.live-capture-state > svg { margin-bottom: 14px; color: #3b9d5a; animation: recording-pulse 1.4s ease-in-out infinite; }
+.live-capture-state > small { margin-top: 13px; color: #397b4b; font-weight: 800; }
+
+@keyframes recording-pulse {
+  0%, 100% { opacity: .55; transform: scale(.94); }
+  50% { opacity: 1; transform: scale(1); }
+}
 .type-icons { grid-column: 2; display: inline-flex; gap: 4px; }
 .type-icons svg { padding: 2px; border-radius: 50%; color: #fff; background: var(--blue); }
 .type-icons svg:nth-child(2) { background: #7664ad; }

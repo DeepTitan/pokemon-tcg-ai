@@ -24,6 +24,7 @@ pub struct StorageStatus {
     pub raw_matches: i64,
     pub derived_matches: i64,
     pub pending_matches: i64,
+    pub archived_matches: i64,
     pub imported_legacy_operations: i64,
 }
 
@@ -40,6 +41,8 @@ pub struct MatchSummary {
     pub operation_count: i64,
     pub reducer_version: i64,
     pub final_snapshot: Option<Value>,
+    #[serde(default)]
+    pub recording: bool,
 }
 
 fn gzip(bytes: &[u8]) -> Result<Vec<u8>, String> {
@@ -260,11 +263,19 @@ impl MatchStorage {
                 |row| row.get(0),
             )
             .map_err(|error| error.to_string())?;
+        let archived_matches = connection
+            .query_row(
+                "SELECT COUNT(*) FROM matches WHERE operation_count > 0 OR summary_json IS NOT NULL",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|error| error.to_string())?;
         Ok(StorageStatus {
             raw_operations,
             raw_matches,
             derived_matches,
             pending_matches,
+            archived_matches,
             imported_legacy_operations,
         })
     }
@@ -290,6 +301,7 @@ impl MatchStorage {
             .optional()
             .map_err(|error| error.to_string())?
             .unwrap_or(0);
+        let recording = source == "live-network" && winner.is_none();
         let summary = MatchSummary {
             id: id.clone(),
             imported_at: imported_at.clone(),
@@ -301,6 +313,7 @@ impl MatchStorage {
             operation_count,
             reducer_version,
             final_snapshot,
+            recording,
         };
         let summary_json = serde_json::to_string(&summary).map_err(|error| error.to_string())?;
         let review_json = serde_json::to_vec(review).map_err(|error| error.to_string())?;
@@ -326,21 +339,43 @@ impl MatchStorage {
         let connection = self.connection()?;
         let mut statement = connection
             .prepare(
-                "SELECT summary_json FROM matches
-                 WHERE summary_json IS NOT NULL
+                "SELECT summary_json, id, imported_at, source, operation_count, reducer_version
+                 FROM matches
+                 WHERE operation_count > 0 OR summary_json IS NOT NULL
                  ORDER BY imported_at DESC, last_received DESC
                  LIMIT ?1 OFFSET ?2",
             )
             .map_err(|error| error.to_string())?;
         let rows = statement
-            .query_map(params![limit.clamp(1, 200), offset.max(0)], |row| row.get::<_, String>(0))
+            .query_map(params![limit.clamp(1, 200), offset.max(0)], |row| {
+                Ok((
+                    row.get::<_, Option<String>>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, i64>(4)?,
+                    row.get::<_, i64>(5)?,
+                ))
+            })
             .map_err(|error| error.to_string())?;
         let mut summaries = Vec::new();
         for row in rows {
-            let json = row.map_err(|error| error.to_string())?;
-            if let Ok(summary) = serde_json::from_str(&json) {
-                summaries.push(summary);
-            }
+            let (json, id, imported_at, source, operation_count, reducer_version) =
+                row.map_err(|error| error.to_string())?;
+            let parsed = json.and_then(|value| serde_json::from_str::<MatchSummary>(&value).ok());
+            summaries.push(parsed.unwrap_or(MatchSummary {
+                id,
+                imported_at,
+                source,
+                local_player: "You".to_owned(),
+                opponent: "Live game".to_owned(),
+                winner: None,
+                turn_count: 0,
+                operation_count,
+                reducer_version,
+                final_snapshot: None,
+                recording: true,
+            }));
         }
         Ok(summaries)
     }
@@ -477,6 +512,12 @@ mod tests {
         assert_eq!(storage.raw_match_ids(false, 0, 10).unwrap(), vec!["live-match-1"]);
         assert_eq!(storage.load_operations("live-match-1").unwrap().len(), 1);
         assert_eq!(storage.load_review("live-match-1").unwrap(), None);
+        let recording = storage.list_summaries(0, 50).unwrap();
+        assert_eq!(recording.len(), 1);
+        assert_eq!(recording[0].id, "live-match-1");
+        assert_eq!(recording[0].opponent, "Live game");
+        assert!(recording[0].recording);
+        assert_eq!(storage.status(0).unwrap().archived_matches, 1);
 
         let review = json!({
             "id": "live-match-1",
@@ -490,6 +531,7 @@ mod tests {
         });
         let summary = storage.persist_review(&review, 1).unwrap();
         assert_eq!(summary.operation_count, 1);
+        assert!(summary.recording);
         assert_eq!(storage.list_summaries(0, 50).unwrap().len(), 1);
         assert_eq!(storage.load_review("live-match-1").unwrap(), Some(review));
         assert_eq!(storage.status(0).unwrap().pending_matches, 0);

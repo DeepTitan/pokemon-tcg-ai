@@ -14,6 +14,21 @@ export function matchSummaryFromReview(review: MatchReview, operationCount = 0):
     operationCount,
     reducerVersion: REDUCER_VERSION,
     finalSnapshot: [...review.turns].reverse().find((turn) => turn.snapshot)?.snapshot,
+    recording: review.source === 'live-network' && !review.winner,
+  };
+}
+
+export function recordingSummaryFromOperation(operation: CapturedOperation, operationCount: number): MatchSummary {
+  return {
+    id: `live-${operation.matchId || operation.gameId}`,
+    importedAt: capturedAtIso(operation.receivedAt),
+    source: 'live-network',
+    localPlayer: 'You',
+    opponent: 'Live game',
+    turnCount: 0,
+    operationCount,
+    reducerVersion: 0,
+    recording: true,
   };
 }
 

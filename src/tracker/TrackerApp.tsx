@@ -25,7 +25,7 @@ import { cardEffectSummary } from './card-effect-model.js';
 import { attackResolutionForTurn, type AttackResolution } from './attack-resolution-model.js';
 import { buildPlayerTurnStops, stepPlayerTurn } from './turn-navigation-model.js';
 import { deriveReviewTurnStatus, type PlayerTurnStatus } from './turn-status-model.js';
-import { capturedAtIso, collectCardSourceIds, matchSummaryFromReview, operationKey, REDUCER_VERSION } from './match-storage.js';
+import { capturedAtIso, collectCardSourceIds, matchSummaryFromReview, operationKey, recordingSummaryFromOperation, REDUCER_VERSION } from './match-storage.js';
 import type {
   CapturedOperation, CardInfo, CanonicalReviewState, MatchReview, MatchSummary, ReviewCardVisibility, ReviewSelection, TrackedCard, TrackedChoiceCard, TrackedPlayerBoard,
   TrackedPokemon, TrackedTurn, TrackerEnvironment, TrackerEventKind,
@@ -76,7 +76,7 @@ function initialReviews(): MatchReview[] {
 }
 
 function formatMatchDate(iso: string): string {
-  const date = new Date(iso);
+  const date = new Date(capturedAtIso(iso));
   const today = new Date();
   const sameDay = date.toDateString() === today.toDateString();
   const time = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(date);
@@ -380,7 +380,8 @@ function Toggle({ on, disabled, onChange }: { on: boolean; disabled?: boolean; o
   return <button className={`tracking-toggle ${on ? 'on' : ''}`} type="button" disabled={disabled} onClick={onChange} aria-pressed={on} aria-label="Toggle automatic capture"><span>Auto capture</span><b>{on ? 'On' : 'Off'}</b><i><span /></i></button>;
 }
 
-function resultLabel(review: Pick<MatchReview, 'winner' | 'localPlayer'>): 'Victory' | 'Defeat' | 'Incomplete' {
+function resultLabel(review: Pick<MatchSummary, 'winner' | 'localPlayer' | 'recording'>): 'Victory' | 'Defeat' | 'Incomplete' | 'Recording' {
+  if (review.recording) return 'Recording';
   if (!review.winner) return 'Incomplete';
   return review.winner === review.localPlayer ? 'Victory' : 'Defeat';
 }
@@ -420,7 +421,7 @@ function ArchiveBoardThumbnail({ summary, catalog }: { summary: MatchSummary; ca
 function ArchiveRow({ summary, index, selected, catalog, onSelect }: { summary: MatchSummary; index: number; selected: boolean; catalog: ReadonlyMap<string, CardInfo>; onSelect: () => void }) {
   const result = resultLabel(summary);
   return (
-    <button type="button" className={`session-card ${selected ? 'selected' : ''}`} onClick={onSelect}>
+    <button type="button" className={`session-card ${selected ? 'selected' : ''} ${summary.recording ? 'recording' : ''}`} onClick={onSelect}>
       <ArchiveBoardThumbnail summary={summary} catalog={catalog} />
       <img className="session-avatar" src={TRAINER_ART[index % TRAINER_ART.length]} alt="" />
       <span className="session-copy"><strong>vs. {summary.opponent}</strong><span className="type-icons" aria-hidden="true"><Drop size={13} weight="fill" /><Eye size={13} weight="fill" /><Leaf size={13} weight="fill" /></span><small>{formatMatchDate(summary.importedAt)}</small><em className={result.toLowerCase()}>{result}</em></span>
@@ -488,6 +489,7 @@ export default function TrackerApp() {
   const defeatedNames = useMemo(() => new Set(attackResolution?.hits.flatMap((hit) => hit.knockedOut && !hit.targetId ? [hit.target] : []) || []), [attackResolution]);
 
   const timeline = useMemo(() => buildTimeline(selectedReview?.turns || []), [selectedReview]);
+  const selectedSummary = useMemo(() => summaries.find((summary) => summary.id === selectedId), [selectedId, summaries]);
   const playerTurnStops = useMemo(() => buildPlayerTurnStops(selectedReview), [selectedReview]);
   const turnChoiceFrames = useMemo<TurnChoiceFrame[]>(() => {
     if (!selectedReview || !selectedTurn) return [];
@@ -702,6 +704,16 @@ export default function TrackerApp() {
       if (activeOperationKeysRef.current.has(key)) return;
       activeOperationKeysRef.current.add(key);
       activeOperationsRef.current.push(operation);
+      const recording = recordingSummaryFromOperation(operation, activeOperationsRef.current.length);
+      if (knownSummaryIdsRef.current.has(recording.id)) {
+        setSummaries((current) => current.map((summary) => summary.id === recording.id
+          ? { ...summary, operationCount: recording.operationCount }
+          : summary));
+      } else upsertSummary(recording);
+      if (selectedIdRef.current == null) {
+        selectedIdRef.current = recording.id;
+        setSelectedId(recording.id);
+      }
       setLiveOperations((current) => [operation, ...current].slice(0, 80));
       publishLive(liveAssembler.current.ingest(operation));
       queueCardResolution(operation);
@@ -726,7 +738,7 @@ export default function TrackerApp() {
           const stored = await listMatchSummaries(0, 50);
           stored.forEach((summary) => knownSummaryIdsRef.current.add(summary.id));
           setSummaries(stored);
-          setArchiveTotal(status.derivedMatches);
+          setArchiveTotal(status.archivedMatches);
 
           const rawIds = await listRawMatchIds(false, 1);
           const preferredId = rawIds[0] || stored[0]?.id;
@@ -735,6 +747,10 @@ export default function TrackerApp() {
           await resolveCardsForPayload([stored, cached]);
           if (!active) return;
           if (cached) displayReview(cached, true);
+          else if (preferredId) {
+            selectedIdRef.current = preferredId;
+            setSelectedId(preferredId);
+          }
           setRestoringReview(false);
 
           const preferredSummary = stored.find((summary) => summary.id === rawIds[0]);
@@ -755,7 +771,7 @@ export default function TrackerApp() {
           }
           if (active) {
             const refreshed = await initializeTrackerStorage();
-            setArchiveTotal(refreshed.derivedMatches);
+            setArchiveTotal(refreshed.archivedMatches);
           }
           return;
         }
@@ -1004,7 +1020,7 @@ export default function TrackerApp() {
                 <button type="button" onClick={() => setTurnIndex(selectedReview.turns.length - 1)} disabled={turnIndex >= selectedReview.turns.length - 1} aria-label="Latest frame" title="Latest frame"><SkipForward size={19} weight="fill" /></button>
               </div>
             </div>
-          </> : <div className="welcome-state"><img src="/tracker-assets/trace-mascot.png" alt="Trace's furry archivist reading a field guide" /><span>Ready when you are</span><h2>See the whole match.</h2><p>Trace captures exact live operations and rebuilds every turn automatically—no OCR, screenshots, or manual imports.</p><div><button className="primary" type="button" disabled={busy} onClick={() => void changeTracking()}>{tracking ? 'Automatic capture is on' : 'Start automatic capture'}</button><button type="button" onClick={() => importLog(DEMO_BATTLE_LOG)}>Explore a sample</button></div>{liveOperations.length > 0 && <small>{liveOperations.length} exact operations decoded</small>}</div>}
+          </> : selectedSummary?.recording ? <div className="welcome-state live-capture-state"><WifiHigh size={58} weight="duotone" /><span>Game detected</span><h2>Capturing this match.</h2><p>Trace registered the game immediately. The reconstructed board will appear as soon as the opening state arrives.</p><small>{Math.max(selectedSummary.operationCount, liveOperations.length)} exact operation{Math.max(selectedSummary.operationCount, liveOperations.length) === 1 ? '' : 's'} safely stored</small></div> : <div className="welcome-state"><img src="/tracker-assets/trace-mascot.png" alt="Trace's furry archivist reading a field guide" /><span>Ready when you are</span><h2>See the whole match.</h2><p>Trace captures exact live operations and rebuilds every turn automatically—no OCR, screenshots, or manual imports.</p><div><button className="primary" type="button" disabled={busy} onClick={() => void changeTracking()}>{tracking ? 'Automatic capture is on' : 'Start automatic capture'}</button><button type="button" onClick={() => importLog(DEMO_BATTLE_LOG)}>Explore a sample</button></div>{liveOperations.length > 0 && <small>{liveOperations.length} exact operations decoded</small>}</div>}
         </section>
 
         <aside className="timeline-panel">

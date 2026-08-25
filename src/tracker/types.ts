@@ -217,6 +217,7 @@ export interface MatchSummary {
   operationCount: number;
   reducerVersion: number;
   finalSnapshot?: TrackerBoardSnapshot;
+  recording: boolean;
 }
 
 export interface StorageStatus {
@@ -224,6 +225,7 @@ export interface StorageStatus {
   rawMatches: number;
   derivedMatches: number;
   pendingMatches: number;
+  archivedMatches: number;
   importedLegacyOperations: number;
 }
 
