@@ -105,7 +105,7 @@ export async function resolveCardSources(cardIds: string[]): Promise<CardInfo[]>
 }
 
 export async function initializeTrackerStorage(): Promise<StorageStatus> {
-  if (!isTauri()) return { rawOperations: 0, rawMatches: 0, derivedMatches: 0, pendingMatches: 0, importedLegacyOperations: 0 };
+  if (!isTauri()) return { rawOperations: 0, rawMatches: 0, derivedMatches: 0, pendingMatches: 0, archivedMatches: 0, importedLegacyOperations: 0 };
   const { invoke } = await import('@tauri-apps/api/core');
   return invoke<StorageStatus>('initialize_tracker_storage');
 }

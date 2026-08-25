@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { capturedAtIso, collectCardSourceIds, finalizeReviewForClientExit, matchSummaryFromReview, operationKey, REDUCER_VERSION } from '../match-storage.js';
+import { capturedAtIso, collectCardSourceIds, finalizeReviewForClientExit, matchSummaryFromReview, operationKey, recordingSummaryFromOperation, REDUCER_VERSION } from '../match-storage.js';
 import { initialClientLifecycleState, observeClientLifecycle } from '../client-lifecycle-model.js';
 import type { CapturedOperation, MatchReview } from '../types.js';
 
@@ -16,6 +16,11 @@ assert.deepEqual(
 );
 assert.equal(operationKey(operation), 'match-1:7:1.000Z:PlayerMessage:operation-1');
 assert.equal(capturedAtIso('1787301501.649Z'), '2026-08-21T08:38:21.649Z');
+const recording = recordingSummaryFromOperation(operation, 1);
+assert.equal(recording.id, 'live-match-1');
+assert.equal(recording.opponent, 'Live game');
+assert.equal(recording.recording, true);
+assert.equal(recording.operationCount, 1);
 
 const review = {
   id: 'live-match-1', importedAt: '2026-08-21T00:00:00.000Z', source: 'live-network', players: ['A', 'B'],
@@ -28,6 +33,7 @@ assert.equal(summary.turnCount, 1);
 assert.equal(summary.operationCount, 12);
 assert.equal(summary.reducerVersion, REDUCER_VERSION);
 assert.equal(summary.finalSnapshot?.stadium, null);
+assert.equal(summary.recording, false);
 
 const unfinished = {
   ...review,
