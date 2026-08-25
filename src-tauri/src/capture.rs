@@ -2,7 +2,7 @@ use crate::{
     privileged,
     wire::{decode_websocket_message, CapturedOperation},
 };
-use flate2::read::DeflateDecoder;
+use flate2::{Decompress, FlushDecompress, Status};
 use rcgen::{
     BasicConstraints, CertificateParams, CertificateRevocationListParams, CrlDistributionPoint,
     DistinguishedName, DnType, ExtendedKeyUsagePurpose, IsCa, Issuer, KeyIdMethod, KeyPair,
@@ -920,15 +920,32 @@ async fn connect_upstream(host: &str, state: &CaptureState) -> Result<TcpStream,
         .map_err(|error| format!("Could not register the upstream socket: {error}"))
 }
 
-#[derive(Default)]
 struct WebSocketInspector {
     response_headers: Vec<u8>,
     websocket_bytes: Vec<u8>,
     headers_complete: bool,
     websocket: bool,
+    server_no_context_takeover: bool,
+    server_inflater: Option<Decompress>,
     fragmented: Vec<u8>,
     fragmented_opcode: Option<u8>,
     fragmented_compressed: bool,
+}
+
+impl Default for WebSocketInspector {
+    fn default() -> Self {
+        Self {
+            response_headers: Vec::new(),
+            websocket_bytes: Vec::new(),
+            headers_complete: false,
+            websocket: false,
+            server_no_context_takeover: false,
+            server_inflater: None,
+            fragmented: Vec::new(),
+            fragmented_opcode: None,
+            fragmented_compressed: false,
+        }
+    }
 }
 
 impl WebSocketInspector {
@@ -949,6 +966,11 @@ impl WebSocketInspector {
                 .next()
                 .map(|line| line.contains(" 101 "))
                 .unwrap_or(false);
+            self.server_no_context_takeover = headers.lines().any(|line| {
+                let lower = line.to_ascii_lowercase();
+                lower.starts_with("sec-websocket-extensions:")
+                    && lower.contains("server_no_context_takeover")
+            });
             self.headers_complete = true;
             if self.websocket {
                 self.websocket_bytes
@@ -1030,7 +1052,7 @@ impl WebSocketInspector {
 
             match opcode {
                 0x1 | 0x2 if fin => {
-                    if let Some(message) = decompress_websocket(payload, compressed) {
+                    if let Some(message) = self.decode_message(payload, compressed) {
                         messages.push(message);
                     }
                 }
@@ -1050,7 +1072,7 @@ impl WebSocketInspector {
                         let payload = std::mem::take(&mut self.fragmented);
                         self.fragmented_opcode = None;
                         if let Some(message) =
-                            decompress_websocket(payload, self.fragmented_compressed)
+                            self.decode_message(payload, self.fragmented_compressed)
                         {
                             messages.push(message);
                         }
@@ -1061,17 +1083,51 @@ impl WebSocketInspector {
         }
         messages
     }
-}
 
-fn decompress_websocket(mut payload: Vec<u8>, compressed: bool) -> Option<Vec<u8>> {
-    if !compressed {
-        return Some(payload);
+    fn decode_message(&mut self, mut payload: Vec<u8>, compressed: bool) -> Option<Vec<u8>> {
+        if !compressed {
+            return Some(payload);
+        }
+
+        // RFC 7692 removes the sync-flush trailer from every compressed WebSocket
+        // message. The inflater must survive across messages unless the handshake
+        // explicitly negotiated server_no_context_takeover.
+        payload.extend_from_slice(&[0x00, 0x00, 0xff, 0xff]);
+        let inflater = self
+            .server_inflater
+            .get_or_insert_with(|| Decompress::new(false));
+        let mut output = Vec::new();
+        let mut input_offset = 0usize;
+        loop {
+            let before_in = inflater.total_in();
+            let before_out = inflater.total_out();
+            let mut chunk = [0u8; 64 * 1024];
+            let status = inflater
+                .decompress(&payload[input_offset..], &mut chunk, FlushDecompress::Sync)
+                .ok()?;
+            let consumed = usize::try_from(inflater.total_in() - before_in).ok()?;
+            let produced = usize::try_from(inflater.total_out() - before_out).ok()?;
+            output.extend_from_slice(&chunk[..produced]);
+            if output.len() > MAX_WEBSOCKET_MESSAGE {
+                return None;
+            }
+            input_offset = input_offset.checked_add(consumed)?;
+
+            if status == Status::StreamEnd
+                || (input_offset == payload.len() && produced < chunk.len())
+            {
+                break;
+            }
+            if consumed == 0 && produced == 0 {
+                return None;
+            }
+        }
+
+        if self.server_no_context_takeover {
+            self.server_inflater = Some(Decompress::new(false));
+        }
+        Some(output)
     }
-    payload.extend_from_slice(&[0x00, 0x00, 0xff, 0xff]);
-    let mut decoder = DeflateDecoder::new(payload.as_slice());
-    let mut output = Vec::new();
-    decoder.read_to_end(&mut output).ok()?;
-    Some(output)
 }
 
 async fn forward_and_inspect<C, S>(
@@ -1492,6 +1548,7 @@ pub fn shutdown(app: &AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::WebSocketInspector;
+    use flate2::{Compress, Compression, FlushCompress};
 
     #[cfg(target_os = "windows")]
     #[test]
@@ -1499,8 +1556,8 @@ mod tests {
         assert_eq!(super::mono_subject_hash(), "bfb0f28f");
     }
 
-    fn server_frame(payload: &[u8]) -> Vec<u8> {
-        let mut frame = vec![0x82];
+    fn server_frame_with_flags(payload: &[u8], flags: u8) -> Vec<u8> {
+        let mut frame = vec![flags];
         if payload.len() < 126 {
             frame.push(payload.len() as u8);
         } else {
@@ -1509,6 +1566,20 @@ mod tests {
         }
         frame.extend_from_slice(payload);
         frame
+    }
+
+    fn server_frame(payload: &[u8]) -> Vec<u8> {
+        server_frame_with_flags(payload, 0x82)
+    }
+
+    fn compressed_server_frame(compressor: &mut Compress, payload: &[u8]) -> Vec<u8> {
+        let mut compressed = Vec::with_capacity(payload.len().saturating_mul(2).max(256));
+        compressor
+            .compress_vec(payload, &mut compressed, FlushCompress::Sync)
+            .expect("compress WebSocket test message");
+        assert!(compressed.ends_with(&[0x00, 0x00, 0xff, 0xff]));
+        compressed.truncate(compressed.len() - 4);
+        server_frame_with_flags(&compressed, 0xc2)
     }
 
     #[test]
@@ -1520,5 +1591,24 @@ mod tests {
         let mut inspector = WebSocketInspector::default();
         assert!(inspector.feed(&bytes[..17]).is_empty());
         assert_eq!(inspector.feed(&bytes[17..]), vec![payload.to_vec()]);
+    }
+
+    #[test]
+    fn preserves_permessage_deflate_context_across_server_messages() {
+        let first = b"operation-state-context-".repeat(256);
+        let mut second = b"operation-state-context-".repeat(256);
+        second.extend_from_slice(b"terminal-match-operation");
+
+        let mut compressor = Compress::new(Compression::fast(), false);
+        let first_frame = compressed_server_frame(&mut compressor, &first);
+        let second_frame = compressed_server_frame(&mut compressor, &second);
+        let mut bytes = b"HTTP/1.1 101 Switching Protocols\r\n\
+Sec-WebSocket-Extensions: permessage-deflate\r\n\r\n"
+            .to_vec();
+        bytes.extend(first_frame);
+        bytes.extend(second_frame);
+
+        let mut inspector = WebSocketInspector::default();
+        assert_eq!(inspector.feed(&bytes), vec![first, second]);
     }
 }
