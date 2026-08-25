@@ -570,8 +570,11 @@ export default function TrackerApp() {
   }, [resolveCardsForPayload]);
 
   const rebuildOperations = useCallback(async (operations: CapturedOperation[]) => {
-    const catalog = await resolveCardsForOperations(operations);
-    const assembler = new LiveReviewAssembler(catalog);
+    // Exact protocol data is sufficient to rebuild a review. Card metadata and
+    // artwork are optional enrichment and can be slow or unavailable on a new
+    // machine, so they must never sit in the archive's critical path.
+    void resolveCardsForOperations(operations);
+    const assembler = new LiveReviewAssembler(catalogRef.current);
     let review: MatchReview | null = null;
     for (const operation of operations) {
       review = assembler.ingest(operation) || review;
@@ -811,14 +814,13 @@ export default function TrackerApp() {
           const preferredId = rawIds[0] || stored[0]?.id;
           const cached = preferredId ? await loadMatchReview(preferredId) : null;
           if (!active) return;
-          await resolveCardsForPayload([stored, cached]);
-          if (!active) return;
           if (cached) displayReview(cached, true);
           else if (preferredId) {
             selectedIdRef.current = preferredId;
             setSelectedId(preferredId);
           }
           setRestoringReview(false);
+          void resolveCardsForPayload([stored, cached]);
 
           const preferredSummary = stored.find((summary) => summary.id === rawIds[0]);
           const needsLiveSeed = Boolean(rawIds[0]) && (!cached?.winner || preferredSummary?.reducerVersion !== REDUCER_VERSION);
@@ -1046,10 +1048,9 @@ export default function TrackerApp() {
         : browserReviewsRef.current.find((review) => review.id === summary.id) || null;
       const review = stored || (isTauri() ? await rebuildStoredMatch(summary.id) : null);
       if (!review || selectedIdRef.current !== summary.id) return;
-      await resolveCardsForPayload([summary, review]);
-      if (selectedIdRef.current !== summary.id) return;
       setSelectedReview(review);
       setTurnIndex(Math.max(0, review.turns.length - 1));
+      void resolveCardsForPayload([summary, review]);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
@@ -1061,9 +1062,9 @@ export default function TrackerApp() {
     if (!isTauri() || summaries.length >= archiveTotal) return;
     try {
       const older = await listMatchSummaries(summaries.length, 50);
-      await resolveCardsForPayload(older);
       older.forEach((summary) => knownSummaryIdsRef.current.add(summary.id));
       setSummaries((current) => [...current, ...older.filter((summary) => !current.some((item) => item.id === summary.id))]);
+      void resolveCardsForPayload(older);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     }
