@@ -739,18 +739,18 @@ export default function TrackerApp() {
     const bootstrap = async () => {
       try {
         if (isTauri()) {
-          let status = await initializeTrackerStorage();
-          if (!active) return;
           const legacyReviews = localStorage.getItem(STORAGE_MIGRATED_KEY) === '1' ? [] : loadReviews();
           for (const review of legacyReviews) await commitReview(review);
           if (legacyReviews.length) {
             localStorage.setItem(STORAGE_MIGRATED_KEY, '1');
-            status = await initializeTrackerStorage();
           }
+          // The SQLite archive is ready during native setup. Show it before
+          // running legacy import/status maintenance, which can be slow on a
+          // machine with an old capture file or a cold antivirus scan.
           const stored = await listMatchSummaries(0, 50);
           stored.forEach((summary) => knownSummaryIdsRef.current.add(summary.id));
           setSummaries(stored);
-          setArchiveTotal(status.archivedMatches);
+          setArchiveTotal(stored.length);
 
           const rawIds = await listRawMatchIds(false, 1);
           const preferredId = rawIds[0] || stored[0]?.id;
@@ -780,10 +780,9 @@ export default function TrackerApp() {
             await rebuildStoredMatch(matchId);
             await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
           }
-          if (active) {
-            const refreshed = await initializeTrackerStorage();
-            setArchiveTotal(refreshed.archivedMatches);
-          }
+          if (active) void initializeTrackerStorage()
+            .then((refreshed) => { if (active) setArchiveTotal(refreshed.archivedMatches); })
+            .catch((caught) => console.warn('Legacy capture maintenance is temporarily unavailable.', caught));
           return;
         }
 
