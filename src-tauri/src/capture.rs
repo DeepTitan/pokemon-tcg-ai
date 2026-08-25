@@ -4,8 +4,9 @@ use crate::{
 };
 use flate2::read::DeflateDecoder;
 use rcgen::{
-    BasicConstraints, CertificateParams, DistinguishedName, DnType, ExtendedKeyUsagePurpose,
-    GeneralSubtree, IsCa, Issuer, KeyPair, KeyUsagePurpose, NameConstraints, PKCS_RSA_SHA256,
+    BasicConstraints, CertificateParams, CertificateRevocationListParams, CrlDistributionPoint,
+    DistinguishedName, DnType, ExtendedKeyUsagePurpose, GeneralSubtree, IsCa, Issuer, KeyIdMethod,
+    KeyPair, KeyUsagePurpose, NameConstraints, SerialNumber, PKCS_RSA_SHA256,
 };
 use serde::Serialize;
 #[cfg(target_os = "windows")]
@@ -48,8 +49,14 @@ const OBSERVER_PORT: u16 = 443;
 const UPSTREAM_PORT_START: u16 = 49_000;
 const UPSTREAM_PORT_END: u16 = 49_099;
 const CA_COMMON_NAME: &str = privileged::CA_COMMON_NAME;
-const CERTIFICATE_VERSION_MARKER: &str = "unity-rsa-chain-v4";
+const CERTIFICATE_VERSION_MARKER: &str = "unity-rsa-crl-chain-v5";
 const ISSUER_COMMON_NAME: &str = "Turnlume DNS-Constrained Pokémon Issuer";
+#[cfg(target_os = "windows")]
+const CRL_PORT: u16 = 80;
+#[cfg(target_os = "windows")]
+const ROOT_CRL_PATH: &str = "/turnlume-root-v5.crl";
+#[cfg(target_os = "windows")]
+const ISSUER_CRL_PATH: &str = "/turnlume-issuer-v5.crl";
 const MAX_WEBSOCKET_MESSAGE: usize = 64 * 1024 * 1024;
 
 #[derive(Default)]
@@ -142,10 +149,15 @@ fn capture_dir(app: &AppHandle) -> Result<PathBuf, String> {
         .map_err(|error| error.to_string())
 }
 
+#[derive(Clone)]
 struct CaptureAuthorityPaths {
     root_cert: PathBuf,
     issuer_cert: PathBuf,
     issuer_key: PathBuf,
+    #[cfg(target_os = "windows")]
+    root_crl: PathBuf,
+    #[cfg(target_os = "windows")]
+    issuer_crl: PathBuf,
 }
 
 fn ca_paths(app: &AppHandle) -> Result<CaptureAuthorityPaths, String> {
@@ -154,6 +166,10 @@ fn ca_paths(app: &AppHandle) -> Result<CaptureAuthorityPaths, String> {
         root_cert: directory.join("match-lens-ca.pem"),
         issuer_cert: directory.join("match-lens-issuer.pem"),
         issuer_key: directory.join("match-lens-ca.key"),
+        #[cfg(target_os = "windows")]
+        root_crl: directory.join("match-lens-root.crl"),
+        #[cfg(target_os = "windows")]
+        issuer_crl: directory.join("match-lens-issuer.crl"),
     })
 }
 
@@ -166,6 +182,16 @@ fn ensure_ca(app: &AppHandle) -> Result<CaptureAuthorityPaths, String> {
     if paths.root_cert.exists()
         && paths.issuer_cert.exists()
         && paths.issuer_key.exists()
+        && {
+            #[cfg(target_os = "windows")]
+            {
+                paths.root_crl.exists()
+            }
+            #[cfg(not(target_os = "windows"))]
+            {
+                true
+            }
+        }
         && directory.join(CERTIFICATE_VERSION_MARKER).exists()
     {
         return Ok(paths);
@@ -235,10 +261,31 @@ fn ensure_ca(app: &AppHandle) -> Result<CaptureAuthorityPaths, String> {
         KeyUsagePurpose::CrlSign,
         KeyUsagePurpose::DigitalSignature,
     ];
+    #[cfg(target_os = "windows")]
+    {
+        issuer_params.crl_distribution_points = vec![CrlDistributionPoint {
+            uris: vec![format!("http://{}{ROOT_CRL_PATH}", privileged::GAME_HOST)],
+        }];
+    }
     issuer_params.use_authority_key_identifier_extension = true;
     let issuer = issuer_params
         .signed_by(&issuer_key, &root_issuer)
         .map_err(|error| error.to_string())?;
+
+    #[cfg(target_os = "windows")]
+    {
+        let root_crl = CertificateRevocationListParams {
+            this_update: now - Duration::days(1),
+            next_update: now + Duration::days(3650),
+            crl_number: SerialNumber::from(1u64),
+            issuing_distribution_point: None,
+            revoked_certs: Vec::new(),
+            key_identifier_method: KeyIdMethod::Sha256,
+        }
+        .signed_by(&root_issuer)
+        .map_err(|error| error.to_string())?;
+        fs::write(&paths.root_crl, root_crl.der().as_ref()).map_err(|error| error.to_string())?;
+    }
 
     fs::write(&paths.root_cert, root_pem).map_err(|error| error.to_string())?;
     fs::write(&paths.issuer_cert, issuer.pem()).map_err(|error| error.to_string())?;
@@ -720,10 +767,32 @@ fn server_config(app: &AppHandle) -> Result<Arc<ServerConfig>, String> {
     leaf_params.is_ca = IsCa::ExplicitNoCa;
     leaf_params.key_usages = vec![KeyUsagePurpose::DigitalSignature];
     leaf_params.extended_key_usages = vec![ExtendedKeyUsagePurpose::ServerAuth];
+    #[cfg(target_os = "windows")]
+    {
+        leaf_params.crl_distribution_points = vec![CrlDistributionPoint {
+            uris: vec![format!("http://{}{ISSUER_CRL_PATH}", privileged::GAME_HOST)],
+        }];
+    }
     leaf_params.use_authority_key_identifier_extension = true;
     let leaf = leaf_params
         .signed_by(&leaf_key, &issuer)
         .map_err(|error| error.to_string())?;
+
+    #[cfg(target_os = "windows")]
+    {
+        let issuer_crl = CertificateRevocationListParams {
+            this_update: now - Duration::hours(1),
+            next_update: now + Duration::days(90),
+            crl_number: SerialNumber::from(1u64),
+            issuing_distribution_point: None,
+            revoked_certs: Vec::new(),
+            key_identifier_method: KeyIdMethod::Sha256,
+        }
+        .signed_by(&issuer)
+        .map_err(|error| error.to_string())?;
+        fs::write(&paths.issuer_crl, issuer_crl.der().as_ref())
+            .map_err(|error| error.to_string())?;
+    }
 
     let mut issuer_reader = BufReader::new(issuer_pem.as_bytes());
     let issuer_der = rustls_pemfile::certs(&mut issuer_reader)
@@ -1076,14 +1145,84 @@ async fn observe_connection(
     result
 }
 
+#[cfg(target_os = "windows")]
+async fn serve_crl_connection(
+    mut stream: TcpStream,
+    paths: CaptureAuthorityPaths,
+) -> Result<(), String> {
+    let mut request = Vec::with_capacity(1024);
+    let mut buffer = [0u8; 1024];
+    while request.len() < 8 * 1024 {
+        let count = stream
+            .read(&mut buffer)
+            .await
+            .map_err(|error| error.to_string())?;
+        if count == 0 {
+            break;
+        }
+        request.extend_from_slice(&buffer[..count]);
+        if request.windows(4).any(|window| window == b"\r\n\r\n") {
+            break;
+        }
+    }
+    let request_line = String::from_utf8_lossy(&request)
+        .lines()
+        .next()
+        .unwrap_or_default()
+        .to_owned();
+    let path = request_line.split_whitespace().nth(1).unwrap_or_default();
+    let crl_path = match path {
+        ROOT_CRL_PATH => Some(paths.root_crl),
+        ISSUER_CRL_PATH => Some(paths.issuer_crl),
+        _ => None,
+    };
+    let (status, content_type, body) = if let Some(crl_path) = crl_path {
+        match fs::read(crl_path) {
+            Ok(body) => ("200 OK", "application/pkix-crl", body),
+            Err(_) => ("404 Not Found", "text/plain", b"CRL not ready\n".to_vec()),
+        }
+    } else {
+        ("404 Not Found", "text/plain", b"Not found\n".to_vec())
+    };
+    let headers = format!(
+        "HTTP/1.1 {status}\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n",
+        body.len()
+    );
+    stream
+        .write_all(headers.as_bytes())
+        .await
+        .map_err(|error| error.to_string())?;
+    stream
+        .write_all(&body)
+        .await
+        .map_err(|error| error.to_string())?;
+    stream.shutdown().await.map_err(|error| error.to_string())
+}
+
+#[cfg(target_os = "windows")]
+async fn run_crl_server(app: AppHandle, listener: TcpListener) {
+    let Ok(paths) = ca_paths(&app) else {
+        return;
+    };
+    while let Ok((stream, _)) = listener.accept().await {
+        let paths = paths.clone();
+        tauri::async_runtime::spawn(async move {
+            let _ = serve_crl_connection(stream, paths).await;
+        });
+    }
+}
+
 async fn run_observer(
     app: AppHandle,
     state: Arc<CaptureState>,
     listener: TcpListener,
+    #[cfg(target_os = "windows")] crl_listener: TcpListener,
     shutdown: oneshot::Receiver<()>,
 ) -> Result<(), String> {
     let acceptor = TlsAcceptor::from(server_config(&app)?);
     let connector = TlsConnector::from(client_config()?);
+    #[cfg(target_os = "windows")]
+    let crl_task = tauri::async_runtime::spawn(run_crl_server(app.clone(), crl_listener));
     let recorder = Recorder {
         app: app.clone(),
         state: state.clone(),
@@ -1113,6 +1252,8 @@ async fn run_observer(
             }
         }
     }
+    #[cfg(target_os = "windows")]
+    crl_task.abort();
     state.observer_running.store(false, Ordering::Relaxed);
     state.client_connections.store(0, Ordering::Relaxed);
     Ok(())
@@ -1125,6 +1266,10 @@ async fn ensure_observer(app: &AppHandle, state: &Arc<CaptureState>) -> Result<(
     let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, OBSERVER_PORT))
         .await
         .map_err(|error| format!("Could not start the local capture observer: {error}"))?;
+    #[cfg(target_os = "windows")]
+    let crl_listener = TcpListener::bind((Ipv4Addr::LOCALHOST, CRL_PORT))
+        .await
+        .map_err(|error| format!("Could not start local certificate validation: {error}"))?;
     let (shutdown_tx, shutdown_rx) = oneshot::channel();
     *state
         .observer_shutdown
@@ -1133,7 +1278,16 @@ async fn ensure_observer(app: &AppHandle, state: &Arc<CaptureState>) -> Result<(
     let app = app.clone();
     let observer_state = state.clone();
     tauri::async_runtime::spawn(async move {
-        if let Err(error) = run_observer(app, observer_state.clone(), listener, shutdown_rx).await {
+        if let Err(error) = run_observer(
+            app,
+            observer_state.clone(),
+            listener,
+            #[cfg(target_os = "windows")]
+            crl_listener,
+            shutdown_rx,
+        )
+        .await
+        {
             if let Ok(mut last_error) = observer_state.last_error.lock() {
                 *last_error = Some(error);
             }
