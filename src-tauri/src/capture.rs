@@ -5,8 +5,8 @@ use crate::{
 use flate2::read::DeflateDecoder;
 use rcgen::{
     BasicConstraints, CertificateParams, CertificateRevocationListParams, CrlDistributionPoint,
-    DistinguishedName, DnType, ExtendedKeyUsagePurpose, GeneralSubtree, IsCa, Issuer, KeyIdMethod,
-    KeyPair, KeyUsagePurpose, NameConstraints, SerialNumber, PKCS_RSA_SHA256,
+    DistinguishedName, DnType, ExtendedKeyUsagePurpose, IsCa, Issuer, KeyIdMethod, KeyPair,
+    KeyUsagePurpose, SerialNumber, PKCS_RSA_SHA256,
 };
 use serde::Serialize;
 #[cfg(target_os = "windows")]
@@ -49,14 +49,14 @@ const OBSERVER_PORT: u16 = 443;
 const UPSTREAM_PORT_START: u16 = 49_000;
 const UPSTREAM_PORT_END: u16 = 49_099;
 const CA_COMMON_NAME: &str = privileged::CA_COMMON_NAME;
-const CERTIFICATE_VERSION_MARKER: &str = "unity-rsa-crl-chain-v5";
-const ISSUER_COMMON_NAME: &str = "Turnlume DNS-Constrained Pokémon Issuer";
+const CERTIFICATE_VERSION_MARKER: &str = "unity-rsa-crl-chain-v6";
+const ISSUER_COMMON_NAME: &str = "Turnlume Pokémon Capture Issuer";
 #[cfg(target_os = "windows")]
 const CRL_PORT: u16 = 80;
 #[cfg(target_os = "windows")]
-const ROOT_CRL_PATH: &str = "/turnlume-root-v5.crl";
+const ROOT_CRL_PATH: &str = "/turnlume-root-v6.crl";
 #[cfg(target_os = "windows")]
-const ISSUER_CRL_PATH: &str = "/turnlume-issuer-v5.crl";
+const ISSUER_CRL_PATH: &str = "/turnlume-issuer-v6.crl";
 const MAX_WEBSOCKET_MESSAGE: usize = 64 * 1024 * 1024;
 
 #[derive(Default)]
@@ -264,12 +264,9 @@ fn ensure_ca(app: &AppHandle) -> Result<CaptureAuthorityPaths, String> {
     issuer_params.not_before = now - Duration::days(1);
     issuer_params.not_after = now + Duration::days(1825);
     issuer_params.is_ca = IsCa::Ca(BasicConstraints::Constrained(0));
-    issuer_params.name_constraints = Some(NameConstraints {
-        permitted_subtrees: vec![GeneralSubtree::DnsName(
-            ".studio-prod.pokemon.com".to_owned(),
-        )],
-        excluded_subtrees: Vec::new(),
-    });
+    // Keep the intermediate compatible with Unity's native verifier, which can
+    // reject otherwise-valid locally trusted chains carrying name constraints.
+    // The capture route and leaf SANs still limit use to Pokémon's service.
     issuer_params.key_usages = vec![
         KeyUsagePurpose::KeyCertSign,
         KeyUsagePurpose::CrlSign,
@@ -779,7 +776,11 @@ fn server_config(app: &AppHandle) -> Result<Arc<ServerConfig>, String> {
     leaf_params.not_before = now - Duration::days(1);
     leaf_params.not_after = now + Duration::days(90);
     leaf_params.is_ca = IsCa::ExplicitNoCa;
-    leaf_params.key_usages = vec![KeyUsagePurpose::DigitalSignature];
+    // Mirror the production endpoint's RSA key-usage bits for UnityTLS.
+    leaf_params.key_usages = vec![
+        KeyUsagePurpose::DigitalSignature,
+        KeyUsagePurpose::KeyEncipherment,
+    ];
     leaf_params.extended_key_usages = vec![ExtendedKeyUsagePurpose::ServerAuth];
     #[cfg(target_os = "windows")]
     {
