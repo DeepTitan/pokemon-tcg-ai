@@ -18,10 +18,20 @@ mod wire;
 use capture::{CaptureState, CaptureStatus};
 use serde::Serialize;
 use serde_json::Value;
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 use std::path::Path;
 use std::process::Command;
 use std::sync::Arc;
 use tauri::Manager;
+
+#[cfg(target_os = "windows")]
+fn hidden_windows_command(program: &str) -> Command {
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let mut command = Command::new(program);
+    command.creation_flags(CREATE_NO_WINDOW);
+    command
+}
 #[cfg(desktop)]
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
 
@@ -53,7 +63,7 @@ pub(crate) fn pokemon_client_pid() -> Option<u32> {
 
     #[cfg(target_os = "windows")]
     {
-        let output = Command::new("tasklist")
+        let output = hidden_windows_command("tasklist")
             .args([
                 "/FI",
                 "IMAGENAME eq Pokemon TCG Live.exe",
@@ -90,6 +100,12 @@ fn pokemon_client_installed() -> bool {
     #[cfg(target_os = "windows")]
     {
         let candidates = [
+            std::env::var_os("USERPROFILE").map(|root| {
+                Path::new(&root)
+                    .join("The Pokémon Company International")
+                    .join("Pokémon Trading Card Game Live")
+                    .join("Pokemon TCG Live.exe")
+            }),
             std::env::var_os("ProgramFiles").map(|root| {
                 Path::new(&root)
                     .join("Pokemon Trading Card Game Live")

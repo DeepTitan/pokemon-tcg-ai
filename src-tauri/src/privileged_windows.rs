@@ -4,6 +4,7 @@ use std::{
     fs,
     net::{IpAddr, ToSocketAddrs},
     os::windows::ffi::OsStringExt,
+    os::windows::process::CommandExt,
     path::{Path, PathBuf},
     process::Command,
     thread,
@@ -21,6 +22,13 @@ pub const CA_COMMON_NAME: &str = "Turnlume Local Capture Root";
 pub const LEGACY_CA_COMMON_NAME: &str = "Match Lens Pokémon Capture Root";
 const HOSTS_BEGIN: &str = "# Match Lens local capture begin";
 const HOSTS_END: &str = "# Match Lens local capture end";
+
+fn hidden_command(program: &str) -> Command {
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let mut command = Command::new(program);
+    command.creation_flags(CREATE_NO_WINDOW);
+    command
+}
 
 #[derive(Default)]
 pub struct RouteHandle;
@@ -43,7 +51,7 @@ fn hosts_path() -> PathBuf {
 }
 
 fn is_elevated() -> bool {
-    Command::new("fltmc.exe")
+    hidden_command("fltmc.exe")
         .output()
         .map(|output| output.status.success())
         .unwrap_or(false)
@@ -56,7 +64,7 @@ pub fn install_helper(certificate_path: &Path) -> Result<(), String> {
                 .to_owned(),
         );
     }
-    let output = Command::new("certutil.exe")
+    let output = hidden_command("certutil.exe")
         .args(["-addstore", "-f", "Root"])
         .arg(certificate_path)
         .output()
@@ -93,7 +101,7 @@ fn process_image_path(pid: u32) -> Result<PathBuf, String> {
 
 pub fn restart_pokemon_client(pid: u32) -> Result<(), String> {
     let executable = process_image_path(pid)?;
-    let stopped = Command::new("taskkill.exe")
+    let stopped = hidden_command("taskkill.exe")
         .args(["/PID", &pid.to_string(), "/T", "/F"])
         .output()
         .map_err(|error| format!("Could not reconnect Pokémon TCG Live: {error}"))?;
@@ -134,7 +142,7 @@ fn hosts_without_override(contents: &str) -> String {
 }
 
 fn flush_dns_cache() {
-    let _ = Command::new("ipconfig.exe").arg("/flushdns").output();
+    let _ = hidden_command("ipconfig.exe").arg("/flushdns").output();
 }
 
 fn remove_host_override() -> Result<(), String> {

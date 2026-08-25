@@ -14,6 +14,8 @@ use sha1::{Digest, Sha1};
 use socket2::{Domain, Protocol, Socket, Type};
 #[cfg(target_os = "macos")]
 use std::os::unix::fs::PermissionsExt;
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 use std::{
     fs::{self, OpenOptions},
     io::{BufReader, Read, Write},
@@ -58,6 +60,14 @@ const ROOT_CRL_PATH: &str = "/turnlume-root-v6.crl";
 #[cfg(target_os = "windows")]
 const ISSUER_CRL_PATH: &str = "/turnlume-issuer-v6.crl";
 const MAX_WEBSOCKET_MESSAGE: usize = 64 * 1024 * 1024;
+
+#[cfg(target_os = "windows")]
+fn hidden_windows_command(program: &str) -> Command {
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    let mut command = Command::new(program);
+    command.creation_flags(CREATE_NO_WINDOW);
+    command
+}
 
 #[derive(Default)]
 pub struct CaptureState {
@@ -580,7 +590,7 @@ fn request_user_certificate_trust(cert_path: &PathBuf) -> Result<(), String> {
 
 #[cfg(target_os = "windows")]
 fn request_user_certificate_trust(cert_path: &PathBuf) -> Result<(), String> {
-    let output = Command::new("certutil.exe")
+    let output = hidden_windows_command("certutil.exe")
         .args(["-addstore", "-f", "Root"])
         .arg(cert_path)
         .output()
@@ -628,7 +638,7 @@ fn certificate_installed(cert_path: &PathBuf) -> bool {
         .iter()
         .map(|byte| format!("{byte:02X}"))
         .collect::<String>();
-    Command::new("certutil.exe")
+    hidden_windows_command("certutil.exe")
         .args(["-store", "Root", &fingerprint])
         .output()
         .map(|output| {
