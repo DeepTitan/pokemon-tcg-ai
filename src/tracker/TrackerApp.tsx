@@ -528,7 +528,16 @@ export default function TrackerApp() {
   const resolveCardsForPayload = useCallback(async (payload: unknown) => {
     const ids = [...collectCardSourceIds(payload)];
     const missing = ids.filter((id) => !catalogRef.current.has(id));
-    if (missing.length) mergeCatalog(await resolveCardSources(missing));
+    if (missing.length) {
+      try {
+        mergeCatalog(await resolveCardSources(missing));
+      } catch (caught) {
+        // Card metadata and art make the replay richer, but the exact captured
+        // board remains useful without them. Never let optional enrichment hide
+        // a match that is already safely stored.
+        console.warn('Card enrichment is temporarily unavailable.', caught);
+      }
+    }
     return catalogRef.current;
   }, [mergeCatalog]);
 
