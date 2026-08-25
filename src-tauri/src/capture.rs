@@ -133,6 +133,20 @@ impl Recorder {
         }
         let _ = self.app.emit("match-operation", &operation);
     }
+
+    fn record_error(&self, error: &str) {
+        let Some(parent) = self.capture_path.parent() else {
+            return;
+        };
+        let _ = fs::create_dir_all(parent);
+        if let Ok(mut file) = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(parent.join("capture-errors.log"))
+        {
+            let _ = writeln!(file, "{} {error}", unix_timestamp());
+        }
+    }
 }
 
 fn unix_timestamp() -> String {
@@ -1243,6 +1257,7 @@ async fn run_observer(
                         let benign_disconnect = error
                             .contains("peer closed connection without sending TLS close_notify");
                         if recorder.state.enabled.load(Ordering::Relaxed) && !benign_disconnect {
+                            recorder.record_error(&error);
                             if let Ok(mut last_error) = recorder.state.last_error.lock() {
                                 *last_error = Some(error);
                             }
