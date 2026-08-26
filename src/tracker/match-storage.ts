@@ -1,4 +1,5 @@
 import type { CapturedOperation, MatchReview, MatchSummary } from './types.js';
+import { GamePhase } from '../engine/types.js';
 
 export const REDUCER_VERSION = 6;
 
@@ -15,6 +16,56 @@ export function matchSummaryFromReview(review: MatchReview, operationCount = 0):
     reducerVersion: REDUCER_VERSION,
     finalSnapshot: [...review.turns].reverse().find((turn) => turn.snapshot)?.snapshot,
     recording: review.source === 'live-network' && !review.winner,
+  };
+}
+
+export function finalizeReviewForClientExit(review: MatchReview): MatchReview {
+  if (review.source !== 'live-network' || review.winner || review.turns.length === 0) return review;
+  const previous = review.turns.at(-1)!;
+  const turnNumber = previous.label.match(/^Turn\s+\d+/i)?.[0] || 'Final action';
+  const canonical = previous.canonical;
+  const opponentIndex = canonical
+    ? canonical.playerNames.findIndex((name) => name === review.opponent)
+    : -1;
+  const winnerIndex = opponentIndex === 0 || opponentIndex === 1
+    ? opponentIndex
+    : canonical ? (canonical.localPlayerIndex === 0 ? 1 : 0) : 1;
+  const turnIndex = review.turns.length;
+  const resultText = `Game over — ${review.opponent} won because ${review.localPlayer} closed TCG Live`;
+
+  return {
+    ...review,
+    winner: review.opponent,
+    resultReason: 'local-client-closed',
+    turns: [...review.turns, {
+      index: turnIndex,
+      label: `${turnNumber} · Client closed`,
+      player: review.localPlayer,
+      choiceLabel: resultText,
+      events: [{
+        id: `${review.id}:client-exit`,
+        turnIndex,
+        actor: review.localPlayer,
+        text: resultText,
+        detail: false,
+        kind: 'system',
+        facts: [
+          { id: `${review.id}:client-exit:application`, kind: 'system', label: 'Application', value: 'TCG Live closed during the match', tone: 'negative' },
+          { id: `${review.id}:client-exit:result`, kind: 'resolution', label: 'Game result', value: `${review.opponent} won · Local client exit`, tone: 'negative' },
+        ],
+      }],
+      snapshot: { ...previous.snapshot, winner: review.opponent },
+      canonical: canonical ? {
+        ...canonical,
+        state: {
+          ...canonical.state,
+          phase: GamePhase.GameOver,
+          winner: winnerIndex,
+        },
+        selections: [],
+        selection: undefined,
+      } : undefined,
+    }],
   };
 }
 

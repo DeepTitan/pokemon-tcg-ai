@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { capturedAtIso, collectCardSourceIds, matchSummaryFromReview, operationKey, recordingSummaryFromOperation, REDUCER_VERSION } from '../match-storage.js';
+import { capturedAtIso, collectCardSourceIds, finalizeReviewForClientExit, matchSummaryFromReview, operationKey, recordingSummaryFromOperation, REDUCER_VERSION } from '../match-storage.js';
+import { initialClientLifecycleState, observeClientLifecycle } from '../client-lifecycle-model.js';
 import type { CapturedOperation, MatchReview } from '../types.js';
 
 const operation = {
@@ -34,4 +35,37 @@ assert.equal(summary.reducerVersion, REDUCER_VERSION);
 assert.equal(summary.finalSnapshot?.stadium, null);
 assert.equal(summary.recording, false);
 
-console.log('match-storage: summaries, operation keys, and card batching helpers verified');
+const unfinished = {
+  ...review,
+  winner: undefined,
+  turns: [{
+    index: 0,
+    label: 'Turn 3 · Action 9',
+    player: 'A',
+    events: [],
+    snapshot: { players: {}, stadium: null },
+  }],
+} satisfies MatchReview;
+const exited = finalizeReviewForClientExit(unfinished);
+assert.equal(exited.winner, 'B');
+assert.equal(exited.resultReason, 'local-client-closed');
+assert.equal(exited.turns.length, 2);
+assert.equal(exited.turns[1].snapshot.winner, 'B');
+assert.match(exited.turns[1].events[0].text, /B won because A closed TCG Live/);
+assert.equal(matchSummaryFromReview(exited, 9).recording, false);
+assert.equal(finalizeReviewForClientExit(exited), exited, 'a completed review must not gain another terminal frame');
+
+let lifecycle = initialClientLifecycleState();
+({ state: lifecycle } = observeClientLifecycle(lifecycle, true, 42));
+let observation = observeClientLifecycle(lifecycle, false, null);
+assert.equal(observation.clientExited, false);
+observation = observeClientLifecycle(observation.state, true, 42);
+assert.equal(observation.clientExited, false, 'one missed poll must not finalize a match');
+observation = observeClientLifecycle(observation.state, false, null);
+observation = observeClientLifecycle(observation.state, false, null);
+observation = observeClientLifecycle(observation.state, false, null);
+assert.equal(observation.clientExited, true, 'three consecutive misses confirm the client exited');
+observation = observeClientLifecycle({ observedRunning: true, pid: 42, missingPolls: 0 }, true, 84);
+assert.equal(observation.clientExited, true, 'a replaced process is also a client exit');
+
+console.log('match-storage: summaries, operation keys, card batching, and client-exit finalization verified');

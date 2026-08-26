@@ -25,7 +25,8 @@ import { cardEffectSummary } from './card-effect-model.js';
 import { attackResolutionForTurn, type AttackResolution } from './attack-resolution-model.js';
 import { buildPlayerTurnStops, stepPlayerTurn } from './turn-navigation-model.js';
 import { deriveReviewTurnStatus, type PlayerTurnStatus } from './turn-status-model.js';
-import { capturedAtIso, collectCardSourceIds, matchSummaryFromReview, operationKey, recordingSummaryFromOperation, REDUCER_VERSION } from './match-storage.js';
+import { capturedAtIso, collectCardSourceIds, finalizeReviewForClientExit, matchSummaryFromReview, operationKey, recordingSummaryFromOperation, REDUCER_VERSION } from './match-storage.js';
+import { initialClientLifecycleState, observeClientLifecycle } from './client-lifecycle-model.js';
 import { CARD_BACK_ART, publicCardArtUrl, resolvedCardArt, showCardBackOnError } from './card-art.js';
 import type {
   CapturedOperation, CardInfo, CanonicalReviewState, MatchReview, MatchSummary, ReviewCardVisibility, ReviewSelection, TrackedCard, TrackedChoiceCard, TrackedPlayerBoard,
@@ -456,6 +457,9 @@ export default function TrackerApp() {
   const activeOperationsRef = useRef<CapturedOperation[]>([]);
   const activeOperationKeysRef = useRef(new Set<string>());
   const activeMatchIdRef = useRef<string | null>(null);
+  const activeReviewRef = useRef<MatchReview | null>(null);
+  const clientLifecycleRef = useRef(initialClientLifecycleState());
+  const clientExitFinalizedIdsRef = useRef(new Set<string>());
   const queuedLiveOperationsRef = useRef<CapturedOperation[]>([]);
   const runtimeReadyRef = useRef(false);
   const requestedCardIdsRef = useRef(new Set<string>());
@@ -591,6 +595,7 @@ export default function TrackerApp() {
     if (display) displayReview(rebuilt.review, true);
     if (seedLive) {
       activeMatchIdRef.current = rebuilt.review.id;
+      activeReviewRef.current = rebuilt.review;
       activeOperationsRef.current = operations;
       activeOperationKeysRef.current = new Set(operations.map(operationKey));
       liveAssembler.current = rebuilt.assembler;
@@ -613,12 +618,32 @@ export default function TrackerApp() {
     }
   }, [commitReview]);
 
+  const finalizeActiveMatchForClientExit = useCallback(() => {
+    const current = activeReviewRef.current;
+    if (!current || current.source !== 'live-network' || current.winner || clientExitFinalizedIdsRef.current.has(current.id)) return;
+    const finalized = finalizeReviewForClientExit(current);
+    if (finalized === current) return;
+    clientExitFinalizedIdsRef.current.add(finalized.id);
+    activeReviewRef.current = finalized;
+    const pendingTimer = persistTimersRef.current.get(finalized.id);
+    if (pendingTimer != null) window.clearTimeout(pendingTimer);
+    persistTimersRef.current.delete(finalized.id);
+    upsertSummary(matchSummaryFromReview(finalized, activeOperationsRef.current.length));
+    displayReview(finalized);
+    setNotice(`TCG Live closed during the match. Trace recorded a defeat against ${finalized.opponent}.`);
+    void commitReview(finalized, activeOperationsRef.current.length)
+      .catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)));
+  }, [commitReview, displayReview, upsertSummary]);
+
   useEffect(() => {
     let active = true;
     const refresh = async () => {
       try {
         const next = await getTrackerEnvironment();
         if (active) {
+          const observation = observeClientLifecycle(clientLifecycleRef.current, next.clientRunning, next.pid);
+          clientLifecycleRef.current = observation.state;
+          if (observation.clientExited) finalizeActiveMatchForClientExit();
           setEnvironment(next);
           if (isTauri() && !next.capture.permissionReady && !setupPrompted.current) {
             setupPrompted.current = true;
@@ -630,7 +655,7 @@ export default function TrackerApp() {
     void refresh();
     const timer = window.setInterval(refresh, 1500);
     return () => { active = false; window.clearInterval(timer); };
-  }, []);
+  }, [finalizeActiveMatchForClientExit]);
 
   useEffect(() => {
     if (isTauri()) setTracking(environment.capture.enabled);
@@ -666,9 +691,14 @@ export default function TrackerApp() {
 
     const publishLive = (review: MatchReview | null) => {
       if (!active || !review) return;
-      upsertSummary(matchSummaryFromReview(review, activeOperationsRef.current.length));
-      displayReview(review);
-      schedulePersistence(review);
+      if (review.winner) clientExitFinalizedIdsRef.current.delete(review.id);
+      const published = !review.winner && clientExitFinalizedIdsRef.current.has(review.id)
+        ? finalizeReviewForClientExit(review)
+        : review;
+      activeReviewRef.current = published;
+      upsertSummary(matchSummaryFromReview(published, activeOperationsRef.current.length));
+      displayReview(published);
+      schedulePersistence(published);
     };
 
     const rebuildActiveMatch = async () => {
@@ -707,6 +737,7 @@ export default function TrackerApp() {
       const matchId = `live-${operation.matchId || operation.gameId}`;
       if (activeMatchIdRef.current !== matchId) {
         activeMatchIdRef.current = matchId;
+        activeReviewRef.current = null;
         activeOperationsRef.current = [];
         activeOperationKeysRef.current = new Set();
         liveAssembler.current = new LiveReviewAssembler(catalogRef.current);
@@ -819,6 +850,7 @@ export default function TrackerApp() {
     void bootstrap();
     return () => {
       active = false;
+      activeReviewRef.current = null;
       unlisten();
       if (cardBatchTimerRef.current != null) window.clearTimeout(cardBatchTimerRef.current);
       persistTimersRef.current.forEach((timer) => window.clearTimeout(timer));

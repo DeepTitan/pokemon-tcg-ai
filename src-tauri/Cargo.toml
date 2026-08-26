@@ -1,6 +1,6 @@
 [package]
 name = "match-lens"
-version = "0.1.27"
+version = "0.1.28"
 description = "Trace, an unofficial local Pokémon TCG Live match review companion"
 authors = ["Isaiah W"]
 edition = "2021"

@@ -202,6 +202,7 @@ export interface MatchReview {
   localPlayer: string;
   opponent: string;
   winner?: string;
+  resultReason?: 'local-client-closed';
   turns: TrackedTurn[];
   rawLog: string;
 }
