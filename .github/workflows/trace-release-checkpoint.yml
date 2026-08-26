@@ -22,6 +22,7 @@ jobs:
       tag: ${{ steps.release.outputs.tag }}
       releaseNote: ${{ steps.release.outputs.releaseNote }}
       commitSha: ${{ steps.release.outputs.commitSha }}
+      releaseDraft: ${{ steps.release-state.outputs.releaseDraft }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -44,6 +45,19 @@ jobs:
               echo "::error::${RELEASE_TAG} already belongs to ${existing_sha}."
               exit 1
             }
+          fi
+
+      - name: Resolve GitHub release state
+        id: release-state
+        if: steps.release.outputs.shouldRelease == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          if release_json="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft 2>/dev/null)"; then
+            echo "releaseDraft=$(jq -r .isDraft <<< "$release_json")" >> "$GITHUB_OUTPUT"
+          else
+            echo "releaseDraft=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Skip ordinary commit
@@ -110,7 +124,7 @@ jobs:
 
             Release level: ${{ needs.checkpoint.outputs.releaseLevel }}
             Commit: ${{ needs.checkpoint.outputs.commitSha }}
-          releaseDraft: true
+          releaseDraft: ${{ needs.checkpoint.outputs.releaseDraft }}
           prerelease: false
           uploadUpdaterJson: true
           updaterJsonPreferNsis: true
