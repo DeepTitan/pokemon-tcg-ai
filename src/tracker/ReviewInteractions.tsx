@@ -11,6 +11,7 @@ import {
 } from '../engine/types.js';
 import { cardRulesText, cardSourceIdFromReviewCard } from './card-adapter.js';
 import { countEnergyTypes, EnergyBadge, energyTypeLabel } from './EnergyBadge.js';
+import { resolvedCardArt, showCardBackOnError } from './card-art.js';
 import type { CardInfo, ReviewAppliedEffect, ReviewCardVisibility, ReviewSelection } from './types.js';
 
 export type ReviewInspector =
@@ -20,16 +21,12 @@ export type ReviewInspector =
 
 const CardCatalogContext = createContext<ReadonlyMap<string, CardInfo>>(new Map());
 
-function fallbackArt(): string {
-  return '/tracker-assets/pokemon-card-back.jpg';
-}
-
 function CardImage({ card, hidden = false }: { card: Card; hidden?: boolean }) {
   const catalog = useContext(CardCatalogContext);
   if (hidden) return <span className="review-card-back"><CardsThree size={28} weight="duotone" /><small>Hidden</small></span>;
   const sourceId = cardSourceIdFromReviewCard(card);
   const resolved = sourceId ? catalog.get(sourceId) || catalog.get(sourceId.toLowerCase()) : undefined;
-  return <img src={card.imageUrl || resolved?.imageDataUrl || fallbackArt()} alt={card.name} />;
+  return <img src={resolvedCardArt(sourceId, card.imageUrl || resolved?.imageDataUrl)} alt={card.name} onError={showCardBackOnError} />;
 }
 
 function EnergyPips({ types }: { types: EnergyType[] }) {
