@@ -50,7 +50,9 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: trace-source
-        run: npm ci
+        # The tracker does not use TensorFlow. Skip unrelated native install
+        # scripts from the larger research workspace when packaging Trace.
+        run: npm ci --ignore-scripts
 
       - name: Build the Windows installer
         working-directory: trace-source
