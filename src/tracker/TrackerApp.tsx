@@ -33,6 +33,7 @@ import { deriveReviewTurnStatus, type PlayerTurnStatus } from './turn-status-mod
 import { capturedAtIso, collectCardSourceIds, finalizeReviewForClientExit, matchSummaryFromReview, operationKey, recordingSummaryFromOperation, REDUCER_VERSION } from './match-storage.js';
 import { initialClientLifecycleState, observeClientLifecycle } from './client-lifecycle-model.js';
 import { UpdateNotice } from './UpdateNotice.js';
+import { CARD_BACK_ART, publicCardArtUrl, resolvedCardArt, showCardBackOnError } from './card-art.js';
 import type {
   CapturedOperation, CardInfo, CanonicalReviewState, MatchReview, MatchSummary, ReviewCardVisibility, ReviewSelection, TrackedCard, TrackedChoiceCard, TrackedPlayerBoard,
   TrackedPokemon, TrackedTurn, TrackerEnvironment, TrackerEventKind,
@@ -101,7 +102,7 @@ function approximateDeckCount(board: TrackedPlayerBoard): number {
 }
 
 function fallbackCardArt(name: string): string {
-  return '/tracker-assets/pokemon-card-back.jpg';
+  return CARD_BACK_ART;
 }
 
 function selectedCardNames(selection: ReviewSelection | undefined): string[] {
@@ -115,9 +116,7 @@ function resolvedCardInfo(card: TrackedCard, catalog: ReadonlyMap<string, CardIn
 }
 
 function resolvedCardImage(card: TrackedCard, catalog: ReadonlyMap<string, CardInfo>): string {
-  return card.imageDataUrl
-    || resolvedCardInfo(card, catalog)?.imageDataUrl
-    || fallbackCardArt(card.name);
+  return resolvedCardArt(card.cardId, card.imageDataUrl || resolvedCardInfo(card, catalog)?.imageDataUrl);
 }
 
 function EventIcon({ kind, size = 17 }: { kind: TrackerEventKind; size?: number }) {
@@ -192,7 +191,7 @@ function PokemonSlot({ pokemon, catalog, active = false, defeated = false, attac
   const tools = pokemon.toolCards || [];
   return (
     <button type="button" className={`pokemon-slot ${active ? 'active' : ''} ${defeated ? 'defeated' : ''} ${attacking ? 'attacking' : ''} ${damageChange ? damageChange.delta > 0 ? 'damage-increased' : 'damage-decreased' : ''} ${positionChange ? `position-changed moved-to-${positionChange.to}` : ''}`} data-pokemon-id={pokemon.id} data-pokemon-name={displayName} title={`Inspect ${displayName}${pokemon.cardId ? ` · ${pokemon.cardId}` : ''}`} onClick={() => onOpen?.(pokemon.id)}>
-      <img className="card-art" src={image} alt={displayName} />
+      <img className="card-art" src={image} alt={displayName} onError={showCardBackOnError} />
       {displayedDamage > 0 && <b className="damage-token">{displayedDamage}</b>}
       {damageChange && <span className={`damage-change-badge ${damageChange.delta > 0 ? 'added' : 'removed'}`} aria-label={damageChange.delta > 0 ? `${damageChange.delta} damage added; ${damageChange.after} total damage` : `${Math.abs(damageChange.delta)} damage removed; ${damageChange.after} total damage`}><b>{damageChange.delta > 0 ? '+' : '−'}{Math.abs(damageChange.delta)}</b><small>damage</small></span>}
       {positionChange && <span className={`position-change-badge to-${positionChange.to}`} aria-label={`${displayName} moved from ${positionChange.from} to ${positionChange.to} by ${positionChange.cause}`} title={`${positionChange.from === 'active' ? 'Active' : 'Bench'} → ${positionChange.to === 'active' ? 'Active' : 'Bench'} · ${positionChange.cause}`}>
@@ -200,11 +199,11 @@ function PokemonSlot({ pokemon, catalog, active = false, defeated = false, attac
         <b>{positionChange.to === 'active' ? 'Active' : 'Bench'}</b>
       </span>}
       {energyAttachments.length > 0 && <span className="attached-energy-preview" aria-label={`${pokemon.energies.join(', ')} attached`}>
-        {specialEnergies.slice(-2).map(({ card, displayName }) => <span className="special-energy-card" title={`${displayName} · Special Energy`} key={card!.id}><img src={resolvedCardImage(card!, catalog)} alt="" /></span>)}
+        {specialEnergies.slice(-2).map(({ card, displayName }) => <span className="special-energy-card" title={`${displayName} · Special Energy`} key={card!.id}><img src={resolvedCardImage(card!, catalog)} alt="" onError={showCardBackOnError} /></span>)}
         {specialEnergies.length > 2 && <b className="special-energy-overflow" aria-label={`${specialEnergies.length - 2} more Special Energy cards`}>+{specialEnergies.length - 2}</b>}
         {countEnergyTypes(basicEnergyTypes).map(({ type, count }) => <EnergyBadge key={type} type={type} count={count} compact />)}
       </span>}
-      {tools.length > 0 && <span className="attached-tool-preview" aria-label={`${tools.map((tool) => `${resolvedCardInfo(tool, catalog)?.name || tool.name} Tool`).join(', ')} attached`}>{tools.slice(-2).map((tool) => { const name = resolvedCardInfo(tool, catalog)?.name || tool.name; return <span className="attached-tool-card" title={`${name} · Pokémon Tool`} key={tool.id}><img src={resolvedCardImage(tool, catalog)} alt="" /><small>Tool</small></span>; })}</span>}
+      {tools.length > 0 && <span className="attached-tool-preview" aria-label={`${tools.map((tool) => `${resolvedCardInfo(tool, catalog)?.name || tool.name} Tool`).join(', ')} attached`}>{tools.slice(-2).map((tool) => { const name = resolvedCardInfo(tool, catalog)?.name || tool.name; return <span className="attached-tool-card" title={`${name} · Pokémon Tool`} key={tool.id}><img src={resolvedCardImage(tool, catalog)} alt="" onError={showCardBackOnError} /><small>Tool</small></span>; })}</span>}
       {defeated && <span className="knockout-stamp" aria-label="Knocked out"><b>KO</b><small>Knocked out</small></span>}
     </button>
   );
@@ -305,7 +304,7 @@ function ChoiceStage({ boardName, frames, currentReviewIndex, catalog, onOpen }:
         const name = info?.name || card.name;
         const current = frame.reviewIndex === currentReviewIndex;
         const roleCopy = card.choiceRole === 'discarded' ? 'Discarded card' : card.choiceRole === 'chosen' ? 'Chosen card' : card.choiceRole === 'promoted' ? 'Promoted to Active' : 'Action card';
-        return <button type="button" className={`choice-card role-${card.choiceRole} ${current ? 'current' : ''}`} aria-current={current ? 'step' : undefined} aria-label={`${roleCopy}: ${name}`} title={`${frame.label} · ${roleCopy}: ${name}`} onClick={() => onOpen(card)} key={`${frame.reviewIndex}-${card.id}-${index}`}><img src={resolvedCardImage(card, catalog)} alt={name} /></button>;
+        return <button type="button" className={`choice-card role-${card.choiceRole} ${current ? 'current' : ''}`} aria-current={current ? 'step' : undefined} aria-label={`${roleCopy}: ${name}`} title={`${frame.label} · ${roleCopy}: ${name}`} onClick={() => onOpen(card)} key={`${frame.reviewIndex}-${card.id}-${index}`}><img src={resolvedCardImage(card, catalog)} alt={name} onError={showCardBackOnError} /></button>;
       })}
     </div>
   </aside>;
@@ -325,14 +324,14 @@ function ZoneStack({ label, count, tone, onOpen }: { label: string; count: numbe
 function ZoneCards({ label, cards, catalog, onOpen }: { label: string; cards: TrackedCard[]; catalog: ReadonlyMap<string, CardInfo>; onOpen?: () => void }) {
   const visible = cards.slice(-2).reverse();
   return (
-    <button type="button" className="zone-card-group" onClick={onOpen} title={`Open ${label}`}><span>{label}</span><span className="zone-card-stack">{(visible.length ? visible : [{ id: `fallback-${label}`, name: label }]).map((card) => { const name = resolvedCardInfo(card, catalog)?.name || card.name; return <img key={card.id} src={resolvedCardImage(card, catalog)} title={name} alt={name} />; })}</span><b>{cards.length}</b></button>
+    <button type="button" className="zone-card-group" onClick={onOpen} title={`Open ${label}`}><span>{label}</span><span className="zone-card-stack">{(visible.length ? visible : [{ id: `fallback-${label}`, name: label }]).map((card) => { const name = resolvedCardInfo(card, catalog)?.name || card.name; return <img key={card.id} src={resolvedCardImage(card, catalog)} title={name} alt={name} onError={showCardBackOnError} />; })}</span><b>{cards.length}</b></button>
   );
 }
 
 function reviewCardImage(card: Card, catalog: ReadonlyMap<string, CardInfo>): string {
   const sourceId = cardSourceIdFromReviewCard(card);
   const info = sourceId ? catalog.get(sourceId) || catalog.get(sourceId.toLowerCase()) : undefined;
-  return card.imageUrl || info?.imageDataUrl || fallbackCardArt(card.name);
+  return resolvedCardArt(sourceId, card.imageUrl || info?.imageDataUrl);
 }
 
 function HandFan({ boardName, cards, count, visibility, catalog, opponent, onOpen }: { boardName: string; cards: Card[]; count: number; visibility: Record<string, ReviewCardVisibility>; catalog: ReadonlyMap<string, CardInfo>; opponent: boolean; onOpen: () => void }) {
@@ -346,7 +345,7 @@ function HandFan({ boardName, cards, count, visibility, catalog, opponent, onOpe
           const hidden = opponent || !card;
           return hidden
             ? <span className="hand-fan-card hidden" key={card?.id || `hidden-${index}`}><img src="/tracker-assets/pokemon-card-back.jpg" alt="" /></span>
-            : <span className="hand-fan-card known" key={card.id} title={card.name}><img src={reviewCardImage(card, catalog)} alt="" /></span>;
+            : <span className="hand-fan-card known" key={card.id} title={card.name}><img src={reviewCardImage(card, catalog)} alt="" onError={showCardBackOnError} /></span>;
         })}
         {total > displayed && <em>+{total - displayed}</em>}
       </span>
@@ -416,7 +415,7 @@ function findPokemonById(canonical: CanonicalReviewState, id: string): PokemonIn
 function ArchiveBoardSide({ board, catalog, tone }: { board: TrackedPlayerBoard | undefined; catalog: ReadonlyMap<string, CardInfo>; tone: 'opponent' | 'local' }) {
   const slots = [board?.bench[0], board?.bench[1], board?.active, board?.bench[2], board?.bench[3]];
   return <span className={`session-board-side ${tone}`} aria-hidden="true">{slots.map((card, slot) => card
-    ? <img className={slot === 2 ? 'active' : ''} key={`${slot}-${card.id}`} src={resolvedCardImage(card, catalog)} alt="" />
+    ? <img className={slot === 2 ? 'active' : ''} key={`${slot}-${card.id}`} src={resolvedCardImage(card, catalog)} alt="" onError={showCardBackOnError} />
     : <i key={slot} />)}</span>;
 }
 
@@ -1141,7 +1140,7 @@ export default function TrackerApp() {
                         <span className="event-trailing">{event.coinResult ? <b className={`coin-outcome ${event.coinResult}`}><Coin size={10} weight="fill" />{event.coinResult === 'heads' ? 'Heads' : event.coinResult === 'tails' ? 'Tails' : 'Mixed'}</b> : selected ? <b>Viewing</b> : event.id.includes(':selection:') ? <MagnifyingGlass size={14} weight="bold" /> : <CaretRight size={14} weight="bold" />}</span>
                       </button>
                       {selected && effect && eventCard && <button className="event-effect-detail" type="button" onClick={() => openChoiceCard({ id: `${event.id}:card`, cardId: eventCard.id, name: eventCard.name })} aria-label={`${effect.label}: ${effect.title}. ${effect.text}. Open card details`}>
-                        <img src={eventCard.imageDataUrl || fallbackCardArt(eventCard.name)} alt="" />
+                        <img src={eventCard.imageDataUrl || publicCardArtUrl(eventCard.id) || fallbackCardArt(eventCard.name)} alt="" onError={showCardBackOnError} />
                         <span><small>{effect.label}</small><strong>{effect.title}</strong><p>{effect.text}</p></span>
                         <CaretRight size={14} weight="bold" />
                       </button>}
