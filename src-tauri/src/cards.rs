@@ -383,72 +383,132 @@ fn image_path(cache_root: &Path, output_root: &Path, card_id: &str) -> Option<St
     Some(output.to_string_lossy().into_owned())
 }
 
-pub fn resolve(app: &tauri::AppHandle, card_ids: Vec<String>) -> Result<Vec<CardInfo>, String> {
-    let wanted: HashSet<String> = card_ids.into_iter().filter(|id| !id.is_empty()).collect();
-    if wanted.is_empty() {
-        return Ok(Vec::new());
-    }
-    let home = app.path().home_dir().map_err(|error| error.to_string())?;
-    #[cfg(target_os = "macos")]
-    let database_root = home.join("Library/Application Support/com.pokemon.pokemontcgl/config-cache");
-    #[cfg(target_os = "macos")]
-    let cache_root = home.join("Library/Caches/com.pokemon.pokemontcgl");
-    #[cfg(target_os = "windows")]
-    let database_root = std::env::var_os("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home.join("AppData/Local"))
-        .join("com.pokemon.pokemontcgl/config-cache");
-    #[cfg(target_os = "windows")]
-    let cache_root = std::env::var_os("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home.join("AppData/Local"))
-        .join("com.pokemon.pokemontcgl/cache");
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    let database_root = home.join(".local/share/com.pokemon.pokemontcgl/config-cache");
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    let cache_root = home.join(".cache/com.pokemon.pokemontcgl");
-    let output_root = app
-        .path()
-        .app_cache_dir()
-        .map_err(|error| error.to_string())?
-        .join("card-art");
-    fs::create_dir_all(&output_root).map_err(|error| error.to_string())?;
+#[derive(Debug)]
+struct ClientDataRoots {
+    database: Vec<PathBuf>,
+    cache: Vec<PathBuf>,
+}
 
+fn push_unique(paths: &mut Vec<PathBuf>, path: PathBuf) {
+    if !paths.contains(&path) {
+        paths.push(path);
+    }
+}
+
+fn windows_client_data_roots(
+    home: &Path,
+    local_app_data: Option<PathBuf>,
+    roaming_app_data: Option<PathBuf>,
+) -> ClientDataRoots {
+    let local_low = home.join("AppData/LocalLow");
+    let local = local_app_data.unwrap_or_else(|| home.join("AppData/Local"));
+    let roaming = roaming_app_data.unwrap_or_else(|| home.join("AppData/Roaming"));
+
+    // PTCGL is a Unity app. On Windows, Application.persistentDataPath lives
+    // below LocalLow while Unity's downloaded AssetBundles use a separate
+    // LocalLow/Unity cache. Keep the older LOCALAPPDATA layout as a fallback for
+    // machines upgraded from early Trace builds.
+    let game_roots = [
+        local_low.join("pokemon/Pokemon TCG Live"),
+        local_low.join("The Pokémon Company International/Pokémon Trading Card Game Live"),
+        roaming.join("Pokemon/Pokemon TCG Live"),
+        roaming.join("Pokémon Trading Card Game Live"),
+        local.join("com.pokemon.pokemontcgl"),
+    ];
+    let mut database = Vec::new();
+    for root in game_roots {
+        push_unique(&mut database, root.join("config-cache"));
+    }
+
+    let unity_root = local_low.join("Unity/pokemon_Pokemon TCG Live");
+    let mut cache = Vec::new();
+    for root in [
+        unity_root.clone(),
+        unity_root.join("cache"),
+        local_low.join("pokemon/Pokemon TCG Live/cache"),
+        local.join("com.pokemon.pokemontcgl/cache"),
+    ] {
+        push_unique(&mut cache, root);
+    }
+    ClientDataRoots { database, cache }
+}
+
+fn client_data_roots(home: &Path) -> ClientDataRoots {
+    #[cfg(target_os = "macos")]
+    {
+        ClientDataRoots {
+            database: vec![home.join("Library/Application Support/com.pokemon.pokemontcgl/config-cache")],
+            cache: vec![home.join("Library/Caches/com.pokemon.pokemontcgl")],
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        windows_client_data_roots(
+            home,
+            std::env::var_os("LOCALAPPDATA").map(PathBuf::from),
+            std::env::var_os("APPDATA").map(PathBuf::from),
+        )
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        ClientDataRoots {
+            database: vec![home.join(".local/share/com.pokemon.pokemontcgl/config-cache")],
+            cache: vec![home.join(".cache/com.pokemon.pokemontcgl")],
+        }
+    }
+}
+
+fn resolve_from_roots(
+    roots: &ClientDataRoots,
+    output_root: &Path,
+    wanted: HashSet<String>,
+) -> Result<Vec<CardInfo>, String> {
     let database_wanted: HashSet<String> = wanted.iter().map(|id| database_id(id)).collect();
     let sets: HashSet<&str> = database_wanted.iter().filter_map(|id| set_id(id)).collect();
     let mut cards = HashMap::new();
-    let entries = fs::read_dir(&database_root).map_err(|error| {
-        format!("TCG Live's local card database is unavailable: {error}")
-    })?;
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+    let mut readable_database = false;
+    for database_root in &roots.database {
+        let Ok(entries) = fs::read_dir(database_root) else {
             continue;
         };
-        let Some(set) = sets.iter().find(|set| {
-            file_name.starts_with(&format!("card-database-{set}_"))
-                && file_name.contains("_en_")
-                && file_name.ends_with(".json")
-        }) else {
-            continue;
-        };
-        let json: Value = serde_json::from_slice(&fs::read(&path).map_err(|error| error.to_string())?)
-            .map_err(|error| error.to_string())?;
-        let Some(encoded) = json
-            .pointer("/keys/table/contentBinary")
-            .and_then(Value::as_str)
-        else {
-            continue;
-        };
-        let binary = STANDARD.decode(encoded).map_err(|error| error.to_string())?;
-        let relevant: HashSet<String> = database_wanted
-            .iter()
-            .filter(|id| set_id(id) == Some(*set))
-            .cloned()
-            .collect();
-        for card in parse_table(&binary, &relevant)? {
-            cards.insert(card.id.clone(), card);
+        readable_database = true;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+                continue;
+            };
+            let Some(set) = sets.iter().find(|set| {
+                file_name.starts_with(&format!("card-database-{set}_"))
+                    && file_name.contains("_en_")
+                    && file_name.ends_with(".json")
+            }) else {
+                continue;
+            };
+            let json: Value = serde_json::from_slice(&fs::read(&path).map_err(|error| error.to_string())?)
+                .map_err(|error| error.to_string())?;
+            let Some(encoded) = json
+                .pointer("/keys/table/contentBinary")
+                .and_then(Value::as_str)
+            else {
+                continue;
+            };
+            let binary = STANDARD.decode(encoded).map_err(|error| error.to_string())?;
+            let relevant: HashSet<String> = database_wanted
+                .iter()
+                .filter(|id| set_id(id) == Some(*set))
+                .cloned()
+                .collect();
+            for card in parse_table(&binary, &relevant)? {
+                cards.insert(card.id.clone(), card);
+            }
         }
+    }
+    if !readable_database {
+        let searched = roots.database.iter()
+            .map(|path| path.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(format!("TCG Live's local card database is unavailable. Searched: {searched}"));
     }
 
     let mut result = Vec::new();
@@ -476,11 +536,28 @@ pub fn resolve(app: &tauri::AppHandle, card_ids: Vec<String>) -> Result<Vec<Card
         });
         card.id = id.clone();
         card.image_data_url = None;
-        card.image_path = image_path(&cache_root, &output_root, &id);
+        card.image_path = roots.cache.iter()
+            .find_map(|cache_root| image_path(cache_root, output_root, &id));
         result.push(card);
     }
     result.sort_by(|left, right| left.id.cmp(&right.id));
     Ok(result)
+}
+
+pub fn resolve(app: &tauri::AppHandle, card_ids: Vec<String>) -> Result<Vec<CardInfo>, String> {
+    let wanted: HashSet<String> = card_ids.into_iter().filter(|id| !id.is_empty()).collect();
+    if wanted.is_empty() {
+        return Ok(Vec::new());
+    }
+    let home = app.path().home_dir().map_err(|error| error.to_string())?;
+    let roots = client_data_roots(&home);
+    let output_root = app
+        .path()
+        .app_cache_dir()
+        .map_err(|error| error.to_string())?
+        .join("card-art");
+    fs::create_dir_all(&output_root).map_err(|error| error.to_string())?;
+    resolve_from_roots(&roots, &output_root, wanted)
 }
 
 #[cfg(test)]
@@ -521,6 +598,49 @@ mod tests {
     fn normalizes_parallel_holo_ids_to_the_base_database_row() {
         assert_eq!(database_id("sv10_169_ph"), "sv10_169");
         assert_eq!(art_key("sv10_169_ph").as_deref(), Some("sv10_en_169_t"));
+        assert_eq!(art_key("sv8-5_6").as_deref(), Some("sv8-5_en_006_t"));
+    }
+
+    #[test]
+    fn discovers_the_real_windows_ptcgl_database_and_unity_cache() {
+        let roots = windows_client_data_roots(
+            Path::new("C:/Users/TraceAdmin"),
+            Some(PathBuf::from("C:/Users/TraceAdmin/AppData/Local")),
+            Some(PathBuf::from("C:/Users/TraceAdmin/AppData/Roaming")),
+        );
+        assert!(roots.database.contains(&PathBuf::from(
+            "C:/Users/TraceAdmin/AppData/LocalLow/pokemon/Pokemon TCG Live/config-cache"
+        )));
+        assert!(roots.cache.contains(&PathBuf::from(
+            "C:/Users/TraceAdmin/AppData/LocalLow/Unity/pokemon_Pokemon TCG Live"
+        )));
+        assert!(roots.cache.contains(&PathBuf::from(
+            "C:/Users/TraceAdmin/AppData/LocalLow/Unity/pokemon_Pokemon TCG Live/cache"
+        )));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[ignore = "requires an installed Pokémon TCG Live client"]
+    fn resolves_metadata_and_art_from_an_installed_client() {
+        let home = PathBuf::from(std::env::var_os("HOME").expect("HOME is available"));
+        let output = std::env::temp_dir().join(format!(
+            "trace-card-resolution-test-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&output).unwrap();
+        let cards = resolve_from_roots(
+            &client_data_roots(&home),
+            &output,
+            HashSet::from(["sv9_120".to_owned()]),
+        )
+        .unwrap();
+        assert_eq!(cards[0].name, "Dunsparce");
+        assert!(cards[0]
+            .image_path
+            .as_deref()
+            .is_some_and(|path| Path::new(path).is_file()));
+        fs::remove_dir_all(output).unwrap();
     }
 
     #[test]
