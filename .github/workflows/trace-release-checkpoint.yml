@@ -1,0 +1,137 @@
+name: Trace release checkpoint
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ (contains(github.event.head_commit.message, '[MAJOR]') || contains(github.event.head_commit.message, '[MINOR]') || contains(github.event.head_commit.message, '[PATCH]')) && 'trace-release' || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  checkpoint:
+    runs-on: ubuntu-latest
+    outputs:
+      shouldRelease: ${{ steps.release.outputs.shouldRelease }}
+      releaseLevel: ${{ steps.release.outputs.releaseLevel }}
+      version: ${{ steps.release.outputs.version }}
+      tag: ${{ steps.release.outputs.tag }}
+      releaseNote: ${{ steps.release.outputs.releaseNote }}
+      commitSha: ${{ steps.release.outputs.commitSha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read release marker
+        id: release
+        run: node scripts/release/trace-release-checkpoint.mjs --github-output --json
+
+      - name: Validate release tag
+        if: steps.release.outputs.shouldRelease == 'true'
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_SHA: ${{ steps.release.outputs.commitSha }}
+        run: |
+          git fetch --tags origin
+          if git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
+            existing_sha="$(git rev-list -n 1 "$RELEASE_TAG")"
+            test "$existing_sha" = "$RELEASE_SHA" || {
+              echo "::error::${RELEASE_TAG} already belongs to ${existing_sha}."
+              exit 1
+            }
+          fi
+
+      - name: Skip ordinary commit
+        if: steps.release.outputs.shouldRelease != 'true'
+        run: echo "No [PATCH], [MINOR], or [MAJOR] marker found on HEAD."
+
+  build:
+    name: Build ${{ matrix.name }}
+    needs: checkpoint
+    if: needs.checkpoint.outputs.shouldRelease == 'true'
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include:
+          - name: macOS Apple silicon
+            platform: macos-latest
+            rustTargets: aarch64-apple-darwin
+            args: --target aarch64-apple-darwin --bundles dmg
+          - name: Windows x64
+            platform: windows-latest
+            rustTargets: x86_64-pc-windows-msvc
+            args: --target x86_64-pc-windows-msvc --bundles nsis
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rustTargets }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: ${{ matrix.rustTargets }}
+
+      - name: Install frontend dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Apply checkpoint version
+        env:
+          TRACE_VERSION: ${{ needs.checkpoint.outputs.version }}
+        run: node scripts/release/set-trace-version.mjs "$TRACE_VERSION"
+
+      - name: Build and upload signed update
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TRACE_SYNC_API_URL: ${{ vars.TRACE_SYNC_API_URL }}
+        with:
+          tagName: v__VERSION__
+          releaseName: Trace v__VERSION__
+          releaseBody: |
+            ${{ needs.checkpoint.outputs.releaseNote }}
+
+            Release level: ${{ needs.checkpoint.outputs.releaseLevel }}
+            Commit: ${{ needs.checkpoint.outputs.commitSha }}
+          releaseDraft: true
+          prerelease: false
+          uploadUpdaterJson: true
+          updaterJsonPreferNsis: true
+          releaseAssetNamePattern: "[name]_[arch][setup].[ext]"
+          args: ${{ matrix.args }}
+
+  publish:
+    needs: [checkpoint, build]
+    if: needs.checkpoint.outputs.shouldRelease == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish verified release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.checkpoint.outputs.tag }}
+        run: gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+
+      - name: Verify network update manifest
+        env:
+          RELEASE_TAG: ${{ needs.checkpoint.outputs.tag }}
+        run: |
+          manifest="https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/latest.json"
+          curl --fail --silent --show-error --location "$manifest" --output latest.json
+          jq -e '.version == "${{ needs.checkpoint.outputs.version }}" and (.platforms | length >= 2)' latest.json

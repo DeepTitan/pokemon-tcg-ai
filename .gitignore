@@ -5,6 +5,12 @@ node_modules/
 dist/
 build/
 *.tsbuildinfo
+__pycache__/
+*.pyc
+/src-tauri/target/
+/src-tauri/gen/
+/release/
+/artifacts/
 
 # Vite
 .vite/
@@ -21,6 +27,7 @@ build/
 *.swo
 .DS_Store
 Thumbs.db
+._*
 
 # Logs and debug
 *.log

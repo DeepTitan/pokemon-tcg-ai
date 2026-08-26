@@ -1,0 +1,68 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Trace",
+  "version": "0.1.17",
+  "identifier": "com.isaiahw.matchlens",
+  "build": {
+    "beforeDevCommand": "npm run ui -- --host 127.0.0.1",
+    "devUrl": "http://127.0.0.1:3000/tracker.html",
+    "beforeBuildCommand": "npm run tracker:build",
+    "frontendDist": "../dist/ui"
+  },
+  "app": {
+    "trayIcon": {
+      "id": "trace-mascot",
+      "iconPath": "icons/icon.png",
+      "iconAsTemplate": false,
+      "showMenuOnLeftClick": false,
+      "tooltip": "Trace"
+    },
+    "windows": [
+      {
+        "title": "Trace",
+        "url": "tracker.html",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1024,
+        "minHeight": 680,
+        "resizable": true,
+        "fullscreen": false,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
+      }
+    ],
+    "security": {
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$APPCACHE/card-art/**"]
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "createUpdaterArtifacts": true,
+    "icon": [
+      "icons/generated/32x32.png",
+      "icons/generated/128x128.png",
+      "icons/generated/128x128@2x.png",
+      "icons/generated/icon.icns",
+      "icons/generated/icon.ico"
+    ],
+    "category": "Entertainment",
+    "shortDescription": "Trace every turn of a local match",
+    "longDescription": "An unofficial companion that captures exact local Pokémon TCG Live match operations and reconstructs the board turn by turn."
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWcgcHVibGljIGtleTogQTJEQjBCM0Y2QzcyNzMyMApSV1FnYzNKc1B3dmJvdlhGNnRsOEc2MTZMa2huWnlZQm5ScytGWDFRS29pOWt6cDBRdy80cTFqRAo=",
+      "endpoints": [
+        "https://github.com/DeepTitan/pokemon-tcg-ai/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}

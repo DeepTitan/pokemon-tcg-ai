@@ -1,0 +1,501 @@
+use crate::{cards::CardInfo, wire::CapturedOperation};
+use flate2::{read::GzDecoder, write::GzEncoder, Compression};
+use rusqlite::{params, Connection, OptionalExtension};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use sha2::{Digest, Sha256};
+use std::{
+    fs::{self, File},
+    io::{BufRead, BufReader, Read, Seek, SeekFrom, Write},
+    path::{Path, PathBuf},
+};
+
+const SCHEMA_VERSION: i64 = 1;
+
+#[derive(Clone)]
+pub struct MatchStorage {
+    database_path: PathBuf,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageStatus {
+    pub raw_operations: i64,
+    pub raw_matches: i64,
+    pub derived_matches: i64,
+    pub pending_matches: i64,
+    pub imported_legacy_operations: i64,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MatchSummary {
+    pub id: String,
+    pub imported_at: String,
+    pub source: String,
+    pub local_player: String,
+    pub opponent: String,
+    pub winner: Option<String>,
+    pub turn_count: usize,
+    pub operation_count: i64,
+    pub reducer_version: i64,
+    pub final_snapshot: Option<Value>,
+}
+
+fn gzip(bytes: &[u8]) -> Result<Vec<u8>, String> {
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
+    encoder.write_all(bytes).map_err(|error| error.to_string())?;
+    encoder.finish().map_err(|error| error.to_string())
+}
+
+fn gunzip(bytes: &[u8]) -> Result<Vec<u8>, String> {
+    let mut decoder = GzDecoder::new(bytes);
+    let mut output = Vec::new();
+    decoder.read_to_end(&mut output).map_err(|error| error.to_string())?;
+    Ok(output)
+}
+
+fn operation_match_id(operation: &CapturedOperation) -> String {
+    format!("live-{}", operation.match_id.as_deref().unwrap_or(&operation.game_id))
+}
+
+fn operation_fingerprint(bytes: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(bytes))
+}
+
+impl MatchStorage {
+    pub fn new(database_path: PathBuf) -> Result<Self, String> {
+        if let Some(parent) = database_path.parent() {
+            fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        }
+        let storage = Self { database_path };
+        storage.initialize_schema()?;
+        Ok(storage)
+    }
+
+    fn connection(&self) -> Result<Connection, String> {
+        let connection = Connection::open(&self.database_path).map_err(|error| error.to_string())?;
+        connection
+            .busy_timeout(std::time::Duration::from_secs(5))
+            .map_err(|error| error.to_string())?;
+        connection
+            .execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON;")
+            .map_err(|error| error.to_string())?;
+        Ok(connection)
+    }
+
+    fn initialize_schema(&self) -> Result<(), String> {
+        let connection = self.connection()?;
+        connection
+            .execute_batch(
+                "
+                CREATE TABLE IF NOT EXISTS metadata (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS matches (
+                    id TEXT PRIMARY KEY,
+                    first_received TEXT NOT NULL,
+                    last_received TEXT NOT NULL,
+                    imported_at TEXT NOT NULL,
+                    source TEXT NOT NULL DEFAULT 'live-network',
+                    operation_count INTEGER NOT NULL DEFAULT 0,
+                    reducer_version INTEGER NOT NULL DEFAULT 0,
+                    summary_json TEXT,
+                    review_gzip BLOB
+                );
+                CREATE TABLE IF NOT EXISTS operations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    match_id TEXT NOT NULL,
+                    received_at TEXT NOT NULL,
+                    message_index INTEGER,
+                    operation_id TEXT,
+                    fingerprint TEXT NOT NULL UNIQUE,
+                    payload_gzip BLOB NOT NULL,
+                    FOREIGN KEY(match_id) REFERENCES matches(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS operations_match_order
+                    ON operations(match_id, id);
+                CREATE INDEX IF NOT EXISTS matches_recent
+                    ON matches(imported_at DESC, last_received DESC);
+                CREATE TABLE IF NOT EXISTS cards (
+                    id TEXT PRIMARY KEY,
+                    payload_json TEXT NOT NULL,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                );
+                INSERT OR IGNORE INTO matches(
+                    id, first_received, last_received, imported_at, source, operation_count,
+                    reducer_version, summary_json, review_gzip
+                )
+                SELECT
+                    'live-' || id, first_received, last_received, imported_at, source, operation_count,
+                    reducer_version, summary_json, review_gzip
+                FROM matches
+                WHERE operation_count > 0 AND id NOT LIKE 'live-%';
+                UPDATE operations
+                SET match_id='live-' || match_id
+                WHERE match_id NOT LIKE 'live-%';
+                DELETE FROM matches
+                WHERE operation_count > 0 AND id NOT LIKE 'live-%';
+                ",
+            )
+            .map_err(|error| error.to_string())?;
+        connection
+            .execute(
+                "INSERT INTO metadata(key, value) VALUES('schema_version', ?1)
+                 ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                [SCHEMA_VERSION.to_string()],
+            )
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
+    fn insert_operation(connection: &Connection, operation: &CapturedOperation) -> Result<bool, String> {
+        let payload = serde_json::to_vec(operation).map_err(|error| error.to_string())?;
+        let fingerprint = operation_fingerprint(&payload);
+        let match_id = operation_match_id(operation);
+        connection
+            .execute(
+                "INSERT OR IGNORE INTO matches(
+                    id, first_received, last_received, imported_at, source, operation_count
+                 ) VALUES(?1, ?2, ?2, ?2, 'live-network', 0)",
+                params![&match_id, operation.received_at],
+            )
+            .map_err(|error| error.to_string())?;
+        let inserted = connection
+            .execute(
+                "INSERT OR IGNORE INTO operations(
+                    match_id, received_at, message_index, operation_id, fingerprint, payload_gzip
+                 ) VALUES(?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    &match_id,
+                    operation.received_at,
+                    operation.message_index,
+                    operation.operation_id,
+                    fingerprint,
+                    gzip(&payload)?,
+                ],
+            )
+            .map_err(|error| error.to_string())?
+            > 0;
+        if inserted {
+            connection
+                .execute(
+                    "UPDATE matches
+                     SET last_received=?2, operation_count=operation_count + 1
+                     WHERE id=?1",
+                    params![&match_id, operation.received_at],
+                )
+                .map_err(|error| error.to_string())?;
+        }
+        Ok(inserted)
+    }
+
+    pub fn record_operation(&self, operation: &CapturedOperation) -> Result<bool, String> {
+        Self::insert_operation(&self.connection()?, operation)
+    }
+
+    pub fn import_legacy_jsonl(&self, path: &Path) -> Result<i64, String> {
+        let mut connection = self.connection()?;
+        let Some(file_length) = fs::metadata(path).ok().map(|metadata| metadata.len()) else {
+            return Ok(0);
+        };
+        let saved_offset = connection
+            .query_row(
+                "SELECT value FROM metadata WHERE key='legacy_jsonl_offset'",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|error| error.to_string())?
+            .and_then(|value| value.parse::<u64>().ok())
+            .filter(|offset| *offset <= file_length)
+            .unwrap_or(0);
+        let mut file = File::open(path).map_err(|error| error.to_string())?;
+        file.seek(SeekFrom::Start(saved_offset)).map_err(|error| error.to_string())?;
+        let mut reader = BufReader::new(file);
+        let transaction = connection.transaction().map_err(|error| error.to_string())?;
+        let mut imported = 0i64;
+        let mut offset = saved_offset;
+        let mut line = String::new();
+        loop {
+            line.clear();
+            let read = reader.read_line(&mut line).map_err(|error| error.to_string())?;
+            if read == 0 {
+                break;
+            }
+            offset += read as u64;
+            if let Ok(operation) = serde_json::from_str::<CapturedOperation>(line.trim_end()) {
+                if Self::insert_operation(&transaction, &operation)? {
+                    imported += 1;
+                }
+            }
+        }
+        transaction
+            .execute(
+                "INSERT INTO metadata(key, value) VALUES('legacy_jsonl_offset', ?1)
+                 ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                [offset.to_string()],
+            )
+            .map_err(|error| error.to_string())?;
+        transaction.commit().map_err(|error| error.to_string())?;
+        Ok(imported)
+    }
+
+    pub fn status(&self, imported_legacy_operations: i64) -> Result<StorageStatus, String> {
+        let connection = self.connection()?;
+        let raw_operations = connection
+            .query_row("SELECT COUNT(*) FROM operations", [], |row| row.get(0))
+            .map_err(|error| error.to_string())?;
+        let raw_matches = connection
+            .query_row("SELECT COUNT(*) FROM matches WHERE operation_count > 0", [], |row| row.get(0))
+            .map_err(|error| error.to_string())?;
+        let derived_matches = connection
+            .query_row("SELECT COUNT(*) FROM matches WHERE review_gzip IS NOT NULL", [], |row| row.get(0))
+            .map_err(|error| error.to_string())?;
+        let pending_matches = connection
+            .query_row(
+                "SELECT COUNT(*) FROM matches WHERE operation_count > 0 AND review_gzip IS NULL",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|error| error.to_string())?;
+        Ok(StorageStatus {
+            raw_operations,
+            raw_matches,
+            derived_matches,
+            pending_matches,
+            imported_legacy_operations,
+        })
+    }
+
+    pub fn persist_review(&self, review: &Value, reducer_version: i64) -> Result<MatchSummary, String> {
+        let id = review.get("id").and_then(Value::as_str).ok_or("review is missing id")?.to_owned();
+        let imported_at = review.get("importedAt").and_then(Value::as_str).unwrap_or_default().to_owned();
+        let source = review.get("source").and_then(Value::as_str).unwrap_or("live-network").to_owned();
+        let local_player = review.get("localPlayer").and_then(Value::as_str).unwrap_or("You").to_owned();
+        let opponent = review.get("opponent").and_then(Value::as_str).unwrap_or("Opponent").to_owned();
+        let winner = review.get("winner").and_then(Value::as_str).map(str::to_owned);
+        let turns = review.get("turns").and_then(Value::as_array);
+        let turn_count = turns.map_or(0, Vec::len);
+        let final_snapshot = turns
+            .and_then(|values| values.iter().rev().find_map(|turn| turn.get("snapshot").cloned()));
+        let connection = self.connection()?;
+        let operation_count = connection
+            .query_row(
+                "SELECT operation_count FROM matches WHERE id=?1",
+                [&id],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()
+            .map_err(|error| error.to_string())?
+            .unwrap_or(0);
+        let summary = MatchSummary {
+            id: id.clone(),
+            imported_at: imported_at.clone(),
+            source: source.clone(),
+            local_player,
+            opponent,
+            winner,
+            turn_count,
+            operation_count,
+            reducer_version,
+            final_snapshot,
+        };
+        let summary_json = serde_json::to_string(&summary).map_err(|error| error.to_string())?;
+        let review_json = serde_json::to_vec(review).map_err(|error| error.to_string())?;
+        connection
+            .execute(
+                "INSERT INTO matches(
+                    id, first_received, last_received, imported_at, source,
+                    operation_count, reducer_version, summary_json, review_gzip
+                 ) VALUES(?1, ?2, ?2, ?2, ?3, 0, ?4, ?5, ?6)
+                 ON CONFLICT(id) DO UPDATE SET
+                    imported_at=excluded.imported_at,
+                    source=excluded.source,
+                    reducer_version=excluded.reducer_version,
+                    summary_json=excluded.summary_json,
+                    review_gzip=excluded.review_gzip",
+                params![id, imported_at, source, reducer_version, summary_json, gzip(&review_json)?],
+            )
+            .map_err(|error| error.to_string())?;
+        Ok(summary)
+    }
+
+    pub fn list_summaries(&self, offset: i64, limit: i64) -> Result<Vec<MatchSummary>, String> {
+        let connection = self.connection()?;
+        let mut statement = connection
+            .prepare(
+                "SELECT summary_json FROM matches
+                 WHERE summary_json IS NOT NULL
+                 ORDER BY imported_at DESC, last_received DESC
+                 LIMIT ?1 OFFSET ?2",
+            )
+            .map_err(|error| error.to_string())?;
+        let rows = statement
+            .query_map(params![limit.clamp(1, 200), offset.max(0)], |row| row.get::<_, String>(0))
+            .map_err(|error| error.to_string())?;
+        let mut summaries = Vec::new();
+        for row in rows {
+            let json = row.map_err(|error| error.to_string())?;
+            if let Ok(summary) = serde_json::from_str(&json) {
+                summaries.push(summary);
+            }
+        }
+        Ok(summaries)
+    }
+
+    pub fn load_review(&self, id: &str) -> Result<Option<Value>, String> {
+        let connection = self.connection()?;
+        let bytes = connection
+            .query_row("SELECT review_gzip FROM matches WHERE id=?1", [id], |row| {
+                row.get::<_, Option<Vec<u8>>>(0)
+            })
+            .optional()
+            .map_err(|error| error.to_string())?
+            .flatten();
+        bytes
+            .map(|compressed| {
+                serde_json::from_slice(&gunzip(&compressed)?).map_err(|error| error.to_string())
+            })
+            .transpose()
+    }
+
+    pub fn load_operations(&self, match_id: &str) -> Result<Vec<CapturedOperation>, String> {
+        let connection = self.connection()?;
+        let mut statement = connection
+            .prepare("SELECT payload_gzip FROM operations WHERE match_id=?1 ORDER BY id")
+            .map_err(|error| error.to_string())?;
+        let rows = statement
+            .query_map([match_id], |row| row.get::<_, Vec<u8>>(0))
+            .map_err(|error| error.to_string())?;
+        let mut operations = Vec::new();
+        for row in rows {
+            let bytes = row.map_err(|error| error.to_string())?;
+            if let Ok(operation) = serde_json::from_slice(&gunzip(&bytes)?) {
+                operations.push(operation);
+            }
+        }
+        Ok(operations)
+    }
+
+    pub fn raw_match_ids(&self, pending_only: bool, reducer_version: i64, limit: i64) -> Result<Vec<String>, String> {
+        let connection = self.connection()?;
+        let sql = if pending_only {
+            "SELECT id FROM matches
+             WHERE operation_count > 0 AND (review_gzip IS NULL OR reducer_version < ?2)
+             ORDER BY last_received DESC LIMIT ?1"
+        } else {
+            "SELECT id FROM matches WHERE operation_count > 0 AND ?2 >= 0 ORDER BY last_received DESC LIMIT ?1"
+        };
+        let mut statement = connection.prepare(sql).map_err(|error| error.to_string())?;
+        let rows = statement
+            .query_map(params![limit.clamp(1, 5_000), reducer_version], |row| row.get::<_, String>(0))
+            .map_err(|error| error.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|error| error.to_string())
+    }
+
+    pub fn load_cards(&self, ids: &[String]) -> Result<Vec<CardInfo>, String> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let connection = self.connection()?;
+        let mut statement = connection
+            .prepare("SELECT payload_json FROM cards WHERE id=?1")
+            .map_err(|error| error.to_string())?;
+        let mut cards = Vec::new();
+        for id in ids {
+            let payload = statement
+                .query_row([id], |row| row.get::<_, String>(0))
+                .optional()
+                .map_err(|error| error.to_string())?;
+            if let Some(payload) = payload {
+                if let Ok(card) = serde_json::from_str(&payload) {
+                    cards.push(card);
+                }
+            }
+        }
+        Ok(cards)
+    }
+
+    pub fn save_cards(&self, cards: &[CardInfo]) -> Result<(), String> {
+        let mut connection = self.connection()?;
+        let transaction = connection.transaction().map_err(|error| error.to_string())?;
+        for card in cards {
+            transaction
+                .execute(
+                    "INSERT INTO cards(id, payload_json, updated_at)
+                     VALUES(?1, ?2, CURRENT_TIMESTAMP)
+                     ON CONFLICT(id) DO UPDATE SET payload_json=excluded.payload_json, updated_at=CURRENT_TIMESTAMP",
+                    params![card.id, serde_json::to_string(card).map_err(|error| error.to_string())?],
+                )
+                .map_err(|error| error.to_string())?;
+        }
+        transaction.commit().map_err(|error| error.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temporary_storage() -> (PathBuf, MatchStorage) {
+        let suffix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!("trace-storage-test-{}-{suffix}", std::process::id()));
+        fs::create_dir_all(&directory).unwrap();
+        let storage = MatchStorage::new(directory.join("trace.sqlite3")).unwrap();
+        (directory, storage)
+    }
+
+    fn operation() -> CapturedOperation {
+        CapturedOperation {
+            received_at: "1787301501.649Z".to_owned(),
+            socket_host: "local".to_owned(),
+            global_message_type: "PlayerMessage".to_owned(),
+            game_id: "game-1".to_owned(),
+            message_type: json!(1),
+            match_id: Some("match-1".to_owned()),
+            account_id: Some("local".to_owned()),
+            operation_id: Some("operation-1".to_owned()),
+            message_index: Some(7),
+            operation: json!({"operationNumber": 7}),
+        }
+    }
+
+    #[test]
+    fn deduplicates_raw_operations_and_round_trips_reviews() {
+        let (directory, storage) = temporary_storage();
+        let captured = operation();
+        assert!(storage.record_operation(&captured).unwrap());
+        assert!(!storage.record_operation(&captured).unwrap());
+        assert_eq!(storage.status(0).unwrap().raw_operations, 1);
+        assert_eq!(storage.raw_match_ids(false, 0, 10).unwrap(), vec!["live-match-1"]);
+        assert_eq!(storage.load_operations("live-match-1").unwrap().len(), 1);
+        assert_eq!(storage.load_review("live-match-1").unwrap(), None);
+
+        let review = json!({
+            "id": "live-match-1",
+            "importedAt": "2026-08-21T08:38:21.649Z",
+            "source": "live-network",
+            "players": ["You", "Opponent"],
+            "localPlayer": "You",
+            "opponent": "Opponent",
+            "turns": [{"index": 0, "label": "Capture baseline", "events": [], "snapshot": {"players": {}, "stadium": null}}],
+            "rawLog": ""
+        });
+        let summary = storage.persist_review(&review, 1).unwrap();
+        assert_eq!(summary.operation_count, 1);
+        assert_eq!(storage.list_summaries(0, 50).unwrap().len(), 1);
+        assert_eq!(storage.load_review("live-match-1").unwrap(), Some(review));
+        assert_eq!(storage.status(0).unwrap().pending_matches, 0);
+        assert!(storage.raw_match_ids(true, 1, 10).unwrap().is_empty());
+        assert_eq!(storage.raw_match_ids(true, 2, 10).unwrap(), vec!["live-match-1"]);
+
+        fs::remove_dir_all(directory).unwrap();
+    }
+}

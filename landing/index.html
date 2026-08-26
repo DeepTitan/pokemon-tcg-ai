@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f8f1e2" />
+    <meta name="description" content="Trace turns local Pokémon TCG Live matches into a clear, frame-by-frame replay. Download for macOS or Windows." />
+    <meta property="og:title" content="Trace — See the whole match" />
+    <meta property="og:description" content="Every turn, in view. Download the local match replay companion for macOS or Windows." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://victoryroad.app/" />
+    <meta property="og:image" content="https://victoryroad.app/og.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Trace — See the whole match" />
+    <meta name="twitter:description" content="Every turn, in view. Download Trace for macOS or Windows." />
+    <meta name="twitter:image" content="https://victoryroad.app/og.png" />
+    <link rel="icon" href="/assets/trace-mark.png" />
+    <link rel="stylesheet" href="/styles.css" />
+    <title>Trace — Every turn, in view</title>
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="site-header" aria-label="Primary navigation">
+        <a class="brand" href="#top" aria-label="Trace home">
+          <img src="/assets/trace-mark.png" alt="" />
+          <span>
+            <strong>Trace</strong>
+            <small>Every turn, in view</small>
+          </span>
+        </a>
+        <nav>
+          <a href="#how-it-works">How it works</a>
+          <a class="nav-download" href="#download">Download</a>
+        </nav>
+      </header>
+
+      <main id="top">
+        <section class="hero" aria-labelledby="hero-title">
+          <div class="hero-copy">
+            <div class="eyebrow"><span></span> Desktop companion · Free beta</div>
+            <h1 id="hero-title">See the whole match.</h1>
+            <p class="hero-lede">Trace turns your local matches into a clear, action-by-action replay—so every attack, switch, knockout, and choice makes sense.</p>
+            <div class="hero-actions" aria-label="Download Trace">
+              <a class="download-button primary" data-download="mac" href="https://github.com/DeepTitan/pokemon-tcg-ai/releases/latest/download/Trace_aarch64.dmg">
+                <span class="platform-icon" aria-hidden="true">●</span>
+                <span><small>Download for</small><strong>macOS</strong></span>
+              </a>
+              <a class="download-button secondary" data-download="windows" href="https://github.com/DeepTitan/pokemon-tcg-ai/releases/latest/download/Trace_x64-setup.exe">
+                <span class="windows-icon" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+                <span><small>Download for</small><strong>Windows</strong></span>
+              </a>
+            </div>
+            <p class="version-note">Always the latest release · macOS Apple silicon · Windows 64-bit</p>
+          </div>
+
+          <div class="hero-visual" aria-label="Trace match replay preview">
+            <div class="visual-glow"></div>
+            <img class="mascot" src="/assets/trace-mascot.png" alt="Trace's field-guide mascot" />
+            <div class="app-window">
+              <div class="window-bar">
+                <div class="traffic-lights" aria-hidden="true"><i></i><i></i><i></i></div>
+                <span>Trace · Match replay</span>
+                <em>Live</em>
+              </div>
+              <img src="/assets/trace-app.png" alt="Trace showing a reconstructed match with a turn timeline" />
+            </div>
+            <div class="floating-note note-one"><b>200</b><span>damage</span></div>
+            <div class="floating-note note-two"><b>Action 80</b><span>Unfair Stamp</span></div>
+          </div>
+        </section>
+
+        <section class="trust-strip" aria-label="Trace highlights">
+          <span><i>01</i> Local-first capture</span>
+          <span><i>02</i> Frame-by-frame replay</span>
+          <span><i>03</i> Built for fast review</span>
+        </section>
+
+        <section class="story" id="how-it-works" aria-labelledby="story-title">
+          <div class="section-heading">
+            <div>
+              <span class="section-kicker">From game to insight</span>
+              <h2 id="story-title">The details are already there.<br />Trace makes them readable.</h2>
+            </div>
+            <p>Instead of a flat event log, Trace rebuilds the board around each action and emphasizes what changed.</p>
+          </div>
+
+          <div class="feature-grid">
+            <article class="feature-card blue">
+              <span class="feature-number">01</span>
+              <div class="feature-symbol" aria-hidden="true">↔</div>
+              <h3>Move through every frame</h3>
+              <p>Use the timeline, arrow keys, or A and D to move through the match at your pace.</p>
+            </article>
+            <article class="feature-card red">
+              <span class="feature-number">02</span>
+              <div class="feature-symbol" aria-hidden="true">◎</div>
+              <h3>See exactly what changed</h3>
+              <p>Damage, knockouts, prize cards, switches, and effects stay visually connected to the action.</p>
+            </article>
+            <article class="feature-card green">
+              <span class="feature-number">03</span>
+              <div class="feature-symbol" aria-hidden="true">✓</div>
+              <h3>Keep the full match archive</h3>
+              <p>Return to previous games and scan the board, hand, stadium, and turn status in one view.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="download-section" id="download" aria-labelledby="download-title">
+          <div class="download-copy">
+            <span class="section-kicker">Download Trace</span>
+            <h2 id="download-title">Your next review starts here.</h2>
+            <p>Choose your platform. Trace is currently available as a free beta.</p>
+          </div>
+
+          <div class="platform-grid">
+            <article class="platform-card recommended" data-platform-card="mac">
+              <span class="recommended-label">Best experience</span>
+              <div class="platform-heading">
+                <span class="big-platform-icon apple" aria-hidden="true">●</span>
+                <div><small>For Apple silicon</small><h3>macOS</h3></div>
+              </div>
+              <ul>
+                <li>Automatic local match capture</li>
+                <li>Complete archive and replay</li>
+                <li>One-time capture permission setup</li>
+              </ul>
+              <a class="platform-download" href="https://github.com/DeepTitan/pokemon-tcg-ai/releases/latest/download/Trace_aarch64.dmg">Download .dmg <span>↓</span></a>
+            </article>
+
+            <article class="platform-card" data-platform-card="windows">
+              <span class="beta-label">Beta</span>
+              <div class="platform-heading">
+                <span class="big-platform-icon windows" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+                <div><small>For 64-bit PCs</small><h3>Windows</h3></div>
+              </div>
+              <ul>
+                <li>Match archive and replay</li>
+                <li>Full board-state review</li>
+                <li>Live capture support is in progress</li>
+              </ul>
+              <a class="platform-download" href="https://github.com/DeepTitan/pokemon-tcg-ai/releases/latest/download/Trace_x64-setup.exe">Download .exe <span>↓</span></a>
+            </article>
+          </div>
+          <p class="safety-note">Beta builds may trigger a platform security confirmation. Only install Trace downloaded from victoryroad.app.</p>
+        </section>
+      </main>
+
+      <footer>
+        <a class="brand footer-brand" href="#top">
+          <img src="/assets/trace-mark.png" alt="" />
+          <span><strong>Trace</strong><small>Every turn, in view</small></span>
+        </a>
+        <p>Unofficial companion for Pokémon TCG Live. Not affiliated with or endorsed by The Pokémon Company International.</p>
+        <span>© <span id="year">2026</span> Trace</span>
+      </footer>
+    </div>
+    <script src="/script.js"></script>
+  </body>
+</html>

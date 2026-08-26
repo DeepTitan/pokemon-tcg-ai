@@ -1,0 +1,169 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Trace cloud backup API (DynamoDB index, private S3 payloads, Lambda HTTP API)
+
+Parameters:
+  Environment:
+    Type: String
+    Default: production
+    AllowedPattern: '[a-z0-9-]+'
+
+Globals:
+  Function:
+    Runtime: python3.13
+    Architectures: [arm64]
+    MemorySize: 256
+    Timeout: 20
+    Tracing: Active
+    Environment:
+      Variables:
+        DEVICES_TABLE: !Ref TraceDevices
+        MATCHES_TABLE: !Ref TraceMatches
+        PAYLOAD_BUCKET: !Ref TracePayloads
+
+Resources:
+  TraceApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: '$default'
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 20
+        ThrottlingRateLimit: 10
+      CorsConfiguration:
+        AllowHeaders: [authorization, content-type, x-trace-device]
+        AllowMethods: [GET, PUT, POST, OPTIONS]
+        AllowOrigins: ['*']
+        MaxAge: 600
+
+  TraceDevices:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: deviceId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: deviceId
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+      Tags:
+        - Key: app
+          Value: trace
+        - Key: environment
+          Value: !Ref Environment
+
+  TraceMatches:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: deviceId
+          AttributeType: S
+        - AttributeName: matchId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: deviceId
+          KeyType: HASH
+        - AttributeName: matchId
+          KeyType: RANGE
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+      Tags:
+        - Key: app
+          Value: trace
+        - Key: environment
+          Value: !Ref Environment
+
+  TracePayloads:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: Remove-old-payload-versions
+            Status: Enabled
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 30
+      Tags:
+        - Key: app
+          Value: trace
+        - Key: environment
+          Value: !Ref Environment
+
+  TraceCloudFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambda/
+      Handler: app.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TraceDevices
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TraceMatches
+        - S3CrudPolicy:
+            BucketName: !Ref TracePayloads
+      Events:
+        Register:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref TraceApi
+            Path: /v1/register
+            Method: POST
+        ListMatches:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref TraceApi
+            Path: /v1/matches
+            Method: GET
+        PutMatch:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref TraceApi
+            Path: /v1/matches/{matchId}
+            Method: PUT
+        GetMatch:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref TraceApi
+            Path: /v1/matches/{matchId}
+            Method: GET
+
+  TraceCloudFunctionLogs:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${TraceCloudFunction}
+      RetentionInDays: 30
+
+Outputs:
+  ApiUrl:
+    Description: Base URL compiled into Trace release builds
+    Value: !Sub https://${TraceApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}
+  DevicesTable:
+    Value: !Ref TraceDevices
+  MatchesTable:
+    Value: !Ref TraceMatches
+  PayloadBucket:
+    Value: !Ref TracePayloads

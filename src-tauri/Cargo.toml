@@ -1,0 +1,36 @@
+[package]
+name = "match-lens"
+version = "0.1.17"
+description = "Trace, an unofficial local Pokémon TCG Live match review companion"
+authors = ["Isaiah W"]
+edition = "2021"
+
+[lib]
+name = "match_lens_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.5.4", features = [] }
+
+[dependencies]
+base64 = "0.22"
+flate2 = "1.1"
+image = { version = "0.25", default-features = false, features = ["png"] }
+rusqlite = { version = "0.37", features = ["bundled"] }
+rcgen = { version = "0.14", features = ["aws_lc_rs", "pem", "x509-parser"] }
+reqwest = { version = "0.13", features = ["json"] }
+rustls-pemfile = "2"
+tokio-rustls = { version = "0.26", features = ["aws_lc_rs"] }
+webpki-roots = "1"
+serde_json = "1"
+serde = { version = "1", features = ["derive"] }
+sha2 = "0.10"
+socket2 = "0.6"
+time = "0.3.55"
+tauri = { version = "2.11.5", features = ["image-png", "protocol-asset", "tray-icon"] }
+tauri-plugin-process = "2"
+tauri-plugin-single-instance = "2.4.3"
+tauri-plugin-updater = "2"
+tokio = { version = "1", features = ["io-util", "macros", "net", "sync", "time"] }
+unityfs = "0.1.2"
+uuid = { version = "1", features = ["v4"] }
