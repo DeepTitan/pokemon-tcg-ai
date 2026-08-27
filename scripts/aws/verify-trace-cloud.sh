@@ -29,8 +29,15 @@ OBJECT_KEY=""
 
 cleanup() {
   if [[ -n "$OBJECT_KEY" ]]; then
-    aws s3api delete-object --profile "$AWS_PROFILE_NAME" --region "$AWS_REGION_NAME" \
-      --bucket "$PAYLOAD_BUCKET" --key "$OBJECT_KEY" >/dev/null 2>&1 || true
+    aws s3api list-object-versions --profile "$AWS_PROFILE_NAME" --region "$AWS_REGION_NAME" \
+      --bucket "$PAYLOAD_BUCKET" --prefix "$OBJECT_KEY" > "$WORK_DIR/s3-versions.json" 2>/dev/null || true
+    jq --arg key "$OBJECT_KEY" \
+      '{Objects: (([.Versions[]? | select(.Key == $key)] + [.DeleteMarkers[]? | select(.Key == $key)]) | map({Key, VersionId})), Quiet: true}' \
+      "$WORK_DIR/s3-versions.json" > "$WORK_DIR/s3-delete.json" 2>/dev/null || true
+    if jq -e '.Objects | length > 0' "$WORK_DIR/s3-delete.json" >/dev/null 2>&1; then
+      aws s3api delete-objects --profile "$AWS_PROFILE_NAME" --region "$AWS_REGION_NAME" \
+        --bucket "$PAYLOAD_BUCKET" --delete "file://$WORK_DIR/s3-delete.json" >/dev/null 2>&1 || true
+    fi
   fi
   aws dynamodb delete-item --profile "$AWS_PROFILE_NAME" --region "$AWS_REGION_NAME" \
     --table-name "$MATCHES_TABLE" \
