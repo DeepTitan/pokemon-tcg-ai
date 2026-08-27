@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - codex/windows-e2e
+      - codex/windows-capture-release
 
 jobs:
   build-and-test:

@@ -24,12 +24,10 @@ const HELPER_ARGUMENT: &str = "--match-lens-capture-helper";
 // changes. App-only releases must continue reusing an already-approved helper.
 const HELPER_VERSION: &str = "0.1.9";
 const HELPER_LABEL: &str = "com.isaiahw.matchlens.capture-helper";
-const HELPER_PATH: &str =
-    "/Library/PrivilegedHelperTools/com.isaiahw.matchlens.capture-helper";
+const HELPER_PATH: &str = "/Library/PrivilegedHelperTools/com.isaiahw.matchlens.capture-helper";
 const HELPER_VERSION_PATH: &str =
     "/Library/PrivilegedHelperTools/com.isaiahw.matchlens.capture-helper.version";
-const HELPER_PLIST: &str =
-    "/Library/LaunchDaemons/com.isaiahw.matchlens.capture-helper.plist";
+const HELPER_PLIST: &str = "/Library/LaunchDaemons/com.isaiahw.matchlens.capture-helper.plist";
 const HELPER_SOCKET: &str = "/var/run/com.isaiahw.matchlens.capture-helper.sock";
 const HOSTS_PATH: &str = "/etc/hosts";
 // Keep these legacy routing markers and helper IDs stable across the rebrand.
@@ -89,10 +87,7 @@ fn shell_quote(value: &str) -> String {
 }
 
 fn apple_script_quote(value: &str) -> String {
-    format!(
-        "\"{}\"",
-        value.replace('\\', "\\\\").replace('"', "\\\"")
-    )
+    format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
 fn current_uid() -> Result<u32, String> {
@@ -216,10 +211,7 @@ pub fn helper_status() -> Result<HelperReply, String> {
     Ok(reply)
 }
 
-pub fn enable_route(
-    app_pid: u32,
-    pokemon_pid: u32,
-) -> Result<(HelperReply, RouteHandle), String> {
+pub fn enable_route(app_pid: u32, pokemon_pid: u32) -> Result<(HelperReply, RouteHandle), String> {
     let (reply, stream) = send_command(
         HelperCommand::Enable {
             app_pid,
@@ -304,7 +296,10 @@ fn established_ipv4_ips(pid: u32) -> Result<Vec<Ipv4Addr>, String> {
         .map_err(|error| error.to_string())?;
     let mut ips = Vec::new();
     for line in String::from_utf8_lossy(&output.stdout).lines() {
-        let Some(remote) = line.strip_prefix('n').and_then(|line| line.split_once("->")) else {
+        let Some(remote) = line
+            .strip_prefix('n')
+            .and_then(|line| line.split_once("->"))
+        else {
             continue;
         };
         let Some(host) = remote.1.rsplit_once(':').map(|value| value.0) else {
@@ -494,7 +489,9 @@ fn pfctl(args: &[&str], input: Option<&str>) -> Result<String, String> {
             .write_all(input.as_bytes())
             .map_err(|error| error.to_string())?;
     }
-    let output = child.wait_with_output().map_err(|error| error.to_string())?;
+    let output = child
+        .wait_with_output()
+        .map_err(|error| error.to_string())?;
     if output.status.success() {
         Ok(format!(
             "{}{}",
@@ -630,10 +627,7 @@ fn handle_client(mut stream: UnixStream, owner_uid: u32) {
                             relay = Some(next_relay);
                             pf_token = Some(next_token);
                             active_ips = ips;
-                            reply_ok(
-                                true,
-                                active_ips.iter().map(ToString::to_string).collect(),
-                            )
+                            reply_ok(true, active_ips.iter().map(ToString::to_string).collect())
                         }
                         Err(error) => reply_error(error),
                     }
@@ -664,7 +658,9 @@ fn helper_main(owner_uid: u32) -> Result<(), String> {
         .status()
         .map_err(|error| error.to_string())?;
     if !status.success() {
-        return Err("Could not restrict the capture-helper socket to the approved user.".to_owned());
+        return Err(
+            "Could not restrict the capture-helper socket to the approved user.".to_owned(),
+        );
     }
     remove_host_override()?;
     let mut stale_token = None;

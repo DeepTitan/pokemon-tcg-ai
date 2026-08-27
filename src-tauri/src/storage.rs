@@ -47,19 +47,26 @@ pub struct MatchSummary {
 
 fn gzip(bytes: &[u8]) -> Result<Vec<u8>, String> {
     let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
-    encoder.write_all(bytes).map_err(|error| error.to_string())?;
+    encoder
+        .write_all(bytes)
+        .map_err(|error| error.to_string())?;
     encoder.finish().map_err(|error| error.to_string())
 }
 
 fn gunzip(bytes: &[u8]) -> Result<Vec<u8>, String> {
     let mut decoder = GzDecoder::new(bytes);
     let mut output = Vec::new();
-    decoder.read_to_end(&mut output).map_err(|error| error.to_string())?;
+    decoder
+        .read_to_end(&mut output)
+        .map_err(|error| error.to_string())?;
     Ok(output)
 }
 
 fn operation_match_id(operation: &CapturedOperation) -> String {
-    format!("live-{}", operation.match_id.as_deref().unwrap_or(&operation.game_id))
+    format!(
+        "live-{}",
+        operation.match_id.as_deref().unwrap_or(&operation.game_id)
+    )
 }
 
 fn operation_fingerprint(bytes: &[u8]) -> String {
@@ -77,12 +84,15 @@ impl MatchStorage {
     }
 
     fn connection(&self) -> Result<Connection, String> {
-        let connection = Connection::open(&self.database_path).map_err(|error| error.to_string())?;
+        let connection =
+            Connection::open(&self.database_path).map_err(|error| error.to_string())?;
         connection
             .busy_timeout(std::time::Duration::from_secs(5))
             .map_err(|error| error.to_string())?;
         connection
-            .execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON;")
+            .execute_batch(
+                "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA foreign_keys=ON;",
+            )
             .map_err(|error| error.to_string())?;
         Ok(connection)
     }
@@ -153,7 +163,10 @@ impl MatchStorage {
         Ok(())
     }
 
-    fn insert_operation(connection: &Connection, operation: &CapturedOperation) -> Result<bool, String> {
+    fn insert_operation(
+        connection: &Connection,
+        operation: &CapturedOperation,
+    ) -> Result<bool, String> {
         let payload = serde_json::to_vec(operation).map_err(|error| error.to_string())?;
         let fingerprint = operation_fingerprint(&payload);
         let match_id = operation_match_id(operation);
@@ -215,15 +228,20 @@ impl MatchStorage {
             .filter(|offset| *offset <= file_length)
             .unwrap_or(0);
         let mut file = File::open(path).map_err(|error| error.to_string())?;
-        file.seek(SeekFrom::Start(saved_offset)).map_err(|error| error.to_string())?;
+        file.seek(SeekFrom::Start(saved_offset))
+            .map_err(|error| error.to_string())?;
         let mut reader = BufReader::new(file);
-        let transaction = connection.transaction().map_err(|error| error.to_string())?;
+        let transaction = connection
+            .transaction()
+            .map_err(|error| error.to_string())?;
         let mut imported = 0i64;
         let mut offset = saved_offset;
         let mut line = String::new();
         loop {
             line.clear();
-            let read = reader.read_line(&mut line).map_err(|error| error.to_string())?;
+            let read = reader
+                .read_line(&mut line)
+                .map_err(|error| error.to_string())?;
             if read == 0 {
                 break;
             }
@@ -251,10 +269,18 @@ impl MatchStorage {
             .query_row("SELECT COUNT(*) FROM operations", [], |row| row.get(0))
             .map_err(|error| error.to_string())?;
         let raw_matches = connection
-            .query_row("SELECT COUNT(*) FROM matches WHERE operation_count > 0", [], |row| row.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM matches WHERE operation_count > 0",
+                [],
+                |row| row.get(0),
+            )
             .map_err(|error| error.to_string())?;
         let derived_matches = connection
-            .query_row("SELECT COUNT(*) FROM matches WHERE review_gzip IS NOT NULL", [], |row| row.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM matches WHERE review_gzip IS NOT NULL",
+                [],
+                |row| row.get(0),
+            )
             .map_err(|error| error.to_string())?;
         let pending_matches = connection
             .query_row(
@@ -280,17 +306,48 @@ impl MatchStorage {
         })
     }
 
-    pub fn persist_review(&self, review: &Value, reducer_version: i64) -> Result<MatchSummary, String> {
-        let id = review.get("id").and_then(Value::as_str).ok_or("review is missing id")?.to_owned();
-        let imported_at = review.get("importedAt").and_then(Value::as_str).unwrap_or_default().to_owned();
-        let source = review.get("source").and_then(Value::as_str).unwrap_or("live-network").to_owned();
-        let local_player = review.get("localPlayer").and_then(Value::as_str).unwrap_or("You").to_owned();
-        let opponent = review.get("opponent").and_then(Value::as_str).unwrap_or("Opponent").to_owned();
-        let winner = review.get("winner").and_then(Value::as_str).map(str::to_owned);
+    pub fn persist_review(
+        &self,
+        review: &Value,
+        reducer_version: i64,
+    ) -> Result<MatchSummary, String> {
+        let id = review
+            .get("id")
+            .and_then(Value::as_str)
+            .ok_or("review is missing id")?
+            .to_owned();
+        let imported_at = review
+            .get("importedAt")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_owned();
+        let source = review
+            .get("source")
+            .and_then(Value::as_str)
+            .unwrap_or("live-network")
+            .to_owned();
+        let local_player = review
+            .get("localPlayer")
+            .and_then(Value::as_str)
+            .unwrap_or("You")
+            .to_owned();
+        let opponent = review
+            .get("opponent")
+            .and_then(Value::as_str)
+            .unwrap_or("Opponent")
+            .to_owned();
+        let winner = review
+            .get("winner")
+            .and_then(Value::as_str)
+            .map(str::to_owned);
         let turns = review.get("turns").and_then(Value::as_array);
         let turn_count = turns.map_or(0, Vec::len);
-        let final_snapshot = turns
-            .and_then(|values| values.iter().rev().find_map(|turn| turn.get("snapshot").cloned()));
+        let final_snapshot = turns.and_then(|values| {
+            values
+                .iter()
+                .rev()
+                .find_map(|turn| turn.get("snapshot").cloned())
+        });
         let connection = self.connection()?;
         let operation_count = connection
             .query_row(
@@ -329,7 +386,14 @@ impl MatchStorage {
                     reducer_version=excluded.reducer_version,
                     summary_json=excluded.summary_json,
                     review_gzip=excluded.review_gzip",
-                params![id, imported_at, source, reducer_version, summary_json, gzip(&review_json)?],
+                params![
+                    id,
+                    imported_at,
+                    source,
+                    reducer_version,
+                    summary_json,
+                    gzip(&review_json)?
+                ],
             )
             .map_err(|error| error.to_string())?;
         Ok(summary)
@@ -414,7 +478,12 @@ impl MatchStorage {
         Ok(operations)
     }
 
-    pub fn raw_match_ids(&self, pending_only: bool, reducer_version: i64, limit: i64) -> Result<Vec<String>, String> {
+    pub fn raw_match_ids(
+        &self,
+        pending_only: bool,
+        reducer_version: i64,
+        limit: i64,
+    ) -> Result<Vec<String>, String> {
         let connection = self.connection()?;
         let sql = if pending_only {
             "SELECT id FROM matches
@@ -425,9 +494,12 @@ impl MatchStorage {
         };
         let mut statement = connection.prepare(sql).map_err(|error| error.to_string())?;
         let rows = statement
-            .query_map(params![limit.clamp(1, 5_000), reducer_version], |row| row.get::<_, String>(0))
+            .query_map(params![limit.clamp(1, 5_000), reducer_version], |row| {
+                row.get::<_, String>(0)
+            })
             .map_err(|error| error.to_string())?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(|error| error.to_string())
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|error| error.to_string())
     }
 
     pub fn load_cards(&self, ids: &[String]) -> Result<Vec<CardInfo>, String> {
@@ -455,7 +527,9 @@ impl MatchStorage {
 
     pub fn save_cards(&self, cards: &[CardInfo]) -> Result<(), String> {
         let mut connection = self.connection()?;
-        let transaction = connection.transaction().map_err(|error| error.to_string())?;
+        let transaction = connection
+            .transaction()
+            .map_err(|error| error.to_string())?;
         for card in cards {
             transaction
                 .execute(
@@ -481,7 +555,10 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let directory = std::env::temp_dir().join(format!("trace-storage-test-{}-{suffix}", std::process::id()));
+        let directory = std::env::temp_dir().join(format!(
+            "trace-storage-test-{}-{suffix}",
+            std::process::id()
+        ));
         fs::create_dir_all(&directory).unwrap();
         let storage = MatchStorage::new(directory.join("trace.sqlite3")).unwrap();
         (directory, storage)
@@ -509,7 +586,10 @@ mod tests {
         assert!(storage.record_operation(&captured).unwrap());
         assert!(!storage.record_operation(&captured).unwrap());
         assert_eq!(storage.status(0).unwrap().raw_operations, 1);
-        assert_eq!(storage.raw_match_ids(false, 0, 10).unwrap(), vec!["live-match-1"]);
+        assert_eq!(
+            storage.raw_match_ids(false, 0, 10).unwrap(),
+            vec!["live-match-1"]
+        );
         assert_eq!(storage.load_operations("live-match-1").unwrap().len(), 1);
         assert_eq!(storage.load_review("live-match-1").unwrap(), None);
         let recording = storage.list_summaries(0, 50).unwrap();
@@ -536,7 +616,10 @@ mod tests {
         assert_eq!(storage.load_review("live-match-1").unwrap(), Some(review));
         assert_eq!(storage.status(0).unwrap().pending_matches, 0);
         assert!(storage.raw_match_ids(true, 1, 10).unwrap().is_empty());
-        assert_eq!(storage.raw_match_ids(true, 2, 10).unwrap(), vec!["live-match-1"]);
+        assert_eq!(
+            storage.raw_match_ids(true, 2, 10).unwrap(),
+            vec!["live-match-1"]
+        );
 
         fs::remove_dir_all(directory).unwrap();
     }

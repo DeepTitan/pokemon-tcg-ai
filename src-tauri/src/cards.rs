@@ -62,7 +62,10 @@ impl<'a> TableReader<'a> {
     }
 
     fn take(&mut self, count: usize) -> Result<&'a [u8], String> {
-        let end = self.offset.checked_add(count).ok_or("card table offset overflow")?;
+        let end = self
+            .offset
+            .checked_add(count)
+            .ok_or("card table offset overflow")?;
         let result = self
             .bytes
             .get(self.offset..end)
@@ -159,7 +162,9 @@ fn plain_card_text(raw: &str) -> String {
                 let value = tag[name_start + 5..].trim_start();
                 let value = value.trim_start_matches(['\'', '"']);
                 let name_end = value
-                    .find(|character: char| character == '\'' || character == '"' || character.is_whitespace())
+                    .find(|character: char| {
+                        character == '\'' || character == '"' || character.is_whitespace()
+                    })
                     .unwrap_or(value.len());
                 let name = &value[..name_end];
                 if !name.is_empty() {
@@ -261,8 +266,13 @@ fn parse_table(bytes: &[u8], wanted: &HashSet<String>) -> Result<Vec<CardInfo>, 
         let mut actions = Vec::new();
         let mut rule_text = Vec::new();
         for index in 0..4 {
-            let suffix = if index == 0 { String::new() } else { format!(" {}", index + 1) };
-            let raw_name = string_cell(&row, &format!("EN Attack Name{suffix}")).unwrap_or_default();
+            let suffix = if index == 0 {
+                String::new()
+            } else {
+                format!(" {}", index + 1)
+            };
+            let raw_name =
+                string_cell(&row, &format!("EN Attack Name{suffix}")).unwrap_or_default();
             let text = string_cell(&row, &format!("EN Attack Text{suffix}"))
                 .map(|text| plain_card_text(&text))
                 .unwrap_or_default();
@@ -275,10 +285,7 @@ fn parse_table(bytes: &[u8], wanted: &HashSet<String>) -> Result<Vec<CardInfo>, 
                 continue;
             }
             let ability = raw_name.trim_start().starts_with("[Ability]");
-            let action_name = raw_name
-                .trim_start_matches("[Ability]")
-                .trim()
-                .to_owned();
+            let action_name = raw_name.trim_start_matches("[Ability]").trim().to_owned();
             actions.push(CardActionInfo {
                 kind: if ability {
                     "ability"
@@ -288,7 +295,11 @@ fn parse_table(bytes: &[u8], wanted: &HashSet<String>) -> Result<Vec<CardInfo>, 
                     "rule"
                 }
                 .to_owned(),
-                name: if action_name.is_empty() { "Card text".to_owned() } else { action_name },
+                name: if action_name.is_empty() {
+                    "Card text".to_owned()
+                } else {
+                    action_name
+                },
                 text,
                 cost,
                 damage,
@@ -311,7 +322,11 @@ fn parse_table(bytes: &[u8], wanted: &HashSet<String>) -> Result<Vec<CardInfo>, 
             resistance_type: string_cell(&row, "EN Resistance Type"),
             resistance_amount: string_cell(&row, "Resistance Amount"),
             evolves_from: string_cell(&row, "EN Evolves From"),
-            rules_text: if rule_text.is_empty() { None } else { Some(rule_text.join("\n")) },
+            rules_text: if rule_text.is_empty() {
+                None
+            } else {
+                Some(rule_text.join("\n"))
+            },
             actions,
         });
     }
@@ -333,7 +348,8 @@ fn database_id(card_id: &str) -> String {
 fn art_key(card_id: &str) -> Option<String> {
     let mut parts = card_id.split('_');
     let set = parts.next()?;
-    let number = parts.next()?
+    let number = parts
+        .next()?
         .split(|character: char| !character.is_ascii_digit())
         .next()?
         .parse::<u32>()
@@ -437,7 +453,9 @@ fn client_data_roots(home: &Path) -> ClientDataRoots {
     #[cfg(target_os = "macos")]
     {
         ClientDataRoots {
-            database: vec![home.join("Library/Application Support/com.pokemon.pokemontcgl/config-cache")],
+            database: vec![
+                home.join("Library/Application Support/com.pokemon.pokemontcgl/config-cache")
+            ],
             cache: vec![home.join("Library/Caches/com.pokemon.pokemontcgl")],
         }
     }
@@ -484,15 +502,18 @@ fn resolve_from_roots(
             }) else {
                 continue;
             };
-            let json: Value = serde_json::from_slice(&fs::read(&path).map_err(|error| error.to_string())?)
-                .map_err(|error| error.to_string())?;
+            let json: Value =
+                serde_json::from_slice(&fs::read(&path).map_err(|error| error.to_string())?)
+                    .map_err(|error| error.to_string())?;
             let Some(encoded) = json
                 .pointer("/keys/table/contentBinary")
                 .and_then(Value::as_str)
             else {
                 continue;
             };
-            let binary = STANDARD.decode(encoded).map_err(|error| error.to_string())?;
+            let binary = STANDARD
+                .decode(encoded)
+                .map_err(|error| error.to_string())?;
             let relevant: HashSet<String> = database_wanted
                 .iter()
                 .filter(|id| set_id(id) == Some(*set))
@@ -504,11 +525,15 @@ fn resolve_from_roots(
         }
     }
     if !readable_database {
-        let searched = roots.database.iter()
+        let searched = roots
+            .database
+            .iter()
             .map(|path| path.display().to_string())
             .collect::<Vec<_>>()
             .join(", ");
-        return Err(format!("TCG Live's local card database is unavailable. Searched: {searched}"));
+        return Err(format!(
+            "TCG Live's local card database is unavailable. Searched: {searched}"
+        ));
     }
 
     let mut result = Vec::new();
@@ -536,7 +561,9 @@ fn resolve_from_roots(
         });
         card.id = id.clone();
         card.image_data_url = None;
-        card.image_path = roots.cache.iter()
+        card.image_path = roots
+            .cache
+            .iter()
             .find_map(|cache_root| image_path(cache_root, output_root, &id));
         result.push(card);
     }
@@ -624,10 +651,8 @@ mod tests {
     #[ignore = "requires an installed Pokémon TCG Live client"]
     fn resolves_metadata_and_art_from_an_installed_client() {
         let home = PathBuf::from(std::env::var_os("HOME").expect("HOME is available"));
-        let output = std::env::temp_dir().join(format!(
-            "trace-card-resolution-test-{}",
-            std::process::id()
-        ));
+        let output =
+            std::env::temp_dir().join(format!("trace-card-resolution-test-{}", std::process::id()));
         fs::create_dir_all(&output).unwrap();
         let cards = resolve_from_roots(
             &client_data_roots(&home),
@@ -672,9 +697,15 @@ mod tests {
         }
         bytes.extend_from_slice(&1i32.to_le_bytes());
         for value in [
-            "svx_2", "Dragapult ex", "2ex", "Phantom Dive",
-            "Put 6 damage counters on your opponent's Benched Pokémon.", "PR", "200",
-            "[Ability] Infiltrator", "Once during your turn, draw a card.",
+            "svx_2",
+            "Dragapult ex",
+            "2ex",
+            "Phantom Dive",
+            "Put 6 damage counters on your opponent's Benched Pokémon.",
+            "PR",
+            "200",
+            "[Ability] Infiltrator",
+            "Once during your turn, draw a card.",
         ] {
             bytes.push(0);
             write_string(&mut bytes, value);
@@ -702,7 +733,11 @@ mod tests {
         assert_eq!(card.actions[0].damage, "200");
         assert_eq!(card.actions[1].kind, "ability");
         assert_eq!(card.actions[1].name, "Infiltrator");
-        assert!(card.rules_text.as_deref().unwrap().contains("6 damage counters"));
+        assert!(card
+            .rules_text
+            .as_deref()
+            .unwrap()
+            .contains("6 damage counters"));
     }
 
     #[test]

@@ -106,7 +106,10 @@ fn stomp_message(frame: &[u8]) -> Option<StompMessage<'_>> {
         Some(length) => frame.get(body_start..body_start.checked_add(length)?),
         None => {
             let body = frame.get(body_start..)?;
-            let end = body.iter().position(|byte| *byte == 0).unwrap_or(body.len());
+            let end = body
+                .iter()
+                .position(|byte| *byte == 0)
+                .unwrap_or(body.len());
             body.get(..end)
         }
     }?;
@@ -144,7 +147,9 @@ pub fn decode_websocket_message(
     received_at: String,
 ) -> Option<CapturedOperation> {
     let stomp = stomp_message(websocket_data);
-    let global_bytes = stomp.as_ref().map_or(websocket_data, |message| message.body);
+    let global_bytes = stomp
+        .as_ref()
+        .map_or(websocket_data, |message| message.body);
 
     // Current production messages name the FlatBuffer payload in the STOMP
     // `pay` header. PlayerMessage is already the inner table; there is no
@@ -165,12 +170,7 @@ pub fn decode_websocket_message(
     let global_message_type = table_string(global_bytes, global_table, 0)?;
     let player_bytes = table_vector(global_bytes, global_table, 1)?;
 
-    decode_player_message(
-        &player_bytes,
-        global_message_type,
-        socket_host,
-        received_at,
-    )
+    decode_player_message(&player_bytes, global_message_type, socket_host, received_at)
 }
 
 fn decode_player_message(
@@ -270,7 +270,9 @@ mod tests {
         assert_eq!(decoded.global_message_type, "PlayerMessage");
         assert_eq!(decoded.game_id, game_id);
         assert_eq!(decoded.message_index, Some(33));
-        assert_eq!(decoded.operation, serde_json::from_slice::<serde_json::Value>(operation).unwrap());
+        assert_eq!(
+            decoded.operation,
+            serde_json::from_slice::<serde_json::Value>(operation).unwrap()
+        );
     }
-
 }

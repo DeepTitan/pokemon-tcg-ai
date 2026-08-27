@@ -1,10 +1,10 @@
-mod cards;
-mod cloud_sync;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod capture;
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 #[path = "capture_unsupported.rs"]
 mod capture;
+mod cards;
+mod cloud_sync;
 #[cfg(target_os = "macos")]
 mod privileged;
 #[cfg(target_os = "windows")]
@@ -77,7 +77,10 @@ pub(crate) fn pokemon_client_pid() -> Option<u32> {
         if !output.status.success() {
             return None;
         }
-        let line = String::from_utf8_lossy(&output.stdout).lines().next()?.to_owned();
+        let line = String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .next()?
+            .to_owned();
         let mut columns = line.split(',').map(|column| column.trim_matches('"'));
         let image_name = columns.next()?;
         let pid = columns.next()?;
@@ -215,12 +218,16 @@ async fn persist_match_review(
 ) -> Result<storage::MatchSummary, String> {
     let storage = storage.inner().clone();
     let review_for_cloud = review.clone();
-    let summary = tauri::async_runtime::spawn_blocking(move || storage.persist_review(&review, reducer_version))
-        .await
-        .map_err(|error| error.to_string())??;
+    let summary = tauri::async_runtime::spawn_blocking(move || {
+        storage.persist_review(&review, reducer_version)
+    })
+    .await
+    .map_err(|error| error.to_string())??;
     let cloud_sync = cloud_sync.inner().clone();
     tauri::async_runtime::spawn(async move {
-        cloud_sync.sync_review(review_for_cloud, reducer_version).await;
+        cloud_sync
+            .sync_review(review_for_cloud, reducer_version)
+            .await;
     });
     Ok(summary)
 }
@@ -259,9 +266,11 @@ async fn list_raw_match_ids(
     limit: i64,
 ) -> Result<Vec<String>, String> {
     let storage = storage.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || storage.raw_match_ids(pending_only, reducer_version, limit))
-        .await
-        .map_err(|error| error.to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        storage.raw_match_ids(pending_only, reducer_version, limit)
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -287,10 +296,17 @@ async fn resolve_card_sources(
         let mut cached = storage.load_cards(&card_ids)?;
         let retry_ids = cached
             .iter()
-            .filter(|card| card.image_path.as_deref().is_none_or(|path| !Path::new(path).is_file()))
+            .filter(|card| {
+                card.image_path
+                    .as_deref()
+                    .is_none_or(|path| !Path::new(path).is_file())
+            })
             .map(|card| card.id.clone())
             .collect::<std::collections::HashSet<_>>();
-        let cached_ids = cached.iter().map(|card| card.id.clone()).collect::<std::collections::HashSet<_>>();
+        let cached_ids = cached
+            .iter()
+            .map(|card| card.id.clone())
+            .collect::<std::collections::HashSet<_>>();
         let missing = card_ids
             .iter()
             .filter(|id| !cached_ids.contains(*id) || retry_ids.contains(*id))
@@ -305,8 +321,8 @@ async fn resolve_card_sources(
         cached.sort_by(|left, right| left.id.cmp(&right.id));
         Ok(cached)
     })
-        .await
-        .map_err(|error| error.to_string())?
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -348,12 +364,12 @@ pub fn run() {
         .manage(Arc::new(CaptureState::default()))
         .setup(|app| {
             let database_path = app.path().app_data_dir()?.join("trace.sqlite3");
-            let storage = storage::MatchStorage::new(database_path)
-                .map_err(std::io::Error::other)?;
+            let storage =
+                storage::MatchStorage::new(database_path).map_err(std::io::Error::other)?;
             app.manage(storage);
             let cloud_sync_path = app.path().app_data_dir()?.join("cloud-sync.json");
-            let cloud_sync = cloud_sync::CloudSync::new(cloud_sync_path)
-                .map_err(std::io::Error::other)?;
+            let cloud_sync =
+                cloud_sync::CloudSync::new(cloud_sync_path).map_err(std::io::Error::other)?;
             app.manage(cloud_sync);
             Ok(())
         })

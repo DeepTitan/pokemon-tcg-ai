@@ -168,7 +168,10 @@ impl CloudSync {
             .await
             .map_err(|error| format!("Cloud backup registration failed: {error}"))?;
         if !response.status().is_success() {
-            return Err(format!("Cloud backup registration returned {}.", response.status()));
+            return Err(format!(
+                "Cloud backup registration returned {}.",
+                response.status()
+            ));
         }
         let registration = response
             .json::<Registration>()
