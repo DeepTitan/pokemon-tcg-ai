@@ -38,6 +38,10 @@ jobs:
           cargo test --manifest-path src-tauri/Cargo.toml cards::tests
 
       - name: Build Windows NSIS package
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TRACE_SYNC_API_URL: ${{ vars.TRACE_SYNC_API_URL }}
         run: npm run tauri:build -- --bundles nsis
 
       - name: Upload Windows package and executable
