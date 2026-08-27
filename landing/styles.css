@@ -22,6 +22,109 @@ body {
 
 a { color: inherit; }
 
+.is-locked,
+.is-locked body { overflow: hidden; }
+
+.access-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  padding: 24px;
+  display: grid;
+  place-items: center;
+  background: var(--cream);
+}
+
+.access-gate[hidden] { display: none; }
+
+.access-card {
+  width: min(440px, 100%);
+  padding: 34px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--paper);
+  box-shadow: 0 18px 50px rgba(23, 43, 73, 0.12);
+}
+
+.access-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.access-brand img {
+  width: 42px;
+  height: 42px;
+  object-fit: contain;
+}
+
+.access-brand strong {
+  font-size: 27px;
+  letter-spacing: -0.055em;
+}
+
+.access-card h1 {
+  margin: 32px 0 8px;
+  font-size: 38px;
+  line-height: 1;
+  letter-spacing: -0.05em;
+}
+
+.access-card > p:not(.access-error) {
+  margin: 0 0 26px;
+  color: var(--ink-soft);
+  font-size: 16px;
+}
+
+.access-card label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.access-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.access-controls input,
+.access-controls button {
+  min-height: 50px;
+  border-radius: 11px;
+  font: inherit;
+}
+
+.access-controls input {
+  min-width: 0;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  color: var(--ink);
+  background: #fff;
+}
+
+.access-controls input:focus-visible {
+  outline: 3px solid rgba(75, 143, 209, 0.35);
+  border-color: #4b8fd1;
+}
+
+.access-controls button {
+  padding: 0 18px;
+  border: 1px solid var(--yellow-edge);
+  color: var(--ink);
+  background: var(--yellow);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.access-error {
+  margin: 12px 0 0;
+  color: #a73b32;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .hero {
   min-height: 100svh;
   display: grid;
@@ -209,6 +312,8 @@ footer > span { flex: 0 0 auto; font-weight: 700; }
 }
 
 @media (max-width: 560px) {
+  .access-card { padding: 26px 22px; }
+  .access-controls { grid-template-columns: 1fr; }
   .copy-panel { padding-inline: 18px; }
   .brand strong { font-size: 26px; }
   .hero-copy { margin: 54px 0; }

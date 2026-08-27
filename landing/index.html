@@ -1,9 +1,10 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="is-locked">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f7f2e8" />
+    <meta name="robots" content="noindex, nofollow" />
     <meta name="description" content="Trace logs every turn so you can revisit tricky Pokémon TCG Live board states, compare lines with friends, and improve your play." />
     <meta property="og:title" content="Trace — Review the spot. Find the line." />
     <meta property="og:description" content="Bring tricky spots to your friends, compare your options, and improve your play." />
@@ -19,7 +20,24 @@
     <title>Trace — Review the spot. Find the line.</title>
   </head>
   <body>
-    <main class="hero" id="top">
+    <section class="access-gate" id="access-gate" aria-labelledby="access-title">
+      <form class="access-card" id="access-form">
+        <div class="access-brand" aria-hidden="true">
+          <img src="/assets/trace-mascot.png" alt="" />
+          <strong>Trace</strong>
+        </div>
+        <h1 id="access-title">Private preview</h1>
+        <p>Enter the password to continue.</p>
+        <label for="access-password">Password</label>
+        <div class="access-controls">
+          <input id="access-password" name="password" type="password" autocomplete="current-password" required />
+          <button type="submit">Unlock Trace</button>
+        </div>
+        <p class="access-error" id="access-error" role="alert" hidden>That password isn’t right.</p>
+      </form>
+    </section>
+
+    <main class="hero" id="top" inert>
       <section class="copy-panel" aria-labelledby="hero-title">
         <header class="site-header">
           <a class="brand" href="#top" aria-label="Trace home">
