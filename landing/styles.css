@@ -38,23 +38,22 @@ a { color: inherit; }
 .site-header { flex: 0 0 auto; }
 
 .brand {
-  display: inline-grid;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
   line-height: 1;
   text-decoration: none;
+}
+
+.brand img {
+  width: 42px;
+  height: 42px;
+  object-fit: contain;
 }
 
 .brand strong {
   font-size: 29px;
   letter-spacing: -0.055em;
-}
-
-.brand small {
-  margin-top: 7px;
-  color: #3e6081;
-  font-size: 10px;
-  font-weight: 850;
-  letter-spacing: 0.2em;
-  text-transform: uppercase;
 }
 
 .hero-copy {
