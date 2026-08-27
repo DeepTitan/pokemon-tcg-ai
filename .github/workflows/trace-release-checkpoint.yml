@@ -105,9 +105,7 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Apply checkpoint version
-        env:
-          TRACE_VERSION: ${{ needs.checkpoint.outputs.version }}
-        run: node scripts/release/set-trace-version.mjs "$TRACE_VERSION"
+        run: node scripts/release/set-trace-version.mjs "${{ needs.checkpoint.outputs.version }}"
 
       - name: Build and upload signed update
         uses: tauri-apps/tauri-action@v1
