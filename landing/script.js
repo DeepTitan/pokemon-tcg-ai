@@ -7,7 +7,7 @@ const detectedPlatform = normalizedPlatform.includes('mac')
     : null;
 
 if (detectedPlatform) {
-  document.querySelector(`[data-platform-card="${detectedPlatform}"]`)?.classList.add('detected');
+  document.querySelector(`[data-download="${detectedPlatform}"]`)?.classList.add('detected');
 }
 
 document.getElementById('year').textContent = new Date().getFullYear();
