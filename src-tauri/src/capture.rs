@@ -11,6 +11,7 @@ use rcgen::{
 use serde::Serialize;
 #[cfg(target_os = "windows")]
 use sha1::{Digest, Sha1};
+#[cfg(target_os = "macos")]
 use socket2::{Domain, Protocol, Socket, Type};
 #[cfg(target_os = "macos")]
 use std::os::unix::fs::PermissionsExt;
@@ -48,7 +49,9 @@ use tokio_rustls::{
 const OBSERVER_PORT: u16 = 8899;
 #[cfg(target_os = "windows")]
 const OBSERVER_PORT: u16 = 443;
+#[cfg(target_os = "macos")]
 const UPSTREAM_PORT_START: u16 = 49_000;
+#[cfg(target_os = "macos")]
 const UPSTREAM_PORT_END: u16 = 49_099;
 const CA_COMMON_NAME: &str = privileged::CA_COMMON_NAME;
 const CERTIFICATE_VERSION_MARKER: &str = "unity-rsa-crl-chain-v6";
@@ -851,6 +854,7 @@ fn is_pokemon_host(host: &str) -> bool {
     host == "studio-prod.pokemon.com" || host.ends_with(".studio-prod.pokemon.com")
 }
 
+#[cfg(target_os = "macos")]
 fn connect_upstream_blocking(addresses: Vec<SocketAddr>) -> Result<StdTcpStream, String> {
     let mut last_error = None;
     for address in addresses {
@@ -889,6 +893,31 @@ fn connect_upstream_blocking(addresses: Vec<SocketAddr>) -> Result<StdTcpStream,
                         "Could not connect to {address} from reserved port {port}: {error}"
                     ))
                 }
+            }
+        }
+    }
+    Err(last_error.unwrap_or_else(|| "Could not connect to a Pokémon game server.".to_owned()))
+}
+
+#[cfg(target_os = "windows")]
+fn connect_upstream_blocking(addresses: Vec<SocketAddr>) -> Result<StdTcpStream, String> {
+    let mut last_error = None;
+    for address in addresses {
+        // Windows capture is routed with a hosts-file override, so the proxy's
+        // upstream leg does not need the small reserved source-port range used
+        // by the macOS packet-filter helper. Let Windows allocate ephemeral
+        // ports here: TCG Live opens enough parallel and short-lived HTTPS
+        // connections during startup to exhaust that 100-port range in
+        // TIME_WAIT, which surfaces in the client as loading error 19011.
+        match StdTcpStream::connect_timeout(&address, std::time::Duration::from_secs(10)) {
+            Ok(stream) => {
+                stream.set_nonblocking(true).map_err(|error| {
+                    format!("Could not set the upstream socket nonblocking: {error}")
+                })?;
+                return Ok(stream);
+            }
+            Err(error) => {
+                last_error = Some(format!("Could not connect to {address}: {error}"));
             }
         }
     }
@@ -1130,6 +1159,16 @@ impl WebSocketInspector {
     }
 }
 
+async fn write_forwarded_batch<W>(writer: &mut W, data: &[u8]) -> std::io::Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
+    writer.write_all(data).await?;
+    // tokio-rustls behaves like BufWriter: accepting all plaintext does not
+    // guarantee that its encrypted records reached the TCP stream.
+    writer.flush().await
+}
+
 async fn forward_and_inspect<C, S>(
     client: C,
     server: S,
@@ -1143,11 +1182,20 @@ where
     let (mut client_read, mut client_write) = tokio::io::split(client);
     let (mut server_read, mut server_write) = tokio::io::split(server);
     let client_to_server = async {
-        tokio::io::copy(&mut client_read, &mut server_write)
-            .await
-            .map_err(|error| {
+        let mut buffer = vec![0u8; 64 * 1024];
+        loop {
+            let count = client_read.read(&mut buffer).await.map_err(|error| {
                 format!("Forwarding TCG Live to the Pokémon server failed: {error}")
             })?;
+            if count == 0 {
+                break;
+            }
+            write_forwarded_batch(&mut server_write, &buffer[..count])
+                .await
+                .map_err(|error| {
+                    format!("Forwarding TCG Live to the Pokémon server failed: {error}")
+                })?;
+        }
         server_write
             .shutdown()
             .await
@@ -1164,8 +1212,7 @@ where
             if count == 0 {
                 break;
             }
-            client_write
-                .write_all(&buffer[..count])
+            write_forwarded_batch(&mut client_write, &buffer[..count])
                 .await
                 .map_err(|error| {
                     format!("Forwarding the Pokémon server to TCG Live failed: {error}")
@@ -1549,11 +1596,89 @@ pub fn shutdown(app: &AppHandle) {
 mod tests {
     use super::WebSocketInspector;
     use flate2::{Compress, Compression, FlushCompress};
+    use std::{
+        io,
+        pin::Pin,
+        task::{Context, Poll},
+    };
+    use tokio::io::AsyncWrite;
+
+    #[cfg(target_os = "windows")]
+    use std::net::TcpListener;
 
     #[cfg(target_os = "windows")]
     #[test]
     fn mono_store_hash_matches_openssl_subject_hash() {
         assert_eq!(super::mono_subject_hash(), "bfb0f28f");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_upstream_supports_more_than_reserved_port_pool() {
+        const CONNECTIONS: usize = 150;
+        let listener = TcpListener::bind(("127.0.0.1", 0)).expect("bind local upstream");
+        let address = listener.local_addr().expect("local upstream address");
+        let acceptor = std::thread::spawn(move || {
+            (0..CONNECTIONS)
+                .map(|_| listener.accept().expect("accept upstream connection").0)
+                .collect::<Vec<_>>()
+        });
+
+        let clients = (0..CONNECTIONS)
+            .map(|_| {
+                super::connect_upstream_blocking(vec![address])
+                    .expect("Windows should allocate an ephemeral source port")
+            })
+            .collect::<Vec<_>>();
+        let servers = acceptor.join().expect("upstream accept thread");
+
+        assert_eq!(clients.len(), CONNECTIONS);
+        assert_eq!(servers.len(), CONNECTIONS);
+    }
+
+    #[derive(Default)]
+    struct FlushGatedWriter {
+        staged: Vec<u8>,
+        committed: Vec<u8>,
+        flushes: usize,
+    }
+
+    impl AsyncWrite for FlushGatedWriter {
+        fn poll_write(
+            mut self: Pin<&mut Self>,
+            _context: &mut Context<'_>,
+            buffer: &[u8],
+        ) -> Poll<io::Result<usize>> {
+            self.staged.extend_from_slice(buffer);
+            Poll::Ready(Ok(buffer.len()))
+        }
+
+        fn poll_flush(
+            mut self: Pin<&mut Self>,
+            _context: &mut Context<'_>,
+        ) -> Poll<io::Result<()>> {
+            let staged = std::mem::take(&mut self.staged);
+            self.committed.extend_from_slice(&staged);
+            self.flushes += 1;
+            Poll::Ready(Ok(()))
+        }
+
+        fn poll_shutdown(self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<io::Result<()>> {
+            self.poll_flush(context)
+        }
+    }
+
+    #[tokio::test]
+    async fn forwarded_batches_are_flushed_before_waiting_for_more_data() {
+        let mut writer = FlushGatedWriter::default();
+
+        super::write_forwarded_batch(&mut writer, b"complete response")
+            .await
+            .expect("write forwarded batch");
+
+        assert!(writer.staged.is_empty());
+        assert_eq!(writer.committed, b"complete response");
+        assert_eq!(writer.flushes, 1);
     }
 
     fn server_frame_with_flags(payload: &[u8], flags: u8) -> Vec<u8> {

@@ -2,7 +2,7 @@ use serde::Serialize;
 use std::{
     ffi::OsString,
     fs,
-    net::{IpAddr, ToSocketAddrs},
+    net::{IpAddr, SocketAddr, TcpStream, ToSocketAddrs},
     os::windows::ffi::OsStringExt,
     os::windows::process::CommandExt,
     path::{Path, PathBuf},
@@ -158,19 +158,55 @@ fn remove_host_override() -> Result<(), String> {
 }
 
 fn pokemon_server_ips() -> Result<Vec<IpAddr>, String> {
-    let mut ips = (GAME_HOST, 443)
+    let ips = (GAME_HOST, 443)
         .to_socket_addrs()
         .map_err(|error| format!("Could not resolve the Pokémon game server: {error}"))?
         .map(|address| address.ip())
         .filter(|ip| !ip.is_loopback())
         .collect::<Vec<_>>();
-    ips.sort();
-    ips.dedup();
+    // The production name returns multiple regional edges. The game races
+    // them, but Trace has to resolve before replacing the name with loopback.
+    // Prefer the first edge to establish a connection from this machine, then
+    // pin that edge for the capture session. Merely choosing the first numeric
+    // address can leave the client parked at the asset-loading checkpoint even
+    // though TCP and TLS both connect successfully.
+    let mut unique = Vec::with_capacity(ips.len());
+    for ip in ips {
+        if !unique.contains(&ip) {
+            unique.push(ip);
+        }
+    }
+    let ips = prioritize_fastest_server(unique, 443);
     if ips.is_empty() {
         Err("Pokémon TCG Live has no reachable game-server address yet.".to_owned())
     } else {
         Ok(ips)
     }
+}
+
+fn prioritize_fastest_server(mut ips: Vec<IpAddr>, port: u16) -> Vec<IpAddr> {
+    if ips.len() < 2 {
+        return ips;
+    }
+
+    let (sender, receiver) = std::sync::mpsc::channel();
+    for ip in ips.iter().copied() {
+        let sender = sender.clone();
+        thread::spawn(move || {
+            let address = SocketAddr::new(ip, port);
+            if TcpStream::connect_timeout(&address, Duration::from_secs(2)).is_ok() {
+                let _ = sender.send(ip);
+            }
+        });
+    }
+    drop(sender);
+
+    if let Ok(preferred) = receiver.recv_timeout(Duration::from_millis(2_250)) {
+        if let Some(index) = ips.iter().position(|ip| *ip == preferred) {
+            ips.swap(0, index);
+        }
+    }
+    ips
 }
 
 pub fn enable_route(
@@ -211,4 +247,22 @@ pub fn disable_route(_handle: &mut RouteHandle) {
 
 pub fn run_if_requested() -> bool {
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::prioritize_fastest_server;
+    use std::net::{IpAddr, Ipv4Addr, TcpListener};
+
+    #[test]
+    fn reachable_server_is_prioritized_over_failed_first_answer() {
+        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).expect("bind test server");
+        let port = listener.local_addr().expect("test server address").port();
+        let reachable = IpAddr::V4(Ipv4Addr::LOCALHOST);
+        let failed = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2));
+
+        let prioritized = prioritize_fastest_server(vec![failed, reachable], port);
+
+        assert_eq!(prioritized, vec![reachable, failed]);
+    }
 }
