@@ -76,7 +76,7 @@ jobs:
           - name: macOS Apple silicon
             platform: macos-latest
             rustTargets: aarch64-apple-darwin
-            args: --target aarch64-apple-darwin --bundles dmg
+            args: --target aarch64-apple-darwin --bundles dmg,app
           - name: Windows x64
             platform: windows-latest
             rustTargets: x86_64-pc-windows-msvc
@@ -124,8 +124,8 @@ jobs:
             Commit: ${{ needs.checkpoint.outputs.commitSha }}
           releaseDraft: ${{ needs.checkpoint.outputs.releaseDraft }}
           prerelease: false
-          uploadUpdaterJson: true
-          updaterJsonPreferNsis: true
+          uploadUpdaterJson: false
+          uploadUpdaterSignatures: true
           releaseAssetNamePattern: "[name]_[arch][setup].[ext]"
           args: ${{ matrix.args }}
 
@@ -134,6 +134,68 @@ jobs:
     if: needs.checkpoint.outputs.shouldRelease == 'true'
     runs-on: ubuntu-latest
     steps:
+      - name: Assemble signed network update manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.checkpoint.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.checkpoint.outputs.version }}
+          RELEASE_NOTE: ${{ needs.checkpoint.outputs.releaseNote }}
+        run: |
+          mac_asset="Trace_aarch64.app.tar.gz"
+          mac_signature_asset="${mac_asset}.sig"
+          windows_asset="Trace_x64-setup.exe"
+          windows_signature_asset="${windows_asset}.sig"
+
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets \
+            --jq '.assets[].name' > release-assets.txt
+          for asset in Trace_aarch64.dmg "$mac_asset" "$mac_signature_asset" "$windows_asset" "$windows_signature_asset"; do
+            grep -Fx "$asset" release-assets.txt >/dev/null || {
+              echo "::error::Missing release asset: $asset"
+              exit 1
+            }
+          done
+
+          mkdir updater-assets
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern "$mac_signature_asset" \
+            --pattern "$windows_signature_asset" \
+            --dir updater-assets
+
+          mac_signature="$(tr -d '\r\n' < "updater-assets/$mac_signature_asset")"
+          windows_signature="$(tr -d '\r\n' < "updater-assets/$windows_signature_asset")"
+          base_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG"
+          published_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+
+          jq -n \
+            --arg version "$RELEASE_VERSION" \
+            --arg notes "$RELEASE_NOTE" \
+            --arg pubDate "$published_at" \
+            --arg macUrl "$base_url/$mac_asset" \
+            --arg macSignature "$mac_signature" \
+            --arg windowsUrl "$base_url/$windows_asset" \
+            --arg windowsSignature "$windows_signature" \
+            '{
+              version: $version,
+              notes: $notes,
+              pub_date: $pubDate,
+              platforms: {
+                "darwin-aarch64": { url: $macUrl, signature: $macSignature },
+                "darwin-aarch64-app": { url: $macUrl, signature: $macSignature },
+                "windows-x86_64": { url: $windowsUrl, signature: $windowsSignature },
+                "windows-x86_64-nsis": { url: $windowsUrl, signature: $windowsSignature }
+              }
+            }' > latest.json
+
+          jq -e \
+            --arg version "$RELEASE_VERSION" \
+            --arg baseUrl "$base_url/" \
+            '.version == $version
+             and ((.platforms | keys | sort) == ["darwin-aarch64", "darwin-aarch64-app", "windows-x86_64", "windows-x86_64-nsis"])
+             and all(.platforms[]; (.signature | length) > 20)
+             and all(.platforms[]; .url | startswith($baseUrl))' \
+            latest.json >/dev/null
+          gh release upload "$RELEASE_TAG" latest.json --repo "$GITHUB_REPOSITORY" --clobber
+
       - name: Publish verified release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -143,7 +205,15 @@ jobs:
       - name: Verify network update manifest
         env:
           RELEASE_TAG: ${{ needs.checkpoint.outputs.tag }}
+          RELEASE_VERSION: ${{ needs.checkpoint.outputs.version }}
         run: |
           manifest="https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/latest.json"
           curl --fail --silent --show-error --location "$manifest" --output latest.json
-          jq -e '.version == "${{ needs.checkpoint.outputs.version }}" and (.platforms | length >= 2)' latest.json
+          jq -e \
+            --arg version "$RELEASE_VERSION" \
+            --arg baseUrl "https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/" \
+            '.version == $version
+             and ((.platforms | keys | sort) == ["darwin-aarch64", "darwin-aarch64-app", "windows-x86_64", "windows-x86_64-nsis"])
+             and all(.platforms[]; (.signature | length) > 20)
+             and all(.platforms[]; .url | startswith($baseUrl))' \
+            latest.json >/dev/null
