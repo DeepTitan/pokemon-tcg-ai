@@ -46,6 +46,46 @@ jobs:
           TRACE_SYNC_API_URL: ${{ vars.TRACE_SYNC_API_URL }}
         run: npm run tauri:build -- --bundles nsis
 
+      - name: Exercise crash-safe Windows route cleanup
+        shell: pwsh
+        run: |
+          $hostsPath = Join-Path $env:SystemRoot 'System32\drivers\etc\hosts'
+          $traceExe = Resolve-Path 'src-tauri\target\release\match-lens.exe'
+          $originalHosts = [IO.File]::ReadAllText($hostsPath)
+          $gameHost = 'api.us-east-1.studio-prod.pokemon.com'
+          try {
+            $legacy = "$originalHosts`r`n# Match Lens local capture begin`r`n127.0.0.1 $gameHost`r`n# Match Lens local capture end`r`n"
+            [IO.File]::WriteAllText($hostsPath, $legacy)
+            $cleanup = Start-Process -FilePath $traceExe -ArgumentList '--trace-route-cleanup' -Wait -PassThru
+            if ($cleanup.ExitCode -ne 0) { throw "Cleanup helper exited $($cleanup.ExitCode)." }
+            $afterCleanup = [IO.File]::ReadAllText($hostsPath)
+            if ($afterCleanup.Contains($gameHost) -or $afterCleanup.Contains('Match Lens local capture')) {
+              throw 'Generic recovery left the legacy game route behind.'
+            }
+
+            $session = [Guid]::NewGuid().ToString()
+            $guarded = "$originalHosts`r`n# Match Lens local capture begin $session`r`n127.0.0.1 $gameHost`r`n# Match Lens local capture end $session`r`n"
+            [IO.File]::WriteAllText($hostsPath, $guarded)
+            $parent = Start-Process -FilePath "$env:SystemRoot\System32\timeout.exe" -ArgumentList '/T', '2', '/NOBREAK' -WindowStyle Hidden -PassThru
+            $watchdog = Start-Process -FilePath $traceExe -ArgumentList '--trace-route-watchdog', $parent.Id, $session -WindowStyle Hidden -PassThru
+            $parent.WaitForExit()
+            $deadline = [DateTime]::UtcNow.AddSeconds(10)
+            do {
+              Start-Sleep -Milliseconds 200
+              $afterCrash = [IO.File]::ReadAllText($hostsPath)
+            } while ($afterCrash.Contains($session) -and [DateTime]::UtcNow -lt $deadline)
+            if ($afterCrash.Contains($session) -or $afterCrash.Contains($gameHost)) {
+              throw 'The out-of-process watchdog left the game route behind.'
+            }
+            if (-not $watchdog.WaitForExit(5000)) {
+              $watchdog.Kill()
+              throw 'The route watchdog did not exit after cleanup.'
+            }
+          } finally {
+            [IO.File]::WriteAllText($hostsPath, $originalHosts)
+            ipconfig.exe /flushdns | Out-Null
+          }
+
       - name: Upload Windows package and executable
         uses: actions/upload-artifact@v4
         with:
