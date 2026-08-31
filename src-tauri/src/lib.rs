@@ -3,6 +3,8 @@ mod capture;
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 #[path = "capture_unsupported.rs"]
 mod capture;
+#[cfg(any(target_os = "windows", test))]
+mod capture_hosts;
 mod cards;
 mod cloud_sync;
 #[cfg(target_os = "macos")]
@@ -363,6 +365,14 @@ pub fn run() {
     builder
         .manage(Arc::new(CaptureState::default()))
         .setup(|app| {
+            #[cfg(target_os = "windows")]
+            if let Err(error) = privileged::recover_stale_route() {
+                if let Ok(mut last_error) = app.state::<Arc<CaptureState>>().last_error.lock() {
+                    *last_error = Some(format!(
+                        "Trace could not repair a leftover Windows capture route: {error}"
+                    ));
+                }
+            }
             let database_path = app.path().app_data_dir()?.join("trace.sqlite3");
             let storage =
                 storage::MatchStorage::new(database_path).map_err(std::io::Error::other)?;
@@ -395,8 +405,16 @@ pub fn run() {
             start_tracking,
             stop_tracking,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Trace");
+        .build(tauri::generate_context!())
+        .expect("error while building Trace")
+        .run(|app, event| {
+            if matches!(
+                event,
+                tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
+            ) {
+                capture::shutdown(app);
+            }
+        });
 }
 
 pub fn run_privileged_helper_if_requested() -> bool {

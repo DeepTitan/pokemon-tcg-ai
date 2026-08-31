@@ -52,7 +52,12 @@
     ],
     "category": "Entertainment",
     "shortDescription": "Trace every turn of a local match",
-    "longDescription": "An unofficial companion that captures exact local Pokémon TCG Live match operations and reconstructs the board turn by turn."
+    "longDescription": "An unofficial companion that captures exact local Pokémon TCG Live match operations and reconstructs the board turn by turn.",
+    "windows": {
+      "nsis": {
+        "installerHooks": "windows/installer-hooks.nsh"
+      }
+    }
   },
   "plugins": {
     "updater": {
