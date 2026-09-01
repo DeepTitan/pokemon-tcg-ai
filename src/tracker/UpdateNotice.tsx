@@ -9,6 +9,16 @@ const DISMISSED_KEY = 'trace/dismissed-update-v1';
 
 type UpdatePhase = 'available' | 'downloading' | 'ready' | 'restarting' | 'error';
 
+function updateErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message.trim()) return error.message;
+  if (typeof error === 'string' && error.trim()) return error;
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = String(error.message).trim();
+    if (message) return message;
+  }
+  return fallback;
+}
+
 export function UpdateNotice() {
   const [update, setUpdate] = useState<Update | null>(null);
   const [phase, setPhase] = useState<UpdatePhase>('available');
@@ -79,7 +89,7 @@ export function UpdateNotice() {
       setMessage('The update is installed. Restart Trace to use it.');
     } catch (error) {
       setPhase('error');
-      setMessage(error instanceof Error ? error.message : 'Trace could not install the update.');
+      setMessage(updateErrorMessage(error, 'Trace could not install the update.'));
     }
   };
 
@@ -89,7 +99,7 @@ export function UpdateNotice() {
       await relaunch();
     } catch (error) {
       setPhase('error');
-      setMessage(error instanceof Error ? error.message : 'Trace could not restart.');
+      setMessage(updateErrorMessage(error, 'Trace could not restart.'));
     }
   };
 
@@ -112,7 +122,7 @@ export function UpdateNotice() {
         {ready ? <ArrowClockwise size={21} weight="bold" /> : <DownloadSimple size={21} weight="bold" />}
       </div>
       <div className="update-notice-copy">
-        <small>{ready ? 'Restart required' : phase === 'error' ? 'Update interrupted' : 'Update available'}</small>
+        <small>{ready ? 'Restart required' : phase === 'error' ? 'Update failed' : 'Update available'}</small>
         <strong>Trace {update.version}</strong>
         <p>{message || update.body || 'A new signed Trace build is ready.'}</p>
       </div>

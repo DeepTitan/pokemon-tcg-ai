@@ -125,7 +125,7 @@ jobs:
           releaseDraft: ${{ needs.checkpoint.outputs.releaseDraft }}
           prerelease: false
           uploadUpdaterJson: false
-          uploadUpdaterSignatures: true
+          uploadUpdaterSignatures: false
           releaseAssetNamePattern: "[name]_[arch][setup].[ext]"
           args: ${{ matrix.args }}
 
@@ -134,12 +134,27 @@ jobs:
     if: needs.checkpoint.outputs.shouldRelease == 'true'
     runs-on: ubuntu-latest
     steps:
-      - name: Assemble signed network update manifest
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install release tooling
+        run: |
+          npm ci --ignore-scripts
+          sudo apt-get update
+          sudo apt-get install --yes minisign
+
+      - name: Sign uploaded assets and assemble network update manifest
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.checkpoint.outputs.tag }}
           RELEASE_VERSION: ${{ needs.checkpoint.outputs.version }}
           RELEASE_NOTE: ${{ needs.checkpoint.outputs.releaseNote }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           mac_asset="Trace_aarch64.app.tar.gz"
           mac_signature_asset="${mac_asset}.sig"
@@ -148,7 +163,7 @@ jobs:
 
           gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets \
             --jq '.assets[].name' > release-assets.txt
-          for asset in Trace_aarch64.dmg "$mac_asset" "$mac_signature_asset" "$windows_asset" "$windows_signature_asset"; do
+          for asset in Trace_aarch64.dmg "$mac_asset" "$windows_asset"; do
             grep -Fx "$asset" release-assets.txt >/dev/null || {
               echo "::error::Missing release asset: $asset"
               exit 1
@@ -157,9 +172,31 @@ jobs:
 
           mkdir updater-assets
           gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
-            --pattern "$mac_signature_asset" \
-            --pattern "$windows_signature_asset" \
+            --pattern "$mac_asset" \
+            --pattern "$windows_asset" \
             --dir updater-assets
+
+          npx tauri signer sign "updater-assets/$mac_asset"
+          npx tauri signer sign "updater-assets/$windows_asset"
+
+          jq -r '.plugins.updater.pubkey' src-tauri/tauri.conf.json \
+            | base64 --decode > updater-assets/trace-updater.pub
+          base64 --decode < "updater-assets/$mac_signature_asset" \
+            > "updater-assets/$mac_signature_asset.minisig"
+          base64 --decode < "updater-assets/$windows_signature_asset" \
+            > "updater-assets/$windows_signature_asset.minisig"
+
+          minisign -Vm "updater-assets/$mac_asset" \
+            -p updater-assets/trace-updater.pub \
+            -x "updater-assets/$mac_signature_asset.minisig"
+          minisign -Vm "updater-assets/$windows_asset" \
+            -p updater-assets/trace-updater.pub \
+            -x "updater-assets/$windows_signature_asset.minisig"
+
+          gh release upload "$RELEASE_TAG" \
+            "updater-assets/$mac_signature_asset" \
+            "updater-assets/$windows_signature_asset" \
+            --repo "$GITHUB_REPOSITORY" --clobber
 
           mac_signature="$(tr -d '\r\n' < "updater-assets/$mac_signature_asset")"
           windows_signature="$(tr -d '\r\n' < "updater-assets/$windows_signature_asset")"
