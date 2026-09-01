@@ -61,7 +61,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWcgcHVibGljIGtleTogQTJEQjBCM0Y2QzcyNzMyMApSV1FnYzNKc1B3dmJvdlhGNnRsOEc2MTZMa2huWnlZQm5ScytGWDFRS29pOWt6cDBRdy80cTFqRAo=",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ0MkYyMkZCMzJGRDY0MDcKUldRSFpQMHkreUl2MUxhMUNTRllhSUd4RDBScXZLN2o3VGdXS2tJVkNqeEhCZUpVWFgxQmQ1c0sK",
       "endpoints": [
         "https://github.com/DeepTitan/pokemon-tcg-ai/releases/latest/download/latest.json"
       ],
