@@ -1454,8 +1454,11 @@ const ROUTE_ATTACH_GRACE: std::time::Duration = std::time::Duration::from_secs(3
 const ROUTE_ATTACHMENT_PROBE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
 
 #[cfg(target_os = "macos")]
-fn detached_route_needs_refresh(client_attached: bool, game_connection_active: bool) -> bool {
-    !client_attached && game_connection_active
+fn detached_route_needs_refresh(
+    captured_connections: usize,
+    game_server_connections: usize,
+) -> bool {
+    game_server_connections > captured_connections
 }
 
 #[cfg(target_os = "macos")]
@@ -1482,8 +1485,14 @@ fn ensure_manager(state: &Arc<CaptureState>) {
             if manager_state.route_active.load(Ordering::Relaxed)
                 && manager_state.routed_pid.load(Ordering::Relaxed) == u64::from(pokemon_pid)
             {
-                let client_attached = manager_state.client_connections.load(Ordering::Relaxed) > 0;
-                if client_attached {
+                let captured_connections =
+                    manager_state.client_connections.load(Ordering::Relaxed) as usize;
+                let game_server_connections =
+                    privileged::game_server_connection_count(pokemon_pid);
+                if !detached_route_needs_refresh(
+                    captured_connections,
+                    game_server_connections,
+                ) {
                     next_attachment_probe = None;
                 } else {
                     let now = std::time::Instant::now();
@@ -1491,14 +1500,14 @@ fn ensure_manager(state: &Arc<CaptureState>) {
                         next_attachment_probe.get_or_insert_with(|| now + ROUTE_ATTACH_GRACE);
                     if now >= *probe_at {
                         *probe_at = now + ROUTE_ATTACHMENT_PROBE_INTERVAL;
-                        // A route can be active while a socket created before Trace
-                        // still uses stale PF state. Keep refreshing for as long as
-                        // TCG Live is connected to the game server but the observer
-                        // has no client; cumulative frames from an older connection
-                        // must not suppress recovery.
+                        // A route can be active while one or more sockets created
+                        // before Trace still use stale PF state. A captured lobby
+                        // socket must not hide an uncaptured match socket, so keep
+                        // recovering until every live game-server connection has a
+                        // corresponding observer connection.
                         if detached_route_needs_refresh(
-                            client_attached,
-                            privileged::game_server_connection_active(pokemon_pid),
+                            captured_connections,
+                            game_server_connections,
                         ) {
                             next_attachment_probe = None;
                             release_route(&manager_state);
@@ -1620,10 +1629,12 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[test]
-    fn detached_route_retries_whenever_the_game_socket_bypasses_capture() {
-        assert!(super::detached_route_needs_refresh(false, true));
-        assert!(!super::detached_route_needs_refresh(true, true));
-        assert!(!super::detached_route_needs_refresh(false, false));
+    fn detached_route_retries_until_every_game_socket_is_captured() {
+        assert!(super::detached_route_needs_refresh(0, 1));
+        assert!(super::detached_route_needs_refresh(1, 2));
+        assert!(!super::detached_route_needs_refresh(1, 1));
+        assert!(!super::detached_route_needs_refresh(2, 1));
+        assert!(!super::detached_route_needs_refresh(0, 0));
     }
 
     #[cfg(target_os = "windows")]
