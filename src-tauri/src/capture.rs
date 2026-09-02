@@ -1448,52 +1448,69 @@ fn release_route(state: &Arc<CaptureState>) {
 }
 
 #[cfg(target_os = "macos")]
+const ROUTE_ATTACH_GRACE: std::time::Duration = std::time::Duration::from_secs(3);
+
+#[cfg(target_os = "macos")]
+const ROUTE_ATTACHMENT_PROBE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
+
+#[cfg(target_os = "macos")]
+fn detached_route_needs_refresh(client_attached: bool, game_connection_active: bool) -> bool {
+    !client_attached && game_connection_active
+}
+
+#[cfg(target_os = "macos")]
 fn ensure_manager(state: &Arc<CaptureState>) {
     if state.manager_running.swap(true, Ordering::Relaxed) {
         return;
     }
     let manager_state = state.clone();
     tauri::async_runtime::spawn(async move {
-        let mut zero_frame_route_since = None;
-        let mut initial_route_refreshed = false;
+        let mut next_attachment_probe = None;
         while !manager_state.terminate.load(Ordering::Relaxed) {
             if !manager_state.enabled.load(Ordering::Relaxed) {
                 release_route(&manager_state);
-                zero_frame_route_since = None;
-                initial_route_refreshed = false;
+                next_attachment_probe = None;
                 tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                 continue;
             }
             let Some(pokemon_pid) = crate::pokemon_client_pid() else {
                 release_route(&manager_state);
+                next_attachment_probe = None;
                 tokio::time::sleep(std::time::Duration::from_millis(750)).await;
                 continue;
             };
             if manager_state.route_active.load(Ordering::Relaxed)
                 && manager_state.routed_pid.load(Ordering::Relaxed) == u64::from(pokemon_pid)
             {
-                if manager_state.frame_count.load(Ordering::Relaxed) == 0
-                    && !initial_route_refreshed
-                {
-                    let started =
-                        zero_frame_route_since.get_or_insert_with(std::time::Instant::now);
-                    if started.elapsed() >= std::time::Duration::from_secs(10) {
-                        // A long-lived game socket can occasionally retain its old PF
-                        // state while background Pokémon sockets attach successfully.
-                        // Refresh this first zero-data route once so the actual match
-                        // stream reconnects without requiring an off/on toggle.
-                        initial_route_refreshed = true;
-                        zero_frame_route_since = None;
-                        release_route(&manager_state);
-                        continue;
-                    }
+                let client_attached = manager_state.client_connections.load(Ordering::Relaxed) > 0;
+                if client_attached {
+                    next_attachment_probe = None;
                 } else {
-                    zero_frame_route_since = None;
+                    let now = std::time::Instant::now();
+                    let probe_at =
+                        next_attachment_probe.get_or_insert_with(|| now + ROUTE_ATTACH_GRACE);
+                    if now >= *probe_at {
+                        *probe_at = now + ROUTE_ATTACHMENT_PROBE_INTERVAL;
+                        // A route can be active while a socket created before Trace
+                        // still uses stale PF state. Keep refreshing for as long as
+                        // TCG Live is connected to the game server but the observer
+                        // has no client; cumulative frames from an older connection
+                        // must not suppress recovery.
+                        if detached_route_needs_refresh(
+                            client_attached,
+                            privileged::game_server_connection_active(pokemon_pid),
+                        ) {
+                            next_attachment_probe = None;
+                            release_route(&manager_state);
+                            continue;
+                        }
+                    }
                 }
-                tokio::time::sleep(std::time::Duration::from_millis(750)).await;
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                 continue;
             }
             release_route(&manager_state);
+            next_attachment_probe = None;
             match privileged::enable_route(std::process::id(), pokemon_pid) {
                 Ok((reply, stream)) => {
                     if let Ok(mut upstream_ips) = manager_state.upstream_ips.lock() {
@@ -1510,9 +1527,7 @@ fn ensure_manager(state: &Arc<CaptureState>) {
                     manager_state
                         .routed_pid
                         .store(u64::from(pokemon_pid), Ordering::Relaxed);
-                    if manager_state.frame_count.load(Ordering::Relaxed) == 0 {
-                        zero_frame_route_since = Some(std::time::Instant::now());
-                    }
+                    next_attachment_probe = Some(std::time::Instant::now() + ROUTE_ATTACH_GRACE);
                     if let Ok(mut last_error) = manager_state.last_error.lock() {
                         *last_error = None;
                     }
@@ -1602,6 +1617,14 @@ mod tests {
         task::{Context, Poll},
     };
     use tokio::io::AsyncWrite;
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn detached_route_retries_whenever_the_game_socket_bypasses_capture() {
+        assert!(super::detached_route_needs_refresh(false, true));
+        assert!(!super::detached_route_needs_refresh(true, true));
+        assert!(!super::detached_route_needs_refresh(false, false));
+    }
 
     #[cfg(target_os = "windows")]
     use std::net::TcpListener;

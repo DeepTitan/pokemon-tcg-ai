@@ -22,7 +22,7 @@ use std::{
 const HELPER_ARGUMENT: &str = "--match-lens-capture-helper";
 // Increment this only when the privileged routing protocol or helper behavior
 // changes. App-only releases must continue reusing an already-approved helper.
-const HELPER_VERSION: &str = "0.1.9";
+const HELPER_VERSION: &str = "0.1.10";
 const HELPER_LABEL: &str = "com.isaiahw.matchlens.capture-helper";
 const HELPER_PATH: &str = "/Library/PrivilegedHelperTools/com.isaiahw.matchlens.capture-helper";
 const HELPER_VERSION_PATH: &str =
@@ -243,10 +243,9 @@ fn send_command(
     keep_open: bool,
 ) -> Result<(HelperReply, Option<UnixStream>), String> {
     let mut stream = UnixStream::connect(HELPER_SOCKET).map_err(|error| error.to_string())?;
-    // Enabling capture deliberately gives existing game-server sockets up to eight
-    // seconds to drain before installing the final route.  Keep the control reply
-    // deadline comfortably beyond that handoff window; a five-second timeout makes
-    // macOS report EAGAIN and causes the manager to tear down a healthy relay.
+    // Route activation performs several privileged PF operations before replying.
+    // Keep the control deadline generous so a briefly busy system does not make
+    // the manager tear down a healthy relay during that handoff.
     let reply_timeout = match &command {
         HelperCommand::Enable { .. } => Duration::from_secs(15),
         _ => Duration::from_secs(5),
@@ -314,25 +313,40 @@ fn established_ipv4_ips(pid: u32) -> Result<Vec<Ipv4Addr>, String> {
     Ok(ips)
 }
 
-fn pokemon_server_ips(pid: u32) -> Result<Vec<Ipv4Addr>, String> {
-    let mut ips = established_ipv4_ips(pid)?;
+fn resolved_game_server_ips() -> Result<Vec<Ipv4Addr>, String> {
     let resolved = Command::new("/usr/bin/dig")
         .args(["+short", GAME_HOST, "A"])
         .output()
         .map_err(|error| error.to_string())?;
-    let resolved = String::from_utf8_lossy(&resolved.stdout)
+    let ips = String::from_utf8_lossy(&resolved.stdout)
         .lines()
         .filter_map(|line| line.trim().parse::<Ipv4Addr>().ok())
         .collect::<Vec<_>>();
+    if ips.is_empty() {
+        Err("Pokémon TCG Live's game server could not be resolved.".to_owned())
+    } else {
+        Ok(ips)
+    }
+}
+
+fn pokemon_server_ips(pid: u32) -> Result<Vec<Ipv4Addr>, String> {
+    let mut ips = established_ipv4_ips(pid)?;
+    let resolved = resolved_game_server_ips()?;
     ips.retain(|ip| resolved.contains(ip));
     if ips.is_empty() {
         ips = resolved;
     }
-    if ips.is_empty() {
-        Err("Pokémon TCG Live has no active game-server connection yet.".to_owned())
-    } else {
-        Ok(ips)
-    }
+    Ok(ips)
+}
+
+pub fn game_server_connection_active(pid: u32) -> bool {
+    let Ok(active) = established_ipv4_ips(pid) else {
+        return false;
+    };
+    let Ok(resolved) = resolved_game_server_ips() else {
+        return false;
+    };
+    active.iter().any(|ip| resolved.contains(ip))
 }
 
 fn hosts_without_override(contents: &str) -> String {
@@ -530,20 +544,26 @@ fn pf_rules(interface: &str, ips: &[Ipv4Addr]) -> String {
     rules
 }
 
-fn reconnect_rules(interface: &str, ips: &[Ipv4Addr]) -> String {
-    ips.iter()
-        .map(|ip| {
-            format!(
-                "block return-rst out quick on {interface} inet proto tcp from any to {ip} port 443\n"
-            )
-        })
-        .collect()
+fn pf_state_kill_args(ip: Ipv4Addr) -> [String; 4] {
+    [
+        "-k".to_owned(),
+        "0.0.0.0/0".to_owned(),
+        "-k".to_owned(),
+        ip.to_string(),
+    ]
 }
 
-fn enable_pf(pid: u32, ips: &[Ipv4Addr]) -> Result<String, String> {
+fn kill_existing_pf_states(ips: &[Ipv4Addr]) -> Result<(), String> {
+    for ip in ips {
+        let args = pf_state_kill_args(*ip);
+        let args = args.iter().map(String::as_str).collect::<Vec<_>>();
+        pfctl(&args, None)?;
+    }
+    Ok(())
+}
+
+fn enable_pf(ips: &[Ipv4Addr]) -> Result<String, String> {
     let interface = default_interface()?;
-    let reset_rules = reconnect_rules(&interface, ips);
-    pfctl(&["-a", PF_ANCHOR, "-f", "-"], Some(&reset_rules))?;
     let enabled = pfctl(&["-E"], None)?;
     let token = enabled
         .split("Token :")
@@ -551,17 +571,17 @@ fn enable_pf(pid: u32, ips: &[Ipv4Addr]) -> Result<String, String> {
         .and_then(|value| value.split_whitespace().next())
         .map(str::to_owned)
         .ok_or("macOS did not return a Packet Filter ownership token.".to_owned())?;
-    for _ in 0..40 {
-        let still_connected = established_ipv4_ips(pid)
-            .map(|active| active.iter().any(|ip| ips.contains(ip)))
-            .unwrap_or(false);
-        if !still_connected {
-            break;
-        }
-        thread::sleep(Duration::from_millis(200));
-    }
     let rules = pf_rules(&interface, ips);
     if let Err(error) = pfctl(&["-a", PF_ANCHOR, "-f", "-"], Some(&rules)) {
+        let mut token = Some(token);
+        disable_pf(&mut token);
+        return Err(error);
+    }
+    // Existing TCP states predate the new route and would otherwise continue
+    // bypassing Trace until Pokémon happens to reconnect. Install the route
+    // first, then retire only states whose destination is a game-server IP so
+    // TCG Live's immediate retry is captured by the active rules.
+    if let Err(error) = kill_existing_pf_states(ips) {
         let mut token = Some(token);
         disable_pf(&mut token);
         return Err(error);
@@ -615,7 +635,7 @@ fn handle_client(mut stream: UnixStream, owner_uid: u32) {
                 } else {
                     match pokemon_server_ips(pokemon_pid).and_then(|ips| {
                         let next_relay = start_relay()?;
-                        match enable_pf(pokemon_pid, &ips) {
+                        match enable_pf(&ips) {
                             Ok(next_token) => Ok((ips, next_relay, next_token)),
                             Err(error) => {
                                 next_relay.stop();
@@ -693,7 +713,7 @@ pub fn run_if_requested() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{pf_rules, reconnect_rules};
+    use super::{pf_rules, pf_state_kill_args};
     use std::net::Ipv4Addr;
 
     #[test]
@@ -711,12 +731,11 @@ mod tests {
     }
 
     #[test]
-    fn reconnect_bootstrap_returns_tcp_resets_only_to_game_servers() {
+    fn stale_state_cleanup_is_scoped_to_the_game_server_destination() {
         let game_ip = Ipv4Addr::new(3, 86, 122, 250);
-        let rules = reconnect_rules("en0", &[game_ip]);
         assert_eq!(
-            rules,
-            "block return-rst out quick on en0 inet proto tcp from any to 3.86.122.250 port 443\n"
+            pf_state_kill_args(game_ip),
+            ["-k", "0.0.0.0/0", "-k", "3.86.122.250"].map(str::to_owned)
         );
     }
 }

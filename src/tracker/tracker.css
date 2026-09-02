@@ -62,6 +62,12 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(47, 126, 203
 .header-status svg { color: #48965b; }
 .header-status.live > i { background: #54aa64; box-shadow: 0 0 0 4px rgba(84, 170, 100, .14); }
 .header-status.live b { color: #348948; }
+.header-status.ready > i { background: #4f8eab; box-shadow: 0 0 0 4px rgba(79, 142, 171, .14); }
+.header-status.ready b { color: #3d7895; }
+.header-status.connecting > i { background: #d49a27; box-shadow: 0 0 0 4px rgba(212, 154, 39, .14); }
+.header-status.connecting b { color: #9b6a0e; }
+.header-status.error > i { background: #ce5b52; box-shadow: 0 0 0 4px rgba(206, 91, 82, .14); }
+.header-status.error b { color: #a53e37; }
 
 .header-actions { display: flex; align-items: center; gap: 10px; }
 .icon-button { width: 39px; height: 39px; display: grid; place-items: center; border: 1px solid #d1c5b3; border-radius: 11px; background: #fffaf0; cursor: pointer; transition: transform .18s ease, box-shadow .18s ease; }

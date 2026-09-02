@@ -32,6 +32,7 @@ import { buildAttackStops, stepAttack } from './turn-navigation-model.js';
 import { deriveReviewTurnStatus, type PlayerTurnStatus } from './turn-status-model.js';
 import { capturedAtIso, collectCardSourceIds, finalizeReviewForClientExit, matchSummaryFromReview, operationKey, recordingSummaryFromOperation, REDUCER_VERSION } from './match-storage.js';
 import { initialClientLifecycleState, observeClientLifecycle } from './client-lifecycle-model.js';
+import { captureIndicator } from './capture-status-model.js';
 import { UpdateNotice } from './UpdateNotice.js';
 import { CARD_BACK_ART, publicCardArtUrl, resolvedCardArt, showCardBackOnError } from './card-art.js';
 import type {
@@ -510,6 +511,7 @@ export default function TrackerApp() {
   const positionChanges = useMemo(() => new Map(positionChangesForTurn(turnIndex > 0 ? selectedReview?.turns[turnIndex - 1] : undefined, selectedTurn || undefined).map((change) => [change.pokemonId, change])), [selectedReview, selectedTurn, turnIndex]);
   const defeatedIds = useMemo(() => new Set(attackResolution?.hits.flatMap((hit) => hit.knockedOut && hit.targetId ? [hit.targetId] : []) || []), [attackResolution]);
   const defeatedNames = useMemo(() => new Set(attackResolution?.hits.flatMap((hit) => hit.knockedOut && !hit.targetId ? [hit.target] : []) || []), [attackResolution]);
+  const captureStatus = useMemo(() => captureIndicator(environment), [environment]);
 
   const timeline = useMemo(() => buildTimeline(selectedReview?.turns || []), [selectedReview]);
   const attackStops = useMemo(() => buildAttackStops(selectedReview), [selectedReview]);
@@ -1075,7 +1077,7 @@ export default function TrackerApp() {
       <main className={`workspace ${archiveOpen ? 'archive-open' : 'archive-collapsed'} ${timelineOpen ? 'timeline-open' : 'timeline-collapsed'}`}>
         {archiveOpen && <aside className="session-rail">
           <div className="archive-heading" onMouseDown={beginWindowDrag}>
-            <div className="archive-brand"><span><img src="/tracker-assets/trace-mascot.png" alt="" /></span><div><strong>Trace</strong><small>Every turn, in view</small></div><div className={`header-status ${tracking ? 'live' : ''}`}><i /><b>{tracking ? 'Live' : 'Paused'}</b></div></div>
+            <div className="archive-brand"><span><img src="/tracker-assets/trace-mascot.png" alt="" /></span><div><strong>Trace</strong><small>Every turn, in view</small></div><div className={`header-status ${captureStatus.tone}`} title={environment.capture.lastError || undefined}><i /><b>{captureStatus.label}</b></div></div>
             <div className="archive-title"><div><h2>Match archive</h2><p>{archiveTotal} matches recorded</p></div><button className="panel-collapse-button" type="button" aria-label="Collapse match archive" aria-expanded="true" title="Collapse match archive" onClick={() => setArchiveOpen(false)}><CaretLeft size={17} weight="bold" /></button></div>
           </div>
           <div className="sessions">
