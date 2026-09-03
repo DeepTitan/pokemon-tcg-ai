@@ -33,6 +33,7 @@ import { deriveReviewTurnStatus, type PlayerTurnStatus } from './turn-status-mod
 import { capturedAtIso, collectCardSourceIds, finalizeReviewForClientExit, matchSummaryFromReview, operationKey, recordingSummaryFromOperation, REDUCER_VERSION } from './match-storage.js';
 import { initialClientLifecycleState, observeClientLifecycle } from './client-lifecycle-model.js';
 import { captureIndicator } from './capture-status-model.js';
+import { prizeSlotStates } from './prize-layout-model.js';
 import { UpdateNotice } from './UpdateNotice.js';
 import { CARD_BACK_ART, cardCatalogEntryNeedsRefresh, publicCardArtUrl, resolvedCardArt, showCardBackOnError } from './card-art.js';
 import type {
@@ -318,6 +319,27 @@ function ZoneStack({ label, count, tone, onOpen }: { label: string; count: numbe
   return <button type="button" className={`zone-stack ${tone}`} onClick={onOpen} title={`Open ${label}`}><span>{label}</span><span className="zone-stack-cards"><CardsThree size={36} weight="duotone" /></span><b>{count}</b></button>;
 }
 
+function PrizeFan({ count, tone, onOpen }: { count: number; tone: 'coral' | 'blue'; onOpen?: () => void }) {
+  const remaining = Math.max(0, Math.min(6, count));
+  const slots = prizeSlotStates(remaining);
+  return (
+    <button
+      type="button"
+      className={`prize-fan ${tone}`}
+      onClick={onOpen}
+      title="Open Prize cards"
+      aria-label={`${remaining} of 6 Prize cards remaining. Open Prize cards.`}
+    >
+      <span>Prize</span>
+      <span className="prize-fan-cards" aria-hidden="true">
+        {slots.map((state, index) => (
+          <i key={index} className={state} />
+        ))}
+      </span>
+    </button>
+  );
+}
+
 function ZoneCards({ label, cards, catalog, onOpen }: { label: string; cards: TrackedCard[]; catalog: ReadonlyMap<string, CardInfo>; onOpen?: () => void }) {
   const visible = cards.slice(-2).reverse();
   return (
@@ -376,7 +398,7 @@ function PlayerField({ board, canonical, visibility, catalog, choiceFrames, curr
         </div>
         <div className="strip-zones"><div className="prize-summary"><span>Prize</span><b>{canonical.prizes.length || prizesRemaining(board)}</b>{Array.from({ length: 6 }, (_, index) => <i key={index} className={index < (canonical.prizes.length || prizesRemaining(board)) ? 'remaining' : 'taken'} />)}</div></div>
       </div>
-      <div className="field-layout"><ZoneStack label="Prize" count={canonical.prizes.length || prizesRemaining(board)} tone={tone} onOpen={() => openZone('Prize cards', canonical.prizes, 'Prize identities stay private until the game reveals them.')} /><div className="battle-lanes">{opponent ? <>{bench}{active}</> : <>{active}{bench}</>}</div><div className="side-piles"><ZoneStack label="Deck" count={displayedDeckCount(board, canonical.deck.length)} tone={tone} onOpen={() => openZone('Deck', canonical.deck, 'The deck remains face-down outside captured search effects.')} /><ZoneCards label="Discard" cards={board.discardCards || []} catalog={catalog} onOpen={() => openZone('Discard pile', canonical.discard, 'Public discarded cards at this exact action.')} />{canonical.lostZone.length > 0 && <button type="button" className="lost-zone-button" onClick={() => openZone('Lost Zone', canonical.lostZone, 'Cards sent to the Lost Zone are public and cannot be recovered.')}><Sparkle size={13} weight="fill" />Lost Zone <b>{canonical.lostZone.length}</b></button>}</div></div>
+      <div className="field-layout"><PrizeFan count={canonical.prizes.length || prizesRemaining(board)} tone={tone} onOpen={() => openZone('Prize cards', canonical.prizes, 'Prize identities stay private until the game reveals them.')} /><div className="battle-lanes">{opponent ? <>{bench}{active}</> : <>{active}{bench}</>}</div><div className="side-piles"><ZoneStack label="Deck" count={displayedDeckCount(board, canonical.deck.length)} tone={tone} onOpen={() => openZone('Deck', canonical.deck, 'The deck remains face-down outside captured search effects.')} /><ZoneCards label="Discard" cards={board.discardCards || []} catalog={catalog} onOpen={() => openZone('Discard pile', canonical.discard, 'Public discarded cards at this exact action.')} />{canonical.lostZone.length > 0 && <button type="button" className="lost-zone-button" onClick={() => openZone('Lost Zone', canonical.lostZone, 'Cards sent to the Lost Zone are public and cannot be recovered.')}><Sparkle size={13} weight="fill" />Lost Zone <b>{canonical.lostZone.length}</b></button>}</div></div>
       {!opponent && <div className="hand-dock"><HandFan boardName={board.name} cards={canonical.hand} count={handCount} visibility={visibility} catalog={catalog} opponent={false} onOpen={openHand} /></div>}
     </section>
   );
