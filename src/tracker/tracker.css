@@ -250,15 +250,15 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(47, 126, 203
 .zone-stack-cards { width: 54px; height: 70px; display: grid; place-items: center; border: 2px solid rgba(255, 255, 255, .76); border-radius: 8px; color: #fff; background: #ba5a50; box-shadow: 0 4px 8px rgba(73, 37, 27, .18); }
 .zone-stack.blue .zone-stack-cards { background: #367fca; }
 .zone-stack > b, .zone-card-group > b { min-width: 30px; padding: 3px 7px; border-radius: 5px; background: rgba(47, 34, 27, .66); color: #fff; font-size: 10px; text-align: center; }
-.prize-fan { width: 64px; padding: 6px 3px 7px; display: grid; justify-self: center; justify-items: center; gap: 4px; border: 1px solid #d8d2c8; border-radius: 10px; color: #725e48; background: #efebe5; box-shadow: inset 0 3px 0 rgba(185, 96, 86, .55); font: inherit; cursor: pointer; }
+.prize-fan { width: 138px; padding: 7px 3px 8px; display: grid; justify-self: center; justify-items: center; gap: 5px; border: 1px solid #d8d2c8; border-radius: 10px; color: #725e48; background: #efebe5; box-shadow: inset 0 3px 0 rgba(185, 96, 86, .55); font: inherit; cursor: pointer; }
 .prize-fan.blue { box-shadow: inset 0 3px 0 rgba(61, 120, 170, .55); }
 .prize-fan > span:first-child { color: #6e675f; font-size: 7.5px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
-.prize-fan-cards { position: relative; width: 54px; height: 69px; display: block; }
-.prize-fan-cards i { position: absolute; width: 25px; height: 35px; display: block; overflow: hidden; border: 1px solid rgba(255, 255, 255, .9); border-radius: 4px; background: #f7f3e9 url('/tracker-assets/pokemon-card-back.jpg') center / cover no-repeat; box-shadow: 0 2px 5px rgba(53, 45, 37, .2); transform: rotate(-2deg); }
-.prize-fan-cards i:nth-child(even) { left: 29px; transform: rotate(2deg); }
+.prize-fan-cards { position: relative; width: 132px; height: 176px; display: block; }
+.prize-fan-cards i { position: absolute; width: 64px; height: 88px; display: block; overflow: hidden; border: 2px solid rgba(255, 255, 255, .92); border-radius: 6px; background: #f7f3e9 url('/tracker-assets/pokemon-card-back.jpg') center / cover no-repeat; box-shadow: 0 3px 8px rgba(53, 45, 37, .24); transform: rotate(-2deg); }
+.prize-fan-cards i:nth-child(even) { left: 68px; transform: rotate(2deg); }
 .prize-fan-cards i:nth-child(1), .prize-fan-cards i:nth-child(2) { top: 0; }
-.prize-fan-cards i:nth-child(3), .prize-fan-cards i:nth-child(4) { top: 17px; }
-.prize-fan-cards i:nth-child(5), .prize-fan-cards i:nth-child(6) { top: 34px; }
+.prize-fan-cards i:nth-child(3), .prize-fan-cards i:nth-child(4) { top: 44px; }
+.prize-fan-cards i:nth-child(5), .prize-fan-cards i:nth-child(6) { top: 88px; }
 .prize-fan-cards i.taken { border: 1px dashed color-mix(in srgb, #8c8175, transparent 28%); background: rgba(255, 255, 255, .22); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .2); }
 .prize-fan-cards i.taken::before,
 .prize-fan-cards i.taken::after { position: absolute; top: 50%; left: 50%; width: 12px; height: 1px; content: ''; background: rgba(102, 92, 82, .42); }
@@ -740,7 +740,7 @@ body,
 .opponent-hand-summary > b { min-width: 13px; font-family: Nunito, sans-serif; font-size: 10px; font-weight: 1000; text-align: center; }
 
 .field-layout {
-  grid-template-columns: 64px minmax(0, 1fr) 64px;
+  grid-template-columns: 138px minmax(0, 1fr) 64px;
   gap: 10px;
 }
 .battle-lanes { padding: 7px 8px; gap: 6px; }
@@ -774,7 +774,6 @@ body,
 .pokemon-slot.active { border-width: 2px; box-shadow: 0 6px 13px rgba(53, 45, 36, .18); }
 
 .zone-stack,
-.prize-fan,
 .side-piles { width: 64px; }
 .zone-stack {
   justify-self: center;
@@ -927,10 +926,15 @@ body,
   .session-card { grid-template-columns: 76px 32px minmax(0, 1fr); }
   .session-board { width: 76px; height: 63px; }
   .session-avatar { width: 32px; height: 32px; }
-  .field-layout { grid-template-columns: 60px minmax(0, 1fr) 60px; gap: 7px; }
+  .field-layout { grid-template-columns: 120px minmax(0, 1fr) 60px; gap: 7px; }
   .zone-stack,
-  .prize-fan,
   .side-piles { width: 60px; }
+  .prize-fan { width: 120px; padding-inline: 3px; }
+  .prize-fan-cards { width: 112px; height: 146px; }
+  .prize-fan-cards i { width: 54px; height: 74px; }
+  .prize-fan-cards i:nth-child(even) { left: 58px; }
+  .prize-fan-cards i:nth-child(3), .prize-fan-cards i:nth-child(4) { top: 36px; }
+  .prize-fan-cards i:nth-child(5), .prize-fan-cards i:nth-child(6) { top: 72px; }
   .turn-controls { grid-template-columns: minmax(220px, 280px) minmax(82px, 1fr) auto; gap: 9px; }
 }
 
@@ -944,16 +948,15 @@ body,
   .player-strip { margin: -6px -9px 0; padding: 1px 10px; }
   .battle-lanes { padding: 3px 5px; }
   .bench-row { min-height: 80px; padding: 3px 5px; }
-  .field-layout { grid-template-columns: 56px minmax(0, 1fr) 56px; gap: 6px; }
+  .field-layout { grid-template-columns: 112px minmax(0, 1fr) 56px; gap: 6px; }
   .zone-stack,
-  .prize-fan,
   .side-piles { width: 56px; }
-  .prize-fan { padding-inline: 1px; }
-  .prize-fan-cards { width: 50px; height: 60px; }
-  .prize-fan-cards i { width: 23px; height: 32px; }
-  .prize-fan-cards i:nth-child(even) { left: 27px; }
-  .prize-fan-cards i:nth-child(3), .prize-fan-cards i:nth-child(4) { top: 14px; }
-  .prize-fan-cards i:nth-child(5), .prize-fan-cards i:nth-child(6) { top: 28px; }
+  .prize-fan { width: 112px; padding: 4px 2px 5px; gap: 3px; }
+  .prize-fan-cards { width: 104px; height: 127px; }
+  .prize-fan-cards i { width: 50px; height: 69px; }
+  .prize-fan-cards i:nth-child(even) { left: 54px; }
+  .prize-fan-cards i:nth-child(3), .prize-fan-cards i:nth-child(4) { top: 29px; }
+  .prize-fan-cards i:nth-child(5), .prize-fan-cards i:nth-child(6) { top: 58px; }
   .turn-controls { height: 66px; grid-template-columns: minmax(210px, 270px) minmax(78px, 1fr) auto; }
   .turn-caption > strong { font-size: 12px; }
 }
