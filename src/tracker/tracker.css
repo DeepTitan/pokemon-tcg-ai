@@ -1667,18 +1667,17 @@ body,
   top: 50%;
   left: max(7px, calc(50% - 160px));
   z-index: 7;
-  width: 82px;
-  padding: 5px;
+  width: 70px;
+  padding: 0;
   display: grid;
   justify-items: center;
-  gap: 4px;
-  border: 1px solid #91a68f;
-  border-radius: 10px;
+  border: 0;
+  border-radius: 7px;
   color: #34473a;
   text-align: center;
   text-transform: none;
-  background: linear-gradient(165deg, #fbfcf5, #e8eee3);
-  box-shadow: 0 0 0 3px rgba(101, 145, 103, .11), 0 11px 20px rgba(42, 55, 41, .22);
+  background: transparent;
+  box-shadow: none;
   transform: translateY(-56%) rotate(-1.25deg);
 }
 
@@ -1695,28 +1694,15 @@ button.stadium-marker {
 }
 
 button.stadium-marker:hover {
-  border-color: #5f8b62;
-  box-shadow: 0 0 0 4px rgba(101, 145, 103, .15), 0 14px 24px rgba(42, 55, 41, .26);
+  box-shadow: none;
   transform: translateY(-60%) rotate(0);
 }
+
+button.stadium-marker:hover .stadium-card-peek { box-shadow: 0 0 0 4px rgba(101, 145, 103, .15), 0 14px 24px rgba(42, 55, 41, .27); }
 
 button.stadium-marker:focus-visible {
   outline: 2px solid #d79f12;
   outline-offset: 2px;
-}
-
-.stadium-kicker {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
-  color: #4f7554;
-  font-size: 5.5px;
-  font-weight: 950;
-  letter-spacing: .07em;
-  line-height: 1;
-  text-transform: uppercase;
 }
 
 .stadium-card-peek {
@@ -1734,13 +1720,10 @@ button.stadium-marker:focus-visible {
 
 .stadium-card-peek img { width: 100%; height: 100%; display: block; object-fit: cover; }
 .stadium-card-peek.fallback { border-style: dashed; box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .3); }
-.stadium-marker > strong { width: 100%; overflow: hidden; font-family: Nunito, sans-serif; font-size: 7px; font-weight: 950; line-height: 1.1; text-overflow: ellipsis; white-space: nowrap; }
 
 /* The edge nearest the player records who put the Stadium into play. */
-.stadium-marker.owned-local { border-color: #6f9abe; box-shadow: 0 0 0 3px rgba(78, 132, 180, .12), 0 11px 20px rgba(42, 55, 41, .22); }
-.stadium-marker.owned-local .stadium-kicker { color: #3f729d; }
-.stadium-marker.owned-opponent { border-color: #c67e75; box-shadow: 0 0 0 3px rgba(185, 97, 88, .12), 0 11px 20px rgba(42, 55, 41, .22); }
-.stadium-marker.owned-opponent .stadium-kicker { color: #a45148; }
+.stadium-marker.owned-local .stadium-card-peek { border-color: #8fb5d3; box-shadow: 0 0 0 3px rgba(78, 132, 180, .14), 0 11px 20px rgba(42, 55, 41, .22); }
+.stadium-marker.owned-opponent .stadium-card-peek { border-color: #d28f87; box-shadow: 0 0 0 3px rgba(185, 97, 88, .14), 0 11px 20px rgba(42, 55, 41, .22); }
 
 /* The action story moves to the other side when the opponent owns the Stadium. */
 .opponent .active-lane.has-stadium-zone .choice-stage { right: calc(50% + 70px); left: auto; }
@@ -1758,11 +1741,9 @@ button.stadium-marker:focus-visible {
 @media (max-height: 850px) {
   .status-pill { min-height: 18px; padding-block: 2px; }
   .status-pill svg { width: 9px; height: 9px; }
-  .stadium-marker { left: max(3px, calc(50% - 135px)); width: 74px; padding: 4px; }
+  .stadium-marker { left: max(3px, calc(50% - 135px)); width: 64px; }
   .opponent .stadium-marker { right: max(3px, calc(50% - 135px)); left: auto; }
   .stadium-card-peek { width: 64px; height: 88px; }
-  .stadium-kicker { font-size: 5px; }
-  .stadium-marker > strong { font-size: 6px; }
 }
 
 /* Archive previews are miniature renders of each match's final board. */

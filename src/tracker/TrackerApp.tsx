@@ -163,13 +163,9 @@ function StadiumMarker({
   const artwork = resolvedCardArt(resolvedSourceId, card?.imageUrl || info?.imageDataUrl);
   const ownerClass = owner === localPlayer ? 'owned-local' : owner === opponent ? 'owned-opponent' : '';
   const context = `${resolvedName} is in play${owner ? ` · Played by ${owner}` : ''}`;
-  const content = <>
-    <span className="stadium-kicker"><ShieldCheck size={12} weight="fill" />Stadium in play</span>
-    <span className={`stadium-card-peek ${resolvedCard || info ? '' : 'fallback'}`} aria-hidden="true">
-      {resolvedCard || info ? <img src={artwork} data-card-id={resolvedSourceId} alt="" onError={showCardBackOnError} /> : <ShieldCheck size={24} weight="fill" />}
-    </span>
-    <strong>{resolvedName}</strong>
-  </>;
+  const content = <span className={`stadium-card-peek ${resolvedCard || info ? '' : 'fallback'}`} aria-hidden="true">
+    {resolvedCard || info ? <img src={artwork} data-card-id={resolvedSourceId} alt="" onError={showCardBackOnError} /> : <ShieldCheck size={24} weight="fill" />}
+  </span>;
   return resolvedCard
     ? <button type="button" className={`stadium-marker ${ownerClass}`} onClick={() => onOpen(resolvedCard)} aria-label={`${context}. Open card details.`} title={`${context} · Click to inspect`}>{content}</button>
     : <div className={`stadium-marker ${ownerClass}`} aria-label={context} title={context}>{content}</div>;
