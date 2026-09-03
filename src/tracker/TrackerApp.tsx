@@ -22,7 +22,7 @@ import { LiveReviewAssembler } from './live-operation-reducer.js';
 import { ReviewOverlay, type ReviewInspector } from './ReviewInteractions.js';
 import { displayedDeckCount, trackedTurnToCanonical } from './review-state-adapter.js';
 import { cardInfoToEngineCard, cardSourceIdFromReviewCard } from './card-adapter.js';
-import { countEnergyTypes, EnergyBadge, findEnergyType } from './EnergyBadge.js';
+import { findEnergyType } from './EnergyBadge.js';
 import { buildTimeline, eventKeyForReviewIndex } from './timeline-model.js';
 import { cardEffectSummary } from './card-effect-model.js';
 import { attackResolutionForTurn, type AttackResolution } from './attack-resolution-model.js';
@@ -34,8 +34,10 @@ import { capturedAtIso, collectCardSourceIds, finalizeReviewForClientExit, match
 import { initialClientLifecycleState, observeClientLifecycle } from './client-lifecycle-model.js';
 import { captureIndicator } from './capture-status-model.js';
 import { archiveMatchup, formatMatchDuration, formatPrizeScore } from './archive-summary-model.js';
+import { opponentHandFanSlots } from './hand-layout-model.js';
+import { prizeSlotStates } from './prize-layout-model.js';
 import { UpdateNotice } from './UpdateNotice.js';
-import { CARD_BACK_ART, publicCardArtUrl, resolvedCardArt, showCardBackOnError } from './card-art.js';
+import { CARD_BACK_ART, cardCatalogEntryNeedsRefresh, findCatalogCard, publicCardArtUrl, resolvedCardArt, showCardBackOnError } from './card-art.js';
 import type {
   CapturedOperation, CardInfo, CanonicalReviewState, MatchReview, MatchSummary, ReviewCardVisibility, ReviewSelection, TrackedCard, TrackedChoiceCard, TrackedPlayerBoard,
   TrackedPokemon, TrackedTurn, TrackerEnvironment, TrackerEventKind,
@@ -46,6 +48,7 @@ import './tracker.css';
 const STORAGE_KEY = 'match-lens/reviews-v1';
 const STORAGE_MIGRATED_KEY = 'trace/reviews-sqlite-v1';
 const MAX_REVIEWS = 24;
+const CARD_ART_RETRY_DELAY_MS = 10_000;
 
 function beginWindowDrag(event: ReactMouseEvent<HTMLElement>): void {
   if (event.button !== 0 || !isTauri()) return;
@@ -137,6 +140,7 @@ function StadiumMarker({
   card,
   name,
   owner,
+  catalog,
   localPlayer,
   opponent,
   onOpen,
@@ -144,21 +148,27 @@ function StadiumMarker({
   card: Card | null;
   name?: string;
   owner?: string;
+  catalog: ReadonlyMap<string, CardInfo>;
   localPlayer: string;
   opponent: string;
   onOpen: (card: Card) => void;
 }) {
   if (!name) return null;
+  const sourceId = card ? cardSourceIdFromReviewCard(card) : undefined;
+  const info = findCatalogCard(sourceId, name, catalog);
+  const resolvedSourceId = info?.id || sourceId;
+  const resolvedName = info?.name || card?.name || name;
+  const resolvedCard = info
+    ? cardInfoToEngineCard(info, card?.id || `stadium:${info.id}`, resolvedName, info.id)
+    : card;
+  const artwork = resolvedCardArt(resolvedSourceId, card?.imageUrl || info?.imageDataUrl);
   const ownerClass = owner === localPlayer ? 'owned-local' : owner === opponent ? 'owned-opponent' : '';
-  const context = `${name} is in play${owner ? ` · Played by ${owner}` : ''}`;
-  const content = <>
-    <span className={`stadium-card-peek ${card ? '' : 'fallback'}`} aria-hidden="true">
-      {card ? <img src={card.imageUrl || fallbackCardArt(name)} alt="" onError={(event) => { event.currentTarget.onerror = null; event.currentTarget.src = fallbackCardArt(name); }} /> : <ShieldCheck size={14} weight="fill" />}
-    </span>
-    <span className="stadium-copy"><small>Stadium</small><strong>{name}</strong></span>
-  </>;
-  return card
-    ? <button type="button" className={`stadium-marker ${ownerClass}`} onClick={() => onOpen(card)} aria-label={`${context}. Open card details.`} title={`${context} · Click to inspect`}>{content}</button>
+  const context = `${resolvedName} is in play${owner ? ` · Played by ${owner}` : ''}`;
+  const content = <span className={`stadium-card-peek ${resolvedCard || info ? '' : 'fallback'}`} aria-hidden="true">
+    {resolvedCard || info ? <img src={artwork} data-card-id={resolvedSourceId} alt="" onError={showCardBackOnError} /> : <ShieldCheck size={24} weight="fill" />}
+  </span>;
+  return resolvedCard
+    ? <button type="button" className={`stadium-marker ${ownerClass}`} onClick={() => onOpen(resolvedCard)} aria-label={`${context}. Open card details.`} title={`${context} · Click to inspect`}>{content}</button>
     : <div className={`stadium-marker ${ownerClass}`} aria-label={context} title={context}>{content}</div>;
 }
 
@@ -169,38 +179,36 @@ function PokemonSlot({ pokemon, catalog, active = false, defeated = false, attac
   const image = resolvedCardImage(pokemon, catalog);
   const displayName = resolvedCardInfo(pokemon, catalog)?.name || pokemon.name;
   const displayedDamage = damageChange?.after ?? pokemon.damage;
-  const energyAttachments = pokemon.energies.map((name, index) => {
+  const energyAttachmentCount = Math.max(pokemon.energies.length, pokemon.energyCards?.length || 0);
+  const energyAttachments = Array.from({ length: energyAttachmentCount }, (_, index) => {
     const card = pokemon.energyCards?.[index];
+    const name = pokemon.energies[index] || card?.name || 'Energy';
     const info = card?.cardId ? catalog.get(card.cardId) || catalog.get(card.cardId.toLowerCase()) : undefined;
     const displayName = info?.name || card?.name || name;
     return {
       card,
       displayName,
-      special: Boolean(card) && !/^Basic\b/i.test(displayName),
+      id: card?.id || `${pokemon.id}:energy:${index}`,
       type: findEnergyType(info?.cardType, card?.cardType, card?.name, name),
     };
   });
-  const basicEnergyTypes = energyAttachments
-    .filter((attachment) => !attachment.special)
-    .map((attachment) => attachment.type)
-    .filter((type): type is NonNullable<typeof type> => Boolean(type));
-  const specialEnergies = energyAttachments.filter((attachment) => attachment.special && attachment.card);
   const tools = pokemon.toolCards || [];
   return (
     <button type="button" className={`pokemon-slot ${active ? 'active' : ''} ${defeated ? 'defeated' : ''} ${attacking ? 'attacking' : ''} ${damageChange ? damageChange.delta > 0 ? 'damage-increased' : 'damage-decreased' : ''} ${positionChange ? `position-changed moved-to-${positionChange.to}` : ''}`} data-pokemon-id={pokemon.id} data-pokemon-name={displayName} title={`Inspect ${displayName}${pokemon.cardId ? ` · ${pokemon.cardId}` : ''}`} onClick={() => onOpen?.(pokemon.id)}>
-      <img className="card-art" src={image} alt={displayName} onError={showCardBackOnError} />
+      <img className="card-art" src={image} data-card-id={pokemon.cardId} alt={displayName} onError={showCardBackOnError} />
       {displayedDamage > 0 && <b className="damage-token">{displayedDamage}</b>}
       {damageChange && <span className={`damage-change-badge ${damageChange.delta > 0 ? 'added' : 'removed'}`} aria-label={damageChange.delta > 0 ? `${damageChange.delta} damage added; ${damageChange.after} total damage` : `${Math.abs(damageChange.delta)} damage removed; ${damageChange.after} total damage`}><b>{damageChange.delta > 0 ? '+' : '−'}{Math.abs(damageChange.delta)}</b><small>damage</small></span>}
       {positionChange && <span className={`position-change-badge to-${positionChange.to}`} aria-label={`${displayName} moved from ${positionChange.from} to ${positionChange.to} by ${positionChange.cause}`} title={`${positionChange.from === 'active' ? 'Active' : 'Bench'} → ${positionChange.to === 'active' ? 'Active' : 'Bench'} · ${positionChange.cause}`}>
         {positionChange.to === 'active' ? <ArrowUp size={10} weight="bold" /> : <ArrowDown size={10} weight="bold" />}
         <b>{positionChange.to === 'active' ? 'Active' : 'Bench'}</b>
       </span>}
-      {energyAttachments.length > 0 && <span className="attached-energy-preview" aria-label={`${pokemon.energies.join(', ')} attached`}>
-        {specialEnergies.slice(-2).map(({ card, displayName }) => <span className="special-energy-card" title={`${displayName} · Special Energy`} key={card!.id}><img src={resolvedCardImage(card!, catalog)} alt="" onError={showCardBackOnError} /></span>)}
-        {specialEnergies.length > 2 && <b className="special-energy-overflow" aria-label={`${specialEnergies.length - 2} more Special Energy cards`}>+{specialEnergies.length - 2}</b>}
-        {countEnergyTypes(basicEnergyTypes).map(({ type, count }) => <EnergyBadge key={type} type={type} count={count} compact />)}
+      {energyAttachments.length > 0 && <span className="attached-energy-preview" aria-label={`${energyAttachments.map(({ displayName: name }) => name).join(', ')} attached`}>
+        {energyAttachments.slice(-3).map(({ card, displayName: energyName, id, type }) => card
+          ? <span className="attached-energy-card" title={`${energyName} · Attached Energy`} key={id}><img src={resolvedCardImage(card, catalog)} data-card-id={card.cardId} alt="" onError={showCardBackOnError} /></span>
+          : <span className={`attached-energy-card energy-card-fallback ${type ? `energy-${type.toLowerCase()}` : ''}`} title={`${energyName} · Attached Energy`} key={id}><i aria-hidden="true" /><small>{energyName.replace(/^Basic\s*/i, '').replace(/\s*Energy$/i, '') || 'Energy'}</small></span>)}
+        {energyAttachments.length > 3 && <b className="attached-energy-overflow" aria-label={`${energyAttachments.length - 3} more attached Energy cards`}>+{energyAttachments.length - 3}</b>}
       </span>}
-      {tools.length > 0 && <span className="attached-tool-preview" aria-label={`${tools.map((tool) => `${resolvedCardInfo(tool, catalog)?.name || tool.name} Tool`).join(', ')} attached`}>{tools.slice(-2).map((tool) => { const name = resolvedCardInfo(tool, catalog)?.name || tool.name; return <span className="attached-tool-card" title={`${name} · Pokémon Tool`} key={tool.id}><img src={resolvedCardImage(tool, catalog)} alt="" onError={showCardBackOnError} /><small>Tool</small></span>; })}</span>}
+      {tools.length > 0 && <span className="attached-tool-preview" aria-label={`${tools.map((tool) => `${resolvedCardInfo(tool, catalog)?.name || tool.name} Tool`).join(', ')} attached`}>{tools.slice(-2).map((tool) => { const name = resolvedCardInfo(tool, catalog)?.name || tool.name; return <span className="attached-tool-card" title={`${name} · Pokémon Tool`} key={tool.id}><img src={resolvedCardImage(tool, catalog)} data-card-id={tool.cardId} alt="" onError={showCardBackOnError} /><small>Tool</small></span>; })}</span>}
       {defeated && <span className="knockout-stamp" aria-label="Knocked out"><b>KO</b><small>Knocked out</small></span>}
     </button>
   );
@@ -301,7 +309,7 @@ function ChoiceStage({ boardName, frames, currentReviewIndex, catalog, onOpen }:
         const name = info?.name || card.name;
         const current = frame.reviewIndex === currentReviewIndex;
         const roleCopy = card.choiceRole === 'discarded' ? 'Discarded card' : card.choiceRole === 'chosen' ? 'Chosen card' : card.choiceRole === 'promoted' ? 'Promoted to Active' : 'Action card';
-        return <button type="button" className={`choice-card role-${card.choiceRole} ${current ? 'current' : ''}`} aria-current={current ? 'step' : undefined} aria-label={`${roleCopy}: ${name}`} title={`${frame.label} · ${roleCopy}: ${name}`} onClick={() => onOpen(card)} key={`${frame.reviewIndex}-${card.id}-${index}`}><img src={resolvedCardImage(card, catalog)} alt={name} onError={showCardBackOnError} /></button>;
+        return <button type="button" className={`choice-card role-${card.choiceRole} ${current ? 'current' : ''}`} aria-current={current ? 'step' : undefined} aria-label={`${roleCopy}: ${name}`} title={`${frame.label} · ${roleCopy}: ${name}`} onClick={() => onOpen(card)} key={`${frame.reviewIndex}-${card.id}-${index}`}><img src={resolvedCardImage(card, catalog)} data-card-id={card.cardId} alt={name} onError={showCardBackOnError} /></button>;
       })}
     </div>
   </aside>;
@@ -318,10 +326,31 @@ function ZoneStack({ label, count, tone, onOpen }: { label: string; count: numbe
   return <button type="button" className={`zone-stack ${tone}`} onClick={onOpen} title={`Open ${label}`}><span>{label}</span><span className="zone-stack-cards"><CardsThree size={36} weight="duotone" /></span><b>{count}</b></button>;
 }
 
+function PrizeFan({ count, tone, onOpen }: { count: number; tone: 'coral' | 'blue'; onOpen?: () => void }) {
+  const remaining = Math.max(0, Math.min(6, count));
+  const slots = prizeSlotStates(remaining);
+  return (
+    <button
+      type="button"
+      className={`prize-fan ${tone}`}
+      onClick={onOpen}
+      title="Open Prize cards"
+      aria-label={`${remaining} of 6 Prize cards remaining. Open Prize cards.`}
+    >
+      <span>Prize</span>
+      <span className="prize-fan-cards" aria-hidden="true">
+        {slots.map((state, index) => (
+          <i key={index} className={state} />
+        ))}
+      </span>
+    </button>
+  );
+}
+
 function ZoneCards({ label, cards, catalog, onOpen }: { label: string; cards: TrackedCard[]; catalog: ReadonlyMap<string, CardInfo>; onOpen?: () => void }) {
   const visible = cards.slice(-2).reverse();
   return (
-    <button type="button" className="zone-card-group" onClick={onOpen} title={`Open ${label}`}><span>{label}</span><span className="zone-card-stack">{(visible.length ? visible : [{ id: `fallback-${label}`, name: label }]).map((card) => { const name = resolvedCardInfo(card, catalog)?.name || card.name; return <img key={card.id} src={resolvedCardImage(card, catalog)} title={name} alt={name} onError={showCardBackOnError} />; })}</span><b>{cards.length}</b></button>
+    <button type="button" className="zone-card-group" onClick={onOpen} title={`Open ${label}`}><span>{label}</span><span className="zone-card-stack">{(visible.length ? visible : [{ id: `fallback-${label}`, name: label }]).map((card) => { const name = resolvedCardInfo(card, catalog)?.name || card.name; return <img key={card.id} src={resolvedCardImage(card, catalog)} data-card-id={card.cardId} title={name} alt={name} onError={showCardBackOnError} />; })}</span><b>{cards.length}</b></button>
   );
 }
 
@@ -342,7 +371,7 @@ function HandFan({ boardName, cards, count, visibility, catalog, opponent, onOpe
           const hidden = opponent || !card;
           return hidden
             ? <span className="hand-fan-card hidden" key={card?.id || `hidden-${index}`}><img src="/tracker-assets/pokemon-card-back.jpg" alt="" /></span>
-            : <span className="hand-fan-card known" key={card.id} title={card.name}><img src={reviewCardImage(card, catalog)} alt="" onError={showCardBackOnError} /></span>;
+            : <span className="hand-fan-card known" key={card.id} title={card.name}><img src={reviewCardImage(card, catalog)} data-card-id={cardSourceIdFromReviewCard(card)} alt="" onError={showCardBackOnError} /></span>;
         })}
         {total > displayed && <em>+{total - displayed}</em>}
       </span>
@@ -351,12 +380,26 @@ function HandFan({ boardName, cards, count, visibility, catalog, opponent, onOpe
   );
 }
 
-function PlayerField({ board, canonical, visibility, catalog, choiceFrames, currentReviewIndex, turnNumber, status, defeatedIds, defeatedNames, damageChanges, positionChanges, attackerId, opponent = false, avatar, onOpenPokemon, onOpenChoice, onOpenZone }: { board: TrackedPlayerBoard; canonical: PlayerState; visibility: Record<string, ReviewCardVisibility>; catalog: ReadonlyMap<string, CardInfo>; choiceFrames: TurnChoiceFrame[]; currentReviewIndex: number; turnNumber: number; status: PlayerTurnStatus; defeatedIds: ReadonlySet<string>; defeatedNames: ReadonlySet<string>; damageChanges: ReadonlyMap<string, PokemonDamageChange>; positionChanges: ReadonlyMap<string, PokemonPositionChange>; attackerId?: string; opponent?: boolean; avatar: string; onOpenPokemon: (id: string) => void; onOpenChoice: (card: TrackedCard) => void; onOpenZone: (title: string, subtitle: string, cards: Card[], visibility: Record<string, ReviewCardVisibility>) => void }) {
+function OpponentHandSummary({ boardName, count, onOpen }: { boardName: string; count: number; onOpen: () => void }) {
+  const slots = opponentHandFanSlots(count);
+  return (
+    <button type="button" className="opponent-hand-summary" onClick={onOpen} title={`Open ${boardName}'s hand`} aria-label={`${boardName} hand, ${count} card${count === 1 ? '' : 's'}`}>
+      <span className="opponent-hand-mini-fan" aria-hidden="true">
+        {slots.map((state, index) => <i key={index} className={state} />)}
+      </span>
+      <span className="opponent-hand-label">Hand</span>
+      <b>{count}</b>
+    </button>
+  );
+}
+
+function PlayerField({ board, canonical, visibility, catalog, choiceFrames, currentReviewIndex, turnNumber, status, stadiumCard, stadiumName, stadiumOwner, localPlayerName, opponentName, defeatedIds, defeatedNames, damageChanges, positionChanges, attackerId, opponent = false, avatar, onOpenPokemon, onOpenChoice, onOpenCard, onOpenZone }: { board: TrackedPlayerBoard; canonical: PlayerState; visibility: Record<string, ReviewCardVisibility>; catalog: ReadonlyMap<string, CardInfo>; choiceFrames: TurnChoiceFrame[]; currentReviewIndex: number; turnNumber: number; status: PlayerTurnStatus; stadiumCard: Card | null; stadiumName?: string; stadiumOwner?: string; localPlayerName: string; opponentName: string; defeatedIds: ReadonlySet<string>; defeatedNames: ReadonlySet<string>; damageChanges: ReadonlyMap<string, PokemonDamageChange>; positionChanges: ReadonlyMap<string, PokemonPositionChange>; attackerId?: string; opponent?: boolean; avatar: string; onOpenPokemon: (id: string) => void; onOpenChoice: (card: TrackedCard) => void; onOpenCard: (card: Card) => void; onOpenZone: (title: string, subtitle: string, cards: Card[], visibility: Record<string, ReviewCardVisibility>) => void }) {
   const benches = [...board.bench, ...Array.from({ length: Math.max(0, 5 - board.bench.length) }, () => null)].slice(0, 5);
   const tone = opponent ? 'coral' : 'blue';
   const isDefeated = (pokemon: TrackedPokemon | null) => Boolean(pokemon && (defeatedIds.has(pokemon.id) || defeatedNames.has(pokemon.name)));
   const bench = <div className="bench-row" aria-label={`${board.name} bench`}>{benches.map((pokemon, index) => <PokemonSlot key={pokemon?.id || `empty-${index}`} pokemon={pokemon} catalog={catalog} defeated={isDefeated(pokemon)} attacking={pokemon?.id === attackerId} damageChange={pokemon ? damageChanges.get(pokemon.id) : undefined} positionChange={pokemon ? positionChanges.get(pokemon.id) : undefined} onOpen={onOpenPokemon} />)}</div>;
-  const active = <div className="active-lane"><span>Active</span><PokemonSlot pokemon={board.active} catalog={catalog} active defeated={isDefeated(board.active)} attacking={board.active?.id === attackerId} damageChange={board.active ? damageChanges.get(board.active.id) : undefined} positionChange={board.active ? positionChanges.get(board.active.id) : undefined} onOpen={onOpenPokemon} /><ChoiceStage boardName={board.name} frames={choiceFrames} currentReviewIndex={currentReviewIndex} catalog={catalog} onOpen={onOpenChoice} /></div>;
+  const stadiumHere = Boolean(stadiumName) && (stadiumOwner ? stadiumOwner === board.name : !opponent);
+  const active = <div className={`active-lane ${stadiumHere ? 'has-stadium-zone' : ''}`}><span>Active</span>{stadiumHere && <StadiumMarker card={stadiumCard} name={stadiumName} owner={stadiumOwner} catalog={catalog} localPlayer={localPlayerName} opponent={opponentName} onOpen={onOpenCard} />}<PokemonSlot pokemon={board.active} catalog={catalog} active defeated={isDefeated(board.active)} attacking={board.active?.id === attackerId} damageChange={board.active ? damageChanges.get(board.active.id) : undefined} positionChange={board.active ? positionChanges.get(board.active.id) : undefined} onOpen={onOpenPokemon} /><ChoiceStage boardName={board.name} frames={choiceFrames} currentReviewIndex={currentReviewIndex} catalog={catalog} onOpen={onOpenChoice} /></div>;
   const openZone = (label: string, cards: Card[], note: string) => onOpenZone(`${board.name} · ${label}`, note, cards, visibility);
   const handCount = Math.max(canonical.hand.length, board.handCount);
   const openHand = () => onOpenZone(`${board.name} · Hand`, opponent
@@ -367,7 +410,7 @@ function PlayerField({ board, canonical, visibility, catalog, choiceFrames, curr
   return (
     <section className={`player-field ${opponent ? 'opponent' : 'local'} ${status.isCurrentTurn ? 'current-turn' : ''} ${status.itemLocked ? 'item-locked' : ''}`}>
       <div className="player-strip">
-        <div className="player-identity"><img src={avatar} alt="" /><div><span>{opponent ? 'Opponent' : 'You'}</span><strong>{board.name}</strong></div>{opponent && <button type="button" className="opponent-hand-summary" onClick={openHand} title={`Open ${board.name}'s hand`} aria-label={`${board.name} hand, ${handCount} card${handCount === 1 ? '' : 's'}`}><Hand size={12} weight="fill" /><span>Hand</span><b>{handCount}</b></button>}</div>
+        <div className="player-identity"><img src={avatar} alt="" /><div><span>{opponent ? 'Opponent' : 'You'}</span><strong>{board.name}</strong></div>{opponent && <OpponentHandSummary boardName={board.name} count={handCount} onOpen={openHand} />}</div>
         <div className="turn-statuses" aria-label={`${board.name} turn status`}>
           <span className="status-slot turn-slot">{status.isCurrentTurn && <span className="status-pill current turn-number-pill" aria-label={`Current turn, turn ${turnNumber}`}><Play size={10} weight="fill" /><span>Turn</span><b>{turnNumber}</b><i>Current</i></span>}</span>
           <span className="status-slot supporter-slot"><span className={`status-pill supporter ${status.supporterUsed ? 'active' : 'inactive'}`} aria-label={status.supporterUsed ? 'Supporter used' : 'Supporter not used'} title={status.supporterUsed ? 'A Supporter has already been played this turn' : 'No Supporter has been played this turn'}><Hand size={11} weight="fill" />Supporter <CheckCircle className="status-check" size={9} weight="fill" /></span></span>
@@ -376,7 +419,7 @@ function PlayerField({ board, canonical, visibility, catalog, choiceFrames, curr
         </div>
         <div className="strip-zones"><div className="prize-summary"><span>Prize</span><b>{canonical.prizes.length || prizesRemaining(board)}</b>{Array.from({ length: 6 }, (_, index) => <i key={index} className={index < (canonical.prizes.length || prizesRemaining(board)) ? 'remaining' : 'taken'} />)}</div></div>
       </div>
-      <div className="field-layout"><ZoneStack label="Prize" count={canonical.prizes.length || prizesRemaining(board)} tone={tone} onOpen={() => openZone('Prize cards', canonical.prizes, 'Prize identities stay private until the game reveals them.')} /><div className="battle-lanes">{opponent ? <>{bench}{active}</> : <>{active}{bench}</>}</div><div className="side-piles"><ZoneStack label="Deck" count={displayedDeckCount(board, canonical.deck.length)} tone={tone} onOpen={() => openZone('Deck', canonical.deck, 'The deck remains face-down outside captured search effects.')} /><ZoneCards label="Discard" cards={board.discardCards || []} catalog={catalog} onOpen={() => openZone('Discard pile', canonical.discard, 'Public discarded cards at this exact action.')} />{canonical.lostZone.length > 0 && <button type="button" className="lost-zone-button" onClick={() => openZone('Lost Zone', canonical.lostZone, 'Cards sent to the Lost Zone are public and cannot be recovered.')}><Sparkle size={13} weight="fill" />Lost Zone <b>{canonical.lostZone.length}</b></button>}</div></div>
+      <div className="field-layout"><PrizeFan count={canonical.prizes.length || prizesRemaining(board)} tone={tone} onOpen={() => openZone('Prize cards', canonical.prizes, 'Prize identities stay private until the game reveals them.')} /><div className="battle-lanes">{opponent ? <>{bench}{active}</> : <>{active}{bench}</>}</div><div className="side-piles"><ZoneStack label="Deck" count={displayedDeckCount(board, canonical.deck.length)} tone={tone} onOpen={() => openZone('Deck', canonical.deck, 'The deck remains face-down outside captured search effects.')} /><ZoneCards label="Discard" cards={board.discardCards || []} catalog={catalog} onOpen={() => openZone('Discard pile', canonical.discard, 'Public discarded cards at this exact action.')} />{canonical.lostZone.length > 0 && <button type="button" className="lost-zone-button" onClick={() => openZone('Lost Zone', canonical.lostZone, 'Cards sent to the Lost Zone are public and cannot be recovered.')}><Sparkle size={13} weight="fill" />Lost Zone <b>{canonical.lostZone.length}</b></button>}</div></div>
       {!opponent && <div className="hand-dock"><HandFan boardName={board.name} cards={canonical.hand} count={handCount} visibility={visibility} catalog={catalog} opponent={false} onOpen={openHand} /></div>}
     </section>
   );
@@ -487,6 +530,7 @@ export default function TrackerApp() {
   const queuedLiveOperationsRef = useRef<CapturedOperation[]>([]);
   const runtimeReadyRef = useRef(false);
   const requestedCardIdsRef = useRef(new Set<string>());
+  const cardRetryAfterRef = useRef(new Map<string, number>());
   const pendingCardIdsRef = useRef(new Set<string>());
   const cardBatchTimerRef = useRef<number | null>(null);
   const persistTimersRef = useRef(new Map<string, number>());
@@ -563,7 +607,7 @@ export default function TrackerApp() {
 
   const resolveCardsForPayload = useCallback(async (payload: unknown) => {
     const ids = [...collectCardSourceIds(payload)];
-    const missing = ids.filter((id) => !catalogRef.current.has(id));
+    const missing = ids.filter((id) => cardCatalogEntryNeedsRefresh(id, catalogRef.current));
     if (missing.length) {
       try {
         mergeCatalog(await resolveCardSources(missing));
@@ -750,22 +794,41 @@ export default function TrackerApp() {
 
     const flushCardBatch = async () => {
       cardBatchTimerRef.current = null;
-      const ids = [...pendingCardIdsRef.current].filter((id) => !catalogRef.current.has(id));
+      const now = Date.now();
+      const ids = [...pendingCardIdsRef.current].filter((id) =>
+        cardCatalogEntryNeedsRefresh(id, catalogRef.current)
+        && (cardRetryAfterRef.current.get(id) || 0) <= now
+      );
       pendingCardIdsRef.current.clear();
       if (!ids.length) return;
       ids.forEach((id) => requestedCardIdsRef.current.add(id));
       try {
-        mergeCatalog(await resolveCardSources(ids));
+        const catalog = mergeCatalog(await resolveCardSources(ids));
+        ids.forEach((id) => {
+          if (cardCatalogEntryNeedsRefresh(id, catalog)) {
+            requestedCardIdsRef.current.delete(id);
+            cardRetryAfterRef.current.set(id, Date.now() + CARD_ART_RETRY_DELAY_MS);
+          } else {
+            cardRetryAfterRef.current.delete(id);
+          }
+        });
         if (active) await rebuildActiveMatch();
       } catch (caught) {
-        ids.forEach((id) => requestedCardIdsRef.current.delete(id));
+        ids.forEach((id) => {
+          requestedCardIdsRef.current.delete(id);
+          cardRetryAfterRef.current.set(id, Date.now() + CARD_ART_RETRY_DELAY_MS);
+        });
         if (active) setError(caught instanceof Error ? caught.message : String(caught));
       }
     };
 
     const queueCardResolution = (operation: CapturedOperation) => {
       for (const id of collectCardSourceIds(operation.operation)) {
-        if (!catalogRef.current.has(id) && !requestedCardIdsRef.current.has(id)) pendingCardIdsRef.current.add(id);
+        if (
+          cardCatalogEntryNeedsRefresh(id, catalogRef.current)
+          && !requestedCardIdsRef.current.has(id)
+          && (cardRetryAfterRef.current.get(id) || 0) <= Date.now()
+        ) pendingCardIdsRef.current.add(id);
       }
       if (pendingCardIdsRef.current.size && cardBatchTimerRef.current == null) {
         cardBatchTimerRef.current = window.setTimeout(() => { void flushCardBatch(); }, 100);
@@ -1103,9 +1166,9 @@ export default function TrackerApp() {
           {restoringReview && !selectedReview ? <div className="welcome-state loading-review"><BookOpenText size={54} weight="duotone" /><span>Restoring match</span><h2>Loading the reconstructed board…</h2><p>The archive index is ready; only this selected match is being read.</p></div> : selectedReview && selectedTurn && localBoard && opponentBoard && selectedCanonical && localCanonicalPlayer && opponentCanonicalPlayer && turnStatus ? <>
             <div className="board-frame">
               <div className="reconstructed-chip"><CheckCircle size={18} weight="fill" />Board reconstructed</div>
-              <PlayerField board={opponentBoard} canonical={opponentCanonicalPlayer} visibility={selectedCanonical.visibility} catalog={cardCatalog} choiceFrames={turnChoiceFrames.filter((frame) => frame.actor === opponentBoard.name)} currentReviewIndex={turnIndex} turnNumber={selectedCanonical.state.turnNumber} status={turnStatus.players[opponentBoard.name]} defeatedIds={defeatedIds} defeatedNames={defeatedNames} damageChanges={damageChanges} positionChanges={positionChanges} attackerId={attackResolution?.sourceId} opponent avatar={TRAINER_ART[0]} onOpenPokemon={openPokemon} onOpenChoice={openChoiceCard} onOpenZone={openZone} />
-              <div className={`midline ${turnStatus.stadiumName ? 'has-stadium' : ''}`}><span /><StadiumMarker card={selectedCanonical.state.stadium} name={turnStatus.stadiumName} owner={turnStatus.stadiumOwner} localPlayer={localBoard.name} opponent={opponentBoard.name} onOpen={openCard} /><span /></div>
-              <PlayerField board={localBoard} canonical={localCanonicalPlayer} visibility={selectedCanonical.visibility} catalog={cardCatalog} choiceFrames={turnChoiceFrames.filter((frame) => frame.actor === localBoard.name)} currentReviewIndex={turnIndex} turnNumber={selectedCanonical.state.turnNumber} status={turnStatus.players[localBoard.name]} defeatedIds={defeatedIds} defeatedNames={defeatedNames} damageChanges={damageChanges} positionChanges={positionChanges} attackerId={attackResolution?.sourceId} avatar={TRAINER_ART[2]} onOpenPokemon={openPokemon} onOpenChoice={openChoiceCard} onOpenZone={openZone} />
+              <PlayerField board={opponentBoard} canonical={opponentCanonicalPlayer} visibility={selectedCanonical.visibility} catalog={cardCatalog} choiceFrames={turnChoiceFrames.filter((frame) => frame.actor === opponentBoard.name)} currentReviewIndex={turnIndex} turnNumber={selectedCanonical.state.turnNumber} status={turnStatus.players[opponentBoard.name]} stadiumCard={selectedCanonical.state.stadium} stadiumName={turnStatus.stadiumName} stadiumOwner={turnStatus.stadiumOwner} localPlayerName={localBoard.name} opponentName={opponentBoard.name} defeatedIds={defeatedIds} defeatedNames={defeatedNames} damageChanges={damageChanges} positionChanges={positionChanges} attackerId={attackResolution?.sourceId} opponent avatar={TRAINER_ART[0]} onOpenPokemon={openPokemon} onOpenChoice={openChoiceCard} onOpenCard={openCard} onOpenZone={openZone} />
+              <div className="midline"><span /></div>
+              <PlayerField board={localBoard} canonical={localCanonicalPlayer} visibility={selectedCanonical.visibility} catalog={cardCatalog} choiceFrames={turnChoiceFrames.filter((frame) => frame.actor === localBoard.name)} currentReviewIndex={turnIndex} turnNumber={selectedCanonical.state.turnNumber} status={turnStatus.players[localBoard.name]} stadiumCard={selectedCanonical.state.stadium} stadiumName={turnStatus.stadiumName} stadiumOwner={turnStatus.stadiumOwner} localPlayerName={localBoard.name} opponentName={opponentBoard.name} defeatedIds={defeatedIds} defeatedNames={defeatedNames} damageChanges={damageChanges} positionChanges={positionChanges} attackerId={attackResolution?.sourceId} avatar={TRAINER_ART[2]} onOpenPokemon={openPokemon} onOpenChoice={openChoiceCard} onOpenCard={openCard} onOpenZone={openZone} />
               {attackResolution && <AttackRoute resolution={attackResolution} />}
             </div>
             <div className="turn-controls">
@@ -1153,7 +1216,7 @@ export default function TrackerApp() {
                         <span className="event-trailing">{event.coinResult ? <b className={`coin-outcome ${event.coinResult}`}><Coin size={10} weight="fill" />{event.coinResult === 'heads' ? 'Heads' : event.coinResult === 'tails' ? 'Tails' : 'Mixed'}</b> : selected ? <b>Viewing</b> : event.id.includes(':selection:') ? <MagnifyingGlass size={14} weight="bold" /> : <CaretRight size={14} weight="bold" />}</span>
                       </button>
                       {selected && effect && eventCard && <button className="event-effect-detail" type="button" onClick={() => openChoiceCard({ id: `${event.id}:card`, cardId: eventCard.id, name: eventCard.name })} aria-label={`${effect.label}: ${effect.title}. ${effect.text}. Open card details`}>
-                        <img src={eventCard.imageDataUrl || publicCardArtUrl(eventCard.id) || fallbackCardArt(eventCard.name)} alt="" onError={showCardBackOnError} />
+                        <img src={eventCard.imageDataUrl || publicCardArtUrl(eventCard.id) || fallbackCardArt(eventCard.name)} data-card-id={eventCard.id} alt="" onError={showCardBackOnError} />
                         <span><small>{effect.label}</small><strong>{effect.title}</strong><p>{effect.text}</p></span>
                         <CaretRight size={14} weight="bold" />
                       </button>}

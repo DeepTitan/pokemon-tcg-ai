@@ -19,9 +19,11 @@ export function displayedDeckCount(board: { deckCount?: number; deckCountKnown?:
 
 function previewCard(card: TrackedCard, index = 0): Card {
   const name = card.name || 'Captured card';
+  const reviewIdentity = { reviewSourceId: card.cardId };
   const pokemonLike = /Pokémon|Munkidori|Dragapult|Dreepy|Drakloak|Budew|Charizard|Pidgeot|Fezandipiti|Rotom/i.test(name);
   if (pokemonLike) {
     const pokemon: PokemonCard = {
+      ...reviewIdentity,
       id: card.id,
       name,
       cardType: CardType.Pokemon,
@@ -38,6 +40,7 @@ function previewCard(card: TrackedCard, index = 0): Card {
     return pokemon;
   }
   const trainer: TrainerCard = {
+    ...reviewIdentity,
     id: card.id,
     name,
     cardType: CardType.Trainer,

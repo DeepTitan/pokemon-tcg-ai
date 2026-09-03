@@ -1,4 +1,26 @@
+import type { CardInfo } from './types.js';
+
 export const CARD_BACK_ART = '/tracker-assets/pokemon-card-back.jpg';
+
+export function findCatalogCard(
+  cardId: string | undefined,
+  cardName: string | undefined,
+  catalog: ReadonlyMap<string, CardInfo>,
+): CardInfo | undefined {
+  for (const candidate of [cardId, cardName]) {
+    if (!candidate) continue;
+    const direct = catalog.get(candidate) || catalog.get(candidate.toLowerCase());
+    if (direct) return direct;
+  }
+  const normalizedName = cardName?.trim().toLowerCase();
+  if (!normalizedName) return undefined;
+  return [...catalog.values()].find((card) => card.name.trim().toLowerCase() === normalizedName);
+}
+
+export function cardCatalogEntryNeedsRefresh(cardId: string, catalog: ReadonlyMap<string, CardInfo>): boolean {
+  const info = catalog.get(cardId) || catalog.get(cardId.toLowerCase());
+  return !info || !info.imageDataUrl || info.name.trim().toLowerCase() === cardId.toLowerCase();
+}
 
 export function publicCardArtUrl(cardId: string | undefined): string | undefined {
   if (!cardId) return undefined;
@@ -16,5 +38,12 @@ export function resolvedCardArt(cardId: string | undefined, localArt?: string): 
 }
 
 export function showCardBackOnError(event: { currentTarget: HTMLImageElement }): void {
-  if (!event.currentTarget.src.endsWith(CARD_BACK_ART)) event.currentTarget.src = CARD_BACK_ART;
+  const image = event.currentTarget;
+  const publicFallback = publicCardArtUrl(image.dataset.cardId);
+  if (publicFallback && image.src !== publicFallback && image.dataset.publicFallbackTried !== 'true') {
+    image.dataset.publicFallbackTried = 'true';
+    image.src = publicFallback;
+    return;
+  }
+  if (!image.src.endsWith(CARD_BACK_ART)) image.src = CARD_BACK_ART;
 }

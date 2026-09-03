@@ -208,11 +208,15 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(47, 126, 203
 .damage-token { position: absolute; z-index: 3; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 5px rgba(43, 28, 17, .25); }
 .damage-token { top: 8px; right: -9px; min-width: 30px; height: 30px; padding: 0 5px; border: 2px solid #fff; border-radius: 50%; background: #cf3b30; color: #fff; font-size: 10px; }
 .attached-energy-preview { position: absolute; right: -9px; bottom: 28px; z-index: 3; display: flex; align-items: center; flex-direction: row-reverse; gap: 0; }
-.special-energy-card { position: relative; width: 29px; height: 40px; margin-left: -8px; display: block; flex: 0 0 auto; border: 2px solid #fff4c5; border-radius: 4px; background: #fff; box-shadow: 0 2px 7px rgba(48, 36, 21, .34); transform: rotate(4deg); }
-.special-energy-card:nth-child(even) { transform: rotate(-3deg); }
-.special-energy-card img { width: 100%; height: 100%; display: block; border-radius: 2px; object-fit: cover; }
-.special-energy-overflow { position: relative; z-index: 2; min-width: 19px; height: 19px; margin-left: -6px; display: grid; place-items: center; border: 2px solid #fff; border-radius: 999px; color: #fff; background: #6c5423; box-shadow: 0 2px 5px rgba(35, 43, 53, .26); font-size: 7px; font-weight: 950; line-height: 1; }
-.pokemon-slot.active .special-energy-card { width: 34px; height: 47px; }
+.attached-energy-card { position: relative; width: 29px; height: 40px; margin-left: -8px; display: block; flex: 0 0 auto; overflow: hidden; border: 2px solid #fff4c5; border-radius: 4px; background: #fff; box-shadow: 0 2px 7px rgba(48, 36, 21, .34); transform: rotate(4deg); }
+.attached-energy-card:nth-child(even) { transform: rotate(-3deg); }
+.attached-energy-card img { width: 100%; height: 100%; display: block; border-radius: 2px; object-fit: cover; }
+.energy-card-fallback { display: grid; place-items: center; align-content: center; gap: 2px; color: var(--energy-ink, #fff); background: linear-gradient(145deg, color-mix(in srgb, var(--energy-color, #918c82), #fff 42%), var(--energy-color, #918c82)); }
+.energy-card-fallback::before { position: absolute; inset: 2px; content: ''; border: 1px solid rgba(255, 255, 255, .65); border-radius: 2px; }
+.energy-card-fallback i { width: 14px; height: 14px; display: block; border: 3px solid rgba(255, 255, 255, .88); border-radius: 50%; background: var(--energy-color, #918c82); box-shadow: 0 1px 3px rgba(35, 43, 53, .24); }
+.energy-card-fallback small { position: relative; z-index: 1; max-width: 24px; overflow: hidden; font-size: 4px; font-weight: 950; line-height: 1; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.attached-energy-overflow { position: relative; z-index: 2; min-width: 19px; height: 19px; margin-left: -6px; display: grid; place-items: center; border: 2px solid #fff; border-radius: 999px; color: #fff; background: #6c5423; box-shadow: 0 2px 5px rgba(35, 43, 53, .26); font-size: 7px; font-weight: 950; line-height: 1; }
+.pokemon-slot.active .attached-energy-card { width: 34px; height: 47px; }
 .attached-tool-preview { position: absolute; left: -15px; bottom: 27px; z-index: 4; display: flex; align-items: flex-end; }
 .attached-tool-card { position: relative; width: 29px; height: 40px; margin-right: -9px; display: block; border: 2px solid #fff; border-radius: 4px; background: #fff; box-shadow: 0 2px 6px rgba(35, 43, 53, .28); transform: rotate(-4deg); }
 .attached-tool-card:nth-child(2) { transform: rotate(3deg); }
@@ -250,6 +254,22 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(47, 126, 203
 .zone-stack-cards { width: 54px; height: 70px; display: grid; place-items: center; border: 2px solid rgba(255, 255, 255, .76); border-radius: 8px; color: #fff; background: #ba5a50; box-shadow: 0 4px 8px rgba(73, 37, 27, .18); }
 .zone-stack.blue .zone-stack-cards { background: #367fca; }
 .zone-stack > b, .zone-card-group > b { min-width: 30px; padding: 3px 7px; border-radius: 5px; background: rgba(47, 34, 27, .66); color: #fff; font-size: 10px; text-align: center; }
+.prize-fan { width: 138px; padding: 7px 3px 8px; display: grid; justify-self: center; justify-items: center; gap: 5px; border: 1px solid #d8d2c8; border-radius: 10px; color: #725e48; background: #efebe5; box-shadow: inset 0 3px 0 rgba(185, 96, 86, .55); font: inherit; cursor: pointer; }
+.prize-fan.blue { box-shadow: inset 0 3px 0 rgba(61, 120, 170, .55); }
+.prize-fan > span:first-child { color: #6e675f; font-size: 7.5px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.prize-fan-cards { position: relative; width: 132px; height: 176px; display: block; }
+.prize-fan-cards i { position: absolute; width: 64px; height: 88px; display: block; overflow: hidden; border: 2px solid rgba(255, 255, 255, .92); border-radius: 6px; background: #f7f3e9 url('/tracker-assets/pokemon-card-back.jpg') center / cover no-repeat; box-shadow: 0 3px 8px rgba(53, 45, 37, .24); transform: rotate(-2deg); }
+.prize-fan-cards i:nth-child(even) { left: 68px; transform: rotate(2deg); }
+.prize-fan-cards i:nth-child(1), .prize-fan-cards i:nth-child(2) { top: 0; }
+.prize-fan-cards i:nth-child(3), .prize-fan-cards i:nth-child(4) { top: 44px; }
+.prize-fan-cards i:nth-child(5), .prize-fan-cards i:nth-child(6) { top: 88px; }
+.prize-fan-cards i.taken { border: 1px dashed color-mix(in srgb, #8c8175, transparent 28%); background: rgba(255, 255, 255, .22); box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .2); }
+.prize-fan-cards i.taken::before,
+.prize-fan-cards i.taken::after { position: absolute; top: 50%; left: 50%; width: 12px; height: 1px; content: ''; background: rgba(102, 92, 82, .42); }
+.prize-fan-cards i.taken::before { transform: translate(-50%, -50%) rotate(45deg); }
+.prize-fan-cards i.taken::after { transform: translate(-50%, -50%) rotate(-45deg); }
+.prize-fan:hover { border-color: #b7aa99; background: #f5f1eb; }
+.prize-fan:focus-visible { outline: 2px solid #d79f12; outline-offset: 2px; }
 .side-piles { display: grid; align-content: center; gap: 12px; }
 .side-piles .zone-stack-cards { width: 50px; height: 57px; }
 .zone-card-group { padding: 0; border: 0; background: transparent; }
@@ -706,9 +726,9 @@ body,
 .prize-summary i { width: 8px; height: 8px; border-color: rgba(45, 61, 80, .35); }
 
 .opponent-hand-summary {
-  height: 24px;
+  height: 28px;
   flex: 0 0 auto;
-  padding: 0 7px;
+  padding: 0 6px;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -720,11 +740,16 @@ body,
   cursor: pointer;
 }
 .opponent-hand-summary:hover { background: rgba(91, 39, 34, .3); }
-.opponent-hand-summary > span { font-size: 6px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+.opponent-hand-summary > .opponent-hand-label { font-size: 6px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
 .opponent-hand-summary > b { min-width: 13px; font-family: Nunito, sans-serif; font-size: 10px; font-weight: 1000; text-align: center; }
+.opponent-hand-mini-fan { min-width: 11px; height: 20px; display: flex; align-items: center; }
+.opponent-hand-mini-fan i { width: 12px; height: 17px; flex: 0 0 auto; margin-left: -7px; border: 1px solid rgba(255, 255, 255, .88); border-radius: 2px; background: #fff url('/tracker-assets/pokemon-card-back.jpg') center / cover no-repeat; box-shadow: 0 1px 3px rgba(64, 34, 29, .32); transform: rotate(-3deg); }
+.opponent-hand-mini-fan i:first-child { margin-left: 0; }
+.opponent-hand-mini-fan i:nth-child(even) { transform: rotate(3deg); }
+.opponent-hand-mini-fan i.empty { border-style: dashed; background: rgba(255, 255, 255, .12); box-shadow: none; }
 
 .field-layout {
-  grid-template-columns: 64px minmax(0, 1fr) 64px;
+  grid-template-columns: 138px minmax(0, 1fr) 64px;
   gap: 10px;
 }
 .battle-lanes { padding: 7px 8px; gap: 6px; }
@@ -910,9 +935,15 @@ body,
   .session-card { grid-template-columns: 76px 32px minmax(0, 1fr); }
   .session-board { width: 76px; height: 63px; }
   .session-avatar { width: 32px; height: 32px; }
-  .field-layout { grid-template-columns: 60px minmax(0, 1fr) 60px; gap: 7px; }
+  .field-layout { grid-template-columns: 120px minmax(0, 1fr) 60px; gap: 7px; }
   .zone-stack,
   .side-piles { width: 60px; }
+  .prize-fan { width: 120px; padding-inline: 3px; }
+  .prize-fan-cards { width: 112px; height: 146px; }
+  .prize-fan-cards i { width: 54px; height: 74px; }
+  .prize-fan-cards i:nth-child(even) { left: 58px; }
+  .prize-fan-cards i:nth-child(3), .prize-fan-cards i:nth-child(4) { top: 36px; }
+  .prize-fan-cards i:nth-child(5), .prize-fan-cards i:nth-child(6) { top: 72px; }
   .turn-controls { grid-template-columns: minmax(220px, 280px) minmax(82px, 1fr) auto; gap: 9px; }
 }
 
@@ -926,9 +957,15 @@ body,
   .player-strip { margin: -6px -9px 0; padding: 1px 10px; }
   .battle-lanes { padding: 3px 5px; }
   .bench-row { min-height: 80px; padding: 3px 5px; }
-  .field-layout { grid-template-columns: 56px minmax(0, 1fr) 56px; gap: 6px; }
+  .field-layout { grid-template-columns: 112px minmax(0, 1fr) 56px; gap: 6px; }
   .zone-stack,
   .side-piles { width: 56px; }
+  .prize-fan { width: 112px; padding: 4px 2px 5px; gap: 3px; }
+  .prize-fan-cards { width: 104px; height: 127px; }
+  .prize-fan-cards i { width: 50px; height: 69px; }
+  .prize-fan-cards i:nth-child(even) { left: 54px; }
+  .prize-fan-cards i:nth-child(3), .prize-fan-cards i:nth-child(4) { top: 29px; }
+  .prize-fan-cards i:nth-child(5), .prize-fan-cards i:nth-child(6) { top: 58px; }
   .turn-controls { height: 66px; grid-template-columns: minmax(210px, 270px) minmax(78px, 1fr) auto; }
   .turn-caption > strong { font-size: 12px; }
 }
@@ -1621,74 +1658,82 @@ body,
 .player-field.local.current-turn .player-strip::after { top: -3px; bottom: auto; }
 .player-field.item-locked:not(.current-turn) .player-strip { box-shadow: inset 0 -3px 0 #75458a; }
 
-/* A Stadium is shared board state, so it lives in the divider as a quiet card tab. */
+/* The Stadium occupies a real, raised board slot beside the Active Pokémon. */
 .midline:not(.has-stadium) { grid-template-columns: 1fr; }
 .midline:not(.has-stadium) > span:last-child { display: none; }
 
-.midline.has-stadium .stadium-marker {
-  min-width: 126px;
-  max-width: min(220px, 42vw);
-  min-height: 28px;
-  padding: 2px 9px 2px 3px;
+.stadium-marker {
+  position: absolute;
+  top: 50%;
+  left: max(7px, calc(50% - 160px));
+  z-index: 7;
+  width: 70px;
+  padding: 0;
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr);
-  align-items: center;
-  gap: 6px;
-  overflow: hidden;
-  border: 1px solid #bdb6aa;
+  justify-items: center;
+  border: 0;
   border-radius: 7px;
-  color: #3e4b4b;
-  text-align: left;
+  color: #34473a;
+  text-align: center;
   text-transform: none;
-  background: #fbfaf5;
-  box-shadow: 0 1px 4px rgba(52, 48, 41, .1);
+  background: transparent;
+  box-shadow: none;
+  transform: translateY(-56%) rotate(-1.25deg);
 }
 
-.midline.has-stadium button.stadium-marker {
+.opponent .stadium-marker {
+  right: max(7px, calc(50% - 160px));
+  left: auto;
+  transform: translateY(-44%) rotate(1.25deg);
+}
+
+button.stadium-marker {
   font: inherit;
   cursor: pointer;
   transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
 }
 
-.midline.has-stadium button.stadium-marker:hover {
-  border-color: #7e9a78;
-  box-shadow: 0 3px 8px rgba(52, 48, 41, .14);
-  transform: translateY(-1px);
+button.stadium-marker:hover {
+  box-shadow: none;
+  transform: translateY(-60%) rotate(0);
 }
 
-.midline.has-stadium button.stadium-marker:focus-visible {
+button.stadium-marker:hover .stadium-card-peek { box-shadow: 0 0 0 4px rgba(101, 145, 103, .15), 0 14px 24px rgba(42, 55, 41, .27); }
+
+button.stadium-marker:focus-visible {
   outline: 2px solid #d79f12;
   outline-offset: 2px;
 }
 
 .stadium-card-peek {
-  width: 20px;
-  height: 26px;
+  width: 70px;
+  height: 96px;
   display: grid;
   place-items: center;
   overflow: hidden;
-  border: 1px solid rgba(74, 67, 57, .18);
-  border-radius: 3px;
+  border: 2px solid rgba(255, 255, 255, .92);
+  border-radius: 7px;
   color: #607260;
-  background: #e9e5dc;
+  background: #e4eadf;
+  box-shadow: 0 5px 10px rgba(45, 53, 40, .22);
 }
 
 .stadium-card-peek img { width: 100%; height: 100%; display: block; object-fit: cover; }
-.stadium-card-peek.fallback { border-radius: 5px; }
-.stadium-copy { min-width: 0; display: grid; gap: 1px; }
-.stadium-copy small { color: #718172; font-size: 5.5px; font-weight: 900; letter-spacing: .09em; line-height: 1; text-transform: uppercase; }
-.stadium-copy strong { overflow: hidden; font-size: 8.5px; line-height: 1.1; text-overflow: ellipsis; white-space: nowrap; }
+.stadium-card-peek.fallback { border-style: dashed; box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .3); }
 
 /* The edge nearest the player records who put the Stadium into play. */
-.midline.has-stadium .stadium-marker.owned-local { box-shadow: inset 0 -2px 0 #4e84b4, 0 1px 4px rgba(52, 48, 41, .1); }
-.midline.has-stadium .stadium-marker.owned-opponent { box-shadow: inset 0 2px 0 #b96158, 0 1px 4px rgba(52, 48, 41, .1); }
+.stadium-marker.owned-local .stadium-card-peek { border-color: #8fb5d3; box-shadow: 0 0 0 3px rgba(78, 132, 180, .14), 0 11px 20px rgba(42, 55, 41, .22); }
+.stadium-marker.owned-opponent .stadium-card-peek { border-color: #d28f87; box-shadow: 0 0 0 3px rgba(185, 97, 88, .14), 0 11px 20px rgba(42, 55, 41, .22); }
+
+/* The action story moves to the other side when the opponent owns the Stadium. */
+.opponent .active-lane.has-stadium-zone .choice-stage { right: calc(50% + 70px); left: auto; }
 
 @media (max-width: 1300px) {
   .player-strip { grid-template-columns: minmax(105px, 1fr) minmax(0, auto) auto; gap: 5px; }
   .turn-statuses { grid-template-columns: 64px 58px 54px 60px; gap: 2px; }
   .status-pill { padding-inline: 4px; font-size: 5.8px; }
   .opponent-hand-summary { padding-inline: 5px; }
-  .opponent-hand-summary > span { display: none; }
+  .opponent-hand-summary > .opponent-hand-label { display: none; }
   .prize-summary { gap: 3px; padding-inline: 6px; }
   .prize-summary i { width: 6px; height: 6px; }
 }
@@ -1696,8 +1741,9 @@ body,
 @media (max-height: 850px) {
   .status-pill { min-height: 18px; padding-block: 2px; }
   .status-pill svg { width: 9px; height: 9px; }
-  .midline.has-stadium .stadium-marker { min-height: 25px; padding-block: 1px; }
-  .stadium-card-peek { width: 18px; height: 23px; }
+  .stadium-marker { left: max(3px, calc(50% - 135px)); width: 64px; }
+  .opponent .stadium-marker { right: max(3px, calc(50% - 135px)); left: auto; }
+  .stadium-card-peek { width: 64px; height: 88px; }
 }
 
 /* Archive previews are miniature renders of each match's final board. */

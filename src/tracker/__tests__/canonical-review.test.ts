@@ -5,12 +5,24 @@ import { CardType, TrainerType } from '../../engine/types.js';
 import { cardInfoToEngineCard, cardSourceIdFromReviewCard } from '../card-adapter.js';
 import { LiveReviewAssembler } from '../live-operation-reducer.js';
 import { ReviewOverlay } from '../ReviewInteractions.js';
-import { displayedDeckCount } from '../review-state-adapter.js';
-import type { CapturedOperation, CardInfo } from '../types.js';
+import { displayedDeckCount, trackedTurnToCanonical } from '../review-state-adapter.js';
+import type { CapturedOperation, CardInfo, MatchReview } from '../types.js';
 
 assert.equal(displayedDeckCount({ deckCount: 0 }, 7), 0, 'a captured empty deck must not fall back to an estimate');
 assert.equal(displayedDeckCount({}, 7), 7, 'legacy reviews without a deck count may use their canonical count');
 assert.equal(displayedDeckCount({ deckCount: 0, deckCountKnown: false }, 7), '?', 'a private deck lower bound must never be presented as its exact count');
+
+const legacyReview = {
+  id: 'legacy-card-id', importedAt: '2026-09-03T00:00:00.000Z', source: 'battle-log', players: ['Isaiah', 'Opponent'],
+  localPlayer: 'Isaiah', opponent: 'Opponent', rawLog: '', turns: [{
+    index: 0, label: 'Turn 1', events: [], snapshot: { stadium: null, players: {
+      Isaiah: { name: 'Isaiah', active: null, bench: [], handCount: 0, knownHand: [], deckCount: 0, discard: [], discardCards: [{ id: 'legacy-boss', cardId: 'sv2_248', name: 'sv2_248' }], prizesTaken: 0 },
+      Opponent: { name: 'Opponent', active: null, bench: [], handCount: 0, knownHand: [], deckCount: 0, discard: [], prizesTaken: 0 },
+    } },
+  }],
+} satisfies MatchReview;
+const legacyCanonical = trackedTurnToCanonical(legacyReview, legacyReview.turns[0]);
+assert.equal(cardSourceIdFromReviewCard(legacyCanonical.state.players[0].discard[0]), 'sv2_248', 'legacy replay conversion must preserve the stable card source ID');
 
 const unresolvedBoss = cardInfoToEngineCard(undefined, 'late-boss', 'sv2_248', 'sv2_248');
 assert.equal(cardSourceIdFromReviewCard(unresolvedBoss), 'sv2_248', 'late metadata must not erase the stable card source ID');
