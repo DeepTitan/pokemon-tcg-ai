@@ -33,6 +33,7 @@ import { deriveReviewTurnStatus, type PlayerTurnStatus } from './turn-status-mod
 import { capturedAtIso, collectCardSourceIds, finalizeReviewForClientExit, matchSummaryFromReview, operationKey, recordingSummaryFromOperation, REDUCER_VERSION } from './match-storage.js';
 import { initialClientLifecycleState, observeClientLifecycle } from './client-lifecycle-model.js';
 import { captureIndicator } from './capture-status-model.js';
+import { opponentHandFanSlots } from './hand-layout-model.js';
 import { prizeSlotStates } from './prize-layout-model.js';
 import { UpdateNotice } from './UpdateNotice.js';
 import { CARD_BACK_ART, cardCatalogEntryNeedsRefresh, publicCardArtUrl, resolvedCardArt, showCardBackOnError } from './card-art.js';
@@ -373,6 +374,19 @@ function HandFan({ boardName, cards, count, visibility, catalog, opponent, onOpe
   );
 }
 
+function OpponentHandSummary({ boardName, count, onOpen }: { boardName: string; count: number; onOpen: () => void }) {
+  const slots = opponentHandFanSlots(count);
+  return (
+    <button type="button" className="opponent-hand-summary" onClick={onOpen} title={`Open ${boardName}'s hand`} aria-label={`${boardName} hand, ${count} card${count === 1 ? '' : 's'}`}>
+      <span className="opponent-hand-mini-fan" aria-hidden="true">
+        {slots.map((state, index) => <i key={index} className={state} />)}
+      </span>
+      <span className="opponent-hand-label">Hand</span>
+      <b>{count}</b>
+    </button>
+  );
+}
+
 function PlayerField({ board, canonical, visibility, catalog, choiceFrames, currentReviewIndex, turnNumber, status, defeatedIds, defeatedNames, damageChanges, positionChanges, attackerId, opponent = false, avatar, onOpenPokemon, onOpenChoice, onOpenZone }: { board: TrackedPlayerBoard; canonical: PlayerState; visibility: Record<string, ReviewCardVisibility>; catalog: ReadonlyMap<string, CardInfo>; choiceFrames: TurnChoiceFrame[]; currentReviewIndex: number; turnNumber: number; status: PlayerTurnStatus; defeatedIds: ReadonlySet<string>; defeatedNames: ReadonlySet<string>; damageChanges: ReadonlyMap<string, PokemonDamageChange>; positionChanges: ReadonlyMap<string, PokemonPositionChange>; attackerId?: string; opponent?: boolean; avatar: string; onOpenPokemon: (id: string) => void; onOpenChoice: (card: TrackedCard) => void; onOpenZone: (title: string, subtitle: string, cards: Card[], visibility: Record<string, ReviewCardVisibility>) => void }) {
   const benches = [...board.bench, ...Array.from({ length: Math.max(0, 5 - board.bench.length) }, () => null)].slice(0, 5);
   const tone = opponent ? 'coral' : 'blue';
@@ -389,7 +403,7 @@ function PlayerField({ board, canonical, visibility, catalog, choiceFrames, curr
   return (
     <section className={`player-field ${opponent ? 'opponent' : 'local'} ${status.isCurrentTurn ? 'current-turn' : ''} ${status.itemLocked ? 'item-locked' : ''}`}>
       <div className="player-strip">
-        <div className="player-identity"><img src={avatar} alt="" /><div><span>{opponent ? 'Opponent' : 'You'}</span><strong>{board.name}</strong></div>{opponent && <button type="button" className="opponent-hand-summary" onClick={openHand} title={`Open ${board.name}'s hand`} aria-label={`${board.name} hand, ${handCount} card${handCount === 1 ? '' : 's'}`}><Hand size={12} weight="fill" /><span>Hand</span><b>{handCount}</b></button>}</div>
+        <div className="player-identity"><img src={avatar} alt="" /><div><span>{opponent ? 'Opponent' : 'You'}</span><strong>{board.name}</strong></div>{opponent && <OpponentHandSummary boardName={board.name} count={handCount} onOpen={openHand} />}</div>
         <div className="turn-statuses" aria-label={`${board.name} turn status`}>
           <span className="status-slot turn-slot">{status.isCurrentTurn && <span className="status-pill current turn-number-pill" aria-label={`Current turn, turn ${turnNumber}`}><Play size={10} weight="fill" /><span>Turn</span><b>{turnNumber}</b><i>Current</i></span>}</span>
           <span className="status-slot supporter-slot"><span className={`status-pill supporter ${status.supporterUsed ? 'active' : 'inactive'}`} aria-label={status.supporterUsed ? 'Supporter used' : 'Supporter not used'} title={status.supporterUsed ? 'A Supporter has already been played this turn' : 'No Supporter has been played this turn'}><Hand size={11} weight="fill" />Supporter <CheckCircle className="status-check" size={9} weight="fill" /></span></span>

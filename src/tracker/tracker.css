@@ -722,9 +722,9 @@ body,
 .prize-summary i { width: 8px; height: 8px; border-color: rgba(45, 61, 80, .35); }
 
 .opponent-hand-summary {
-  height: 24px;
+  height: 28px;
   flex: 0 0 auto;
-  padding: 0 7px;
+  padding: 0 6px;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -736,8 +736,13 @@ body,
   cursor: pointer;
 }
 .opponent-hand-summary:hover { background: rgba(91, 39, 34, .3); }
-.opponent-hand-summary > span { font-size: 6px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+.opponent-hand-summary > .opponent-hand-label { font-size: 6px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
 .opponent-hand-summary > b { min-width: 13px; font-family: Nunito, sans-serif; font-size: 10px; font-weight: 1000; text-align: center; }
+.opponent-hand-mini-fan { min-width: 11px; height: 20px; display: flex; align-items: center; }
+.opponent-hand-mini-fan i { width: 12px; height: 17px; flex: 0 0 auto; margin-left: -7px; border: 1px solid rgba(255, 255, 255, .88); border-radius: 2px; background: #fff url('/tracker-assets/pokemon-card-back.jpg') center / cover no-repeat; box-shadow: 0 1px 3px rgba(64, 34, 29, .32); transform: rotate(-3deg); }
+.opponent-hand-mini-fan i:first-child { margin-left: 0; }
+.opponent-hand-mini-fan i:nth-child(even) { transform: rotate(3deg); }
+.opponent-hand-mini-fan i.empty { border-style: dashed; background: rgba(255, 255, 255, .12); box-shadow: none; }
 
 .field-layout {
   grid-template-columns: 138px minmax(0, 1fr) 64px;
@@ -1716,7 +1721,7 @@ body,
   .turn-statuses { grid-template-columns: 64px 58px 54px 60px; gap: 2px; }
   .status-pill { padding-inline: 4px; font-size: 5.8px; }
   .opponent-hand-summary { padding-inline: 5px; }
-  .opponent-hand-summary > span { display: none; }
+  .opponent-hand-summary > .opponent-hand-label { display: none; }
   .prize-summary { gap: 3px; padding-inline: 6px; }
   .prize-summary i { width: 6px; height: 6px; }
 }
