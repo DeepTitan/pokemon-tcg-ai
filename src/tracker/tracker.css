@@ -303,7 +303,6 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(47, 126, 203
 .hand-fan:hover .hand-fan-card:first-child { margin-left: 0; }
 .local-hand .hand-fan-card.known:hover { z-index: 12; transform: translateY(-27px) scale(1.1); box-shadow: 0 12px 20px rgba(42, 29, 20, .34); }
 .opponent-hand:hover .hand-fan-cards { transform: translateY(4px); }
-.hand-fan-cards em { margin-left: 5px; padding: 3px 5px; border-radius: 999px; background: #fffdf7; font-size: 8px; font-style: normal; font-weight: 900; }
 .lost-zone-button { padding: 5px 6px; display: flex; align-items: center; justify-content: center; gap: 3px; border: 1px solid #9c86bc; border-radius: 8px; color: #685386; background: #eee5f5; font-size: 7px; font-weight: 900; letter-spacing: .03em; text-transform: uppercase; cursor: pointer; }
 .lost-zone-button b { font-size: 9px; }
 
@@ -1097,6 +1096,7 @@ body,
 
 .hand-dock .local-hand {
   position: static;
+  width: 100%;
   max-width: 100%;
   transform: none;
 }
@@ -1107,18 +1107,27 @@ body,
   background: #f8faf9;
 }
 
-.hand-dock .hand-fan-card { width: 74px; height: 101px; margin-left: -36px; }
-.hand-dock .hand-fan-card:first-child { margin-left: 0; }
-.hand-dock .local-hand:hover .hand-fan-card { margin-left: -31px; }
-.hand-dock .local-hand:hover .hand-fan-card:first-child { margin-left: 0; }
+.hand-dock .hand-fan-cards {
+  --hand-card-width: 74px;
+  --hand-card-step: 38px;
+  width: calc(100% - 24px);
+  max-width: max-content;
+  display: grid;
+  grid-template-columns: repeat(var(--hand-gap-count), minmax(0, var(--hand-card-step))) var(--hand-card-width);
+}
+.hand-dock .hand-fan-cards.single { width: var(--hand-card-width); grid-template-columns: var(--hand-card-width); }
+.hand-dock .hand-fan-cards.empty { width: 0; grid-template-columns: none; }
+.hand-dock .hand-fan-card,
+.hand-dock .local-hand:hover .hand-fan-card { width: var(--hand-card-width); height: 101px; margin-left: 0; }
 
 .midline { padding: 0 12px; }
 .review-overlay-backdrop { inset: 30px 0 0; }
 
 @media (max-width: 1300px) {
   .workspace { padding: 32px 8px 8px; }
-  .hand-dock .hand-fan-card { width: 70px; height: 96px; margin-left: -35px; }
-  .hand-dock .local-hand:hover .hand-fan-card { margin-left: -30px; }
+  .hand-dock .hand-fan-cards { --hand-card-width: 70px; --hand-card-step: 35px; }
+  .hand-dock .hand-fan-card,
+  .hand-dock .local-hand:hover .hand-fan-card { height: 96px; }
 }
 
 @media (max-height: 850px) {
@@ -1134,8 +1143,9 @@ body,
   .pokemon-slot { width: min(100%, 50px); height: 66px; }
   .pokemon-slot.active { width: 82px; height: 114px; }
   .hand-dock { margin: 0 -8px -5px; }
-  .hand-dock .hand-fan-card { width: 62px; height: 85px; margin-left: -31px; }
-  .hand-dock .local-hand:hover .hand-fan-card { margin-left: -27px; }
+  .hand-dock .hand-fan-cards { --hand-card-width: 62px; --hand-card-step: 31px; }
+  .hand-dock .hand-fan-card,
+  .hand-dock .local-hand:hover .hand-fan-card { height: 85px; }
   .timeline-tools { height: 50px; padding-block: 6px; }
   .timeline-tools .tracking-toggle,
   .timeline-tools .icon-button { height: 36px; }

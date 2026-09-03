@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
   BookOpenText, CardsThree, CaretLeft, CaretRight, CheckCircle,
@@ -33,7 +33,7 @@ import { deriveReviewTurnStatus, type PlayerTurnStatus } from './turn-status-mod
 import { capturedAtIso, collectCardSourceIds, finalizeReviewForClientExit, matchSummaryFromReview, operationKey, recordingSummaryFromOperation, REDUCER_VERSION } from './match-storage.js';
 import { initialClientLifecycleState, observeClientLifecycle } from './client-lifecycle-model.js';
 import { captureIndicator } from './capture-status-model.js';
-import { opponentHandFanSlots } from './hand-layout-model.js';
+import { handFanCardCount, opponentHandFanSlots } from './hand-layout-model.js';
 import { prizeSlotStates } from './prize-layout-model.js';
 import { UpdateNotice } from './UpdateNotice.js';
 import { CARD_BACK_ART, cardCatalogEntryNeedsRefresh, findCatalogCard, publicCardArtUrl, resolvedCardArt, showCardBackOnError } from './card-art.js';
@@ -361,10 +361,12 @@ function reviewCardImage(card: Card, catalog: ReadonlyMap<string, CardInfo>): st
 
 function HandFan({ boardName, cards, count, visibility, catalog, opponent, onOpen }: { boardName: string; cards: Card[]; count: number; visibility: Record<string, ReviewCardVisibility>; catalog: ReadonlyMap<string, CardInfo>; opponent: boolean; onOpen: () => void }) {
   const total = Math.max(cards.length, count);
-  const displayed = Math.min(total, 12);
+  const displayed = handFanCardCount(total);
+  const fanState = displayed === 0 ? 'empty' : displayed === 1 ? 'single' : '';
+  const fanStyle = { '--hand-gap-count': Math.max(1, displayed - 1) } as CSSProperties;
   return (
     <button type="button" className={`hand-fan ${opponent ? 'opponent-hand' : 'local-hand'}`} onClick={onOpen} title={`Open ${boardName}'s hand`} aria-label={`${boardName} hand, ${total} card${total === 1 ? '' : 's'}`}>
-      <span className="hand-fan-cards" aria-hidden="true">
+      <span className={`hand-fan-cards ${fanState}`} style={fanStyle} aria-hidden="true">
         {Array.from({ length: displayed }, (_, index) => {
           const card = cards[index];
           const hidden = opponent || !card;
@@ -372,7 +374,6 @@ function HandFan({ boardName, cards, count, visibility, catalog, opponent, onOpe
             ? <span className="hand-fan-card hidden" key={card?.id || `hidden-${index}`}><img src="/tracker-assets/pokemon-card-back.jpg" alt="" /></span>
             : <span className="hand-fan-card known" key={card.id} title={card.name}><img src={reviewCardImage(card, catalog)} data-card-id={cardSourceIdFromReviewCard(card)} alt="" onError={showCardBackOnError} /></span>;
         })}
-        {total > displayed && <em>+{total - displayed}</em>}
       </span>
       <span className="hand-fan-label"><Hand size={14} weight="duotone" /><span>{opponent ? 'Opponent hand' : 'Your hand'}</span><b>{total}</b></span>
     </button>
