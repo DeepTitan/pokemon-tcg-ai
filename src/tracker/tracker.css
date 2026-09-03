@@ -2082,3 +2082,212 @@ body,
 .cloud-backup-setting > button.enabled { color: #286744; border-color: #89b49a; background: #eff9f2; }
 .cloud-backup-setting > button.enabled span { background: #3f8d5d; }
 .cloud-backup-setting > button:disabled { cursor: not-allowed; opacity: .55; }
+
+/* Matchup-led archive: the two deck-defining Pokemon are the primary scan target. */
+.workspace.archive-open.timeline-open {
+  grid-template-columns: 316px minmax(560px, 1fr) 290px;
+}
+
+.workspace.archive-open.timeline-collapsed {
+  grid-template-columns: 316px minmax(560px, 1fr);
+}
+
+.session-card {
+  min-height: 132px;
+  grid-template-columns: 118px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 7px;
+  padding: 9px 10px;
+  overflow: hidden;
+  border-radius: 11px;
+}
+
+.session-card:hover { background: #f6f2e9; }
+.session-card.selected { background: #f2eee5; }
+.session-card.recording { border-color: #84bd91; box-shadow: inset 0 0 0 1px rgba(73, 164, 94, .16); }
+.session-card.recording .session-featured-card img { box-shadow: 0 0 0 2px rgba(73, 164, 94, .16), 0 4px 9px rgba(39, 43, 48, .2); }
+
+.session-matchup {
+  position: relative;
+  height: 92px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: center;
+  justify-items: center;
+  gap: 5px;
+}
+
+.session-featured-card {
+  position: relative;
+  width: 56px;
+  height: 80px;
+  display: block;
+}
+
+.session-featured-card.local { transform: rotate(-1.5deg); }
+.session-featured-card.opponent { transform: rotate(1.5deg); }
+
+.session-featured-card img {
+  width: 56px;
+  height: 78px;
+  display: block;
+  border: 2px solid #fff;
+  border-radius: 6px;
+  object-fit: cover;
+  object-position: center;
+  background: #e9e3d8;
+  box-shadow: 0 4px 9px rgba(39, 43, 48, .2);
+}
+
+.session-featured-card small {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  left: 4px;
+  padding: 2px 3px;
+  border-radius: 4px;
+  color: #fff;
+  background: rgba(30, 44, 60, .86);
+  font-size: 6px;
+  font-weight: 950;
+  letter-spacing: .08em;
+  line-height: 1;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.session-featured-card.local small { background: rgba(41, 105, 156, .9); }
+.session-featured-card.opponent small { background: rgba(160, 75, 65, .9); }
+
+.session-matchup-versus {
+  position: absolute;
+  top: 35px;
+  left: 50%;
+  z-index: 2;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  transform: translateX(-50%);
+  border: 2px solid #fbfaf6;
+  border-radius: 50%;
+  color: #655b4c;
+  background: #e9e3d8;
+  box-shadow: 0 2px 5px rgba(55, 48, 39, .18);
+  font-size: 6px;
+  font-weight: 950;
+  letter-spacing: .04em;
+}
+
+.session-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  justify-content: center;
+  gap: 7px;
+}
+
+.session-heading {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.session-heading > strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #28394e;
+  font-family: Nunito, sans-serif;
+  font-size: 11px;
+  font-weight: 950;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-copy .session-heading > em {
+  flex: 0 0 auto;
+  width: auto;
+  padding: 3px 5px;
+  border-radius: 5px;
+  font-size: 6.5px;
+}
+
+.session-decks {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 4px;
+  color: #37495d;
+}
+
+.session-decks b {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 8px;
+  font-weight: 900;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-decks b:last-child { text-align: right; }
+.session-decks i { color: #a49b8e; font-size: 6px; font-style: normal; font-weight: 900; text-transform: uppercase; }
+
+.session-meta {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 6px;
+}
+
+.session-copy .session-meta time,
+.session-copy .session-meta small {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  color: #747b7e;
+  font-size: 7px;
+  font-weight: 850;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.session-copy .session-meta time {
+  grid-column: 1 / -1;
+  color: #626b70;
+}
+
+.session-meta svg { flex: 0 0 auto; color: #8d7a50; }
+.session-meta small:last-child { color: #675229; }
+.session-meta small:last-child svg { color: #ba8505; }
+
+@media (max-width: 1300px) {
+  .workspace.archive-open.timeline-open { grid-template-columns: 298px minmax(560px, 1fr) 286px; }
+  .workspace.archive-open.timeline-collapsed { grid-template-columns: 298px minmax(560px, 1fr); }
+  .session-card { min-height: 126px; grid-template-columns: 110px minmax(0, 1fr); gap: 8px; padding-inline: 8px; }
+  .session-matchup { height: 88px; gap: 3px; }
+  .session-featured-card { width: 52px; height: 75px; }
+  .session-featured-card img { width: 52px; height: 73px; }
+  .session-matchup-versus { top: 33px; width: 22px; height: 22px; }
+  .session-copy { gap: 6px; }
+  .session-heading > strong { font-size: 10.5px; }
+}
+
+@media (max-height: 850px) {
+  .session-card { min-height: 120px; }
+  .session-matchup { height: 84px; }
+  .session-featured-card { width: 49px; height: 71px; }
+  .session-featured-card img { width: 49px; height: 69px; }
+  .session-matchup-versus { top: 31px; width: 21px; height: 21px; }
+  .session-copy { gap: 5px; }
+}

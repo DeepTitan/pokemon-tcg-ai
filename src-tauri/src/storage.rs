@@ -39,10 +39,26 @@ pub struct MatchSummary {
     pub winner: Option<String>,
     pub turn_count: usize,
     pub operation_count: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_seconds: Option<u64>,
     pub reducer_version: i64,
     pub final_snapshot: Option<Value>,
     #[serde(default)]
     pub recording: bool,
+}
+
+fn capture_elapsed_seconds(
+    first_received: &str,
+    last_received: &str,
+    operation_count: i64,
+) -> Option<u64> {
+    if operation_count < 2 {
+        return None;
+    }
+    let first = first_received.trim_end_matches('Z').parse::<f64>().ok()?;
+    let last = last_received.trim_end_matches('Z').parse::<f64>().ok()?;
+    let elapsed = last - first;
+    (elapsed.is_finite() && elapsed >= 0.0).then(|| elapsed.round() as u64)
 }
 
 fn gzip(bytes: &[u8]) -> Result<Vec<u8>, String> {
@@ -349,15 +365,22 @@ impl MatchStorage {
                 .find_map(|turn| turn.get("snapshot").cloned())
         });
         let connection = self.connection()?;
-        let operation_count = connection
+        let timing = connection
             .query_row(
-                "SELECT operation_count FROM matches WHERE id=?1",
+                "SELECT operation_count, first_received, last_received FROM matches WHERE id=?1",
                 [&id],
-                |row| row.get::<_, i64>(0),
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                },
             )
             .optional()
             .map_err(|error| error.to_string())?
-            .unwrap_or(0);
+            .unwrap_or_else(|| (0, imported_at.clone(), imported_at.clone()));
+        let operation_count = timing.0;
         let recording = source == "live-network" && winner.is_none();
         let summary = MatchSummary {
             id: id.clone(),
@@ -368,6 +391,7 @@ impl MatchStorage {
             winner,
             turn_count,
             operation_count,
+            duration_seconds: capture_elapsed_seconds(&timing.1, &timing.2, operation_count),
             reducer_version,
             final_snapshot,
             recording,
@@ -403,7 +427,8 @@ impl MatchStorage {
         let connection = self.connection()?;
         let mut statement = connection
             .prepare(
-                "SELECT summary_json, id, imported_at, source, operation_count, reducer_version
+                "SELECT summary_json, id, imported_at, source, operation_count, reducer_version,
+                        first_received, last_received
                  FROM matches
                  WHERE operation_count > 0 OR summary_json IS NOT NULL
                  ORDER BY imported_at DESC, last_received DESC
@@ -419,15 +444,25 @@ impl MatchStorage {
                     row.get::<_, String>(3)?,
                     row.get::<_, i64>(4)?,
                     row.get::<_, i64>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, String>(7)?,
                 ))
             })
             .map_err(|error| error.to_string())?;
         let mut summaries = Vec::new();
         for row in rows {
-            let (json, id, imported_at, source, operation_count, reducer_version) =
-                row.map_err(|error| error.to_string())?;
+            let (
+                json,
+                id,
+                imported_at,
+                source,
+                operation_count,
+                reducer_version,
+                first_received,
+                last_received,
+            ) = row.map_err(|error| error.to_string())?;
             let parsed = json.and_then(|value| serde_json::from_str::<MatchSummary>(&value).ok());
-            summaries.push(parsed.unwrap_or(MatchSummary {
+            let mut summary = parsed.unwrap_or(MatchSummary {
                 id,
                 imported_at,
                 source,
@@ -436,10 +471,15 @@ impl MatchStorage {
                 winner: None,
                 turn_count: 0,
                 operation_count,
+                duration_seconds: None,
                 reducer_version,
                 final_snapshot: None,
                 recording: true,
-            }));
+            });
+            summary.operation_count = operation_count;
+            summary.duration_seconds =
+                capture_elapsed_seconds(&first_received, &last_received, operation_count);
+            summaries.push(summary);
         }
         Ok(summaries)
     }
@@ -585,12 +625,18 @@ mod tests {
         let captured = operation();
         assert!(storage.record_operation(&captured).unwrap());
         assert!(!storage.record_operation(&captured).unwrap());
-        assert_eq!(storage.status(0).unwrap().raw_operations, 1);
+        let mut later = operation();
+        later.received_at = "1787301596.649Z".to_owned();
+        later.operation_id = Some("operation-2".to_owned());
+        later.message_index = Some(8);
+        later.operation = json!({"operationNumber": 8});
+        assert!(storage.record_operation(&later).unwrap());
+        assert_eq!(storage.status(0).unwrap().raw_operations, 2);
         assert_eq!(
             storage.raw_match_ids(false, 0, 10).unwrap(),
             vec!["live-match-1"]
         );
-        assert_eq!(storage.load_operations("live-match-1").unwrap().len(), 1);
+        assert_eq!(storage.load_operations("live-match-1").unwrap().len(), 2);
         assert_eq!(storage.load_review("live-match-1").unwrap(), None);
         let recording = storage.list_summaries(0, 50).unwrap();
         assert_eq!(recording.len(), 1);
@@ -610,9 +656,12 @@ mod tests {
             "rawLog": ""
         });
         let summary = storage.persist_review(&review, 1).unwrap();
-        assert_eq!(summary.operation_count, 1);
+        assert_eq!(summary.operation_count, 2);
+        assert_eq!(summary.duration_seconds, Some(95));
         assert!(summary.recording);
-        assert_eq!(storage.list_summaries(0, 50).unwrap().len(), 1);
+        let summaries = storage.list_summaries(0, 50).unwrap();
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].duration_seconds, Some(95));
         assert_eq!(storage.load_review("live-match-1").unwrap(), Some(review));
         assert_eq!(storage.status(0).unwrap().pending_matches, 0);
         assert!(storage.raw_match_ids(true, 1, 10).unwrap().is_empty());

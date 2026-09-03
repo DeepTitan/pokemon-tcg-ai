@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
-  BookOpenText, CardsThree, CaretLeft, CaretRight, CheckCircle,
-  Drop, Eye, FunnelSimple, GearSix, Hand, Leaf, List, MagnifyingGlass, Pause, Play,
+  BookOpenText, CalendarBlank, CardsThree, CaretLeft, CaretRight, CheckCircle, Clock,
+  Drop, Eye, FunnelSimple, GearSix, Hand, List, MagnifyingGlass, Pause, Play,
   ShieldCheck, SkipBack, SkipForward, Sparkle, Sword, Trophy, WifiHigh, Wrench, X,
 } from '@phosphor-icons/react';
 import { Coin } from '@phosphor-icons/react/Coin';
@@ -33,6 +33,7 @@ import { deriveReviewTurnStatus, type PlayerTurnStatus } from './turn-status-mod
 import { capturedAtIso, collectCardSourceIds, finalizeReviewForClientExit, matchSummaryFromReview, operationKey, recordingSummaryFromOperation, REDUCER_VERSION } from './match-storage.js';
 import { initialClientLifecycleState, observeClientLifecycle } from './client-lifecycle-model.js';
 import { captureIndicator } from './capture-status-model.js';
+import { archiveMatchup, formatMatchDuration, formatPrizeScore } from './archive-summary-model.js';
 import { UpdateNotice } from './UpdateNotice.js';
 import { CARD_BACK_ART, publicCardArtUrl, resolvedCardArt, showCardBackOnError } from './card-art.js';
 import type {
@@ -408,28 +409,43 @@ function findPokemonById(canonical: CanonicalReviewState, id: string): PokemonIn
   return undefined;
 }
 
-function ArchiveBoardSide({ board, catalog, tone }: { board: TrackedPlayerBoard | undefined; catalog: ReadonlyMap<string, CardInfo>; tone: 'opponent' | 'local' }) {
-  const slots = [board?.bench[0], board?.bench[1], board?.active, board?.bench[2], board?.bench[3]];
-  return <span className={`session-board-side ${tone}`} aria-hidden="true">{slots.map((card, slot) => card
-    ? <img className={slot === 2 ? 'active' : ''} key={`${slot}-${card.id}`} src={resolvedCardImage(card, catalog)} alt="" onError={showCardBackOnError} />
-    : <i key={slot} />)}</span>;
-}
-
-function ArchiveBoardThumbnail({ summary, catalog }: { summary: MatchSummary; catalog: ReadonlyMap<string, CardInfo> }) {
-  return <span className="session-board" role="img" aria-label={`Final board state against ${summary.opponent}`}>
-    <ArchiveBoardSide board={summary.finalSnapshot?.players[summary.opponent]} catalog={catalog} tone="opponent" />
-    <span className="session-board-midline" aria-hidden="true" />
-    <ArchiveBoardSide board={summary.finalSnapshot?.players[summary.localPlayer]} catalog={catalog} tone="local" />
+function ArchiveFeaturedCard({ card, label, tone, catalog }: { card: TrackedCard | undefined; label: string; tone: 'local' | 'opponent'; catalog: ReadonlyMap<string, CardInfo> }) {
+  const name = card ? (resolvedCardInfo(card, catalog)?.name || card.name) : 'Unknown deck';
+  return <span className={`session-featured-card ${tone}`} title={`${label}: ${name}`}>
+    <img src={card ? resolvedCardImage(card, catalog) : fallbackCardArt(name)} alt={`${label} deck: ${name}`} onError={showCardBackOnError} />
+    <small>{label}</small>
   </span>;
 }
 
-function ArchiveRow({ summary, index, selected, catalog, onSelect }: { summary: MatchSummary; index: number; selected: boolean; catalog: ReadonlyMap<string, CardInfo>; onSelect: () => void }) {
+function ArchiveRow({ summary, selected, catalog, onSelect }: { summary: MatchSummary; selected: boolean; catalog: ReadonlyMap<string, CardInfo>; onSelect: () => void }) {
   const result = resultLabel(summary);
+  const matchup = archiveMatchup(summary, catalog);
+  const localCardName = matchup.localCard ? (resolvedCardInfo(matchup.localCard, catalog)?.name || matchup.localCard.name) : 'Unknown deck';
+  const opponentCardName = matchup.opponentCard ? (resolvedCardInfo(matchup.opponentCard, catalog)?.name || matchup.opponentCard.name) : 'Unknown deck';
+  const dateLabel = formatMatchDate(summary.importedAt);
+  const durationLabel = formatMatchDuration(summary.durationSeconds);
+  const prizeLabel = formatPrizeScore(matchup.localPrizesTaken, matchup.opponentPrizesTaken);
   return (
-    <button type="button" className={`session-card ${selected ? 'selected' : ''} ${summary.recording ? 'recording' : ''}`} onClick={onSelect}>
-      <ArchiveBoardThumbnail summary={summary} catalog={catalog} />
-      <img className="session-avatar" src={TRAINER_ART[index % TRAINER_ART.length]} alt="" />
-      <span className="session-copy"><strong>vs. {summary.opponent}</strong><span className="type-icons" aria-hidden="true"><Drop size={13} weight="fill" /><Eye size={13} weight="fill" /><Leaf size={13} weight="fill" /></span><small>{formatMatchDate(summary.importedAt)}</small><em className={result.toLowerCase()}>{result}</em></span>
+    <button
+      type="button"
+      className={`session-card ${selected ? 'selected' : ''} ${summary.recording ? 'recording' : ''}`}
+      onClick={onSelect}
+      aria-label={`${result} against ${summary.opponent}. ${localCardName} versus ${opponentCardName}. ${dateLabel}. ${durationLabel}. ${prizeLabel}.`}
+    >
+      <span className="session-matchup" aria-hidden="true">
+        <ArchiveFeaturedCard card={matchup.localCard} label="You" tone="local" catalog={catalog} />
+        <span className="session-matchup-versus">VS</span>
+        <ArchiveFeaturedCard card={matchup.opponentCard} label="Them" tone="opponent" catalog={catalog} />
+      </span>
+      <span className="session-copy">
+        <span className="session-heading"><strong>vs. {summary.opponent}</strong><em className={result.toLowerCase()}>{result}</em></span>
+        <span className="session-decks" title={`${localCardName} versus ${opponentCardName}`}><b>{localCardName}</b><i>vs</i><b>{opponentCardName}</b></span>
+        <span className="session-meta">
+          <time dateTime={summary.importedAt}><CalendarBlank size={12} weight="bold" />{dateLabel}</time>
+          <small><Clock size={12} weight="bold" />{durationLabel}</small>
+          <small><Trophy size={12} weight="fill" />{prizeLabel}</small>
+        </span>
+      </span>
     </button>
   );
 }
@@ -1076,7 +1092,7 @@ export default function TrackerApp() {
             <div className="archive-title"><div><h2>Match archive</h2><p>{archiveTotal} matches recorded</p></div><button className="panel-collapse-button" type="button" aria-label="Collapse match archive" aria-expanded="true" title="Collapse match archive" onClick={() => setArchiveOpen(false)}><CaretLeft size={17} weight="bold" /></button></div>
           </div>
           <div className="sessions">
-            {summaries.map((summary, index) => <ArchiveRow key={summary.id} summary={summary} index={index} selected={summary.id === selectedId} catalog={cardCatalog} onSelect={() => void selectSummary(summary)} />)}
+            {summaries.map((summary) => <ArchiveRow key={summary.id} summary={summary} selected={summary.id === selectedId} catalog={cardCatalog} onSelect={() => void selectSummary(summary)} />)}
             {!summaries.length && !restoringReview && <div className="empty-library"><BookOpenText size={38} weight="duotone" /><strong>No matches yet</strong><p>Turn on automatic capture and play normally. Your games will collect here.</p><button type="button" onClick={() => importLog(DEMO_BATTLE_LOG)}>Explore a sample</button></div>}
             {!summaries.length && restoringReview && <div className="empty-library archive-loading"><BookOpenText size={38} weight="duotone" /><strong>Restoring your archive…</strong><p>Loading the latest saved match.</p></div>}
           </div>

@@ -216,6 +216,8 @@ export interface MatchSummary {
   winner?: string;
   turnCount: number;
   operationCount: number;
+  /** Elapsed capture time for live matches. Imported logs may not contain timing data. */
+  durationSeconds?: number;
   reducerVersion: number;
   finalSnapshot?: TrackerBoardSnapshot;
   recording: boolean;
