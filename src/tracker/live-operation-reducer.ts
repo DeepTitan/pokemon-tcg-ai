@@ -757,6 +757,7 @@ interface OperationAssembly {
   endReason?: string;
   selections: Map<string, ReviewSelection>;
   selectionOrder: string[];
+  selectionMovementIds: Map<string, Set<string>>;
 }
 
 interface PrivateDrawResolution {
@@ -1497,6 +1498,7 @@ export class LiveReviewAssembler {
         coinFlips: new Map(),
         selections: new Map(),
         selectionOrder: [],
+        selectionMovementIds: new Map(),
       };
       assembly.operations.set(operationId, assembledOperation);
     }
@@ -1631,6 +1633,7 @@ export class LiveReviewAssembler {
     }
     const operationEntityUpdates = [...boardSnapshotEntities, ...updatedEntities(operation)];
     const updatedEntityIds = new Set<string>();
+    const currentEntityPositionChanges = new Set<string>();
     for (const entityUpdate of operationEntityUpdates) {
       const id = entityId(entityUpdate);
       if (!id) continue;
@@ -1657,6 +1660,7 @@ export class LiveReviewAssembler {
       assembly.entities.set(id, merged);
 
       const nextPosition = position(merged);
+      if (previous && previousPosition !== nextPosition) currentEntityPositionChanges.add(id);
       const nextKnockouts = battleStat(merged, 'CardEntityTimesKnockedOut') || 0;
       if (
         previous
@@ -1695,26 +1699,27 @@ export class LiveReviewAssembler {
       const selection = assembledOperation.selections.get(selectionId);
       if (!selection) continue;
       if (completedSelectionIds.has(selectionId)) selection.completed = true;
-      for (const updated of operationEntityUpdates) {
-        const updatedId = entityId(updated);
-        if (!updatedId || !selection.eligibleOptionIds.includes(updatedId)) continue;
-        const previousPos = number(updated, 'previousGamePos', 'previousPos');
-        const currentPos = number(updated, 'currentGamePos', 'currentPos');
-        if (previousPos != null && currentPos != null && previousPos !== currentPos && !selection.selectedOptionIds.includes(updatedId)) {
-          selection.selectedOptionIds.push(updatedId);
-        }
-      }
       // Search resolutions do not always repeat the chosen card in
       // `updatedEntities`. The exact MoveCards delta is still authoritative:
-      // if an eligible option moved and the number of moves fits the selection
-      // limit, that card was chosen. This covers Poké Pad, Stadium searches,
-      // Items, Supporters, and future card effects through the same path.
-      const remaining = Math.max(0, selection.maximum - selection.selectedOptionIds.length);
+      // if an eligible option moved, that card was chosen. Accumulate those
+      // exact moves across operation phases and prefer them over entity
+      // snapshots, whose previousGamePos field can describe an older turn.
       const movedEligibleIds = [...cardMovements.keys()].filter((id) =>
-        selection.eligibleOptionIds.includes(id) && !selection.selectedOptionIds.includes(id)
+        selection.eligibleOptionIds.includes(id)
       );
-      if (movedEligibleIds.length > 0 && movedEligibleIds.length <= remaining) {
-        selection.selectedOptionIds.push(...movedEligibleIds);
+      const exactSelectionIds = assembledOperation.selectionMovementIds.get(selectionId) || new Set<string>();
+      movedEligibleIds.forEach((id) => exactSelectionIds.add(id));
+      if (exactSelectionIds.size > 0) {
+        assembledOperation.selectionMovementIds.set(selectionId, exactSelectionIds);
+        selection.selectedOptionIds = [...exactSelectionIds].slice(0, Math.max(0, selection.maximum));
+      } else if (selection.completed && selection.selectedOptionIds.length === 0) {
+        // A small number of protocol paths complete without a MoveCards delta.
+        // Fall back only to positions that actually changed relative to the
+        // reducer's prior state, never the stale previous/current pair carried
+        // inside a full entity snapshot.
+        selection.selectedOptionIds = selection.eligibleOptionIds
+          .filter((id) => currentEntityPositionChanges.has(id))
+          .slice(0, Math.max(0, selection.maximum));
       }
       if (selection.candidateVisibility === 'private' && selection.completed) {
         const privateResultIds = [...cardMovements.keys()].filter((id) =>
@@ -1735,6 +1740,8 @@ export class LiveReviewAssembler {
           }
         }
       }
+      selection.selectedOptionIds = [...new Set(selection.selectedOptionIds)]
+        .slice(0, Math.max(0, selection.maximum));
     }
 
     const localSideForHiddenZones = ([1, 2] as const).find((side) => [...assembly!.entities.values()].some((entity) => {
