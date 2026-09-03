@@ -12,6 +12,10 @@ import {
 } from '../engine/types.js';
 import type { CanonicalReviewState, MatchReview, ReviewSelection, TrackedCard, TrackedPokemon, TrackedTurn } from './types.js';
 
+export function displayedDeckCount(board: { deckCount?: number }, canonicalDeckCount: number): number {
+  return board.deckCount ?? canonicalDeckCount;
+}
+
 function previewCard(card: TrackedCard, index = 0): Card {
   const name = card.name || 'Captured card';
   const pokemonLike = /Pokémon|Munkidori|Dragapult|Dreepy|Drakloak|Budew|Charizard|Pidgeot|Fezandipiti|Rotom/i.test(name);

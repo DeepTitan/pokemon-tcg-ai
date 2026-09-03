@@ -1321,14 +1321,19 @@ function initializeZoneCount(
   zoneCounts.set(positionNumber, existing);
 }
 
-function updateZoneCountsFromMove(
+function updateZoneCountsFromCardTransitions(
   modification: Entity,
   zoneCounts: Map<number, number>,
   entities: Map<string, Entity>,
   movements: Map<string, CardMovement>,
 ): void {
-  if (!/MoveCardsModification/i.test(modificationType(modification))) return;
-  const deltas = list(modification, 'moveCardDeltas', 'MoveCardDeltas');
+  const type = modificationType(modification);
+  const isMove = type === 'MoveCardsModification';
+  const isAttachment = type === 'AttachCardsModification';
+  if (!isMove && !isAttachment) return;
+  const deltas = isMove
+    ? list(modification, 'moveCardDeltas', 'MoveCardDeltas')
+    : list(modification, 'attachCardDeltas', 'AttachCardDeltas');
   const resetPrivateHands = new Set<number>();
   for (const handPosition of [11, 12]) {
     const deckPosition = handPosition === 11 ? 7 : 8;
@@ -1350,8 +1355,17 @@ function updateZoneCountsFromMove(
     const delta = record(candidate);
     const fromAddress = record(value(delta, 'fromCardAddress', 'FromCardAddress'));
     const toAddress = record(value(delta, 'toCardAddress', 'ToCardAddress'));
-    let from = gamePositionNumber(fromAddress, entities);
-    let to = gamePositionNumber(toAddress, entities);
+    // Inspect the endpoints themselves first. When TCG Live redacts the deck
+    // side of a move it often leaves the entity ID in place, and resolving that
+    // ID through the pre-move entity map would incorrectly make both endpoints
+    // look like the same public zone (for example, Discard -> Discard instead
+    // of Discard -> Deck).
+    let from = number(fromAddress, 'pos', 'position', 'currentGamePos', 'currentPos');
+    let to = number(toAddress, 'pos', 'position', 'currentGamePos', 'currentPos');
+    if (from == null && to == null) {
+      from = gamePositionNumber(fromAddress, entities);
+      to = gamePositionNumber(toAddress, entities);
+    }
     // The server intentionally redacts the deck-side address of private moves.
     // The visible endpoint still identifies the owning player, so an omitted
     // endpoint can be reconstructed as that player's deck. This covers draws,
@@ -1373,7 +1387,7 @@ function updateZoneCountsFromMove(
         Math.max(authoritativePrivateHandCounts.get(to) || 0, destinationIndex + 1),
       );
     }
-    if (movedEntityId && to != null) {
+    if (isMove && movedEntityId && to != null) {
       movements.set(movedEntityId, {
         from,
         to,
@@ -1529,7 +1543,7 @@ export class LiveReviewAssembler {
       assembledOperation!.modificationIds.add(modificationId);
       assembledOperation!.modifications.set(modificationId, modification);
       const type = modificationType(modification);
-      updateZoneCountsFromMove(modification, assembly!.zoneCounts, assembly!.entities, cardMovements);
+      updateZoneCountsFromCardTransitions(modification, assembly!.zoneCounts, assembly!.entities, cardMovements);
 
       if (type === 'MoveCardsModification') {
         const sourceEntityId = text(modification, 'actionOriginEntityID', 'actionOriginEntityId');

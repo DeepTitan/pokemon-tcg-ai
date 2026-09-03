@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { CardType, TrainerType } from '../../engine/types.js';
 import { LiveReviewAssembler } from '../live-operation-reducer.js';
+import { displayedDeckCount } from '../review-state-adapter.js';
 import type { CapturedOperation, CardInfo } from '../types.js';
+
+assert.equal(displayedDeckCount({ deckCount: 0 }, 7), 0, 'a captured empty deck must not fall back to an estimate');
+assert.equal(displayedDeckCount({}, 7), 7, 'legacy reviews without a deck count may use their canonical count');
 
 const catalog = new Map<string, CardInfo>([
   ['top-mon', { id: 'top-mon', name: 'Dragapult ex', hp: 320, category: 1, cardType: 'P', format: '2ex', retreat: 1, weaknessType: 'D', evolvesFrom: 'Drakloak', actions: [{ kind: 'ability', name: 'Infiltrator', text: 'Once during your turn, do a thing.', cost: '', damage: '' }, { kind: 'attack', name: 'Phantom Dive', text: 'Put damage counters on the Bench.', cost: 'PR', damage: '200' }] }],

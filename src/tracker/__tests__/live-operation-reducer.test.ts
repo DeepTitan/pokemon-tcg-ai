@@ -166,6 +166,80 @@ assert.equal(benchReview?.turns[1].events[0].text, 'Isaiah: Benched Dreepy');
 assert.equal(benchReview?.turns[1].choiceLabel, 'Benched Dreepy');
 assert.equal(benchReview?.turns[1].snapshot.players.Isaiah.bench[0]?.name, 'Dreepy');
 
+const discardAttachAssembler = new LiveReviewAssembler(catalog);
+discardAttachAssembler.ingest({
+  ...operation,
+  operationId: 'discard-attach-seed',
+  messageIndex: 16,
+  operation: {
+    matchBoard: {
+      player1: { entityID: 'discard-player-1', ownerPlayerId: 'player-1', currentPos: 3, isPlayer1: true, userName: 'Isaiah' },
+      player2: { entityID: 'discard-player-2', ownerPlayerId: 'player-2', currentPos: 4, isPlayer1: false, userName: 'Opponent' },
+      p1Deck: [], p2Deck: [], p1Hand: [], p2Hand: [], p1Discard: [],
+      p2Discard: [
+        { entityID: 'discard-energy-a', ownerPlayerId: 'player-2', currentGamePos: 10, cardSourceID: 'sv-energy' },
+        { entityID: 'discard-energy-b', ownerPlayerId: 'player-2', currentGamePos: 10, cardSourceID: 'sv-energy' },
+      ],
+      p1LostZone: [], p2LostZone: [], p1Prize: [], p2Prize: [], p1Bench: [], p2Bench: [],
+      p1Active: null,
+      p2Active: { entityID: 'discard-target', ownerPlayerId: 'player-2', currentGamePos: 16, cardSourceID: 'sv-test-1' },
+    },
+  },
+});
+const discardAttachReview = discardAttachAssembler.ingest({
+  ...operation,
+  operationId: 'discard-attach-resolution',
+  messageIndex: 17,
+  operation: {
+    operationNumber: 5,
+    playerOperation: { operationType: 1, accountID: 'player-2', originEntityID: 'discard-target' },
+    actionModifications: [{
+      $type: 'MatchLogic.AttachCardsModification, MatchLogic',
+      actionModificationID: 'attach-from-discard',
+      attachCardDeltas: [{
+        fromCardAddress: { entityID: 'discard-energy-a', pos: 10 },
+        toCardAddress: { entityID: 'discard-energy-a', parentEntityID: 'discard-target', pos: 16 },
+      }],
+    }],
+    updatedEntities: [
+      {
+        entityID: 'discard-target', ownerPlayerId: 'player-2', currentGamePos: 16, cardSourceID: 'sv-test-1',
+        attachedEnergy: [{ entityID: 'discard-energy-a' }],
+      },
+      {
+        entityID: 'discard-energy-a', ownerPlayerId: 'player-2', previousGamePos: 10, currentGamePos: 16,
+        currentParentEntityID: 'discard-target', cardSourceID: 'sv-energy',
+      },
+    ],
+  },
+});
+assert.deepEqual(discardAttachReview?.turns.at(-1)?.snapshot.players.Opponent.discard, ['Basic Darkness Energy']);
+assert.ok(!discardAttachReview?.turns.at(-1)?.snapshot.players.Opponent.discard.includes('Unknown card'), 'attaching from a public discard must not manufacture anonymous cards');
+assert.deepEqual(discardAttachReview?.turns.at(-1)?.snapshot.players.Opponent.active?.energies, ['Basic Darkness Energy']);
+const redactedDeckReturnReview = discardAttachAssembler.ingest({
+  ...operation,
+  operationId: 'redacted-deck-return',
+  messageIndex: 18,
+  operation: {
+    operationNumber: 6,
+    playerOperation: { operationType: 1, accountID: 'player-2', originEntityID: 'discard-target' },
+    actionModifications: [{
+      $type: 'MatchLogic.MoveCardsModification, MatchLogic',
+      actionModificationID: 'discard-to-redacted-deck',
+      moveCardDeltas: [{
+        fromCardAddress: { entityID: 'discard-energy-b', pos: 10 },
+        toCardAddress: { entityID: 'discard-energy-b' },
+      }],
+    }],
+    updatedEntities: [{
+      entityID: 'discard-energy-b', ownerPlayerId: 'player-2', previousGamePos: 10,
+      currentGamePos: 8, cardSourceID: 'sv-energy',
+    }],
+  },
+});
+assert.deepEqual(redactedDeckReturnReview?.turns.at(-1)?.snapshot.players.Opponent.discard, [], 'a redacted deck destination must still remove the known card from Discard');
+assert.equal(redactedDeckReturnReview?.turns.at(-1)?.snapshot.players.Opponent.deckCount, 1);
+
 const coinAssembler = new LiveReviewAssembler(catalog);
 coinAssembler.ingest({
   ...operation,
