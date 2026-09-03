@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from 'react';
+import { flushSync } from 'react-dom';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
   BookOpenText, CalendarBlank, CardsThree, CaretLeft, CaretRight, CheckCircle, Clock,
@@ -34,8 +35,9 @@ import { capturedAtIso, collectCardSourceIds, finalizeReviewForClientExit, match
 import { initialClientLifecycleState, observeClientLifecycle } from './client-lifecycle-model.js';
 import { captureIndicator } from './capture-status-model.js';
 import { archiveMatchup, formatMatchDuration, formatPrizeScore } from './archive-summary-model.js';
-import { opponentHandFanSlots } from './hand-layout-model.js';
+import { handFanCardCount, opponentHandFanSlots } from './hand-layout-model.js';
 import { prizeSlotStates } from './prize-layout-model.js';
+import { FRAME_ANIMATIONS_STORAGE_KEY, frameAnimationsFromStoredPreference, frameCardTransitionName } from './frame-animation-model.js';
 import { UpdateNotice } from './UpdateNotice.js';
 import { CARD_BACK_ART, cardCatalogEntryNeedsRefresh, findCatalogCard, publicCardArtUrl, resolvedCardArt, showCardBackOnError } from './card-art.js';
 import type {
@@ -49,6 +51,27 @@ const STORAGE_KEY = 'match-lens/reviews-v1';
 const STORAGE_MIGRATED_KEY = 'trace/reviews-sqlite-v1';
 const MAX_REVIEWS = 24;
 const CARD_ART_RETRY_DELAY_MS = 10_000;
+
+interface TraceViewTransition {
+  finished: Promise<unknown>;
+  skipTransition?: () => void;
+}
+
+type TransitionDocument = Document & {
+  startViewTransition?: (update: () => void) => TraceViewTransition;
+};
+
+function initialFrameAnimations(): boolean {
+  try {
+    return frameAnimationsFromStoredPreference(localStorage.getItem(FRAME_ANIMATIONS_STORAGE_KEY));
+  } catch {
+    return true;
+  }
+}
+
+function cardTransitionStyle(id: string | undefined): CSSProperties | undefined {
+  return id ? { viewTransitionName: frameCardTransitionName(id) } as CSSProperties : undefined;
+}
 
 function beginWindowDrag(event: ReactMouseEvent<HTMLElement>): void {
   if (event.button !== 0 || !isTauri()) return;
@@ -168,7 +191,7 @@ function StadiumMarker({
     {resolvedCard || info ? <img src={artwork} data-card-id={resolvedSourceId} alt="" onError={showCardBackOnError} /> : <ShieldCheck size={24} weight="fill" />}
   </span>;
   return resolvedCard
-    ? <button type="button" className={`stadium-marker ${ownerClass}`} onClick={() => onOpen(resolvedCard)} aria-label={`${context}. Open card details.`} title={`${context} · Click to inspect`}>{content}</button>
+    ? <button type="button" className={`stadium-marker ${ownerClass}`} style={cardTransitionStyle(resolvedCard.id)} onClick={() => onOpen(resolvedCard)} aria-label={`${context}. Open card details.`} title={`${context} · Click to inspect`}>{content}</button>
     : <div className={`stadium-marker ${ownerClass}`} aria-label={context} title={context}>{content}</div>;
 }
 
@@ -194,7 +217,7 @@ function PokemonSlot({ pokemon, catalog, active = false, defeated = false, attac
   });
   const tools = pokemon.toolCards || [];
   return (
-    <button type="button" className={`pokemon-slot ${active ? 'active' : ''} ${defeated ? 'defeated' : ''} ${attacking ? 'attacking' : ''} ${damageChange ? damageChange.delta > 0 ? 'damage-increased' : 'damage-decreased' : ''} ${positionChange ? `position-changed moved-to-${positionChange.to}` : ''}`} data-pokemon-id={pokemon.id} data-pokemon-name={displayName} title={`Inspect ${displayName}${pokemon.cardId ? ` · ${pokemon.cardId}` : ''}`} onClick={() => onOpen?.(pokemon.id)}>
+    <button type="button" className={`pokemon-slot ${active ? 'active' : ''} ${defeated ? 'defeated' : ''} ${attacking ? 'attacking' : ''} ${damageChange ? damageChange.delta > 0 ? 'damage-increased' : 'damage-decreased' : ''} ${positionChange ? `position-changed moved-to-${positionChange.to}` : ''}`} style={cardTransitionStyle(pokemon.id)} data-pokemon-id={pokemon.id} data-pokemon-name={displayName} title={`Inspect ${displayName}${pokemon.cardId ? ` · ${pokemon.cardId}` : ''}`} onClick={() => onOpen?.(pokemon.id)}>
       <img className="card-art" src={image} data-card-id={pokemon.cardId} alt={displayName} onError={showCardBackOnError} />
       {displayedDamage > 0 && <b className="damage-token">{displayedDamage}</b>}
       {damageChange && <span className={`damage-change-badge ${damageChange.delta > 0 ? 'added' : 'removed'}`} aria-label={damageChange.delta > 0 ? `${damageChange.delta} damage added; ${damageChange.after} total damage` : `${Math.abs(damageChange.delta)} damage removed; ${damageChange.after} total damage`}><b>{damageChange.delta > 0 ? '+' : '−'}{Math.abs(damageChange.delta)}</b><small>damage</small></span>}
@@ -204,11 +227,11 @@ function PokemonSlot({ pokemon, catalog, active = false, defeated = false, attac
       </span>}
       {energyAttachments.length > 0 && <span className="attached-energy-preview" aria-label={`${energyAttachments.map(({ displayName: name }) => name).join(', ')} attached`}>
         {energyAttachments.slice(-3).map(({ card, displayName: energyName, id, type }) => card
-          ? <span className="attached-energy-card" title={`${energyName} · Attached Energy`} key={id}><img src={resolvedCardImage(card, catalog)} data-card-id={card.cardId} alt="" onError={showCardBackOnError} /></span>
+          ? <span className="attached-energy-card" style={cardTransitionStyle(card.id)} title={`${energyName} · Attached Energy`} key={id}><img src={resolvedCardImage(card, catalog)} data-card-id={card.cardId} alt="" onError={showCardBackOnError} /></span>
           : <span className={`attached-energy-card energy-card-fallback ${type ? `energy-${type.toLowerCase()}` : ''}`} title={`${energyName} · Attached Energy`} key={id}><i aria-hidden="true" /><small>{energyName.replace(/^Basic\s*/i, '').replace(/\s*Energy$/i, '') || 'Energy'}</small></span>)}
         {energyAttachments.length > 3 && <b className="attached-energy-overflow" aria-label={`${energyAttachments.length - 3} more attached Energy cards`}>+{energyAttachments.length - 3}</b>}
       </span>}
-      {tools.length > 0 && <span className="attached-tool-preview" aria-label={`${tools.map((tool) => `${resolvedCardInfo(tool, catalog)?.name || tool.name} Tool`).join(', ')} attached`}>{tools.slice(-2).map((tool) => { const name = resolvedCardInfo(tool, catalog)?.name || tool.name; return <span className="attached-tool-card" title={`${name} · Pokémon Tool`} key={tool.id}><img src={resolvedCardImage(tool, catalog)} data-card-id={tool.cardId} alt="" onError={showCardBackOnError} /><small>Tool</small></span>; })}</span>}
+      {tools.length > 0 && <span className="attached-tool-preview" aria-label={`${tools.map((tool) => `${resolvedCardInfo(tool, catalog)?.name || tool.name} Tool`).join(', ')} attached`}>{tools.slice(-2).map((tool) => { const name = resolvedCardInfo(tool, catalog)?.name || tool.name; return <span className="attached-tool-card" style={cardTransitionStyle(tool.id)} title={`${name} · Pokémon Tool`} key={tool.id}><img src={resolvedCardImage(tool, catalog)} data-card-id={tool.cardId} alt="" onError={showCardBackOnError} /><small>Tool</small></span>; })}</span>}
       {defeated && <span className="knockout-stamp" aria-label="Knocked out"><b>KO</b><small>Knocked out</small></span>}
     </button>
   );
@@ -326,7 +349,7 @@ function ZoneStack({ label, count, tone, onOpen }: { label: string; count: numbe
   return <button type="button" className={`zone-stack ${tone}`} onClick={onOpen} title={`Open ${label}`}><span>{label}</span><span className="zone-stack-cards"><CardsThree size={36} weight="duotone" /></span><b>{count}</b></button>;
 }
 
-function PrizeFan({ count, tone, onOpen }: { count: number; tone: 'coral' | 'blue'; onOpen?: () => void }) {
+function PrizeFan({ count, cards, tone, onOpen }: { count: number; cards: Card[]; tone: 'coral' | 'blue'; onOpen?: () => void }) {
   const remaining = Math.max(0, Math.min(6, count));
   const slots = prizeSlotStates(remaining);
   return (
@@ -340,7 +363,7 @@ function PrizeFan({ count, tone, onOpen }: { count: number; tone: 'coral' | 'blu
       <span>Prize</span>
       <span className="prize-fan-cards" aria-hidden="true">
         {slots.map((state, index) => (
-          <i key={index} className={state} />
+          <i key={index} className={state} style={state === 'remaining' ? cardTransitionStyle(cards[index]?.id) : undefined} />
         ))}
       </span>
     </button>
@@ -350,7 +373,7 @@ function PrizeFan({ count, tone, onOpen }: { count: number; tone: 'coral' | 'blu
 function ZoneCards({ label, cards, catalog, onOpen }: { label: string; cards: TrackedCard[]; catalog: ReadonlyMap<string, CardInfo>; onOpen?: () => void }) {
   const visible = cards.slice(-2).reverse();
   return (
-    <button type="button" className="zone-card-group" onClick={onOpen} title={`Open ${label}`}><span>{label}</span><span className="zone-card-stack">{(visible.length ? visible : [{ id: `fallback-${label}`, name: label }]).map((card) => { const name = resolvedCardInfo(card, catalog)?.name || card.name; return <img key={card.id} src={resolvedCardImage(card, catalog)} data-card-id={card.cardId} title={name} alt={name} onError={showCardBackOnError} />; })}</span><b>{cards.length}</b></button>
+    <button type="button" className="zone-card-group" onClick={onOpen} title={`Open ${label}`}><span>{label}</span><span className="zone-card-stack">{(visible.length ? visible : [{ id: `fallback-${label}`, name: label }]).map((card) => { const name = resolvedCardInfo(card, catalog)?.name || card.name; return <img key={card.id} style={card.id.startsWith('fallback-') ? undefined : cardTransitionStyle(card.id)} src={resolvedCardImage(card, catalog)} data-card-id={card.cardId} title={name} alt={name} onError={showCardBackOnError} />; })}</span><b>{cards.length}</b></button>
   );
 }
 
@@ -362,18 +385,19 @@ function reviewCardImage(card: Card, catalog: ReadonlyMap<string, CardInfo>): st
 
 function HandFan({ boardName, cards, count, visibility, catalog, opponent, onOpen }: { boardName: string; cards: Card[]; count: number; visibility: Record<string, ReviewCardVisibility>; catalog: ReadonlyMap<string, CardInfo>; opponent: boolean; onOpen: () => void }) {
   const total = Math.max(cards.length, count);
-  const displayed = Math.min(total, 12);
+  const displayed = handFanCardCount(total);
+  const fanState = displayed === 0 ? 'empty' : displayed === 1 ? 'single' : '';
+  const fanStyle = { '--hand-gap-count': Math.max(1, displayed - 1) } as CSSProperties;
   return (
     <button type="button" className={`hand-fan ${opponent ? 'opponent-hand' : 'local-hand'}`} onClick={onOpen} title={`Open ${boardName}'s hand`} aria-label={`${boardName} hand, ${total} card${total === 1 ? '' : 's'}`}>
-      <span className="hand-fan-cards" aria-hidden="true">
+      <span className={`hand-fan-cards ${fanState}`} style={fanStyle} aria-hidden="true">
         {Array.from({ length: displayed }, (_, index) => {
           const card = cards[index];
           const hidden = opponent || !card;
           return hidden
             ? <span className="hand-fan-card hidden" key={card?.id || `hidden-${index}`}><img src="/tracker-assets/pokemon-card-back.jpg" alt="" /></span>
-            : <span className="hand-fan-card known" key={card.id} title={card.name}><img src={reviewCardImage(card, catalog)} data-card-id={cardSourceIdFromReviewCard(card)} alt="" onError={showCardBackOnError} /></span>;
+            : <span className="hand-fan-card known" style={cardTransitionStyle(card.id)} key={card.id} title={card.name}><img src={reviewCardImage(card, catalog)} data-card-id={cardSourceIdFromReviewCard(card)} alt="" onError={showCardBackOnError} /></span>;
         })}
-        {total > displayed && <em>+{total - displayed}</em>}
       </span>
       <span className="hand-fan-label"><Hand size={14} weight="duotone" /><span>{opponent ? 'Opponent hand' : 'Your hand'}</span><b>{total}</b></span>
     </button>
@@ -419,7 +443,7 @@ function PlayerField({ board, canonical, visibility, catalog, choiceFrames, curr
         </div>
         <div className="strip-zones"><div className="prize-summary"><span>Prize</span><b>{canonical.prizes.length || prizesRemaining(board)}</b>{Array.from({ length: 6 }, (_, index) => <i key={index} className={index < (canonical.prizes.length || prizesRemaining(board)) ? 'remaining' : 'taken'} />)}</div></div>
       </div>
-      <div className="field-layout"><PrizeFan count={canonical.prizes.length || prizesRemaining(board)} tone={tone} onOpen={() => openZone('Prize cards', canonical.prizes, 'Prize identities stay private until the game reveals them.')} /><div className="battle-lanes">{opponent ? <>{bench}{active}</> : <>{active}{bench}</>}</div><div className="side-piles"><ZoneStack label="Deck" count={displayedDeckCount(board, canonical.deck.length)} tone={tone} onOpen={() => openZone('Deck', canonical.deck, 'The deck remains face-down outside captured search effects.')} /><ZoneCards label="Discard" cards={board.discardCards || []} catalog={catalog} onOpen={() => openZone('Discard pile', canonical.discard, 'Public discarded cards at this exact action.')} />{canonical.lostZone.length > 0 && <button type="button" className="lost-zone-button" onClick={() => openZone('Lost Zone', canonical.lostZone, 'Cards sent to the Lost Zone are public and cannot be recovered.')}><Sparkle size={13} weight="fill" />Lost Zone <b>{canonical.lostZone.length}</b></button>}</div></div>
+      <div className="field-layout"><PrizeFan count={canonical.prizes.length || prizesRemaining(board)} cards={canonical.prizes} tone={tone} onOpen={() => openZone('Prize cards', canonical.prizes, 'Prize identities stay private until the game reveals them.')} /><div className="battle-lanes">{opponent ? <>{bench}{active}</> : <>{active}{bench}</>}</div><div className="side-piles"><ZoneStack label="Deck" count={displayedDeckCount(board, canonical.deck.length)} tone={tone} onOpen={() => openZone('Deck', canonical.deck, 'The deck remains face-down outside captured search effects.')} /><ZoneCards label="Discard" cards={board.discardCards || []} catalog={catalog} onOpen={() => openZone('Discard pile', canonical.discard, 'Public discarded cards at this exact action.')} />{canonical.lostZone.length > 0 && <button type="button" className="lost-zone-button" onClick={() => openZone('Lost Zone', canonical.lostZone, 'Cards sent to the Lost Zone are public and cannot be recovered.')}><Sparkle size={13} weight="fill" />Lost Zone <b>{canonical.lostZone.length}</b></button>}</div></div>
       {!opponent && <div className="hand-dock"><HandFan boardName={board.name} cards={canonical.hand} count={handCount} visibility={visibility} catalog={catalog} opponent={false} onOpen={openHand} /></div>}
     </section>
   );
@@ -503,6 +527,7 @@ export default function TrackerApp() {
   const [restoringReview, setRestoringReview] = useState(isTauri());
   const [tracking, setTracking] = useState(() => !isTauri());
   const [playing, setPlaying] = useState(false);
+  const [frameAnimations, setFrameAnimations] = useState(initialFrameAnimations);
   const [environment, setEnvironment] = useState<TrackerEnvironment>({
     clientInstalled: false, clientRunning: false, pid: null, captureMode: 'existing-client',
     capture: { permissionReady: false, enabled: false, observerRunning: false, routeActive: false, clientAttached: false, frameCount: 0, operationCount: 0, lastError: null, observerPort: 8899 },
@@ -540,6 +565,62 @@ export default function TrackerApp() {
   const setupPrompted = useRef(false);
   const autoStartAttempted = useRef(false);
   const selectedTimelineEventRef = useRef<HTMLButtonElement | null>(null);
+  const turnIndexRef = useRef(turnIndex);
+  const viewTransitionRef = useRef<TraceViewTransition | null>(null);
+  const fallbackAnimationTimerRef = useRef<number | null>(null);
+
+  const toggleFrameAnimations = useCallback(() => {
+    setFrameAnimations((current) => {
+      const next = !current;
+      try { localStorage.setItem(FRAME_ANIMATIONS_STORAGE_KEY, next ? 'on' : 'off'); } catch { /* Preference persistence is optional. */ }
+      return next;
+    });
+  }, []);
+
+  const navigateToFrame = useCallback((next: number | ((current: number) => number)) => {
+    const current = turnIndexRef.current;
+    const last = Math.max(0, (selectedReview?.turns.length || 1) - 1);
+    const target = Math.max(0, Math.min(last, typeof next === 'function' ? next(current) : next));
+    if (target === current) return;
+
+    const apply = () => {
+      turnIndexRef.current = target;
+      flushSync(() => setTurnIndex(target));
+    };
+    const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (!frameAnimations || reduceMotion) {
+      setTurnIndex(target);
+      turnIndexRef.current = target;
+      return;
+    }
+
+    const direction = target > current ? 'forward' : 'backward';
+    const transitionDocument = document as TransitionDocument;
+    viewTransitionRef.current?.skipTransition?.();
+    if (!transitionDocument.startViewTransition) {
+      apply();
+      const board = document.querySelector('.board-frame');
+      if (board instanceof HTMLElement) {
+        board.classList.remove('frame-fallback-forward', 'frame-fallback-backward');
+        void board.offsetWidth;
+        board.classList.add(`frame-fallback-${direction}`);
+        if (fallbackAnimationTimerRef.current != null) window.clearTimeout(fallbackAnimationTimerRef.current);
+        fallbackAnimationTimerRef.current = window.setTimeout(() => board.classList.remove(`frame-fallback-${direction}`), 380);
+      }
+      return;
+    }
+
+    document.documentElement.classList.add('trace-frame-transition');
+    document.documentElement.dataset.frameDirection = direction;
+    const transition = transitionDocument.startViewTransition(apply);
+    viewTransitionRef.current = transition;
+    void transition.finished.catch(() => undefined).finally(() => {
+      if (viewTransitionRef.current !== transition) return;
+      viewTransitionRef.current = null;
+      document.documentElement.classList.remove('trace-frame-transition');
+      delete document.documentElement.dataset.frameDirection;
+    });
+  }, [frameAnimations, selectedReview?.turns.length]);
 
   const selectedTurn = selectedReview?.turns[Math.min(turnIndex, Math.max(0, selectedReview.turns.length - 1))] || null;
   const selectedCanonical = useMemo(() => selectedReview && selectedTurn
@@ -968,6 +1049,14 @@ export default function TrackerApp() {
   }, [notice]);
 
   useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
+  useEffect(() => { turnIndexRef.current = turnIndex; }, [turnIndex]);
+
+  useEffect(() => () => {
+    viewTransitionRef.current?.skipTransition?.();
+    if (fallbackAnimationTimerRef.current != null) window.clearTimeout(fallbackAnimationTimerRef.current);
+    document.documentElement.classList.remove('trace-frame-transition');
+    delete document.documentElement.dataset.frameDirection;
+  }, []);
 
   useEffect(() => { setTurnIndex((current) => Math.min(current, Math.max(0, (selectedReview?.turns.length || 1) - 1))); }, [selectedReview]);
 
@@ -1003,7 +1092,7 @@ export default function TrackerApp() {
       event.preventDefault();
       setPlaying(false);
       setInspector(null);
-      setTurnIndex((current) => {
+      navigateToFrame((current) => {
         if (firstFrame) return 0;
         if (latestFrame) return selectedReview.turns.length - 1;
         if (previousFrame) return Math.max(0, current - 1);
@@ -1014,20 +1103,20 @@ export default function TrackerApp() {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [inspector, keyMoments, selectedReview, showSetup]);
+  }, [inspector, keyMoments, navigateToFrame, selectedReview, showSetup]);
 
   useEffect(() => {
     if (!playing || !selectedReview) return undefined;
     const selectedFrame = selectedReview.turns[turnIndex];
     const isAttackFrame = selectedFrame?.events.some((event) => event.kind === 'attack' || event.kind === 'damage');
     const timer = window.setTimeout(() => {
-      setTurnIndex((current) => {
+      navigateToFrame((current) => {
         if (current >= selectedReview.turns.length - 1) { setPlaying(false); return current; }
         return current + 1;
       });
     }, isAttackFrame ? 2600 : 1200);
     return () => window.clearTimeout(timer);
-  }, [playing, selectedReview, turnIndex]);
+  }, [navigateToFrame, playing, selectedReview, turnIndex]);
 
   const changeTracking = useCallback(async () => {
     setError(null);
@@ -1177,13 +1266,14 @@ export default function TrackerApp() {
                 <strong>{currentActionEvents[0]?.text || (selectedTurn.player ? `${selectedTurn.player}'s action` : selectedTurn.label)}</strong>
                 <small>{currentActionEvents.slice(1).filter(isSupportingActionEvent).map((event) => event.text).join(' · ') || (selectedTurn.player ? `Action by ${selectedTurn.player}` : selectedTurn.label === 'Capture baseline' ? 'First complete board received' : selectedTurn.label === 'Partial capture' ? 'Capture began before a complete board was available' : 'Opening setup')}</small>
               </div>
-              <label className="turn-scrubber"><span className="sr-only">Replay position</span><span className="turn-scrubber-rail" aria-hidden="true"><i style={{ width: `${selectedReview.turns.length > 1 ? (turnIndex / (selectedReview.turns.length - 1)) * 100 : 0}%` }} /></span><input type="range" min="0" max={Math.max(0, selectedReview.turns.length - 1)} value={turnIndex} onChange={(event) => { setTurnIndex(Number(event.target.value)); setPlaying(false); }} /></label>
+              <label className="turn-scrubber"><span className="sr-only">Replay position</span><span className="turn-scrubber-rail" aria-hidden="true"><i style={{ width: `${selectedReview.turns.length > 1 ? (turnIndex / (selectedReview.turns.length - 1)) * 100 : 0}%` }} /></span><input type="range" min="0" max={Math.max(0, selectedReview.turns.length - 1)} value={turnIndex} onChange={(event) => { navigateToFrame(Number(event.target.value)); setPlaying(false); }} /></label>
               <div className="transport-buttons">
-                <button type="button" onClick={() => setTurnIndex(0)} disabled={turnIndex === 0} aria-label="First frame" aria-keyshortcuts="Shift+A" title="First frame · Shift+A"><SkipBack size={19} weight="fill" /></button>
-                <button type="button" onClick={() => setTurnIndex((value) => Math.max(0, value - 1))} disabled={turnIndex === 0} aria-label="Previous frame" aria-keyshortcuts="ArrowLeft A" title="Previous frame · A or ←"><CaretLeft size={20} weight="bold" /></button>
-                <button className="play-button" type="button" onClick={() => { if (!playing && turnIndex >= selectedReview.turns.length - 1) setTurnIndex(0); setPlaying((value) => !value); }} aria-label={playing ? 'Pause replay' : 'Play replay'}>{playing ? <Pause size={23} weight="fill" /> : <Play size={23} weight="fill" />}</button>
-                <button type="button" onClick={() => setTurnIndex((value) => Math.min(selectedReview.turns.length - 1, value + 1))} disabled={turnIndex >= selectedReview.turns.length - 1} aria-label="Next frame" aria-keyshortcuts="ArrowRight D" title="Next frame · D or →"><CaretRight size={20} weight="bold" /></button>
-                <button type="button" onClick={() => setTurnIndex(selectedReview.turns.length - 1)} disabled={turnIndex >= selectedReview.turns.length - 1} aria-label="Latest frame" aria-keyshortcuts="Shift+D" title="Latest frame · Shift+D"><SkipForward size={19} weight="fill" /></button>
+                <button className={`frame-motion-button ${frameAnimations ? 'enabled' : ''}`} type="button" aria-pressed={frameAnimations} aria-label={`Replay animations ${frameAnimations ? 'on' : 'off'}`} title={`Replay animations ${frameAnimations ? 'on' : 'off'} · Click to ${frameAnimations ? 'disable' : 'enable'}`} onClick={toggleFrameAnimations}><Sparkle size={17} weight={frameAnimations ? 'fill' : 'regular'} /></button>
+                <button type="button" onClick={() => navigateToFrame(0)} disabled={turnIndex === 0} aria-label="First frame" aria-keyshortcuts="Shift+A" title="First frame · Shift+A"><SkipBack size={19} weight="fill" /></button>
+                <button type="button" onClick={() => navigateToFrame((value) => Math.max(0, value - 1))} disabled={turnIndex === 0} aria-label="Previous frame" aria-keyshortcuts="ArrowLeft A" title="Previous frame · A or ←"><CaretLeft size={20} weight="bold" /></button>
+                <button className="play-button" type="button" onClick={() => { if (!playing && turnIndex >= selectedReview.turns.length - 1) navigateToFrame(0); setPlaying((value) => !value); }} aria-label={playing ? 'Pause replay' : 'Play replay'}>{playing ? <Pause size={23} weight="fill" /> : <Play size={23} weight="fill" />}</button>
+                <button type="button" onClick={() => navigateToFrame((value) => Math.min(selectedReview.turns.length - 1, value + 1))} disabled={turnIndex >= selectedReview.turns.length - 1} aria-label="Next frame" aria-keyshortcuts="ArrowRight D" title="Next frame · D or →"><CaretRight size={20} weight="bold" /></button>
+                <button type="button" onClick={() => navigateToFrame(selectedReview.turns.length - 1)} disabled={turnIndex >= selectedReview.turns.length - 1} aria-label="Latest frame" aria-keyshortcuts="Shift+D" title="Latest frame · Shift+D"><SkipForward size={19} weight="fill" /></button>
               </div>
             </div>
           </> : selectedSummary?.recording ? <div className="welcome-state live-capture-state"><WifiHigh size={58} weight="duotone" /><span>Game detected</span><h2>Capturing this match.</h2><p>Trace registered the game immediately. The reconstructed board will appear as soon as the opening state arrives.</p><small>{Math.max(selectedSummary.operationCount, liveOperations.length)} exact operation{Math.max(selectedSummary.operationCount, liveOperations.length) === 1 ? '' : 's'} safely stored</small></div> : <div className="welcome-state"><img src="/tracker-assets/trace-mascot.png" alt="Trace's furry archivist reading a field guide" /><span>Ready when you are</span><h2>See the whole match.</h2><p>Trace captures exact live operations and rebuilds every turn automatically—no OCR, screenshots, or manual imports.</p><div><button className="primary" type="button" disabled={busy} onClick={() => void changeTracking()}>{tracking ? 'Automatic capture is on' : 'Start automatic capture'}</button><button type="button" onClick={() => importLog(DEMO_BATTLE_LOG)}>Explore a sample</button></div>{liveOperations.length > 0 && <small>{liveOperations.length} exact operations decoded</small>}</div>}
@@ -1210,7 +1300,7 @@ export default function TrackerApp() {
                       : undefined;
                     const effect = cardEffectSummary(event, eventCard);
                     return <article className={`timeline-event-wrap kind-${event.kind} ${event.coinResult ? `coin-${event.coinResult}` : ''} ${selected ? 'selected' : ''}`} key={entry.key} role="listitem" aria-setsize={timeline.entries.length} aria-posinset={entry.position}>
-                      <button ref={selected ? selectedTimelineEventRef : undefined} className="timeline-event" type="button" aria-current={selected ? 'step' : undefined} aria-label={`Event ${entry.position} of ${timeline.entries.length}. ${event.id.includes(':selection:') ? 'Captured choice' : EVENT_LABELS[event.kind]}. ${event.text}`} onClick={() => { setSelectedEventKey(entry.key); setTurnIndex(Math.min(entry.reviewIndex, (selectedReview?.turns.length || 1) - 1)); setPlaying(false); setInspector(null); }}>
+                      <button ref={selected ? selectedTimelineEventRef : undefined} className="timeline-event" type="button" aria-current={selected ? 'step' : undefined} aria-label={`Event ${entry.position} of ${timeline.entries.length}. ${event.id.includes(':selection:') ? 'Captured choice' : EVENT_LABELS[event.kind]}. ${event.text}`} onClick={() => { setSelectedEventKey(entry.key); navigateToFrame(Math.min(entry.reviewIndex, (selectedReview?.turns.length || 1) - 1)); setPlaying(false); setInspector(null); }}>
                         <span className="event-icon"><EventIcon kind={event.kind} /></span>
                         <span className="event-copy"><span className="event-meta"><small>{event.id.includes(':selection:') ? 'Captured choice' : EVENT_LABELS[event.kind]}</small><span>Event {entry.position}</span></span><strong>{event.text}</strong></span>
                         <span className="event-trailing">{event.coinResult ? <b className={`coin-outcome ${event.coinResult}`}><Coin size={10} weight="fill" />{event.coinResult === 'heads' ? 'Heads' : event.coinResult === 'tails' ? 'Tails' : 'Mixed'}</b> : selected ? <b>Viewing</b> : event.id.includes(':selection:') ? <MagnifyingGlass size={14} weight="bold" /> : <CaretRight size={14} weight="bold" />}</span>
@@ -1243,7 +1333,7 @@ export default function TrackerApp() {
       {!archiveOpen && <button className="panel-restore-button archive-restore-button" type="button" aria-label="Open match archive" aria-expanded="false" title="Open match archive" onClick={() => setArchiveOpen(true)}><CardsThree size={22} weight="duotone" /></button>}
       {!timelineOpen && <button className="panel-restore-button timeline-restore-button" type="button" aria-label="Open game log" aria-expanded="false" title="Open game log" onClick={() => setTimelineOpen(true)}><List size={22} weight="bold" /></button>}
 
-      {showSetup && <div className="modal-backdrop"><div className="setup-modal"><div className="modal-title"><div><span>Trace settings</span><h2>Capture and backup</h2></div><button type="button" disabled={busy} onClick={() => setShowSetup(false)} aria-label="Close settings"><X size={21} weight="bold" /></button></div><p>Give Trace permission to connect to TCG Live and record your matches automatically.</p><div className="cloud-backup-setting"><div><ShieldCheck size={22} weight="duotone" /><span><strong>Private cloud backup</strong><small>{cloudSync.configured ? 'Store reconstructed matches in your encrypted AWS-backed archive.' : 'Available after installing the next network-enabled Trace release.'}</small>{cloudSync.lastError && <em>{cloudSync.lastError}</em>}</span></div><button type="button" role="switch" aria-checked={cloudSync.enabled} className={cloudSync.enabled ? 'enabled' : ''} disabled={busy || !cloudSync.configured} onClick={() => void toggleCloudSync()}><span />{cloudSync.enabled ? 'On' : 'Off'}</button></div><div className="modal-actions"><button type="button" disabled={busy} onClick={() => setShowSetup(false)}>Close</button><button className="primary" type="button" disabled={busy} onClick={() => void finishSetup()}>{busy ? 'Working…' : environment.capture.permissionReady ? 'Reconnect capture' : 'Connect capture'}</button></div></div></div>}
+      {showSetup && <div className="modal-backdrop"><div className="setup-modal"><div className="modal-title"><div><span>Trace settings</span><h2>Replay and capture</h2></div><button type="button" disabled={busy} onClick={() => setShowSetup(false)} aria-label="Close settings"><X size={21} weight="bold" /></button></div><p>Choose how replays move, then manage Trace's connection to TCG Live.</p><div className="settings-toggle-row replay-animation-setting"><div><Sparkle size={22} weight="duotone" /><span><strong>Animated replay frames</strong><small>Cards glide, fade, and scale between their exact board positions.</small></span></div><button type="button" role="switch" aria-label="Animated replay frames" aria-checked={frameAnimations} className={frameAnimations ? 'enabled' : ''} onClick={toggleFrameAnimations}><span />{frameAnimations ? 'On' : 'Off'}</button></div><div className="settings-toggle-row cloud-backup-setting"><div><ShieldCheck size={22} weight="duotone" /><span><strong>Private cloud backup</strong><small>{cloudSync.configured ? 'Store reconstructed matches in your encrypted AWS-backed archive.' : 'Available after installing the next network-enabled Trace release.'}</small>{cloudSync.lastError && <em>{cloudSync.lastError}</em>}</span></div><button type="button" role="switch" aria-label="Private cloud backup" aria-checked={cloudSync.enabled} className={cloudSync.enabled ? 'enabled' : ''} disabled={busy || !cloudSync.configured} onClick={() => void toggleCloudSync()}><span />{cloudSync.enabled ? 'On' : 'Off'}</button></div><div className="modal-actions"><button type="button" disabled={busy} onClick={() => setShowSetup(false)}>Close</button><button className="primary" type="button" disabled={busy} onClick={() => void finishSetup()}>{busy ? 'Working…' : environment.capture.permissionReady ? 'Reconnect capture' : 'Connect capture'}</button></div></div></div>}
       <ReviewOverlay inspector={inspector} catalog={cardCatalog} onClose={() => setInspector(null)} onInspectCard={openCard} />
       <UpdateNotice />
       {(notice || error) && <div className={`toast ${error ? 'error' : ''}`}><span>{error ? <X size={18} weight="bold" /> : <CheckCircle size={18} weight="fill" />}</span><p>{error || notice}</p><button type="button" onClick={() => { setError(null); setNotice(null); }} aria-label="Dismiss notification"><X size={16} weight="bold" /></button></div>}

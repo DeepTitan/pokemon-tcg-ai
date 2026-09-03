@@ -167,7 +167,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(47, 126, 203
 .empty-library button { padding: 8px 12px; border: 1px solid #caa239; border-radius: 9px; background: #fff4c7; cursor: pointer; }
 
 .review-stage { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
-.board-frame { position: relative; flex: 1; min-height: 0; display: grid; grid-template-rows: 1fr 42px 1fr; overflow: hidden; border: 1px solid #d2c4ae; border-radius: 18px; background: #f8f1e2; box-shadow: 0 10px 24px rgba(89, 65, 39, .11); }
+.board-frame { position: relative; flex: 1; min-height: 0; display: grid; grid-template-rows: 1fr 42px 1fr; overflow: hidden; border: 1px solid #d2c4ae; border-radius: 18px; background: #f8f1e2; box-shadow: 0 10px 24px rgba(89, 65, 39, .11); view-transition-name: trace-board; }
 .reconstructed-chip { display: none; }
 
 .player-field { position: relative; min-height: 0; padding: 10px 12px 9px; display: grid; grid-template-rows: 42px 1fr; }
@@ -303,7 +303,6 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(47, 126, 203
 .hand-fan:hover .hand-fan-card:first-child { margin-left: 0; }
 .local-hand .hand-fan-card.known:hover { z-index: 12; transform: translateY(-27px) scale(1.1); box-shadow: 0 12px 20px rgba(42, 29, 20, .34); }
 .opponent-hand:hover .hand-fan-cards { transform: translateY(4px); }
-.hand-fan-cards em { margin-left: 5px; padding: 3px 5px; border-radius: 999px; background: #fffdf7; font-size: 8px; font-style: normal; font-weight: 900; }
 .lost-zone-button { padding: 5px 6px; display: flex; align-items: center; justify-content: center; gap: 3px; border: 1px solid #9c86bc; border-radius: 8px; color: #685386; background: #eee5f5; font-size: 7px; font-weight: 900; letter-spacing: .03em; text-transform: uppercase; cursor: pointer; }
 .lost-zone-button b { font-size: 9px; }
 
@@ -331,7 +330,32 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(47, 126, 203
 .transport-buttons { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
 .transport-buttons button { width: 28px; height: 28px; display: grid; place-items: center; border: 1px solid #ddd6ca; border-radius: 50%; background: #fffdf8; color: #536274; cursor: pointer; }
 .transport-buttons button:disabled { opacity: .28; cursor: default; }
+.transport-buttons .frame-motion-button { margin-right: 3px; color: #79698b; }
+.transport-buttons .frame-motion-button.enabled { border-color: #a991c4; color: #fff; background: #8062a8; box-shadow: 0 3px 8px rgba(90, 62, 126, .2); }
 .transport-buttons .play-button { width: 36px; height: 36px; border-color: #d69b00; background: var(--yellow); color: #183450; box-shadow: 0 3px 8px rgba(189, 125, 0, .18); }
+
+html.trace-frame-transition::view-transition-old(root),
+html.trace-frame-transition::view-transition-new(root) { animation: none; }
+html.trace-frame-transition::view-transition-group(*) {
+  animation-duration: 380ms;
+  animation-timing-function: cubic-bezier(.22, 1, .36, 1);
+}
+html.trace-frame-transition::view-transition-old(trace-board),
+html.trace-frame-transition::view-transition-new(trace-board) { mix-blend-mode: normal; }
+html.trace-frame-transition[data-frame-direction='forward']::view-transition-old(trace-board) { animation: trace-board-out-forward 220ms ease both; }
+html.trace-frame-transition[data-frame-direction='forward']::view-transition-new(trace-board) { animation: trace-board-in-forward 380ms cubic-bezier(.22, 1, .36, 1) both; }
+html.trace-frame-transition[data-frame-direction='backward']::view-transition-old(trace-board) { animation: trace-board-out-backward 220ms ease both; }
+html.trace-frame-transition[data-frame-direction='backward']::view-transition-new(trace-board) { animation: trace-board-in-backward 380ms cubic-bezier(.22, 1, .36, 1) both; }
+
+@keyframes trace-board-out-forward { to { opacity: .58; transform: translateX(-10px) scale(.996); } }
+@keyframes trace-board-in-forward { from { opacity: .5; transform: translateX(13px) scale(.996); } }
+@keyframes trace-board-out-backward { to { opacity: .58; transform: translateX(10px) scale(.996); } }
+@keyframes trace-board-in-backward { from { opacity: .5; transform: translateX(-13px) scale(.996); } }
+@keyframes trace-frame-fallback-forward { from { opacity: .55; transform: translateX(12px) scale(.996); } }
+@keyframes trace-frame-fallback-backward { from { opacity: .55; transform: translateX(-12px) scale(.996); } }
+
+.board-frame.frame-fallback-forward { animation: trace-frame-fallback-forward 380ms cubic-bezier(.22, 1, .36, 1); }
+.board-frame.frame-fallback-backward { animation: trace-frame-fallback-backward 380ms cubic-bezier(.22, 1, .36, 1); }
 
 .timeline-panel { display: flex; flex-direction: column; }
 .timeline-heading { height: 64px; flex: 0 0 auto; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); background: #fffaf0; }
@@ -1097,6 +1121,7 @@ body,
 
 .hand-dock .local-hand {
   position: static;
+  width: 100%;
   max-width: 100%;
   transform: none;
 }
@@ -1107,18 +1132,27 @@ body,
   background: #f8faf9;
 }
 
-.hand-dock .hand-fan-card { width: 74px; height: 101px; margin-left: -36px; }
-.hand-dock .hand-fan-card:first-child { margin-left: 0; }
-.hand-dock .local-hand:hover .hand-fan-card { margin-left: -31px; }
-.hand-dock .local-hand:hover .hand-fan-card:first-child { margin-left: 0; }
+.hand-dock .hand-fan-cards {
+  --hand-card-width: 74px;
+  --hand-card-step: 38px;
+  width: calc(100% - 24px);
+  max-width: max-content;
+  display: grid;
+  grid-template-columns: repeat(var(--hand-gap-count), minmax(0, var(--hand-card-step))) var(--hand-card-width);
+}
+.hand-dock .hand-fan-cards.single { width: var(--hand-card-width); grid-template-columns: var(--hand-card-width); }
+.hand-dock .hand-fan-cards.empty { width: 0; grid-template-columns: none; }
+.hand-dock .hand-fan-card,
+.hand-dock .local-hand:hover .hand-fan-card { width: var(--hand-card-width); height: 101px; margin-left: 0; }
 
 .midline { padding: 0 12px; }
 .review-overlay-backdrop { inset: 30px 0 0; }
 
 @media (max-width: 1300px) {
   .workspace { padding: 32px 8px 8px; }
-  .hand-dock .hand-fan-card { width: 70px; height: 96px; margin-left: -35px; }
-  .hand-dock .local-hand:hover .hand-fan-card { margin-left: -30px; }
+  .hand-dock .hand-fan-cards { --hand-card-width: 70px; --hand-card-step: 35px; }
+  .hand-dock .hand-fan-card,
+  .hand-dock .local-hand:hover .hand-fan-card { height: 96px; }
 }
 
 @media (max-height: 850px) {
@@ -1134,8 +1168,9 @@ body,
   .pokemon-slot { width: min(100%, 50px); height: 66px; }
   .pokemon-slot.active { width: 82px; height: 114px; }
   .hand-dock { margin: 0 -8px -5px; }
-  .hand-dock .hand-fan-card { width: 62px; height: 85px; margin-left: -31px; }
-  .hand-dock .local-hand:hover .hand-fan-card { margin-left: -27px; }
+  .hand-dock .hand-fan-cards { --hand-card-width: 62px; --hand-card-step: 31px; }
+  .hand-dock .hand-fan-card,
+  .hand-dock .local-hand:hover .hand-fan-card { height: 85px; }
   .timeline-tools { height: 50px; padding-block: 6px; }
   .timeline-tools .tracking-toggle,
   .timeline-tools .icon-button { height: 36px; }
@@ -2088,24 +2123,25 @@ button.stadium-marker:focus-visible {
 .update-notice.phase-error { border-color: #d89488; }
 .update-notice.phase-error .update-notice-icon { color: #fff; background: #b94736; }
 
-.cloud-backup-setting {
+.settings-toggle-row {
   margin: 18px 0 4px;
   padding: 14px;
   border: 1px solid #d7d0c2;
   border-radius: 14px;
   background: #f8f6ef;
 }
-.cloud-backup-setting > div {
+.settings-toggle-row + .settings-toggle-row { margin-top: 9px; }
+.settings-toggle-row > div {
   display: flex;
   gap: 10px;
   align-items: flex-start;
   color: #46637a;
 }
-.cloud-backup-setting > div > span { display: grid; gap: 3px; }
-.cloud-backup-setting strong { color: #2b4058; font-size: 13px; }
-.cloud-backup-setting small { color: #6f7881; font-size: 11px; line-height: 1.4; }
-.cloud-backup-setting em { color: #ad4236; font-size: 10px; font-style: normal; }
-.cloud-backup-setting > button {
+.settings-toggle-row > div > span { display: grid; gap: 3px; }
+.settings-toggle-row strong { color: #2b4058; font-size: 13px; }
+.settings-toggle-row small { color: #6f7881; font-size: 11px; line-height: 1.4; }
+.settings-toggle-row em { color: #ad4236; font-size: 10px; font-style: normal; }
+.settings-toggle-row > button {
   display: flex;
   gap: 6px;
   align-items: center;
@@ -2119,15 +2155,16 @@ button.stadium-marker:focus-visible {
   font-weight: 900;
   cursor: pointer;
 }
-.cloud-backup-setting > button span {
+.settings-toggle-row > button span {
   width: 19px;
   height: 19px;
   border-radius: 50%;
   background: #b8b3aa;
 }
-.cloud-backup-setting > button.enabled { color: #286744; border-color: #89b49a; background: #eff9f2; }
-.cloud-backup-setting > button.enabled span { background: #3f8d5d; }
-.cloud-backup-setting > button:disabled { cursor: not-allowed; opacity: .55; }
+.settings-toggle-row > button.enabled { color: #286744; border-color: #89b49a; background: #eff9f2; }
+.settings-toggle-row > button.enabled span { background: #3f8d5d; }
+.settings-toggle-row > button:disabled { cursor: not-allowed; opacity: .55; }
+.replay-animation-setting > div { color: #79619a; }
 
 /* Matchup-led archive: the two deck-defining Pokemon are the primary scan target. */
 .workspace.archive-open.timeline-open {
@@ -2336,4 +2373,9 @@ button.stadium-marker:focus-visible {
   .session-featured-card img { width: 49px; height: 69px; }
   .session-matchup-versus { top: 31px; width: 21px; height: 21px; }
   .session-copy { gap: 5px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .board-frame.frame-fallback-forward,
+  .board-frame.frame-fallback-backward { animation: none; }
 }

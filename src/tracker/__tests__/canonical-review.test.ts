@@ -54,6 +54,9 @@ const catalog = new Map<string, CardInfo>([
   ['option-a', { id: 'option-a', name: 'Dreepy', hp: 70, category: 1, cardType: 'P', format: '0' }],
   ['option-b', { id: 'option-b', name: 'Munkidori', hp: 110, category: 1, cardType: 'D', format: '0' }],
   ['option-c', { id: 'option-c', name: 'Iono', category: 2, format: 'S', rulesText: 'Each player shuffles their hand.' }],
+  ['dedenne-card', { id: 'dedenne-card', name: 'Dedenne', hp: 70, category: 1, cardType: 'P', format: '0', actions: [{ kind: 'attack', name: 'Electromagnetic Sonar', text: 'Put 1 Trainer card from your discard pile into your hand.', cost: 'P', damage: '' }] }],
+  ['dawn-card', { id: 'dawn-card', name: 'Dawn', category: 2, format: 'S' }],
+  ['poke-pad-card', { id: 'poke-pad-card', name: 'Poké Pad', category: 2, format: 'I' }],
 ]);
 
 const base: Omit<CapturedOperation, 'receivedAt' | 'operationId' | 'messageIndex' | 'operation'> = {
@@ -220,6 +223,75 @@ const movementOnlySelection = movementOnlyReview?.turns[1].canonical?.selection;
 assert.deepEqual(movementOnlySelection?.selectedOptionIds, ['deck-a'], 'an exact card move must resolve a search even when updatedEntities omits the chosen card');
 assert.match(movementOnlyReview?.turns[1].events.find((event) => event.id.includes(':selection:'))?.text || '', /chose Dreepy with Ultra Ball/);
 assert.equal(movementOnlyReview?.turns[1].events.find((event) => event.id.includes(':selection:'))?.cardId, 'searcher');
+
+const staleCandidateAssembler = new LiveReviewAssembler(catalog);
+staleCandidateAssembler.ingest({
+  ...fullBoard,
+  operationId: 'dedenne-board-state',
+  operation: {
+    matchBoard: {
+      ...(fullBoard.operation as { matchBoard: Record<string, unknown> }).matchBoard,
+      p2Bench: [{ entityID: 'dedenne', ownerPlayerId: 'local-account', currentGamePos: 14, cardSourceID: 'dedenne-card' }],
+    },
+  },
+});
+const staleCandidatePrompt = staleCandidateAssembler.ingest({
+  ...base,
+  receivedAt: '3.150Z',
+  operationId: 'dedenne-selection-operation',
+  messageIndex: 122,
+  operation: {
+    playerOperation: { operationType: 1, accountID: 'local-account', originEntityID: 'dedenne' },
+    cardEntities: [
+      { entityID: 'dawn', ownerPlayerId: 'local-account', cardSourceID: 'dawn-card', previousGamePos: 12, currentGamePos: 10 },
+      { entityID: 'poke-pad-a', ownerPlayerId: 'local-account', cardSourceID: 'poke-pad-card', previousGamePos: 12, currentGamePos: 10 },
+      { entityID: 'poke-pad-b', ownerPlayerId: 'local-account', cardSourceID: 'poke-pad-card', previousGamePos: 10, currentGamePos: 10 },
+    ],
+    playerSelection: {
+      selectionID: 'dedenne-selection', originCardEntityID: 'dedenne', selectingPlayerID: 'local-account',
+      variableSelection: {
+        $type: 'MatchLogic.EntitySelection, MatchLogic', selectionMethod: 1, subActionType: 5,
+        allOptions: [{ entityID: 'dawn', pos: 10 }, { entityID: 'poke-pad-a', pos: 10 }, { entityID: 'poke-pad-b', pos: 10 }],
+        allValidOptions: [{ entityID: 'dawn', pos: 10 }, { entityID: 'poke-pad-a', pos: 10 }, { entityID: 'poke-pad-b', pos: 10 }],
+        selectionGroups: [{ minAmount: 1, maxAmount: 1, validOptions: [{ cardAddress: { entityID: 'dawn', pos: 10 } }, { cardAddress: { entityID: 'poke-pad-a', pos: 10 } }, { cardAddress: { entityID: 'poke-pad-b', pos: 10 } }] }],
+        totalMinAmount: 1, totalMaxAmount: 1,
+      },
+    },
+  },
+});
+assert.deepEqual(
+  staleCandidatePrompt?.turns[1].canonical?.selection?.selectedOptionIds,
+  [],
+  'stale previousGamePos values in the candidate snapshot must not resolve a pending choice',
+);
+const staleCandidateResolved = staleCandidateAssembler.ingest({
+  ...base,
+  receivedAt: '3.160Z',
+  operationId: 'dedenne-selection-operation',
+  messageIndex: 123,
+  operation: {
+    completedSelections: ['dedenne-selection'],
+    actionModifications: [{
+      $type: 'MatchLogic.MoveCardsModification, MatchLogic',
+      actionModificationID: 'dedenne-choice-move',
+      moveCardDeltas: [{
+        fromCardAddress: { entityID: 'poke-pad-b', pos: 10 },
+        toCardAddress: { entityID: 'poke-pad-b', pos: 12 },
+      }],
+    }],
+    updatedEntities: [
+      { entityID: 'dawn', ownerPlayerId: 'local-account', cardSourceID: 'dawn-card', previousGamePos: 12, currentGamePos: 10 },
+      { entityID: 'poke-pad-a', ownerPlayerId: 'local-account', cardSourceID: 'poke-pad-card', previousGamePos: 12, currentGamePos: 10 },
+      { entityID: 'poke-pad-b', ownerPlayerId: 'local-account', cardSourceID: 'poke-pad-card', previousGamePos: 10, currentGamePos: 12 },
+    ],
+  },
+});
+const staleCandidateSelection = staleCandidateResolved?.turns[1].canonical?.selection;
+assert.equal(staleCandidateSelection?.maximum, 1);
+assert.deepEqual(staleCandidateSelection?.selectedOptionIds, ['poke-pad-b']);
+assert.deepEqual(staleCandidateResolved?.turns[1].choiceCards?.map((card) => card.name), ['Dedenne', 'Poké Pad']);
+assert.match(staleCandidateResolved?.turns[1].events.find((event) => event.id.includes(':selection:'))?.text || '', /chose Poké Pad with Dedenne/);
+assert.doesNotMatch(staleCandidateResolved?.turns[1].events.find((event) => event.id.includes(':selection:'))?.text || '', /Dawn/);
 
 const privateSelectionAssembler = new LiveReviewAssembler(catalog);
 privateSelectionAssembler.ingest({
