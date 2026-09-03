@@ -107,11 +107,17 @@ export function hiddenReviewCard(instanceId: string): TrainerCard {
   };
 }
 
-export function cardInfoToEngineCard(info: CardInfo | undefined, instanceId: string, fallbackName = 'Unknown card'): Card {
+export function cardInfoToEngineCard(
+  info: CardInfo | undefined,
+  instanceId: string,
+  fallbackName = 'Unknown card',
+  fallbackSourceId?: string,
+): Card {
   if (!info) {
     return {
       ...hiddenReviewCard(instanceId),
       name: fallbackName,
+      reviewSourceId: fallbackSourceId,
     };
   }
 

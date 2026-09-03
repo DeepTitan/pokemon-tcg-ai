@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { cardSourceIdFromReviewCard } from '../card-adapter.js';
 import { LiveReviewAssembler } from '../live-operation-reducer.js';
 import type { CapturedOperation, CardInfo } from '../types.js';
 
@@ -56,6 +57,28 @@ assert.equal(review.turns[1].canonical?.state.players[0].active?.card.imageUrl, 
 assert.deepEqual(review.turns[1].canonical?.state.players[0].active?.attachedEnergy.map((card) => card.name), ['Basic Darkness Energy']);
 assert.equal(review.turns[1].snapshot.players.Opponent.bench[0]?.name, 'Munkidori');
 assert.match(review.turns[1].events[0].text, /placed Dragapult ex/);
+
+const lateCatalogReview = new LiveReviewAssembler(new Map()).ingest({
+  ...operation,
+  operationId: 'late-catalog-board',
+  messageIndex: 2,
+  operation: {
+    matchBoard: {
+      player1: { entityID: 'late-player-1', ownerPlayerId: 'player-1', currentPos: 3, isPlayer1: true, userName: 'Isaiah' },
+      player2: { entityID: 'late-player-2', ownerPlayerId: 'player-2', currentPos: 4, isPlayer1: false, userName: 'Opponent' },
+      p1Deck: [], p2Deck: [], p1Hand: [], p2Hand: [], p1Discard: [],
+      p2Discard: [{ entityID: 'late-boss', ownerPlayerId: 'player-2', currentGamePos: 10, cardSourceID: 'sv2_248' }],
+      p1LostZone: [], p2LostZone: [], p1Prize: [], p2Prize: [], p1Bench: [], p2Bench: [],
+      p1Active: null, p2Active: null,
+    },
+  },
+});
+const lateCatalogCard = lateCatalogReview?.turns.at(-1)?.canonical?.state.players
+  .flatMap((player) => player.discard)
+  .find((card) => card.id === 'late-boss');
+assert.ok(lateCatalogCard);
+assert.equal(lateCatalogCard.name, 'sv2_248');
+assert.equal(cardSourceIdFromReviewCard(lateCatalogCard), 'sv2_248', 'replay reconstruction must retain unresolved source IDs');
 
 const toolAssembler = new LiveReviewAssembler(catalog);
 toolAssembler.ingest({

@@ -1011,7 +1011,7 @@ export default function TrackerApp() {
 
   const openChoiceCard = useCallback((tracked: TrackedCard) => {
     const info = resolvedCardInfo(tracked, cardCatalog);
-    openCard(cardInfoToEngineCard(info, tracked.id, info?.name || tracked.name));
+    openCard(cardInfoToEngineCard(info, tracked.id, info?.name || tracked.name, tracked.cardId));
   }, [cardCatalog, openCard]);
 
   const openZone = useCallback((title: string, subtitle: string, cards: Card[], visibility: Record<string, ReviewCardVisibility>) => {

@@ -31,7 +31,7 @@ import {
   type PokemonInPlay,
   type TrainerCard,
 } from '../engine/types.js';
-import { cardInfoToEngineCard, hiddenReviewCard } from './card-adapter.js';
+import { cardInfoToEngineCard, cardSourceIdFromReviewCard, hiddenReviewCard } from './card-adapter.js';
 
 type Entity = Record<string, unknown>;
 
@@ -333,7 +333,7 @@ function reviewCard(entity: Entity, catalog: ReadonlyMap<string, CardInfo>, forc
   const id = entityId(entity) || `hidden-${Math.random().toString(36).slice(2)}`;
   const sourceId = cardSourceId(entity);
   if (!sourceId && !forceKnown) return hiddenReviewCard(id);
-  return cardInfoToEngineCard(cardInfo(entity, catalog), id, cardName(entity, catalog));
+  return cardInfoToEngineCard(cardInfo(entity, catalog), id, cardName(entity, catalog), sourceId);
 }
 
 function pokemonCard(entity: Entity, catalog: ReadonlyMap<string, CardInfo>): PokemonCard {
@@ -341,7 +341,7 @@ function pokemonCard(entity: Entity, catalog: ReadonlyMap<string, CardInfo>): Po
   if (converted.cardType === CardType.Pokemon) return converted as PokemonCard;
   const source = sourceFor(entity);
   const maximumHp = cardInfo(entity, catalog)?.hp || number(source, 'hp', 'HP', 'hitPoints') || 0;
-  return {
+  const pokemon = {
     id: converted.id,
     name: converted.name,
     imageUrl: converted.imageUrl,
@@ -354,7 +354,9 @@ function pokemonCard(entity: Entity, catalog: ReadonlyMap<string, CardInfo>): Po
     attacks: [],
     prizeCards: 1,
     isRulebox: false,
-  };
+  } as PokemonCard & { reviewSourceId?: string };
+  pokemon.reviewSourceId = cardSourceIdFromReviewCard(converted);
+  return pokemon;
 }
 
 function statusConditions(entity: Entity): StatusCondition[] {

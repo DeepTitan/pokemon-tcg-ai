@@ -1,11 +1,34 @@
 import assert from 'node:assert/strict';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { CardType, TrainerType } from '../../engine/types.js';
+import { cardInfoToEngineCard, cardSourceIdFromReviewCard } from '../card-adapter.js';
 import { LiveReviewAssembler } from '../live-operation-reducer.js';
+import { ReviewOverlay } from '../ReviewInteractions.js';
 import { displayedDeckCount } from '../review-state-adapter.js';
 import type { CapturedOperation, CardInfo } from '../types.js';
 
 assert.equal(displayedDeckCount({ deckCount: 0 }, 7), 0, 'a captured empty deck must not fall back to an estimate');
 assert.equal(displayedDeckCount({}, 7), 7, 'legacy reviews without a deck count may use their canonical count');
+
+const unresolvedBoss = cardInfoToEngineCard(undefined, 'late-boss', 'sv2_248', 'sv2_248');
+assert.equal(cardSourceIdFromReviewCard(unresolvedBoss), 'sv2_248', 'late metadata must not erase the stable card source ID');
+const hydratedOverlay = renderToStaticMarkup(createElement(ReviewOverlay, {
+  inspector: {
+    kind: 'zone',
+    title: 'Opponent · Discard pile',
+    subtitle: 'Public cards',
+    cards: [unresolvedBoss],
+    visibility: { 'late-boss': 'known' },
+  },
+  catalog: new Map([['sv2_248', {
+    id: 'sv2_248', name: "Boss's Orders", category: 2, format: 'S', imageDataUrl: 'asset://localhost/boss.png',
+  }]]),
+  onClose: () => undefined,
+  onInspectCard: () => undefined,
+}));
+assert.match(hydratedOverlay, /Boss&#x27;s Orders/, 'the zone modal should replace a raw ID when metadata arrives');
+assert.match(hydratedOverlay, /asset:\/\/localhost\/boss\.png/, 'the zone modal should replace the card back when artwork arrives');
 
 const catalog = new Map<string, CardInfo>([
   ['top-mon', { id: 'top-mon', name: 'Dragapult ex', hp: 320, category: 1, cardType: 'P', format: '2ex', retreat: 1, weaknessType: 'D', evolvesFrom: 'Drakloak', actions: [{ kind: 'ability', name: 'Infiltrator', text: 'Once during your turn, do a thing.', cost: '', damage: '' }, { kind: 'attack', name: 'Phantom Dive', text: 'Put damage counters on the Bench.', cost: 'PR', damage: '200' }] }],
