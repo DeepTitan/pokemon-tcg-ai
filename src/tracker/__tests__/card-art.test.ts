@@ -1,5 +1,13 @@
 import assert from 'node:assert/strict';
-import { CARD_BACK_ART, cardCatalogEntryNeedsRefresh, publicCardArtUrl, resolvedCardArt, showCardBackOnError } from '../card-art.js';
+import { CARD_BACK_ART, cardCatalogEntryNeedsRefresh, findCatalogCard, publicCardArtUrl, resolvedCardArt, showCardBackOnError } from '../card-art.js';
+
+const stadiumCatalog = new Map([
+  ['me2_85', { id: 'me2_85', name: 'Battle Cage', imageDataUrl: 'asset://battle-cage.png' }],
+  ['me1_127', { id: 'me1_127', name: 'Risky Ruins', imageDataUrl: 'asset://risky-ruins.png' }],
+]);
+
+assert.equal(findCatalogCard('me2_85', 'me2_85', stadiumCatalog)?.name, 'Battle Cage', 'captured Stadium IDs should resolve their exact printing');
+assert.equal(findCatalogCard(undefined, 'Risky Ruins', stadiumCatalog)?.id, 'me1_127', 'older name-only Stadium snapshots should still recover artwork');
 
 assert.equal(publicCardArtUrl('sv9_120'), 'https://images.pokemontcg.io/sv9/120.png');
 assert.equal(publicCardArtUrl('sv8-5_6'), 'https://images.pokemontcg.io/sv8pt5/6.png');

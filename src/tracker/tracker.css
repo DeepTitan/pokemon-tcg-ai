@@ -1658,67 +1658,92 @@ body,
 .player-field.local.current-turn .player-strip::after { top: -3px; bottom: auto; }
 .player-field.item-locked:not(.current-turn) .player-strip { box-shadow: inset 0 -3px 0 #75458a; }
 
-/* A Stadium is shared board state, so it lives in the divider as a quiet card tab. */
+/* The Stadium occupies a real, raised board slot beside the Active Pokémon. */
 .midline:not(.has-stadium) { grid-template-columns: 1fr; }
 .midline:not(.has-stadium) > span:last-child { display: none; }
 
-.midline.has-stadium .stadium-marker {
-  min-width: 126px;
-  max-width: min(220px, 42vw);
-  min-height: 28px;
-  padding: 2px 9px 2px 3px;
+.stadium-marker {
+  position: absolute;
+  top: 50%;
+  left: max(7px, calc(50% - 160px));
+  z-index: 7;
+  width: 82px;
+  padding: 5px;
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr);
-  align-items: center;
-  gap: 6px;
-  overflow: hidden;
-  border: 1px solid #bdb6aa;
-  border-radius: 7px;
-  color: #3e4b4b;
-  text-align: left;
+  justify-items: center;
+  gap: 4px;
+  border: 1px solid #91a68f;
+  border-radius: 10px;
+  color: #34473a;
+  text-align: center;
   text-transform: none;
-  background: #fbfaf5;
-  box-shadow: 0 1px 4px rgba(52, 48, 41, .1);
+  background: linear-gradient(165deg, #fbfcf5, #e8eee3);
+  box-shadow: 0 0 0 3px rgba(101, 145, 103, .11), 0 11px 20px rgba(42, 55, 41, .22);
+  transform: translateY(-56%) rotate(-1.25deg);
 }
 
-.midline.has-stadium button.stadium-marker {
+.opponent .stadium-marker {
+  right: max(7px, calc(50% - 160px));
+  left: auto;
+  transform: translateY(-44%) rotate(1.25deg);
+}
+
+button.stadium-marker {
   font: inherit;
   cursor: pointer;
   transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
 }
 
-.midline.has-stadium button.stadium-marker:hover {
-  border-color: #7e9a78;
-  box-shadow: 0 3px 8px rgba(52, 48, 41, .14);
-  transform: translateY(-1px);
+button.stadium-marker:hover {
+  border-color: #5f8b62;
+  box-shadow: 0 0 0 4px rgba(101, 145, 103, .15), 0 14px 24px rgba(42, 55, 41, .26);
+  transform: translateY(-60%) rotate(0);
 }
 
-.midline.has-stadium button.stadium-marker:focus-visible {
+button.stadium-marker:focus-visible {
   outline: 2px solid #d79f12;
   outline-offset: 2px;
 }
 
+.stadium-kicker {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  color: #4f7554;
+  font-size: 5.5px;
+  font-weight: 950;
+  letter-spacing: .07em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
 .stadium-card-peek {
-  width: 20px;
-  height: 26px;
+  width: 70px;
+  height: 96px;
   display: grid;
   place-items: center;
   overflow: hidden;
-  border: 1px solid rgba(74, 67, 57, .18);
-  border-radius: 3px;
+  border: 2px solid rgba(255, 255, 255, .92);
+  border-radius: 7px;
   color: #607260;
-  background: #e9e5dc;
+  background: #e4eadf;
+  box-shadow: 0 5px 10px rgba(45, 53, 40, .22);
 }
 
 .stadium-card-peek img { width: 100%; height: 100%; display: block; object-fit: cover; }
-.stadium-card-peek.fallback { border-radius: 5px; }
-.stadium-copy { min-width: 0; display: grid; gap: 1px; }
-.stadium-copy small { color: #718172; font-size: 5.5px; font-weight: 900; letter-spacing: .09em; line-height: 1; text-transform: uppercase; }
-.stadium-copy strong { overflow: hidden; font-size: 8.5px; line-height: 1.1; text-overflow: ellipsis; white-space: nowrap; }
+.stadium-card-peek.fallback { border-style: dashed; box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .3); }
+.stadium-marker > strong { width: 100%; overflow: hidden; font-family: Nunito, sans-serif; font-size: 7px; font-weight: 950; line-height: 1.1; text-overflow: ellipsis; white-space: nowrap; }
 
 /* The edge nearest the player records who put the Stadium into play. */
-.midline.has-stadium .stadium-marker.owned-local { box-shadow: inset 0 -2px 0 #4e84b4, 0 1px 4px rgba(52, 48, 41, .1); }
-.midline.has-stadium .stadium-marker.owned-opponent { box-shadow: inset 0 2px 0 #b96158, 0 1px 4px rgba(52, 48, 41, .1); }
+.stadium-marker.owned-local { border-color: #6f9abe; box-shadow: 0 0 0 3px rgba(78, 132, 180, .12), 0 11px 20px rgba(42, 55, 41, .22); }
+.stadium-marker.owned-local .stadium-kicker { color: #3f729d; }
+.stadium-marker.owned-opponent { border-color: #c67e75; box-shadow: 0 0 0 3px rgba(185, 97, 88, .12), 0 11px 20px rgba(42, 55, 41, .22); }
+.stadium-marker.owned-opponent .stadium-kicker { color: #a45148; }
+
+/* The action story moves to the other side when the opponent owns the Stadium. */
+.opponent .active-lane.has-stadium-zone .choice-stage { right: calc(50% + 70px); left: auto; }
 
 @media (max-width: 1300px) {
   .player-strip { grid-template-columns: minmax(105px, 1fr) minmax(0, auto) auto; gap: 5px; }
@@ -1733,8 +1758,11 @@ body,
 @media (max-height: 850px) {
   .status-pill { min-height: 18px; padding-block: 2px; }
   .status-pill svg { width: 9px; height: 9px; }
-  .midline.has-stadium .stadium-marker { min-height: 25px; padding-block: 1px; }
-  .stadium-card-peek { width: 18px; height: 23px; }
+  .stadium-marker { left: max(3px, calc(50% - 135px)); width: 74px; padding: 4px; }
+  .opponent .stadium-marker { right: max(3px, calc(50% - 135px)); left: auto; }
+  .stadium-card-peek { width: 64px; height: 88px; }
+  .stadium-kicker { font-size: 5px; }
+  .stadium-marker > strong { font-size: 6px; }
 }
 
 /* Archive previews are miniature renders of each match's final board. */

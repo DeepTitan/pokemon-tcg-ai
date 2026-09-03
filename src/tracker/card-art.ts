@@ -2,6 +2,21 @@ import type { CardInfo } from './types.js';
 
 export const CARD_BACK_ART = '/tracker-assets/pokemon-card-back.jpg';
 
+export function findCatalogCard(
+  cardId: string | undefined,
+  cardName: string | undefined,
+  catalog: ReadonlyMap<string, CardInfo>,
+): CardInfo | undefined {
+  for (const candidate of [cardId, cardName]) {
+    if (!candidate) continue;
+    const direct = catalog.get(candidate) || catalog.get(candidate.toLowerCase());
+    if (direct) return direct;
+  }
+  const normalizedName = cardName?.trim().toLowerCase();
+  if (!normalizedName) return undefined;
+  return [...catalog.values()].find((card) => card.name.trim().toLowerCase() === normalizedName);
+}
+
 export function cardCatalogEntryNeedsRefresh(cardId: string, catalog: ReadonlyMap<string, CardInfo>): boolean {
   const info = catalog.get(cardId) || catalog.get(cardId.toLowerCase());
   return !info || !info.imageDataUrl || info.name.trim().toLowerCase() === cardId.toLowerCase();
