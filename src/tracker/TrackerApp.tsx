@@ -28,7 +28,7 @@ import { cardEffectSummary } from './card-effect-model.js';
 import { attackResolutionForTurn, type AttackResolution } from './attack-resolution-model.js';
 import { damageChangesForTurn, type PokemonDamageChange } from './damage-change-model.js';
 import { positionChangesForTurn, type PokemonPositionChange } from './position-change-model.js';
-import { buildAttackStops, stepAttack } from './turn-navigation-model.js';
+import { buildKeyMoments, stepKeyMoment } from './key-moment-navigation.js';
 import { deriveReviewTurnStatus, type PlayerTurnStatus } from './turn-status-model.js';
 import { capturedAtIso, collectCardSourceIds, finalizeReviewForClientExit, matchSummaryFromReview, operationKey, recordingSummaryFromOperation, REDUCER_VERSION } from './match-storage.js';
 import { initialClientLifecycleState, observeClientLifecycle } from './client-lifecycle-model.js';
@@ -525,7 +525,7 @@ export default function TrackerApp() {
   const captureStatus = useMemo(() => captureIndicator(environment), [environment]);
 
   const timeline = useMemo(() => buildTimeline(selectedReview?.turns || []), [selectedReview]);
-  const attackStops = useMemo(() => buildAttackStops(selectedReview), [selectedReview]);
+  const keyMoments = useMemo(() => buildKeyMoments(selectedReview), [selectedReview]);
   const selectedSummary = useMemo(() => summaries.find((summary) => summary.id === selectedId), [selectedId, summaries]);
   const turnChoiceFrames = useMemo<TurnChoiceFrame[]>(() => {
     if (!selectedReview || !selectedTurn) return [];
@@ -933,9 +933,9 @@ export default function TrackerApp() {
       const latestFrame = event.shiftKey && key === 'd';
       const previousFrame = key === 'arrowleft' || key === 'a';
       const nextFrame = key === 'arrowright' || key === 'd';
-      const previousAttack = key === 'arrowup' || key === 'w';
-      const nextAttack = key === 'arrowdown' || key === 's';
-      if (!previousFrame && !nextFrame && !previousAttack && !nextAttack) return;
+      const previousKeyMoment = key === 'arrowup' || key === 'w';
+      const nextKeyMoment = key === 'arrowdown' || key === 's';
+      if (!previousFrame && !nextFrame && !previousKeyMoment && !nextKeyMoment) return;
 
       event.preventDefault();
       setPlaying(false);
@@ -945,13 +945,13 @@ export default function TrackerApp() {
         if (latestFrame) return selectedReview.turns.length - 1;
         if (previousFrame) return Math.max(0, current - 1);
         if (nextFrame) return Math.min(selectedReview.turns.length - 1, current + 1);
-        return stepAttack(attackStops, current, previousAttack ? -1 : 1);
+        return stepKeyMoment(keyMoments, current, previousKeyMoment ? -1 : 1);
       });
     };
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [attackStops, inspector, selectedReview, showSetup]);
+  }, [inspector, keyMoments, selectedReview, showSetup]);
 
   useEffect(() => {
     if (!playing || !selectedReview) return undefined;

@@ -2672,7 +2672,7 @@ dependencies = [
 
 [[package]]
 name = "match-lens"
-version = "0.1.29"
+version = "0.1.30"
 dependencies = [
  "base64 0.22.1",
  "flate2",
