@@ -314,7 +314,7 @@ function AttackRoute({ resolution }: { resolution: AttackResolution }) {
   return <span className="sr-only" role="img" aria-label={outcome} />;
 }
 
-function ZoneStack({ label, count, tone, onOpen }: { label: string; count: number; tone: 'coral' | 'blue'; onOpen?: () => void }) {
+function ZoneStack({ label, count, tone, onOpen }: { label: string; count: number | string; tone: 'coral' | 'blue'; onOpen?: () => void }) {
   return <button type="button" className={`zone-stack ${tone}`} onClick={onOpen} title={`Open ${label}`}><span>{label}</span><span className="zone-stack-cards"><CardsThree size={36} weight="duotone" /></span><b>{count}</b></button>;
 }
 

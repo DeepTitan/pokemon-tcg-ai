@@ -423,6 +423,100 @@ assert.equal(privateDrawTurn.snapshot.players.OrangeManiac.deckCount, 2, 'privat
 assert.equal(privateDrawTurn.canonical?.state.players[1].hand.length, 10, 'canonical review state must include the two hidden drawn cards');
 assert.equal(privateDrawTurn.canonical?.state.players[1].deck.length, 2, 'canonical review state must remove the two hidden drawn cards from deck');
 
+// Regression: the Yuuuuuu087 match exposed two independent hidden-zone bugs.
+// A private deck's visible identities are only a lower bound, and an evolution
+// leaves the hand through EvolveModification rather than MoveCardsModification.
+const inventoryAssembler = new LiveReviewAssembler(catalog);
+const inventorySeed = inventoryAssembler.ingest({
+  ...operation,
+  operationId: 'inventory-seed',
+  messageIndex: 40,
+  operation: {
+    operationNumber: 123,
+    matchStarted: true,
+    updatedEntities: [
+      { entityID: 'player-1', ownerPlayerId: 'player-1', currentPos: 3, isPlayer1: true, userName: 'Isaiah' },
+      { entityID: 'player-2', ownerPlayerId: 'player-2', currentPos: 4, isPlayer1: false, userName: 'Yuuuuuu087' },
+      { entityID: 'inventory-base', ownerPlayerId: 'player-2', currentGamePos: 14, mainFragmentCard: true, cardSourceID: 'sv-dreepy' },
+      ...Array.from({ length: 11 }, (_, index) => ({ entityID: `inventory-board-${index}`, ownerPlayerId: 'player-2', currentGamePos: 14 })),
+      { entityID: 'inventory-evolution', ownerPlayerId: 'player-2', currentGamePos: 12, mainFragmentCard: true, cardSourceID: 'sv-test-2' },
+      { entityID: 'inventory-stadium', ownerPlayerId: 'player-2', currentGamePos: 12, cardSourceID: 'sv-stadium' },
+      { entityID: 'inventory-energy', ownerPlayerId: 'player-2', currentGamePos: 12, cardSourceID: 'sv-energy' },
+      { entityID: 'inventory-crispin', ownerPlayerId: 'player-2', currentGamePos: 12, cardSourceID: 'sv-hammer' },
+      ...Array.from({ length: 3 }, (_, index) => ({ entityID: `inventory-hand-${index}`, ownerPlayerId: 'player-2', currentGamePos: 12 })),
+      ...Array.from({ length: 36 }, (_, index) => ({ entityID: `inventory-discard-${index}`, ownerPlayerId: 'player-2', currentGamePos: 10 })),
+      ...Array.from({ length: 3 }, (_, index) => ({ entityID: `inventory-prize-${index}`, ownerPlayerId: 'player-2', currentGamePos: 20 })),
+    ],
+  },
+});
+assert.equal(inventorySeed?.turns.at(-1)?.snapshot.players.Yuuuuuu087.handCount, 7);
+assert.equal(inventorySeed?.turns.at(-1)?.snapshot.players.Yuuuuuu087.deckCount, 2, 'the hidden deck count must be inferred from the complete 60-card inventory');
+assert.equal(inventorySeed?.turns.at(-1)?.snapshot.players.Yuuuuuu087.deckCountKnown, true);
+
+const inventoryEvolution = inventoryAssembler.ingest({
+  ...operation,
+  operationId: 'inventory-evolve',
+  messageIndex: 41,
+  operation: {
+    operationNumber: 124,
+    matchStarted: true,
+    playerOperation: { operationType: 3, accountID: 'player-2', originEntityID: 'inventory-evolution' },
+    actionModifications: [{
+      $type: 'MatchLogic.EvolveModification, MatchLogic',
+      actionModificationID: 'inventory-evolve-delta',
+      EvolveCardDeltas: [{
+        evolvedCardFromAddress: { entityID: 'inventory-evolution', index: 6, pos: 12 },
+        evolvedCardToAddress: { entityID: 'inventory-evolution', pos: 14 },
+        evolvingCardAddress: { entityID: 'inventory-base', parentEntityID: 'inventory-evolution', pos: 14 },
+      }],
+    }],
+    updatedEntities: [
+      { entityID: 'inventory-evolution', ownerPlayerId: 'player-2', previousGamePos: 12, currentGamePos: 14, mainFragmentCard: true, cardSourceID: 'sv-test-2' },
+      { entityID: 'inventory-base', ownerPlayerId: 'player-2', currentGamePos: 14, currentParentEntityID: 'inventory-evolution', mainFragmentCard: false, cardSourceID: 'sv-dreepy' },
+    ],
+  },
+});
+assert.equal(inventoryEvolution?.turns.at(-1)?.snapshot.players.Yuuuuuu087.handCount, 6, 'evolving must remove the evolution card from the private hand count');
+assert.equal(inventoryEvolution?.turns.at(-1)?.snapshot.players.Yuuuuuu087.deckCount, 2);
+
+const inventoryAfterCrispin = inventoryAssembler.ingest({
+  ...operation,
+  operationId: 'inventory-after-crispin',
+  messageIndex: 42,
+  operation: {
+    operationNumber: 127,
+    matchStarted: true,
+    playerOperation: { operationType: 1, accountID: 'player-2', originEntityID: 'inventory-crispin' },
+    actionModifications: [
+      {
+        $type: 'MatchLogic.MoveCardsModification, MatchLogic',
+        actionModificationID: 'inventory-play-stadium',
+        moveCardDeltas: [{ fromCardAddress: { entityID: 'inventory-stadium', pos: 12 }, toCardAddress: { entityID: 'inventory-stadium', pos: 2 } }],
+      },
+      {
+        $type: 'MatchLogic.AttachCardsModification, MatchLogic',
+        actionModificationID: 'inventory-attach-energy',
+        attachCardDeltas: [{ fromCardAddress: { entityID: 'inventory-energy', pos: 12 }, toCardAddress: { entityID: 'inventory-energy', parentEntityID: 'inventory-evolution', pos: 14 } }],
+      },
+      {
+        $type: 'MatchLogic.MoveCardsModification, MatchLogic',
+        actionModificationID: 'inventory-play-crispin',
+        moveCardDeltas: [{ fromCardAddress: { entityID: 'inventory-crispin', pos: 12 }, toCardAddress: { entityID: 'inventory-crispin', pos: 10 } }],
+      },
+    ],
+    updatedEntities: [
+      { entityID: 'inventory-stadium', ownerPlayerId: 'player-2', previousGamePos: 12, currentGamePos: 2, cardSourceID: 'sv-stadium' },
+      { entityID: 'inventory-energy', ownerPlayerId: 'player-2', previousGamePos: 12, currentGamePos: 14, currentParentEntityID: 'inventory-evolution', cardSourceID: 'sv-energy' },
+      { entityID: 'inventory-crispin', ownerPlayerId: 'player-2', previousGamePos: 12, currentGamePos: 10, cardSourceID: 'sv-hammer' },
+    ],
+  },
+});
+const correctedInventory = inventoryAfterCrispin?.turns.at(-1)?.snapshot.players.Yuuuuuu087;
+assert.equal(correctedInventory?.handCount, 3, 'the exact failure sequence must end with three cards in hand');
+assert.equal(correctedInventory?.deckCount, 2, 'zero revealed identities must not be displayed as an empty deck');
+assert.equal(inventoryAfterCrispin?.turns.at(-1)?.canonical?.state.players[1].hand.length, 3);
+assert.equal(inventoryAfterCrispin?.turns.at(-1)?.canonical?.state.players[1].deck.length, 2);
+
 const privateHandResetAssembler = new LiveReviewAssembler(catalog);
 privateHandResetAssembler.ingest({
   ...operation,

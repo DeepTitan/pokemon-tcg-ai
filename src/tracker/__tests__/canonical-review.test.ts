@@ -10,6 +10,7 @@ import type { CapturedOperation, CardInfo } from '../types.js';
 
 assert.equal(displayedDeckCount({ deckCount: 0 }, 7), 0, 'a captured empty deck must not fall back to an estimate');
 assert.equal(displayedDeckCount({}, 7), 7, 'legacy reviews without a deck count may use their canonical count');
+assert.equal(displayedDeckCount({ deckCount: 0, deckCountKnown: false }, 7), '?', 'a private deck lower bound must never be presented as its exact count');
 
 const unresolvedBoss = cardInfoToEngineCard(undefined, 'late-boss', 'sv2_248', 'sv2_248');
 assert.equal(cardSourceIdFromReviewCard(unresolvedBoss), 'sv2_248', 'late metadata must not erase the stable card source ID');

@@ -1,7 +1,7 @@
 import type { CapturedOperation, MatchReview, MatchSummary } from './types.js';
 import { GamePhase } from '../engine/types.js';
 
-export const REDUCER_VERSION = 10;
+export const REDUCER_VERSION = 11;
 
 export function matchSummaryFromReview(review: MatchReview, operationCount = 0): MatchSummary {
   return {

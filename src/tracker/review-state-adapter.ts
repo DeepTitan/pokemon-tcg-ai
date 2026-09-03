@@ -12,7 +12,8 @@ import {
 } from '../engine/types.js';
 import type { CanonicalReviewState, MatchReview, ReviewSelection, TrackedCard, TrackedPokemon, TrackedTurn } from './types.js';
 
-export function displayedDeckCount(board: { deckCount?: number }, canonicalDeckCount: number): number {
+export function displayedDeckCount(board: { deckCount?: number; deckCountKnown?: boolean }, canonicalDeckCount: number): number | '?' {
+  if (board.deckCountKnown === false) return '?';
   return board.deckCount ?? canonicalDeckCount;
 }
 

@@ -128,6 +128,8 @@ export interface TrackedPlayerBoard {
   knownHand: string[];
   knownHandCards?: TrackedCard[];
   deckCount?: number;
+  /** False when capture has only revealed a lower bound, not the complete hidden deck. */
+  deckCountKnown?: boolean;
   deckCards?: TrackedCard[];
   discard: string[];
   discardCards?: TrackedCard[];

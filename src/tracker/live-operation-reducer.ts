@@ -48,6 +48,10 @@ const OPERATION_TYPES = [
   'Quit', 'Emote', 'Timeout', 'End turn timeout',
 ] as const;
 
+const STANDARD_DECK_SIZE = 60;
+const MIN_COMPLETE_NON_DECK_CENSUS = 10;
+const INVENTORY_POSITIONS = new Set([2, 5, 6, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]);
+
 function record(value: unknown): Entity | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Entity : null;
 }
@@ -575,6 +579,7 @@ function emptyBoard(name: string): TrackedPlayerBoard {
     knownHand: [],
     knownHandCards: [],
     deckCount: 0,
+    deckCountKnown: false,
     deckCards: [],
     discard: [],
     discardCards: [],
@@ -1250,6 +1255,8 @@ function buildOperationFacts(
 interface MatchAssembly {
   entities: Map<string, Entity>;
   zoneCounts: Map<number, number>;
+  exactDeckPositions: Set<number>;
+  matchStarted: boolean;
   review: MatchReview | null;
   messageIds: Set<string>;
   operations: Map<string, OperationAssembly>;
@@ -1277,8 +1284,11 @@ function updateZoneCountsFromBoard(operation: Entity, zoneCounts: Map<number, nu
   const board = record(value(operation, 'matchBoard', 'MatchBoard'));
   if (!board) return;
   const zones: Array<[string, number]> = [
-    ['p1Deck', 7], ['p2Deck', 8], ['p1Discard', 9], ['p2Discard', 10],
-    ['p1Hand', 11], ['p2Hand', 12], ['p1LostZone', 17], ['p2LostZone', 18],
+    // A private deck array contains only identities revealed to this client,
+    // not one placeholder per remaining card. Treating its length as the zone
+    // total is how a two-card lower bound became a displayed zero after search.
+    ['p1Discard', 9], ['p2Discard', 10], ['p1Hand', 11], ['p2Hand', 12],
+    ['p1LostZone', 17], ['p2LostZone', 18],
     ['p1Prize', 19], ['p2Prize', 20],
   ];
   for (const [name, pos] of zones) {
@@ -1301,7 +1311,7 @@ function playerSideForZone(positionNumber: number | undefined): 1 | 2 | undefine
 function privateDrawSide(
   from: number | undefined,
   to: number | undefined,
-  movedEntityId: string | undefined,
+  movedEntityId: string | null | undefined,
 ): 1 | 2 | undefined {
   if (movedEntityId) return undefined;
   const side = playerSideForZone(to);
@@ -1332,19 +1342,32 @@ function updateZoneCountsFromCardTransitions(
   const type = modificationType(modification);
   const isMove = type === 'MoveCardsModification';
   const isAttachment = type === 'AttachCardsModification';
-  if (!isMove && !isAttachment) return;
+  const isEvolution = type === 'EvolveModification';
+  if (!isMove && !isAttachment && !isEvolution) return;
   const deltas = isMove
     ? list(modification, 'moveCardDeltas', 'MoveCardDeltas')
-    : list(modification, 'attachCardDeltas', 'AttachCardDeltas');
+    : isAttachment
+      ? list(modification, 'attachCardDeltas', 'AttachCardDeltas')
+      : list(modification, 'evolveCardDeltas', 'EvolveCardDeltas');
+  const movementAddresses = (candidate: unknown): { fromAddress: Entity | null; toAddress: Entity | null } => {
+    const delta = record(candidate);
+    return isEvolution
+      ? {
+        fromAddress: record(value(delta, 'evolvedCardFromAddress', 'EvolvedCardFromAddress')),
+        toAddress: record(value(delta, 'evolvedCardToAddress', 'EvolvedCardToAddress')),
+      }
+      : {
+        fromAddress: record(value(delta, 'fromCardAddress', 'FromCardAddress')),
+        toAddress: record(value(delta, 'toCardAddress', 'ToCardAddress')),
+      };
+  };
   const resetPrivateHands = new Set<number>();
   for (const handPosition of [11, 12]) {
     const deckPosition = handPosition === 11 ? 7 : 8;
     const currentCount = zoneCounts.get(handPosition)
       ?? [...entities.values()].filter((entity) => number(entity, 'currentGamePos', 'currentPos') === handPosition).length;
     const anonymousCardsReturned = deltas.filter((candidate) => {
-      const delta = record(candidate);
-      const fromAddress = record(value(delta, 'fromCardAddress', 'FromCardAddress'));
-      const toAddress = record(value(delta, 'toCardAddress', 'ToCardAddress'));
+      const { fromAddress, toAddress } = movementAddresses(candidate);
       const movedEntityId = (toAddress && entityId(toAddress)) || (fromAddress && entityId(fromAddress));
       return !movedEntityId
         && gamePositionNumber(fromAddress, entities) === handPosition
@@ -1354,9 +1377,7 @@ function updateZoneCountsFromCardTransitions(
   }
   const authoritativePrivateHandCounts = new Map<number, number>();
   for (const candidate of deltas) {
-    const delta = record(candidate);
-    const fromAddress = record(value(delta, 'fromCardAddress', 'FromCardAddress'));
-    const toAddress = record(value(delta, 'toCardAddress', 'ToCardAddress'));
+    const { fromAddress, toAddress } = movementAddresses(candidate);
     // Inspect the endpoints themselves first. When TCG Live redacts the deck
     // side of a move it often leaves the entity ID in place, and resolving that
     // ID through the pre-move entity map would incorrectly make both endpoints
@@ -1389,7 +1410,7 @@ function updateZoneCountsFromCardTransitions(
         Math.max(authoritativePrivateHandCounts.get(to) || 0, destinationIndex + 1),
       );
     }
-    if (isMove && movedEntityId && to != null) {
+    if ((isMove || isEvolution) && movedEntityId && to != null) {
       movements.set(movedEntityId, {
         from,
         to,
@@ -1411,6 +1432,37 @@ function updateZoneCountsFromCardTransitions(
     for (const [id, entity] of entities) {
       if (number(entity, 'currentGamePos', 'currentPos') === handPosition) entities.delete(id);
     }
+  }
+}
+
+function inferExactDeckCounts(assembly: MatchAssembly): void {
+  if (!assembly.matchStarted) return;
+  const players = [...assembly.entities.values()].filter((entity) => text(entity, 'userName', 'UserName'));
+  const byNumber = new Map<1 | 2, Entity>();
+  for (const player of players) {
+    const side = playerNumber(player);
+    if (side) byNumber.set(side, player);
+  }
+  if (!byNumber.get(1) || !byNumber.get(2)) return;
+  const playerIds: Record<1 | 2, string | undefined> = {
+    1: entityId(byNumber.get(1)!),
+    2: entityId(byNumber.get(2)!),
+  };
+  const outsideDeck: Record<1 | 2, number> = { 1: 0, 2: 0 };
+  for (const entity of assembly.entities.values()) {
+    const pos = number(entity, 'currentGamePos', 'currentPos');
+    if (pos == null || !INVENTORY_POSITIONS.has(pos)) continue;
+    const side = ownerNumber(entity, playerIds);
+    if (side) outsideDeck[side] += 1;
+  }
+  for (const side of [1, 2] as const) {
+    // A complete TCG Live state always exposes at least the opening hand,
+    // prizes, and an Active Pokemon. Below that floor we have only a partial
+    // capture, so keep the count explicitly unknown instead of inventing one.
+    if (outsideDeck[side] < MIN_COMPLETE_NON_DECK_CENSUS || outsideDeck[side] > STANDARD_DECK_SIZE) continue;
+    const deckPosition = side === 1 ? 7 : 8;
+    assembly.zoneCounts.set(deckPosition, STANDARD_DECK_SIZE - outsideDeck[side]);
+    assembly.exactDeckPositions.add(deckPosition);
   }
 }
 
@@ -1459,6 +1511,8 @@ export class LiveReviewAssembler {
       assembly = {
         entities: new Map(),
         zoneCounts: new Map(),
+        exactDeckPositions: new Set(),
+        matchStarted: false,
         review: null,
         messageIds: new Set(),
         operations: new Map(),
@@ -1476,6 +1530,7 @@ export class LiveReviewAssembler {
     assembly.messageIds.add(messageId);
 
     const operation = record(captured.operation) || {};
+    assembly.matchStarted ||= bool(operation, 'matchStarted', 'MatchStarted') === true;
     updateZoneCountsFromBoard(operation, assembly.zoneCounts);
     const operationId = captured.operationId
       || text(operation, 'operationID', 'operationId')
@@ -1532,7 +1587,15 @@ export class LiveReviewAssembler {
         // Some searches expose a strict subset, so never shrink a larger
         // authoritative zone count. A full-deck search, however, repairs a
         // partial capture by establishing the missing minimum cardinality.
-        assembly.zoneCounts.set(deckPosition, Math.max(assembly.zoneCounts.get(deckPosition) || 0, revealedIds.size));
+        const observedCards = [...assembly.entities.values()].filter((entity) =>
+          number(entity, 'currentGamePos', 'currentPos') === deckPosition
+        );
+        const observedAnonymous = observedCards.filter((entity) => !cardSourceId(entity) && !sourceFor(entity)).length;
+        const observedKnown = observedCards.length - observedAnonymous;
+        assembly.zoneCounts.set(
+          deckPosition,
+          Math.max(assembly.zoneCounts.get(deckPosition) || 0, observedAnonymous, observedKnown, revealedIds.size),
+        );
       }
     }
 
@@ -1743,6 +1806,8 @@ export class LiveReviewAssembler {
         || text(entity, 'ownerPlayerId', 'playerId', 'accountId') === assembly!.localAccountId;
     }));
     reconcileHiddenZones(assembly, localSideForHiddenZones);
+    inferExactDeckCounts(assembly);
+    reconcileHiddenZones(assembly, localSideForHiddenZones);
 
     const playerEntities = [...assembly.entities.values()].filter((entity) => text(entity, 'userName', 'UserName'));
     if (playerEntities.length < 2) return assembly.review;
@@ -1766,6 +1831,8 @@ export class LiveReviewAssembler {
       2: text(byNumber.get(2)!, 'userName', 'UserName') || 'Player 2',
     };
     const boards: Record<1 | 2, TrackedPlayerBoard> = { 1: emptyBoard(names[1]), 2: emptyBoard(names[2]) };
+    boards[1].deckCountKnown = assembly.exactDeckPositions.has(7);
+    boards[2].deckCountKnown = assembly.exactDeckPositions.has(8);
     let stadium: string | null = null;
 
     for (const entity of assembly.entities.values()) {
