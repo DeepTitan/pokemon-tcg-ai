@@ -22,7 +22,7 @@ import { LiveReviewAssembler } from './live-operation-reducer.js';
 import { ReviewOverlay, type ReviewInspector } from './ReviewInteractions.js';
 import { displayedDeckCount, trackedTurnToCanonical } from './review-state-adapter.js';
 import { cardInfoToEngineCard, cardSourceIdFromReviewCard } from './card-adapter.js';
-import { countEnergyTypes, EnergyBadge, findEnergyType } from './EnergyBadge.js';
+import { findEnergyType } from './EnergyBadge.js';
 import { buildTimeline, eventKeyForReviewIndex } from './timeline-model.js';
 import { cardEffectSummary } from './card-effect-model.js';
 import { attackResolutionForTurn, type AttackResolution } from './attack-resolution-model.js';
@@ -171,22 +171,19 @@ function PokemonSlot({ pokemon, catalog, active = false, defeated = false, attac
   const image = resolvedCardImage(pokemon, catalog);
   const displayName = resolvedCardInfo(pokemon, catalog)?.name || pokemon.name;
   const displayedDamage = damageChange?.after ?? pokemon.damage;
-  const energyAttachments = pokemon.energies.map((name, index) => {
+  const energyAttachmentCount = Math.max(pokemon.energies.length, pokemon.energyCards?.length || 0);
+  const energyAttachments = Array.from({ length: energyAttachmentCount }, (_, index) => {
     const card = pokemon.energyCards?.[index];
+    const name = pokemon.energies[index] || card?.name || 'Energy';
     const info = card?.cardId ? catalog.get(card.cardId) || catalog.get(card.cardId.toLowerCase()) : undefined;
     const displayName = info?.name || card?.name || name;
     return {
       card,
       displayName,
-      special: Boolean(card) && !/^Basic\b/i.test(displayName),
+      id: card?.id || `${pokemon.id}:energy:${index}`,
       type: findEnergyType(info?.cardType, card?.cardType, card?.name, name),
     };
   });
-  const basicEnergyTypes = energyAttachments
-    .filter((attachment) => !attachment.special)
-    .map((attachment) => attachment.type)
-    .filter((type): type is NonNullable<typeof type> => Boolean(type));
-  const specialEnergies = energyAttachments.filter((attachment) => attachment.special && attachment.card);
   const tools = pokemon.toolCards || [];
   return (
     <button type="button" className={`pokemon-slot ${active ? 'active' : ''} ${defeated ? 'defeated' : ''} ${attacking ? 'attacking' : ''} ${damageChange ? damageChange.delta > 0 ? 'damage-increased' : 'damage-decreased' : ''} ${positionChange ? `position-changed moved-to-${positionChange.to}` : ''}`} data-pokemon-id={pokemon.id} data-pokemon-name={displayName} title={`Inspect ${displayName}${pokemon.cardId ? ` · ${pokemon.cardId}` : ''}`} onClick={() => onOpen?.(pokemon.id)}>
@@ -197,10 +194,11 @@ function PokemonSlot({ pokemon, catalog, active = false, defeated = false, attac
         {positionChange.to === 'active' ? <ArrowUp size={10} weight="bold" /> : <ArrowDown size={10} weight="bold" />}
         <b>{positionChange.to === 'active' ? 'Active' : 'Bench'}</b>
       </span>}
-      {energyAttachments.length > 0 && <span className="attached-energy-preview" aria-label={`${pokemon.energies.join(', ')} attached`}>
-        {specialEnergies.slice(-2).map(({ card, displayName }) => <span className="special-energy-card" title={`${displayName} · Special Energy`} key={card!.id}><img src={resolvedCardImage(card!, catalog)} data-card-id={card!.cardId} alt="" onError={showCardBackOnError} /></span>)}
-        {specialEnergies.length > 2 && <b className="special-energy-overflow" aria-label={`${specialEnergies.length - 2} more Special Energy cards`}>+{specialEnergies.length - 2}</b>}
-        {countEnergyTypes(basicEnergyTypes).map(({ type, count }) => <EnergyBadge key={type} type={type} count={count} compact />)}
+      {energyAttachments.length > 0 && <span className="attached-energy-preview" aria-label={`${energyAttachments.map(({ displayName: name }) => name).join(', ')} attached`}>
+        {energyAttachments.slice(-3).map(({ card, displayName: energyName, id, type }) => card
+          ? <span className="attached-energy-card" title={`${energyName} · Attached Energy`} key={id}><img src={resolvedCardImage(card, catalog)} data-card-id={card.cardId} alt="" onError={showCardBackOnError} /></span>
+          : <span className={`attached-energy-card energy-card-fallback ${type ? `energy-${type.toLowerCase()}` : ''}`} title={`${energyName} · Attached Energy`} key={id}><i aria-hidden="true" /><small>{energyName.replace(/^Basic\s*/i, '').replace(/\s*Energy$/i, '') || 'Energy'}</small></span>)}
+        {energyAttachments.length > 3 && <b className="attached-energy-overflow" aria-label={`${energyAttachments.length - 3} more attached Energy cards`}>+{energyAttachments.length - 3}</b>}
       </span>}
       {tools.length > 0 && <span className="attached-tool-preview" aria-label={`${tools.map((tool) => `${resolvedCardInfo(tool, catalog)?.name || tool.name} Tool`).join(', ')} attached`}>{tools.slice(-2).map((tool) => { const name = resolvedCardInfo(tool, catalog)?.name || tool.name; return <span className="attached-tool-card" title={`${name} · Pokémon Tool`} key={tool.id}><img src={resolvedCardImage(tool, catalog)} data-card-id={tool.cardId} alt="" onError={showCardBackOnError} /><small>Tool</small></span>; })}</span>}
       {defeated && <span className="knockout-stamp" aria-label="Knocked out"><b>KO</b><small>Knocked out</small></span>}
