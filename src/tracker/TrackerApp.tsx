@@ -37,7 +37,13 @@ import { captureIndicator } from './capture-status-model.js';
 import { archiveMatchup, formatMatchDuration, formatPrizeScore } from './archive-summary-model.js';
 import { handFanCardCount, opponentHandFanSlots } from './hand-layout-model.js';
 import { prizeSlotStates } from './prize-layout-model.js';
-import { FRAME_ANIMATIONS_STORAGE_KEY, frameAnimationsFromStoredPreference, frameCardTransitionName } from './frame-animation-model.js';
+import {
+  FRAME_ANIMATIONS_STORAGE_KEY,
+  frameAnimationsFromStoredPreference,
+  frameCardTransitionName,
+  resolveFrameNavigationTarget,
+  type FrameNavigationRequest,
+} from './frame-animation-model.js';
 import { UpdateNotice } from './UpdateNotice.js';
 import { CARD_BACK_ART, cardCatalogEntryNeedsRefresh, findCatalogCard, publicCardArtUrl, resolvedCardArt, showCardBackOnError } from './card-art.js';
 import type {
@@ -566,8 +572,13 @@ export default function TrackerApp() {
   const autoStartAttempted = useRef(false);
   const selectedTimelineEventRef = useRef<HTMLButtonElement | null>(null);
   const turnIndexRef = useRef(turnIndex);
+  const requestedTurnIndexRef = useRef(turnIndex);
+  const queuedFrameTargetRef = useRef<number | null>(null);
+  const frameTransitionInFlightRef = useRef(false);
   const viewTransitionRef = useRef<TraceViewTransition | null>(null);
   const fallbackAnimationTimerRef = useRef<number | null>(null);
+  const queuedFrameAnimationRef = useRef<number | null>(null);
+  const navigateToFrameRef = useRef<(next: FrameNavigationRequest) => void>(() => undefined);
 
   const toggleFrameAnimations = useCallback(() => {
     setFrameAnimations((current) => {
@@ -577,10 +588,16 @@ export default function TrackerApp() {
     });
   }, []);
 
-  const navigateToFrame = useCallback((next: number | ((current: number) => number)) => {
+  const navigateToFrame = useCallback((next: FrameNavigationRequest) => {
     const current = turnIndexRef.current;
     const last = Math.max(0, (selectedReview?.turns.length || 1) - 1);
-    const target = Math.max(0, Math.min(last, typeof next === 'function' ? next(current) : next));
+    const target = resolveFrameNavigationTarget(requestedTurnIndexRef.current, next, last);
+    requestedTurnIndexRef.current = target;
+
+    if (frameTransitionInFlightRef.current) {
+      queuedFrameTargetRef.current = target;
+      return;
+    }
     if (target === current) return;
 
     const apply = () => {
@@ -589,6 +606,7 @@ export default function TrackerApp() {
     };
     const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     if (!frameAnimations || reduceMotion) {
+      queuedFrameTargetRef.current = null;
       setTurnIndex(target);
       turnIndexRef.current = target;
       return;
@@ -596,16 +614,31 @@ export default function TrackerApp() {
 
     const direction = target > current ? 'forward' : 'backward';
     const transitionDocument = document as TransitionDocument;
-    viewTransitionRef.current?.skipTransition?.();
+    const finish = () => {
+      frameTransitionInFlightRef.current = false;
+      const queued = queuedFrameTargetRef.current;
+      queuedFrameTargetRef.current = null;
+      if (queued == null || queued === turnIndexRef.current) return;
+      queuedFrameAnimationRef.current = window.requestAnimationFrame(() => {
+        queuedFrameAnimationRef.current = null;
+        navigateToFrameRef.current(queued);
+      });
+    };
+
+    frameTransitionInFlightRef.current = true;
     if (!transitionDocument.startViewTransition) {
       apply();
       const board = document.querySelector('.board-frame');
       if (board instanceof HTMLElement) {
-        board.classList.remove('frame-fallback-forward', 'frame-fallback-backward');
-        void board.offsetWidth;
         board.classList.add(`frame-fallback-${direction}`);
         if (fallbackAnimationTimerRef.current != null) window.clearTimeout(fallbackAnimationTimerRef.current);
-        fallbackAnimationTimerRef.current = window.setTimeout(() => board.classList.remove(`frame-fallback-${direction}`), 380);
+        fallbackAnimationTimerRef.current = window.setTimeout(() => {
+          fallbackAnimationTimerRef.current = null;
+          board.classList.remove(`frame-fallback-${direction}`);
+          finish();
+        }, 320);
+      } else {
+        finish();
       }
       return;
     }
@@ -619,8 +652,10 @@ export default function TrackerApp() {
       viewTransitionRef.current = null;
       document.documentElement.classList.remove('trace-frame-transition');
       delete document.documentElement.dataset.frameDirection;
+      finish();
     });
   }, [frameAnimations, selectedReview?.turns.length]);
+  navigateToFrameRef.current = navigateToFrame;
 
   const selectedTurn = selectedReview?.turns[Math.min(turnIndex, Math.max(0, selectedReview.turns.length - 1))] || null;
   const selectedCanonical = useMemo(() => selectedReview && selectedTurn
@@ -1049,16 +1084,26 @@ export default function TrackerApp() {
   }, [notice]);
 
   useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
-  useEffect(() => { turnIndexRef.current = turnIndex; }, [turnIndex]);
+  useEffect(() => {
+    turnIndexRef.current = turnIndex;
+    if (!frameTransitionInFlightRef.current && queuedFrameTargetRef.current == null) requestedTurnIndexRef.current = turnIndex;
+  }, [turnIndex]);
 
   useEffect(() => () => {
     viewTransitionRef.current?.skipTransition?.();
     if (fallbackAnimationTimerRef.current != null) window.clearTimeout(fallbackAnimationTimerRef.current);
+    if (queuedFrameAnimationRef.current != null) window.cancelAnimationFrame(queuedFrameAnimationRef.current);
+    queuedFrameTargetRef.current = null;
+    frameTransitionInFlightRef.current = false;
     document.documentElement.classList.remove('trace-frame-transition');
     delete document.documentElement.dataset.frameDirection;
   }, []);
 
-  useEffect(() => { setTurnIndex((current) => Math.min(current, Math.max(0, (selectedReview?.turns.length || 1) - 1))); }, [selectedReview]);
+  useEffect(() => {
+    queuedFrameTargetRef.current = null;
+    requestedTurnIndexRef.current = Math.min(turnIndexRef.current, Math.max(0, (selectedReview?.turns.length || 1) - 1));
+    setTurnIndex((current) => Math.min(current, Math.max(0, (selectedReview?.turns.length || 1) - 1)));
+  }, [selectedReview]);
 
   useEffect(() => {
     const selectedEntry = timeline.entries.find((entry) => entry.key === selectedEventKey);
