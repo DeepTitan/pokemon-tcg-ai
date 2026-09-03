@@ -36,7 +36,7 @@ function CardImage({ card, hidden = false }: { card: Card; hidden?: boolean }) {
   if (hidden) return <span className="review-card-back"><CardsThree size={28} weight="duotone" /><small>Hidden</small></span>;
   const sourceId = cardSourceIdFromReviewCard(card);
   const resolved = catalogCardFor(card, catalog);
-  return <img src={resolvedCardArt(sourceId, card.imageUrl || resolved?.imageDataUrl)} alt={resolved?.name || card.name} onError={showCardBackOnError} />;
+  return <img src={resolvedCardArt(sourceId, card.imageUrl || resolved?.imageDataUrl)} data-card-id={sourceId} alt={resolved?.name || card.name} onError={showCardBackOnError} />;
 }
 
 function EnergyPips({ types }: { types: EnergyType[] }) {

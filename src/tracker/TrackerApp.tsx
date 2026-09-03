@@ -34,7 +34,7 @@ import { capturedAtIso, collectCardSourceIds, finalizeReviewForClientExit, match
 import { initialClientLifecycleState, observeClientLifecycle } from './client-lifecycle-model.js';
 import { captureIndicator } from './capture-status-model.js';
 import { UpdateNotice } from './UpdateNotice.js';
-import { CARD_BACK_ART, publicCardArtUrl, resolvedCardArt, showCardBackOnError } from './card-art.js';
+import { CARD_BACK_ART, cardCatalogEntryNeedsRefresh, publicCardArtUrl, resolvedCardArt, showCardBackOnError } from './card-art.js';
 import type {
   CapturedOperation, CardInfo, CanonicalReviewState, MatchReview, MatchSummary, ReviewCardVisibility, ReviewSelection, TrackedCard, TrackedChoiceCard, TrackedPlayerBoard,
   TrackedPokemon, TrackedTurn, TrackerEnvironment, TrackerEventKind,
@@ -45,6 +45,7 @@ import './tracker.css';
 const STORAGE_KEY = 'match-lens/reviews-v1';
 const STORAGE_MIGRATED_KEY = 'trace/reviews-sqlite-v1';
 const MAX_REVIEWS = 24;
+const CARD_ART_RETRY_DELAY_MS = 10_000;
 
 function beginWindowDrag(event: ReactMouseEvent<HTMLElement>): void {
   if (event.button !== 0 || !isTauri()) return;
@@ -187,7 +188,7 @@ function PokemonSlot({ pokemon, catalog, active = false, defeated = false, attac
   const tools = pokemon.toolCards || [];
   return (
     <button type="button" className={`pokemon-slot ${active ? 'active' : ''} ${defeated ? 'defeated' : ''} ${attacking ? 'attacking' : ''} ${damageChange ? damageChange.delta > 0 ? 'damage-increased' : 'damage-decreased' : ''} ${positionChange ? `position-changed moved-to-${positionChange.to}` : ''}`} data-pokemon-id={pokemon.id} data-pokemon-name={displayName} title={`Inspect ${displayName}${pokemon.cardId ? ` · ${pokemon.cardId}` : ''}`} onClick={() => onOpen?.(pokemon.id)}>
-      <img className="card-art" src={image} alt={displayName} onError={showCardBackOnError} />
+      <img className="card-art" src={image} data-card-id={pokemon.cardId} alt={displayName} onError={showCardBackOnError} />
       {displayedDamage > 0 && <b className="damage-token">{displayedDamage}</b>}
       {damageChange && <span className={`damage-change-badge ${damageChange.delta > 0 ? 'added' : 'removed'}`} aria-label={damageChange.delta > 0 ? `${damageChange.delta} damage added; ${damageChange.after} total damage` : `${Math.abs(damageChange.delta)} damage removed; ${damageChange.after} total damage`}><b>{damageChange.delta > 0 ? '+' : '−'}{Math.abs(damageChange.delta)}</b><small>damage</small></span>}
       {positionChange && <span className={`position-change-badge to-${positionChange.to}`} aria-label={`${displayName} moved from ${positionChange.from} to ${positionChange.to} by ${positionChange.cause}`} title={`${positionChange.from === 'active' ? 'Active' : 'Bench'} → ${positionChange.to === 'active' ? 'Active' : 'Bench'} · ${positionChange.cause}`}>
@@ -195,11 +196,11 @@ function PokemonSlot({ pokemon, catalog, active = false, defeated = false, attac
         <b>{positionChange.to === 'active' ? 'Active' : 'Bench'}</b>
       </span>}
       {energyAttachments.length > 0 && <span className="attached-energy-preview" aria-label={`${pokemon.energies.join(', ')} attached`}>
-        {specialEnergies.slice(-2).map(({ card, displayName }) => <span className="special-energy-card" title={`${displayName} · Special Energy`} key={card!.id}><img src={resolvedCardImage(card!, catalog)} alt="" onError={showCardBackOnError} /></span>)}
+        {specialEnergies.slice(-2).map(({ card, displayName }) => <span className="special-energy-card" title={`${displayName} · Special Energy`} key={card!.id}><img src={resolvedCardImage(card!, catalog)} data-card-id={card!.cardId} alt="" onError={showCardBackOnError} /></span>)}
         {specialEnergies.length > 2 && <b className="special-energy-overflow" aria-label={`${specialEnergies.length - 2} more Special Energy cards`}>+{specialEnergies.length - 2}</b>}
         {countEnergyTypes(basicEnergyTypes).map(({ type, count }) => <EnergyBadge key={type} type={type} count={count} compact />)}
       </span>}
-      {tools.length > 0 && <span className="attached-tool-preview" aria-label={`${tools.map((tool) => `${resolvedCardInfo(tool, catalog)?.name || tool.name} Tool`).join(', ')} attached`}>{tools.slice(-2).map((tool) => { const name = resolvedCardInfo(tool, catalog)?.name || tool.name; return <span className="attached-tool-card" title={`${name} · Pokémon Tool`} key={tool.id}><img src={resolvedCardImage(tool, catalog)} alt="" onError={showCardBackOnError} /><small>Tool</small></span>; })}</span>}
+      {tools.length > 0 && <span className="attached-tool-preview" aria-label={`${tools.map((tool) => `${resolvedCardInfo(tool, catalog)?.name || tool.name} Tool`).join(', ')} attached`}>{tools.slice(-2).map((tool) => { const name = resolvedCardInfo(tool, catalog)?.name || tool.name; return <span className="attached-tool-card" title={`${name} · Pokémon Tool`} key={tool.id}><img src={resolvedCardImage(tool, catalog)} data-card-id={tool.cardId} alt="" onError={showCardBackOnError} /><small>Tool</small></span>; })}</span>}
       {defeated && <span className="knockout-stamp" aria-label="Knocked out"><b>KO</b><small>Knocked out</small></span>}
     </button>
   );
@@ -300,7 +301,7 @@ function ChoiceStage({ boardName, frames, currentReviewIndex, catalog, onOpen }:
         const name = info?.name || card.name;
         const current = frame.reviewIndex === currentReviewIndex;
         const roleCopy = card.choiceRole === 'discarded' ? 'Discarded card' : card.choiceRole === 'chosen' ? 'Chosen card' : card.choiceRole === 'promoted' ? 'Promoted to Active' : 'Action card';
-        return <button type="button" className={`choice-card role-${card.choiceRole} ${current ? 'current' : ''}`} aria-current={current ? 'step' : undefined} aria-label={`${roleCopy}: ${name}`} title={`${frame.label} · ${roleCopy}: ${name}`} onClick={() => onOpen(card)} key={`${frame.reviewIndex}-${card.id}-${index}`}><img src={resolvedCardImage(card, catalog)} alt={name} onError={showCardBackOnError} /></button>;
+        return <button type="button" className={`choice-card role-${card.choiceRole} ${current ? 'current' : ''}`} aria-current={current ? 'step' : undefined} aria-label={`${roleCopy}: ${name}`} title={`${frame.label} · ${roleCopy}: ${name}`} onClick={() => onOpen(card)} key={`${frame.reviewIndex}-${card.id}-${index}`}><img src={resolvedCardImage(card, catalog)} data-card-id={card.cardId} alt={name} onError={showCardBackOnError} /></button>;
       })}
     </div>
   </aside>;
@@ -320,7 +321,7 @@ function ZoneStack({ label, count, tone, onOpen }: { label: string; count: numbe
 function ZoneCards({ label, cards, catalog, onOpen }: { label: string; cards: TrackedCard[]; catalog: ReadonlyMap<string, CardInfo>; onOpen?: () => void }) {
   const visible = cards.slice(-2).reverse();
   return (
-    <button type="button" className="zone-card-group" onClick={onOpen} title={`Open ${label}`}><span>{label}</span><span className="zone-card-stack">{(visible.length ? visible : [{ id: `fallback-${label}`, name: label }]).map((card) => { const name = resolvedCardInfo(card, catalog)?.name || card.name; return <img key={card.id} src={resolvedCardImage(card, catalog)} title={name} alt={name} onError={showCardBackOnError} />; })}</span><b>{cards.length}</b></button>
+    <button type="button" className="zone-card-group" onClick={onOpen} title={`Open ${label}`}><span>{label}</span><span className="zone-card-stack">{(visible.length ? visible : [{ id: `fallback-${label}`, name: label }]).map((card) => { const name = resolvedCardInfo(card, catalog)?.name || card.name; return <img key={card.id} src={resolvedCardImage(card, catalog)} data-card-id={card.cardId} title={name} alt={name} onError={showCardBackOnError} />; })}</span><b>{cards.length}</b></button>
   );
 }
 
@@ -341,7 +342,7 @@ function HandFan({ boardName, cards, count, visibility, catalog, opponent, onOpe
           const hidden = opponent || !card;
           return hidden
             ? <span className="hand-fan-card hidden" key={card?.id || `hidden-${index}`}><img src="/tracker-assets/pokemon-card-back.jpg" alt="" /></span>
-            : <span className="hand-fan-card known" key={card.id} title={card.name}><img src={reviewCardImage(card, catalog)} alt="" onError={showCardBackOnError} /></span>;
+            : <span className="hand-fan-card known" key={card.id} title={card.name}><img src={reviewCardImage(card, catalog)} data-card-id={cardSourceIdFromReviewCard(card)} alt="" onError={showCardBackOnError} /></span>;
         })}
         {total > displayed && <em>+{total - displayed}</em>}
       </span>
@@ -411,7 +412,7 @@ function findPokemonById(canonical: CanonicalReviewState, id: string): PokemonIn
 function ArchiveBoardSide({ board, catalog, tone }: { board: TrackedPlayerBoard | undefined; catalog: ReadonlyMap<string, CardInfo>; tone: 'opponent' | 'local' }) {
   const slots = [board?.bench[0], board?.bench[1], board?.active, board?.bench[2], board?.bench[3]];
   return <span className={`session-board-side ${tone}`} aria-hidden="true">{slots.map((card, slot) => card
-    ? <img className={slot === 2 ? 'active' : ''} key={`${slot}-${card.id}`} src={resolvedCardImage(card, catalog)} alt="" onError={showCardBackOnError} />
+    ? <img className={slot === 2 ? 'active' : ''} key={`${slot}-${card.id}`} src={resolvedCardImage(card, catalog)} data-card-id={card.cardId} alt="" onError={showCardBackOnError} />
     : <i key={slot} />)}</span>;
 }
 
@@ -471,6 +472,7 @@ export default function TrackerApp() {
   const queuedLiveOperationsRef = useRef<CapturedOperation[]>([]);
   const runtimeReadyRef = useRef(false);
   const requestedCardIdsRef = useRef(new Set<string>());
+  const cardRetryAfterRef = useRef(new Map<string, number>());
   const pendingCardIdsRef = useRef(new Set<string>());
   const cardBatchTimerRef = useRef<number | null>(null);
   const persistTimersRef = useRef(new Map<string, number>());
@@ -547,7 +549,7 @@ export default function TrackerApp() {
 
   const resolveCardsForPayload = useCallback(async (payload: unknown) => {
     const ids = [...collectCardSourceIds(payload)];
-    const missing = ids.filter((id) => !catalogRef.current.has(id));
+    const missing = ids.filter((id) => cardCatalogEntryNeedsRefresh(id, catalogRef.current));
     if (missing.length) {
       try {
         mergeCatalog(await resolveCardSources(missing));
@@ -734,22 +736,41 @@ export default function TrackerApp() {
 
     const flushCardBatch = async () => {
       cardBatchTimerRef.current = null;
-      const ids = [...pendingCardIdsRef.current].filter((id) => !catalogRef.current.has(id));
+      const now = Date.now();
+      const ids = [...pendingCardIdsRef.current].filter((id) =>
+        cardCatalogEntryNeedsRefresh(id, catalogRef.current)
+        && (cardRetryAfterRef.current.get(id) || 0) <= now
+      );
       pendingCardIdsRef.current.clear();
       if (!ids.length) return;
       ids.forEach((id) => requestedCardIdsRef.current.add(id));
       try {
-        mergeCatalog(await resolveCardSources(ids));
+        const catalog = mergeCatalog(await resolveCardSources(ids));
+        ids.forEach((id) => {
+          if (cardCatalogEntryNeedsRefresh(id, catalog)) {
+            requestedCardIdsRef.current.delete(id);
+            cardRetryAfterRef.current.set(id, Date.now() + CARD_ART_RETRY_DELAY_MS);
+          } else {
+            cardRetryAfterRef.current.delete(id);
+          }
+        });
         if (active) await rebuildActiveMatch();
       } catch (caught) {
-        ids.forEach((id) => requestedCardIdsRef.current.delete(id));
+        ids.forEach((id) => {
+          requestedCardIdsRef.current.delete(id);
+          cardRetryAfterRef.current.set(id, Date.now() + CARD_ART_RETRY_DELAY_MS);
+        });
         if (active) setError(caught instanceof Error ? caught.message : String(caught));
       }
     };
 
     const queueCardResolution = (operation: CapturedOperation) => {
       for (const id of collectCardSourceIds(operation.operation)) {
-        if (!catalogRef.current.has(id) && !requestedCardIdsRef.current.has(id)) pendingCardIdsRef.current.add(id);
+        if (
+          cardCatalogEntryNeedsRefresh(id, catalogRef.current)
+          && !requestedCardIdsRef.current.has(id)
+          && (cardRetryAfterRef.current.get(id) || 0) <= Date.now()
+        ) pendingCardIdsRef.current.add(id);
       }
       if (pendingCardIdsRef.current.size && cardBatchTimerRef.current == null) {
         cardBatchTimerRef.current = window.setTimeout(() => { void flushCardBatch(); }, 100);
@@ -1137,7 +1158,7 @@ export default function TrackerApp() {
                         <span className="event-trailing">{event.coinResult ? <b className={`coin-outcome ${event.coinResult}`}><Coin size={10} weight="fill" />{event.coinResult === 'heads' ? 'Heads' : event.coinResult === 'tails' ? 'Tails' : 'Mixed'}</b> : selected ? <b>Viewing</b> : event.id.includes(':selection:') ? <MagnifyingGlass size={14} weight="bold" /> : <CaretRight size={14} weight="bold" />}</span>
                       </button>
                       {selected && effect && eventCard && <button className="event-effect-detail" type="button" onClick={() => openChoiceCard({ id: `${event.id}:card`, cardId: eventCard.id, name: eventCard.name })} aria-label={`${effect.label}: ${effect.title}. ${effect.text}. Open card details`}>
-                        <img src={eventCard.imageDataUrl || publicCardArtUrl(eventCard.id) || fallbackCardArt(eventCard.name)} alt="" onError={showCardBackOnError} />
+                        <img src={eventCard.imageDataUrl || publicCardArtUrl(eventCard.id) || fallbackCardArt(eventCard.name)} data-card-id={eventCard.id} alt="" onError={showCardBackOnError} />
                         <span><small>{effect.label}</small><strong>{effect.title}</strong><p>{effect.text}</p></span>
                         <CaretRight size={14} weight="bold" />
                       </button>}
