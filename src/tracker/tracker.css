@@ -337,25 +337,21 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(47, 126, 203
 html.trace-frame-transition::view-transition-old(root),
 html.trace-frame-transition::view-transition-new(root) { animation: none; }
 html.trace-frame-transition::view-transition-group(*) {
-  animation-duration: 380ms;
+  animation-duration: 320ms;
   animation-timing-function: cubic-bezier(.22, 1, .36, 1);
 }
 html.trace-frame-transition::view-transition-old(trace-board),
 html.trace-frame-transition::view-transition-new(trace-board) { mix-blend-mode: normal; }
-html.trace-frame-transition[data-frame-direction='forward']::view-transition-old(trace-board) { animation: trace-board-out-forward 220ms ease both; }
-html.trace-frame-transition[data-frame-direction='forward']::view-transition-new(trace-board) { animation: trace-board-in-forward 380ms cubic-bezier(.22, 1, .36, 1) both; }
-html.trace-frame-transition[data-frame-direction='backward']::view-transition-old(trace-board) { animation: trace-board-out-backward 220ms ease both; }
-html.trace-frame-transition[data-frame-direction='backward']::view-transition-new(trace-board) { animation: trace-board-in-backward 380ms cubic-bezier(.22, 1, .36, 1) both; }
+html.trace-frame-transition::view-transition-old(trace-board) { animation: trace-board-out 140ms ease-out both; }
+html.trace-frame-transition::view-transition-new(trace-board) { animation: trace-board-in 180ms ease-out both; }
 
-@keyframes trace-board-out-forward { to { opacity: .58; transform: translateX(-10px) scale(.996); } }
-@keyframes trace-board-in-forward { from { opacity: .5; transform: translateX(13px) scale(.996); } }
-@keyframes trace-board-out-backward { to { opacity: .58; transform: translateX(10px) scale(.996); } }
-@keyframes trace-board-in-backward { from { opacity: .5; transform: translateX(-13px) scale(.996); } }
-@keyframes trace-frame-fallback-forward { from { opacity: .55; transform: translateX(12px) scale(.996); } }
-@keyframes trace-frame-fallback-backward { from { opacity: .55; transform: translateX(-12px) scale(.996); } }
+@keyframes trace-board-out { to { opacity: .9; } }
+@keyframes trace-board-in { from { opacity: .9; } }
+@keyframes trace-frame-fallback-forward { from { opacity: .88; } }
+@keyframes trace-frame-fallback-backward { from { opacity: .88; } }
 
-.board-frame.frame-fallback-forward { animation: trace-frame-fallback-forward 380ms cubic-bezier(.22, 1, .36, 1); }
-.board-frame.frame-fallback-backward { animation: trace-frame-fallback-backward 380ms cubic-bezier(.22, 1, .36, 1); }
+.board-frame.frame-fallback-forward { animation: trace-frame-fallback-forward 320ms cubic-bezier(.22, 1, .36, 1); }
+.board-frame.frame-fallback-backward { animation: trace-frame-fallback-backward 320ms cubic-bezier(.22, 1, .36, 1); }
 
 .timeline-panel { display: flex; flex-direction: column; }
 .timeline-heading { height: 64px; flex: 0 0 auto; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); background: #fffaf0; }
