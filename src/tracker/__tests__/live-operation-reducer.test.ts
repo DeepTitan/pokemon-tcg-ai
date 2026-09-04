@@ -210,6 +210,64 @@ const stadiumReview = stadiumAssembler.ingest({
 assert.equal(stadiumReview?.turns[1].events[0].kind, 'stadium');
 assert.match(stadiumReview?.turns[1].events[0].text || '', /played Spikemuth Gym/);
 
+// The shared Stadium spot is not player-numbered. Its ownerPlayerId is the
+// account ID, while PlayerEntity has a separate entityID. The exact 60-card
+// census must still count a Stadium after it leaves the hand or it will invent
+// an extra hidden card in the deck.
+const stadiumDeckCountAssembler = new LiveReviewAssembler(catalog);
+const stadiumDeckSeed = stadiumDeckCountAssembler.ingest({
+  ...operation,
+  operationId: 'stadium-deck-count-seed',
+  messageIndex: 130,
+  operation: {
+    matchStarted: true,
+    updatedEntities: [
+      { entityID: 'stadium-count-player-1', ownerPlayerId: 'player-1', currentPos: 3, isPlayer1: true, userName: 'Isaiah' },
+      { entityID: 'stadium-count-player-2', ownerPlayerId: 'player-2', currentPos: 4, isPlayer1: false, userName: 'Opponent' },
+      { entityID: 'stadium-count-card', ownerPlayerId: 'player-1', currentGamePos: 11, cardSourceID: 'sv-stadium' },
+      { entityID: 'stadium-count-active', ownerPlayerId: 'player-1', currentGamePos: 15, mainFragmentCard: true, cardSourceID: 'sv-test-1' },
+      ...Array.from({ length: 6 }, (_, index) => ({
+        entityID: `stadium-count-prize-${index}`,
+        ownerPlayerId: 'player-1',
+        currentGamePos: 19,
+      })),
+      ...Array.from({ length: 3 }, (_, index) => ({
+        entityID: `stadium-count-hand-${index}`,
+        ownerPlayerId: 'player-1',
+        currentGamePos: 11,
+        cardSourceID: 'sv-hammer',
+      })),
+    ],
+  },
+});
+assert.equal(stadiumDeckSeed?.turns.at(-1)?.snapshot.players.Isaiah.deckCount, 49);
+const stadiumDeckPlayed = stadiumDeckCountAssembler.ingest({
+  ...operation,
+  operationId: 'stadium-deck-count-play',
+  messageIndex: 131,
+  operation: {
+    operationNumber: 2,
+    playerOperation: { accountID: 'player-1', originEntityID: 'stadium-count-card', targetPos: 2 },
+    actionModifications: [{
+      $type: 'MatchLogic.MoveCardsModification, MatchLogic',
+      actionModificationID: 'stadium-deck-count-to-board',
+      moveCardDeltas: [{
+        fromCardAddress: { entityID: 'stadium-count-card', pos: 11 },
+        toCardAddress: { entityID: 'stadium-count-card', pos: 2 },
+      }],
+    }],
+    updatedEntities: [{
+      entityID: 'stadium-count-card',
+      ownerPlayerId: 'player-1',
+      previousGamePos: 11,
+      currentGamePos: 2,
+      cardSourceID: 'sv-stadium',
+    }],
+  },
+});
+assert.equal(stadiumDeckPlayed?.turns.at(-1)?.snapshot.players.Isaiah.deckCount, 49);
+assert.equal(stadiumDeckPlayed?.turns.at(-1)?.canonical?.state.players[0].deck.length, 49);
+
 const benchAssembler = new LiveReviewAssembler(catalog);
 benchAssembler.ingest({
   ...operation,

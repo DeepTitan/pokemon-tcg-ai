@@ -1481,15 +1481,20 @@ function inferExactDeckCounts(assembly: MatchAssembly): void {
     if (side) byNumber.set(side, player);
   }
   if (!byNumber.get(1) || !byNumber.get(2)) return;
-  const playerIds: Record<1 | 2, string | undefined> = {
-    1: entityId(byNumber.get(1)!),
-    2: entityId(byNumber.get(2)!),
+  // Card ownership is expressed with the player's account ID, not the
+  // PlayerEntity ID. Player-specific positions normally mask that distinction,
+  // but neutral zones such as BoardStadium rely on the owner ID. Using entity
+  // IDs here made a played Stadium disappear from the 60-card census and
+  // manufactured one hidden card in the deck.
+  const playerOwnerIds: Record<1 | 2, string | undefined> = {
+    1: text(byNumber.get(1)!, 'ownerPlayerId', 'playerId', 'accountId') || entityId(byNumber.get(1)!),
+    2: text(byNumber.get(2)!, 'ownerPlayerId', 'playerId', 'accountId') || entityId(byNumber.get(2)!),
   };
   const outsideDeck: Record<1 | 2, number> = { 1: 0, 2: 0 };
   for (const entity of assembly.entities.values()) {
     const pos = number(entity, 'currentGamePos', 'currentPos');
     if (pos == null || !INVENTORY_POSITIONS.has(pos)) continue;
-    const side = ownerNumber(entity, playerIds);
+    const side = ownerNumber(entity, playerOwnerIds);
     if (side) outsideDeck[side] += 1;
   }
   for (const side of [1, 2] as const) {
