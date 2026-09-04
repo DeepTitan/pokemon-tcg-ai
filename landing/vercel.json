@@ -1,6 +1,13 @@
 {
   "cleanUrls": true,
   "trailingSlash": false,
+  "redirects": [
+    {
+      "source": "/discord",
+      "destination": "https://discord.gg/njySK9WVBe",
+      "permanent": false
+    }
+  ],
   "headers": [
     {
       "source": "/(.*)",
