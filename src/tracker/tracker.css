@@ -206,14 +206,14 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(47, 126, 203
 .card-art { width: 100%; height: 100%; display: block; border-radius: 6px; object-fit: cover; }
 .damage-token { position: absolute; z-index: 3; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 5px rgba(43, 28, 17, .25); }
 .damage-token { top: 8px; right: -9px; min-width: 30px; height: 30px; padding: 0 5px; border: 2px solid #fff; border-radius: 50%; background: #cf3b30; color: #fff; font-size: 10px; }
-.special-condition-preview { position: absolute; top: 5px; left: 5px; z-index: 6; max-width: calc(100% - 10px); display: flex; align-items: center; pointer-events: none; }
-.special-condition-badge { --condition-bg: #748094; --condition-symbol: #fff; --condition-ring: #4e5869; position: relative; width: 22px; height: 22px; padding: 0; display: grid; place-items: center; flex: 0 0 auto; overflow: hidden; border: 2px solid rgba(255, 255, 255, .98); border-radius: 50%; color: var(--condition-symbol); background: var(--condition-bg); box-shadow: 0 0 0 1px color-mix(in srgb, var(--condition-ring), transparent 24%), 0 3px 7px rgba(40, 31, 29, .32); line-height: 1; }
-.special-condition-badge + .special-condition-badge { margin-left: -6px; }
+.special-condition-preview { position: absolute; top: 7px; left: -17px; z-index: 6; display: flex; flex-direction: column; align-items: center; gap: 3px; pointer-events: none; }
+.special-condition-badge { --condition-bg: #748094; --condition-symbol: #fff; --condition-ring: #4e5869; position: relative; width: 28px; height: 28px; padding: 0; display: grid; place-items: center; flex: 0 0 auto; overflow: hidden; border: 2px solid rgba(255, 255, 255, .98); border-radius: 50%; color: var(--condition-symbol); background: var(--condition-bg); box-shadow: 0 0 0 1px color-mix(in srgb, var(--condition-ring), transparent 24%), 0 3px 7px rgba(40, 31, 29, .32); line-height: 1; }
 .special-condition-badge::after { position: absolute; inset: 1px; content: ''; border: 1px solid rgba(255, 255, 255, .22); border-radius: 50%; pointer-events: none; }
 .special-condition-icon { width: 100%; height: 100%; display: block; fill: currentColor; filter: drop-shadow(0 1px 1px rgba(36, 24, 21, .16)); }
-.pokemon-slot.active .special-condition-preview { top: 7px; left: 7px; }
-.pokemon-slot.active .special-condition-badge { width: 24px; height: 24px; }
+.pokemon-slot.active .special-condition-preview { top: 10px; left: -18px; gap: 4px; }
+.pokemon-slot.active .special-condition-badge { width: 32px; height: 32px; }
 .condition-poisoned { --condition-bg: #d680b2; --condition-symbol: #68308f; --condition-ring: #68308f; }
+.condition-poisoned .special-condition-icon { width: 64%; height: 64%; }
 .condition-burned { --condition-bg: #f19e44; --condition-symbol: #dc0010; --condition-ring: #bb311f; }
 .condition-asleep { --condition-bg: #667ec3; --condition-symbol: #fff; --condition-ring: #344d96; }
 .condition-confused { --condition-bg: #c45b98; --condition-symbol: #fff; --condition-ring: #8e376c; }
