@@ -379,7 +379,7 @@ function PrizeFan({ count, cards, tone, onOpen }: { count: number; cards: Card[]
       <span>Prize</span>
       <span className="prize-fan-cards" aria-hidden="true">
         {slots.map((state, index) => (
-          <i key={index} className={state} style={state === 'remaining' ? cardTransitionStyle(cards[index]?.id) : undefined} />
+          <i key={index} className={state} style={cardTransitionStyle(cards[index]?.id)} />
         ))}
       </span>
     </button>
@@ -464,7 +464,7 @@ function PlayerField({ board, canonical, visibility, catalog, choiceFrames, curr
           <span className="status-slot stadium-slot"><span className={`status-pill stadium ${status.stadiumUsed ? 'active' : 'inactive'}`} aria-label={status.stadiumUsed ? 'Stadium used' : 'Stadium not used'} title={status.stadiumUsed ? 'A Stadium has already been played this turn' : 'No Stadium has been played this turn'}><ShieldCheck size={11} weight="fill" />Stadium <CheckCircle className="status-check" size={9} weight="fill" /></span></span>
           <span className="status-slot item-lock-slot"><span className={`status-pill item-lock ${status.itemLocked ? 'active' : 'inactive'}`} aria-label={status.itemLocked ? 'Items locked by Itchy Pollen' : 'Items not locked'} title={status.itemLocked ? 'This player cannot play Item cards because of Itchy Pollen' : 'This player can play Item cards'}><Prohibit size={11} weight="bold" />Item lock</span></span>
         </div>
-        <div className="strip-zones"><div className="prize-summary"><span>Prize</span><b>{canonical.prizes.length || prizesRemaining(board)}</b>{Array.from({ length: 6 }, (_, index) => <i key={index} className={index < (canonical.prizes.length || prizesRemaining(board)) ? 'remaining' : 'taken'} />)}</div></div>
+        <div className="strip-zones"><div className="prize-summary"><span>Prize</span><b>{canonical.prizes.length || prizesRemaining(board)}</b>{Array.from({ length: canonical.prizes.length || prizesRemaining(board) }, (_, index) => <i key={index} className="remaining" />)}</div></div>
       </div>
       <div className="field-layout"><PrizeFan count={canonical.prizes.length || prizesRemaining(board)} cards={canonical.prizes} tone={tone} onOpen={() => openZone('Prize cards', canonical.prizes, 'Prize identities stay private until the game reveals them.')} /><div className="battle-lanes">{opponent ? <>{bench}{active}</> : <>{active}{bench}</>}</div><div className="side-piles"><ZoneStack label="Deck" count={displayedDeckCount(board, canonical.deck.length)} tone={tone} onOpen={() => openZone('Deck', canonical.deck, 'The deck remains face-down outside captured search effects.')} /><ZoneCards label="Discard" cards={board.discardCards || []} catalog={catalog} onOpen={() => openZone('Discard pile', canonical.discard, 'Public discarded cards at this exact action.')} />{canonical.lostZone.length > 0 && <button type="button" className="lost-zone-button" onClick={() => openZone('Lost Zone', canonical.lostZone, 'Cards sent to the Lost Zone are public and cannot be recovered.')}><Sparkle size={13} weight="fill" />Lost Zone <b>{canonical.lostZone.length}</b></button>}</div></div>
       {!opponent && <div className="hand-dock"><HandFan boardName={board.name} cards={canonical.hand} count={handCount} visibility={visibility} catalog={catalog} opponent={false} onOpen={openHand} /></div>}
