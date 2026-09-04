@@ -346,12 +346,14 @@ function ChoiceStage({ boardName, frames, currentReviewIndex, catalog, onOpen }:
   </aside>;
 }
 
-function AttackRoute({ resolution, opponentAttacking }: { resolution: AttackResolution; opponentAttacking: boolean }) {
+function AttackRoute({ resolution, opponentAttacking, hasImpact }: { resolution: AttackResolution; opponentAttacking: boolean; hasImpact: boolean }) {
   const outcome = resolution.hits.length
     ? `${resolution.source} used ${resolution.attack}. ${resolution.hits.map((hit) => `${hit.damage || 'Effect'} to ${hit.target}${hit.knockedOut ? ', knocked out' : ''}`).join('. ')}`
-    : `${resolution.source} used ${resolution.attack} with no direct-damage target captured`;
+    : hasImpact
+      ? `${resolution.source} used ${resolution.attack} and placed damage counters`
+      : `${resolution.source} used ${resolution.attack} with no direct-damage target captured`;
   return <>
-    <span className={`attack-route ${opponentAttacking ? 'from-opponent' : 'from-local'} ${resolution.hits.length ? 'has-hit' : 'effect-only'}`} aria-hidden="true">
+    <span className={`attack-route ${opponentAttacking ? 'from-opponent' : 'from-local'} ${hasImpact ? 'has-hit' : 'effect-only'}`} aria-hidden="true">
       <i className="attack-route-trail trail-left" />
       <i className="attack-route-trail trail-right" />
       <i className="attack-route-core"><Sword size={18} weight="fill" /></i>
@@ -1337,7 +1339,7 @@ export default function TrackerApp() {
               <PlayerField board={opponentBoard} canonical={opponentCanonicalPlayer} visibility={selectedCanonical.visibility} catalog={cardCatalog} choiceFrames={turnChoiceFrames.filter((frame) => frame.actor === opponentBoard.name)} currentReviewIndex={turnIndex} turnNumber={selectedCanonical.state.turnNumber} status={turnStatus.players[opponentBoard.name]} stadiumCard={selectedCanonical.state.stadium} stadiumName={turnStatus.stadiumName} stadiumOwner={turnStatus.stadiumOwner} localPlayerName={localBoard.name} opponentName={opponentBoard.name} defeatedIds={defeatedIds} defeatedNames={defeatedNames} damageChanges={damageChanges} positionChanges={positionChanges} attackerId={attackResolution?.sourceId} opponent avatar={TRAINER_ART[0]} onOpenPokemon={openPokemon} onOpenChoice={openChoiceCard} onOpenCard={openCard} onOpenZone={openZone} />
               <div className="midline"><span /></div>
               <PlayerField board={localBoard} canonical={localCanonicalPlayer} visibility={selectedCanonical.visibility} catalog={cardCatalog} choiceFrames={turnChoiceFrames.filter((frame) => frame.actor === localBoard.name)} currentReviewIndex={turnIndex} turnNumber={selectedCanonical.state.turnNumber} status={turnStatus.players[localBoard.name]} stadiumCard={selectedCanonical.state.stadium} stadiumName={turnStatus.stadiumName} stadiumOwner={turnStatus.stadiumOwner} localPlayerName={localBoard.name} opponentName={opponentBoard.name} defeatedIds={defeatedIds} defeatedNames={defeatedNames} damageChanges={damageChanges} positionChanges={positionChanges} attackerId={attackResolution?.sourceId} avatar={TRAINER_ART[2]} onOpenPokemon={openPokemon} onOpenChoice={openChoiceCard} onOpenCard={openCard} onOpenZone={openZone} />
-              {frameAnimations && !frameScrubbing && attackResolution && <AttackRoute key={`${selectedReview.id}:${turnIndex}:${attackResolution.sourceId || attackResolution.source}`} resolution={attackResolution} opponentAttacking={attackResolution.attacker === opponentBoard.name} />}
+              {frameAnimations && !frameScrubbing && attackResolution && <AttackRoute key={`${selectedReview.id}:${turnIndex}:${attackResolution.sourceId || attackResolution.source}`} resolution={attackResolution} opponentAttacking={attackResolution.attacker === opponentBoard.name} hasImpact={attackResolution.hits.length > 0 || [...damageChanges.values()].some((change) => change.delta > 0)} />}
             </div>
             <div className="turn-controls">
               <div className="turn-caption">

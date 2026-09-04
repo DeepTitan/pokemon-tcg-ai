@@ -754,6 +754,7 @@ interface OperationAssembly {
   knockoutTargets: Set<string>;
   prizesBySide: Map<1 | 2, number>;
   hasDamage: boolean;
+  attackSelected: boolean;
   privateDraws: Map<string, PrivateDrawResolution>;
   coinFlips: Map<string, boolean[]>;
   attackName?: string;
@@ -1549,6 +1550,7 @@ export class LiveReviewAssembler {
         knockoutTargets: new Set(),
         prizesBySide: new Map(),
         hasDamage: false,
+        attackSelected: false,
         privateDraws: new Map(),
         coinFlips: new Map(),
         selections: new Map(),
@@ -1654,6 +1656,7 @@ export class LiveReviewAssembler {
         for (const candidate of list(modification, 'setMetaDataDeltas', 'SetMetaDataDeltas')) {
           const delta = record(candidate);
           if (number(delta, 'metaDataKey', 'MetaDataKey') !== 22) continue;
+          assembledOperation!.attackSelected = true;
           assembledOperation!.attackName ||= cleanBracketedName(text(delta, 'value', 'Value'));
         }
       }
@@ -2001,10 +2004,14 @@ export class LiveReviewAssembler {
             && (toPosition === 13 || toPosition === 14);
         })
       ));
-    if (!assembledOperation.winnerSide) {
+    const attackResolved = assembledOperation.hasDamage || assembledOperation.attackSelected;
+    // A game-winning attack can carry EndGameModification in the same operation.
+    // Keep its attack event; only suppress the generic primary event for standalone
+    // concession/result operations.
+    if (!assembledOperation.winnerSide || attackResolved) {
       let primaryKind: TrackerEventKind = 'system';
       let primaryText = originName ? `${actorPrefix}${opType} — ${originName}` : `${actorPrefix}${opType}`;
-      if (assembledOperation.hasDamage) {
+      if (attackResolved) {
         primaryKind = 'attack';
         primaryText = `${actorPrefix}${originName || 'Pokémon'} used ${assembledOperation.attackName || 'an attack'}`;
       } else if (assembledOperation.abilityName && opType === 'Use') {
@@ -2232,7 +2239,7 @@ export class LiveReviewAssembler {
     const chosenCardNames = turn.choiceCards
       .filter((card) => card.choiceRole === 'chosen')
       .map((card) => card.name);
-    turn.choiceLabel = assembledOperation.hasDamage
+    turn.choiceLabel = attackResolved
       ? assembledOperation.attackName ? `Attacked with ${assembledOperation.attackName}` : 'Attack resolved'
       : chosenCardNames.length
       ? `Chose ${naturalList(chosenCardNames)}${choiceOriginName ? ` with ${choiceOriginName}` : ''}`
@@ -2276,7 +2283,7 @@ export class LiveReviewAssembler {
       .filter(({ key, event }) => Boolean(event) && !promotionEventKeys.has(key))
       .sort((left, right) => eventRank(left.key) - eventRank(right.key) || left.index - right.index)
       .map(({ event }) => event);
-    const resolvesKnockouts = assembledOperation.hasDamage && assembledOperation.knockoutTargets.size > 0;
+    const resolvesKnockouts = attackResolved && assembledOperation.knockoutTargets.size > 0;
     const attackStageSnapshot = resolvesKnockouts && assembledOperation.snapshotBefore
       ? {
         ...snapshot,

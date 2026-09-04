@@ -15,6 +15,13 @@ const catalog = new Map<string, CardInfo>([
   ['sv-honchkrow', { id: 'sv-honchkrow', name: "Team Rocket's Honchkrow", hp: 130, cardType: 'D', category: 1 }],
   ['sv-stadium', { id: 'sv-stadium', name: 'Spikemuth Gym', category: 2, format: '=A', rulesText: "Search your deck for a Marnie's Pokémon." }],
   ['sv-dreepy', { id: 'sv-dreepy', name: 'Dreepy', hp: 70, cardType: 'P', category: 1 }],
+  ['sv-alakazam', {
+    id: 'sv-alakazam', name: 'Alakazam', hp: 140, cardType: 'P', category: 1,
+    actions: [
+      { kind: 'ability', name: 'Psychic Draw', text: 'Draw cards.', cost: '', damage: '' },
+      { kind: 'attack', name: 'Powerful Hand', text: 'Put damage counters on an opposing Pokémon.', cost: 'P', damage: '' },
+    ],
+  }],
 ]);
 
 const operation: CapturedOperation = {
@@ -112,6 +119,62 @@ assert.match(toolReview?.turns[1].events[0].text || '', /attached Handheld Fan t
 assert.equal(toolReview?.turns[1].choiceLabel, 'Attached a Pokémon Tool');
 assert.deepEqual(toolReview?.turns[1].snapshot.players.Isaiah.active?.toolCards?.map((card) => card.name), ['Handheld Fan']);
 assert.deepEqual(toolReview?.turns[1].canonical?.state.players[0].active?.attachedTools.map((card) => card.name), ['Handheld Fan']);
+
+// Powerful Hand changes damage counters directly instead of using the ordinary
+// ApplyDamage protocol. The explicit attack metadata must beat Alakazam's
+// single-ability fallback so the replay labels and animates it as an attack.
+const counterAttackAssembler = new LiveReviewAssembler(catalog);
+counterAttackAssembler.ingest({
+  ...operation,
+  operationId: 'counter-attack-seed',
+  messageIndex: 111,
+  operation: {
+    updatedEntities: [
+      { entityID: 'counter-player-1', ownerPlayerId: 'player-1', currentPos: 3, isPlayer1: true, userName: 'Isaiah' },
+      { entityID: 'counter-player-2', ownerPlayerId: 'player-2', currentPos: 4, isPlayer1: false, userName: 'Opponent' },
+      { entityID: 'counter-alakazam', ownerPlayerId: 'player-1', currentGamePos: 15, cardSourceID: 'sv-alakazam' },
+      { entityID: 'counter-target', ownerPlayerId: 'player-2', currentGamePos: 16, damageCounters: 0, cardSourceID: 'sv-honchkrow' },
+    ],
+  },
+});
+const counterAttackReview = counterAttackAssembler.ingest({
+  ...operation,
+  operationId: 'counter-attack',
+  messageIndex: 112,
+  operation: {
+    operationNumber: 32,
+    playerOperation: { operationType: 1, accountID: 'player-1', originEntityID: 'counter-alakazam', targetID: 'counter-target' },
+    actionModifications: [
+      {
+        $type: 'MatchLogic.MoveDCModification, MatchLogic',
+        actionModificationID: 'counter-attack-damage-counters',
+        isFinal: true,
+        modifiedDCEntities: [{ cardAddress: { entityID: 'counter-target', pos: 16 }, previousDC: 0, newDC: 10 }],
+      },
+      {
+        $type: 'MatchLogic.SetMetaDataModification, MatchLogic',
+        actionModificationID: 'counter-attack-name',
+        setMetaDataDeltas: [{ metaDataKey: 22, value: '[Powerful Hand]' }],
+      },
+      {
+        $type: 'MatchLogic.EndGameModification, MatchLogic',
+        actionModificationID: 'counter-attack-game-end',
+        winner: 1,
+        winGameEndReasonLocID: 'match_results_victory_reason_prize',
+      },
+    ],
+    updatedEntities: [
+      { entityID: 'counter-alakazam', ownerPlayerId: 'player-1', currentGamePos: 15, cardSourceID: 'sv-alakazam' },
+      { entityID: 'counter-target', ownerPlayerId: 'player-2', currentGamePos: 16, damageCounters: 10, cardSourceID: 'sv-honchkrow' },
+    ],
+  },
+});
+const counterAttackTurn = counterAttackReview?.turns.at(-1);
+assert.equal(counterAttackTurn?.events[0].kind, 'attack');
+assert.equal(counterAttackTurn?.events[0].text, 'Isaiah: Alakazam used Powerful Hand');
+assert.equal(counterAttackTurn?.choiceLabel, 'Attacked with Powerful Hand');
+assert.ok(counterAttackTurn?.events[0].facts?.some((fact) => fact.label === 'Damage counters' && fact.value === "Team Rocket's Honchkrow: 0 → 100 damage"));
+assert.ok(counterAttackTurn?.events[0].facts?.some((fact) => fact.label === 'Attack selected' && fact.value === 'Powerful Hand'));
 
 const stadiumAssembler = new LiveReviewAssembler(catalog);
 stadiumAssembler.ingest({
