@@ -35,6 +35,7 @@ import { attackResolutionForTurn, type AttackResolution } from './attack-resolut
 import { damageChangesForTurn, type PokemonDamageChange } from './damage-change-model.js';
 import { positionChangesForTurn, type PokemonPositionChange } from './position-change-model.js';
 import { buildKeyMoments, stepKeyMoment } from './key-moment-navigation.js';
+import { turnPassForTurn, type TurnPass } from './turn-pass-model.js';
 import { deriveReviewTurnStatus, type PlayerTurnStatus } from './turn-status-model.js';
 import { capturedAtIso, collectCardSourceIds, finalizeReviewForClientExit, matchSummaryFromReview, operationKey, recordingSummaryFromOperation, REDUCER_VERSION } from './match-storage.js';
 import { initialClientLifecycleState, observeClientLifecycle } from './client-lifecycle-model.js';
@@ -331,6 +332,8 @@ interface TurnChoiceFrame {
   events: Array<{ id: string; kind: TrackerEventKind; text: string }>;
 }
 
+type TurnHandoffRole = 'passing' | 'timed-out' | 'receiving';
+
 function withoutActorPrefix(text: string, actor: string): string {
   return text.replace(new RegExp(`^${actor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:\\s*`, 'i'), '');
 }
@@ -440,6 +443,23 @@ function AttackRoute({ resolution, opponentAttacking, hasImpact }: { resolution:
   </>;
 }
 
+function TurnPassMoment({ pass, opponentPassing }: { pass: TurnPass; opponentPassing: boolean }) {
+  const Direction = opponentPassing ? ArrowDown : ArrowUp;
+  const timedOut = pass.reason === 'timeout';
+  const outcome = timedOut
+    ? `${pass.passer}'s turn ended because their timer expired${pass.receiver ? `. ${pass.receiver}'s turn is next` : ''}`
+    : `${pass.passer} passed without attacking${pass.receiver ? `. ${pass.receiver}'s turn is next` : ''}`;
+
+  return <aside className={`turn-pass-moment ${opponentPassing ? 'from-opponent' : 'from-local'} ${timedOut ? 'timed-out' : ''}`} role="status" aria-label={outcome}>
+    <span className="turn-pass-route" aria-hidden="true" />
+    <span className="turn-pass-banner">
+      <span className="turn-pass-direction" aria-hidden="true"><Direction size={19} weight="bold" /></span>
+      <span className="turn-pass-copy"><small>{timedOut ? 'Timer expired' : 'No attack'}</small><strong>{timedOut ? `${pass.passer}'s turn ended` : `${pass.passer} passed`}</strong></span>
+      <span className="turn-pass-next"><small>Next turn</small><strong>{pass.receiver || 'Opponent'}</strong></span>
+    </span>
+  </aside>;
+}
+
 function ZoneStack({ label, count, tone, onOpen }: { label: string; count: number | string; tone: 'coral' | 'blue'; onOpen?: () => void }) {
   return <button type="button" className={`zone-stack ${tone}`} onClick={onOpen} title={`Open ${label}`}><span>{label}</span><span className="zone-stack-cards"><CardsThree size={36} weight="duotone" /></span><b>{count}</b></button>;
 }
@@ -516,7 +536,7 @@ function OpponentHandSummary({ boardName, count, onOpen }: { boardName: string; 
   );
 }
 
-function PlayerField({ board, canonical, visibility, catalog, choiceFrames, currentReviewIndex, turnNumber, status, stadiumCard, stadiumName, stadiumOwner, localPlayerName, opponentName, defeatedIds, defeatedNames, damageChanges, positionChanges, attackerId, opponent = false, avatar, onOpenPokemon, onOpenChoice, onOpenCard, onOpenZone }: { board: TrackedPlayerBoard; canonical: PlayerState; visibility: Record<string, ReviewCardVisibility>; catalog: ReadonlyMap<string, CardInfo>; choiceFrames: TurnChoiceFrame[]; currentReviewIndex: number; turnNumber: number; status: PlayerTurnStatus; stadiumCard: Card | null; stadiumName?: string; stadiumOwner?: string; localPlayerName: string; opponentName: string; defeatedIds: ReadonlySet<string>; defeatedNames: ReadonlySet<string>; damageChanges: ReadonlyMap<string, PokemonDamageChange>; positionChanges: ReadonlyMap<string, PokemonPositionChange>; attackerId?: string; opponent?: boolean; avatar: string; onOpenPokemon: (id: string) => void; onOpenChoice: (card: TrackedCard) => void; onOpenCard: (card: Card) => void; onOpenZone: (title: string, subtitle: string, cards: Card[], visibility: Record<string, ReviewCardVisibility>) => void }) {
+function PlayerField({ board, canonical, visibility, catalog, choiceFrames, currentReviewIndex, turnNumber, status, handoff, stadiumCard, stadiumName, stadiumOwner, localPlayerName, opponentName, defeatedIds, defeatedNames, damageChanges, positionChanges, attackerId, opponent = false, avatar, onOpenPokemon, onOpenChoice, onOpenCard, onOpenZone }: { board: TrackedPlayerBoard; canonical: PlayerState; visibility: Record<string, ReviewCardVisibility>; catalog: ReadonlyMap<string, CardInfo>; choiceFrames: TurnChoiceFrame[]; currentReviewIndex: number; turnNumber: number; status: PlayerTurnStatus; handoff?: TurnHandoffRole; stadiumCard: Card | null; stadiumName?: string; stadiumOwner?: string; localPlayerName: string; opponentName: string; defeatedIds: ReadonlySet<string>; defeatedNames: ReadonlySet<string>; damageChanges: ReadonlyMap<string, PokemonDamageChange>; positionChanges: ReadonlyMap<string, PokemonPositionChange>; attackerId?: string; opponent?: boolean; avatar: string; onOpenPokemon: (id: string) => void; onOpenChoice: (card: TrackedCard) => void; onOpenCard: (card: Card) => void; onOpenZone: (title: string, subtitle: string, cards: Card[], visibility: Record<string, ReviewCardVisibility>) => void }) {
   const benches = [...board.bench, ...Array.from({ length: Math.max(0, 5 - board.bench.length) }, () => null)].slice(0, 5);
   const tone = opponent ? 'coral' : 'blue';
   const isDefeated = (pokemon: TrackedPokemon | null) => Boolean(pokemon && (defeatedIds.has(pokemon.id) || defeatedNames.has(pokemon.name)));
@@ -534,11 +554,15 @@ function PlayerField({ board, canonical, visibility, catalog, choiceFrames, curr
       ? visibility
       : Object.fromEntries(canonical.hand.map((card) => [card.id, 'known' as const])));
   return (
-    <section className={`player-field ${opponent ? 'opponent' : 'local'} ${status.isCurrentTurn ? 'current-turn' : ''} ${status.itemLocked ? 'item-locked' : ''}`}>
+    <section className={`player-field ${opponent ? 'opponent' : 'local'} ${status.isCurrentTurn && !handoff ? 'current-turn' : ''} ${handoff ? `turn-${handoff}` : ''} ${status.itemLocked ? 'item-locked' : ''}`}>
       <div className="player-strip">
         <div className="player-identity"><img src={avatar} alt="" /><div><span>{opponent ? 'Opponent' : 'You'}</span><strong>{board.name}</strong></div>{opponent && <OpponentHandSummary boardName={board.name} count={handCount} onOpen={openHand} />}</div>
         <div className="turn-statuses" aria-label={`${board.name} turn status`}>
-          <span className="status-slot turn-slot">{status.isCurrentTurn && <span className="status-pill current turn-number-pill" aria-label={`Current turn, turn ${turnNumber}`}><Play size={10} weight="fill" /><span>Turn</span><b>{turnNumber}</b><i>Current</i></span>}</span>
+          <span className="status-slot turn-slot">{handoff === 'passing' || handoff === 'timed-out'
+            ? <span className={`status-pill turn-handoff-pill ${handoff}`} aria-label={`Turn ${turnNumber} ${handoff === 'timed-out' ? 'ended when the timer expired' : 'ended without an attack'}`}><span>Turn {turnNumber}</span><b>{handoff === 'timed-out' ? 'Timed out' : 'Passed'}</b></span>
+            : handoff === 'receiving'
+              ? <span className="status-pill turn-handoff-pill receiving" aria-label={`${board.name}'s turn is next`}><Play size={9} weight="fill" /><b>Next turn</b></span>
+              : status.isCurrentTurn && <span className="status-pill current turn-number-pill" aria-label={`Current turn, turn ${turnNumber}`}><Play size={10} weight="fill" /><span>Turn</span><b>{turnNumber}</b><i>Current</i></span>}</span>
           <span className="status-slot supporter-slot"><span className={`status-pill supporter ${status.supporterUsed ? 'active' : 'inactive'}`} aria-label={status.supporterUsed ? 'Supporter used' : 'Supporter not used'} title={status.supporterUsed ? 'A Supporter has already been played this turn' : 'No Supporter has been played this turn'}><Hand size={11} weight="fill" />Supporter <CheckCircle className="status-check" size={9} weight="fill" /></span></span>
           <span className="status-slot stadium-slot"><span className={`status-pill stadium ${status.stadiumUsed ? 'active' : 'inactive'}`} aria-label={status.stadiumUsed ? 'Stadium used' : 'Stadium not used'} title={status.stadiumUsed ? 'A Stadium has already been played this turn' : 'No Stadium has been played this turn'}><ShieldCheck size={11} weight="fill" />Stadium <CheckCircle className="status-check" size={9} weight="fill" /></span></span>
           <span className="status-slot item-lock-slot"><span className={`status-pill item-lock ${status.itemLocked ? 'active' : 'inactive'}`} aria-label={status.itemLocked ? 'Items locked by Itchy Pollen' : 'Items not locked'} title={status.itemLocked ? 'This player cannot play Item cards because of Itchy Pollen' : 'This player can play Item cards'}><Prohibit size={11} weight="bold" />Item lock</span></span>
@@ -795,6 +819,9 @@ export default function TrackerApp() {
     : null, [selectedCanonical, selectedReview, selectedTurn]);
   const currentActionEvents = useMemo(() => selectedTurn ? actionEventsForTurn(selectedTurn) : [], [selectedTurn]);
   const attackResolution = useMemo(() => selectedTurn ? attackResolutionForTurn(selectedTurn) : null, [selectedTurn]);
+  const turnPass = useMemo(() => selectedReview && selectedTurn
+    ? turnPassForTurn(selectedTurn, selectedReview.players)
+    : null, [selectedReview, selectedTurn]);
   const damageChanges = useMemo(() => new Map(damageChangesForTurn(turnIndex > 0 ? selectedReview?.turns[turnIndex - 1] : undefined, selectedTurn || undefined).map((change) => [change.pokemonId, change])), [selectedReview, selectedTurn, turnIndex]);
   const positionChanges = useMemo(() => new Map(positionChangesForTurn(turnIndex > 0 ? selectedReview?.turns[turnIndex - 1] : undefined, selectedTurn || undefined).map((change) => [change.pokemonId, change])), [selectedReview, selectedTurn, turnIndex]);
   const defeatedIds = useMemo(() => new Set(attackResolution?.hits.flatMap((hit) => hit.knockedOut && hit.targetId ? [hit.targetId] : []) || []), [attackResolution]);
@@ -1274,12 +1301,13 @@ export default function TrackerApp() {
     if (!playing || !selectedReview) return undefined;
     const selectedFrame = selectedReview.turns[turnIndex];
     const isAttackFrame = selectedFrame?.events.some((event) => event.kind === 'attack' || event.kind === 'damage');
+    const isPassFrame = selectedFrame ? Boolean(turnPassForTurn(selectedFrame, selectedReview.players)) : false;
     const timer = window.setTimeout(() => {
       navigateToFrame((current) => {
         if (current >= selectedReview.turns.length - 1) { setPlaying(false); return current; }
         return current + 1;
       });
-    }, isAttackFrame ? 2600 : 1200);
+    }, isAttackFrame ? 2600 : isPassFrame ? 1900 : 1200);
     return () => window.clearTimeout(timer);
   }, [navigateToFrame, playing, selectedReview, turnIndex]);
 
@@ -1406,10 +1434,11 @@ export default function TrackerApp() {
           {restoringReview && !selectedReview ? <div className="welcome-state loading-review"><BookOpenText size={54} weight="duotone" /><span>Restoring match</span><h2>Loading the reconstructed board…</h2><p>The archive index is ready; only this selected match is being read.</p></div> : selectedReview && selectedTurn && localBoard && opponentBoard && selectedCanonical && localCanonicalPlayer && opponentCanonicalPlayer && turnStatus ? <>
             <div className={`board-frame ${frameAnimations ? 'frame-motion-enabled' : ''} ${frameScrubbing ? 'frame-scrubbing' : ''}`}>
               <div className="reconstructed-chip"><CheckCircle size={18} weight="fill" />Board reconstructed</div>
-              <PlayerField board={opponentBoard} canonical={opponentCanonicalPlayer} visibility={selectedCanonical.visibility} catalog={cardCatalog} choiceFrames={turnChoiceFrames.filter((frame) => frame.actor === opponentBoard.name)} currentReviewIndex={turnIndex} turnNumber={selectedCanonical.state.turnNumber} status={turnStatus.players[opponentBoard.name]} stadiumCard={selectedCanonical.state.stadium} stadiumName={turnStatus.stadiumName} stadiumOwner={turnStatus.stadiumOwner} localPlayerName={localBoard.name} opponentName={opponentBoard.name} defeatedIds={defeatedIds} defeatedNames={defeatedNames} damageChanges={damageChanges} positionChanges={positionChanges} attackerId={attackResolution?.sourceId} opponent avatar={TRAINER_ART[0]} onOpenPokemon={openPokemon} onOpenChoice={openChoiceCard} onOpenCard={openCard} onOpenZone={openZone} />
+              <PlayerField board={opponentBoard} canonical={opponentCanonicalPlayer} visibility={selectedCanonical.visibility} catalog={cardCatalog} choiceFrames={turnChoiceFrames.filter((frame) => frame.actor === opponentBoard.name)} currentReviewIndex={turnIndex} turnNumber={selectedCanonical.state.turnNumber} status={turnStatus.players[opponentBoard.name]} handoff={turnPass ? turnPass.passer === opponentBoard.name ? turnPass.reason === 'timeout' ? 'timed-out' : 'passing' : 'receiving' : undefined} stadiumCard={selectedCanonical.state.stadium} stadiumName={turnStatus.stadiumName} stadiumOwner={turnStatus.stadiumOwner} localPlayerName={localBoard.name} opponentName={opponentBoard.name} defeatedIds={defeatedIds} defeatedNames={defeatedNames} damageChanges={damageChanges} positionChanges={positionChanges} attackerId={attackResolution?.sourceId} opponent avatar={TRAINER_ART[0]} onOpenPokemon={openPokemon} onOpenChoice={openChoiceCard} onOpenCard={openCard} onOpenZone={openZone} />
               <div className="midline"><span /></div>
-              <PlayerField board={localBoard} canonical={localCanonicalPlayer} visibility={selectedCanonical.visibility} catalog={cardCatalog} choiceFrames={turnChoiceFrames.filter((frame) => frame.actor === localBoard.name)} currentReviewIndex={turnIndex} turnNumber={selectedCanonical.state.turnNumber} status={turnStatus.players[localBoard.name]} stadiumCard={selectedCanonical.state.stadium} stadiumName={turnStatus.stadiumName} stadiumOwner={turnStatus.stadiumOwner} localPlayerName={localBoard.name} opponentName={opponentBoard.name} defeatedIds={defeatedIds} defeatedNames={defeatedNames} damageChanges={damageChanges} positionChanges={positionChanges} attackerId={attackResolution?.sourceId} avatar={TRAINER_ART[2]} onOpenPokemon={openPokemon} onOpenChoice={openChoiceCard} onOpenCard={openCard} onOpenZone={openZone} />
+              <PlayerField board={localBoard} canonical={localCanonicalPlayer} visibility={selectedCanonical.visibility} catalog={cardCatalog} choiceFrames={turnChoiceFrames.filter((frame) => frame.actor === localBoard.name)} currentReviewIndex={turnIndex} turnNumber={selectedCanonical.state.turnNumber} status={turnStatus.players[localBoard.name]} handoff={turnPass ? turnPass.passer === localBoard.name ? turnPass.reason === 'timeout' ? 'timed-out' : 'passing' : 'receiving' : undefined} stadiumCard={selectedCanonical.state.stadium} stadiumName={turnStatus.stadiumName} stadiumOwner={turnStatus.stadiumOwner} localPlayerName={localBoard.name} opponentName={opponentBoard.name} defeatedIds={defeatedIds} defeatedNames={defeatedNames} damageChanges={damageChanges} positionChanges={positionChanges} attackerId={attackResolution?.sourceId} avatar={TRAINER_ART[2]} onOpenPokemon={openPokemon} onOpenChoice={openChoiceCard} onOpenCard={openCard} onOpenZone={openZone} />
               {frameAnimations && !frameScrubbing && attackResolution && <AttackRoute key={`${selectedReview.id}:${turnIndex}:${attackResolution.sourceId || attackResolution.source}`} resolution={attackResolution} opponentAttacking={attackResolution.attacker === opponentBoard.name} hasImpact={attackResolution.hits.length > 0 || [...damageChanges.values()].some((change) => change.delta > 0)} />}
+              {turnPass && <TurnPassMoment key={`${selectedReview.id}:${turnIndex}:${turnPass.reason}`} pass={turnPass} opponentPassing={turnPass.passer === opponentBoard.name} />}
             </div>
             <div className="turn-controls">
               <div className="turn-caption">
