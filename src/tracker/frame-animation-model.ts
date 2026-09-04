@@ -3,7 +3,7 @@ export const FRAME_ANIMATIONS_STORAGE_KEY = 'trace/replay-frame-animations-v1';
 export type FrameNavigationRequest = number | ((current: number) => number);
 
 export function frameAnimationsFromStoredPreference(value: string | null): boolean {
-  return value !== 'off';
+  return value === 'on';
 }
 
 export function resolveFrameNavigationTarget(current: number, request: FrameNavigationRequest, last: number): number {

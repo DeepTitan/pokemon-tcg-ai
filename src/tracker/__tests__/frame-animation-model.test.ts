@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { frameAnimationsFromStoredPreference, frameCardTransitionName, resolveFrameNavigationTarget } from '../frame-animation-model.js';
 
-assert.equal(frameAnimationsFromStoredPreference(null), true, 'replay motion should be on for new installs');
+assert.equal(frameAnimationsFromStoredPreference(null), false, 'replay motion should be off for new installs');
 assert.equal(frameAnimationsFromStoredPreference('on'), true);
 assert.equal(frameAnimationsFromStoredPreference('off'), false);
+assert.equal(frameAnimationsFromStoredPreference('unexpected'), false, 'unknown legacy values should keep motion off');
 
 let rapidTarget = 14;
 for (let click = 0; click < 5; click += 1) {

@@ -23,6 +23,7 @@ import { LiveReviewAssembler } from './live-operation-reducer.js';
 import { ReviewOverlay, type ReviewInspector } from './ReviewInteractions.js';
 import { displayedDeckCount, trackedTurnToCanonical } from './review-state-adapter.js';
 import { cardInfoToEngineCard, cardSourceIdFromReviewCard } from './card-adapter.js';
+import { sortCardsForDisplay } from './card-order-model.js';
 import { findEnergyType } from './EnergyBadge.js';
 import { buildTimeline, eventKeyForReviewIndex } from './timeline-model.js';
 import { cardEffectSummary } from './card-effect-model.js';
@@ -392,13 +393,17 @@ function reviewCardImage(card: Card, catalog: ReadonlyMap<string, CardInfo>): st
 function HandFan({ boardName, cards, count, visibility, catalog, opponent, onOpen }: { boardName: string; cards: Card[]; count: number; visibility: Record<string, ReviewCardVisibility>; catalog: ReadonlyMap<string, CardInfo>; opponent: boolean; onOpen: () => void }) {
   const total = Math.max(cards.length, count);
   const displayed = handFanCardCount(total);
+  const orderedCards = sortCardsForDisplay(cards, (card) => {
+    const sourceId = cardSourceIdFromReviewCard(card);
+    return (sourceId ? catalog.get(sourceId) || catalog.get(sourceId.toLowerCase()) : undefined)?.name || card.name;
+  });
   const fanState = displayed === 0 ? 'empty' : displayed === 1 ? 'single' : '';
   const fanStyle = { '--hand-gap-count': Math.max(1, displayed - 1) } as CSSProperties;
   return (
     <button type="button" className={`hand-fan ${opponent ? 'opponent-hand' : 'local-hand'}`} onClick={onOpen} title={`Open ${boardName}'s hand`} aria-label={`${boardName} hand, ${total} card${total === 1 ? '' : 's'}`}>
       <span className={`hand-fan-cards ${fanState}`} style={fanStyle} aria-hidden="true">
         {Array.from({ length: displayed }, (_, index) => {
-          const card = cards[index];
+          const card = orderedCards[index];
           const hidden = opponent || !card;
           return hidden
             ? <span className="hand-fan-card hidden" key={card?.id || `hidden-${index}`}><img src="/tracker-assets/pokemon-card-back.jpg" alt="" /></span>

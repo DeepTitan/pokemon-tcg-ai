@@ -10,6 +10,7 @@ import {
   type TrainerCard,
 } from '../engine/types.js';
 import { cardInfoToEngineCard, cardRulesText, cardSourceIdFromReviewCard } from './card-adapter.js';
+import { sortCardsForDisplay } from './card-order-model.js';
 import { countEnergyTypes, EnergyBadge, energyTypeLabel } from './EnergyBadge.js';
 import { resolvedCardArt, showCardBackOnError } from './card-art.js';
 import type { CardInfo, ReviewAppliedEffect, ReviewCardVisibility, ReviewSelection } from './types.js';
@@ -98,13 +99,15 @@ function CardInspector({ card, pokemon, effects = [], catalog, onInspectCard }: 
 }
 
 function ZoneInspector({ inspector, onInspectCard }: { inspector: Extract<ReviewInspector, { kind: 'zone' }>; onInspectCard: (card: Card) => void }) {
-  const knownCount = inspector.cards.filter((card) => inspector.visibility[card.id] !== 'hidden').length;
+  const catalog = useContext(CardCatalogContext);
+  const orderedCards = sortCardsForDisplay(inspector.cards, (card) => catalogCardFor(card, catalog)?.name || card.name);
+  const knownCount = orderedCards.filter((card) => inspector.visibility[card.id] !== 'hidden').length;
   return <>
-    <div className="zone-summary"><div><Eye size={18} weight="duotone" /><span><strong>{knownCount} visible</strong><small>{inspector.cards.length - knownCount} hidden</small></span></div><p>{inspector.subtitle}</p></div>
-    <div className="review-card-grid">{inspector.cards.map((card, index) => {
+    <div className="zone-summary"><div><Eye size={18} weight="duotone" /><span><strong>{knownCount} visible</strong><small>{orderedCards.length - knownCount} hidden</small></span></div><p>{inspector.subtitle}</p></div>
+    <div className="review-card-grid">{orderedCards.map((card, index) => {
       const hidden = inspector.visibility[card.id] === 'hidden';
       return <button type="button" className={hidden ? 'hidden' : ''} key={`${card.id}-${index}`} disabled={hidden} onClick={() => onInspectCard(card)}><CardImage card={card} hidden={hidden} /><span>{hidden ? 'Unknown card' : <CardName card={card} />}</span></button>;
-    })}{!inspector.cards.length && <div className="empty-zone"><CardsThree size={42} weight="duotone" /><strong>This zone is empty</strong><span>There were no cards here at this point in the match.</span></div>}</div>
+    })}{!orderedCards.length && <div className="empty-zone"><CardsThree size={42} weight="duotone" /><strong>This zone is empty</strong><span>There were no cards here at this point in the match.</span></div>}</div>
   </>;
 }
 
