@@ -42,6 +42,7 @@ import {
   FRAME_ANIMATIONS_STORAGE_KEY,
   frameAnimationsFromStoredPreference,
   frameCardTransitionName,
+  frameNavigationMode,
   resolveFrameNavigationTarget,
   type FrameNavigationRequest,
 } from './frame-animation-model.js';
@@ -345,11 +346,19 @@ function ChoiceStage({ boardName, frames, currentReviewIndex, catalog, onOpen }:
   </aside>;
 }
 
-function AttackRoute({ resolution }: { resolution: AttackResolution }) {
+function AttackRoute({ resolution, opponentAttacking }: { resolution: AttackResolution; opponentAttacking: boolean }) {
   const outcome = resolution.hits.length
     ? `${resolution.source} used ${resolution.attack}. ${resolution.hits.map((hit) => `${hit.damage || 'Effect'} to ${hit.target}${hit.knockedOut ? ', knocked out' : ''}`).join('. ')}`
     : `${resolution.source} used ${resolution.attack} with no direct-damage target captured`;
-  return <span className="sr-only" role="img" aria-label={outcome} />;
+  return <>
+    <span className={`attack-route ${opponentAttacking ? 'from-opponent' : 'from-local'} ${resolution.hits.length ? 'has-hit' : 'effect-only'}`} aria-hidden="true">
+      <i className="attack-route-trail trail-left" />
+      <i className="attack-route-trail trail-right" />
+      <i className="attack-route-core"><Sword size={18} weight="fill" /></i>
+      <i className="attack-route-impact"><span /></i>
+    </span>
+    <span className="sr-only" role="img" aria-label={outcome} />
+  </>;
 }
 
 function ZoneStack({ label, count, tone, onOpen }: { label: string; count: number | string; tone: 'coral' | 'blue'; onOpen?: () => void }) {
@@ -432,9 +441,12 @@ function PlayerField({ board, canonical, visibility, catalog, choiceFrames, curr
   const benches = [...board.bench, ...Array.from({ length: Math.max(0, 5 - board.bench.length) }, () => null)].slice(0, 5);
   const tone = opponent ? 'coral' : 'blue';
   const isDefeated = (pokemon: TrackedPokemon | null) => Boolean(pokemon && (defeatedIds.has(pokemon.id) || defeatedNames.has(pokemon.name)));
-  const bench = <div className="bench-row" aria-label={`${board.name} bench`}>{benches.map((pokemon, index) => <PokemonSlot key={pokemon?.id || `empty-${index}`} pokemon={pokemon} catalog={catalog} defeated={isDefeated(pokemon)} attacking={pokemon?.id === attackerId} damageChange={pokemon ? damageChanges.get(pokemon.id) : undefined} positionChange={pokemon ? positionChanges.get(pokemon.id) : undefined} onOpen={onOpenPokemon} />)}</div>;
+  const motionKey = (pokemon: TrackedPokemon | null, fallback: string) => pokemon && (pokemon.id === attackerId || isDefeated(pokemon) || damageChanges.has(pokemon.id) || positionChanges.has(pokemon.id))
+    ? `${pokemon.id}:motion:${currentReviewIndex}`
+    : pokemon?.id || fallback;
+  const bench = <div className="bench-row" aria-label={`${board.name} bench`}>{benches.map((pokemon, index) => <PokemonSlot key={motionKey(pokemon, `empty-${index}`)} pokemon={pokemon} catalog={catalog} defeated={isDefeated(pokemon)} attacking={pokemon?.id === attackerId} damageChange={pokemon ? damageChanges.get(pokemon.id) : undefined} positionChange={pokemon ? positionChanges.get(pokemon.id) : undefined} onOpen={onOpenPokemon} />)}</div>;
   const stadiumHere = Boolean(stadiumName) && (stadiumOwner ? stadiumOwner === board.name : !opponent);
-  const active = <div className={`active-lane ${stadiumHere ? 'has-stadium-zone' : ''}`}><span>Active</span>{stadiumHere && <StadiumMarker card={stadiumCard} name={stadiumName} owner={stadiumOwner} catalog={catalog} localPlayer={localPlayerName} opponent={opponentName} onOpen={onOpenCard} />}<PokemonSlot pokemon={board.active} catalog={catalog} active defeated={isDefeated(board.active)} attacking={board.active?.id === attackerId} damageChange={board.active ? damageChanges.get(board.active.id) : undefined} positionChange={board.active ? positionChanges.get(board.active.id) : undefined} onOpen={onOpenPokemon} /><ChoiceStage boardName={board.name} frames={choiceFrames} currentReviewIndex={currentReviewIndex} catalog={catalog} onOpen={onOpenChoice} /></div>;
+  const active = <div className={`active-lane ${stadiumHere ? 'has-stadium-zone' : ''}`}><span>Active</span>{stadiumHere && <StadiumMarker card={stadiumCard} name={stadiumName} owner={stadiumOwner} catalog={catalog} localPlayer={localPlayerName} opponent={opponentName} onOpen={onOpenCard} />}<PokemonSlot key={motionKey(board.active, 'empty-active')} pokemon={board.active} catalog={catalog} active defeated={isDefeated(board.active)} attacking={board.active?.id === attackerId} damageChange={board.active ? damageChanges.get(board.active.id) : undefined} positionChange={board.active ? positionChanges.get(board.active.id) : undefined} onOpen={onOpenPokemon} /><ChoiceStage boardName={board.name} frames={choiceFrames} currentReviewIndex={currentReviewIndex} catalog={catalog} onOpen={onOpenChoice} /></div>;
   const openZone = (label: string, cards: Card[], note: string) => onOpenZone(`${board.name} · ${label}`, note, cards, visibility);
   const handCount = Math.max(canonical.hand.length, board.handCount);
   const openHand = () => onOpenZone(`${board.name} · Hand`, opponent
@@ -546,6 +558,7 @@ export default function TrackerApp() {
   const [showSetup, setShowSetup] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(true);
   const [timelineOpen, setTimelineOpen] = useState(false);
+  const [frameScrubbing, setFrameScrubbing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [cloudSync, setCloudSync] = useState<CloudSyncStatus>({ configured: false, enabled: false, deviceId: 'pending', lastError: null });
   const [liveOperations, setLiveOperations] = useState<CapturedOperation[]>([]);
@@ -578,12 +591,12 @@ export default function TrackerApp() {
   const selectedTimelineEventRef = useRef<HTMLButtonElement | null>(null);
   const turnIndexRef = useRef(turnIndex);
   const requestedTurnIndexRef = useRef(turnIndex);
-  const queuedFrameTargetRef = useRef<number | null>(null);
   const frameTransitionInFlightRef = useRef(false);
+  const frameScrubbingRef = useRef(false);
+  const frameNavigationGenerationRef = useRef(0);
   const viewTransitionRef = useRef<TraceViewTransition | null>(null);
   const fallbackAnimationTimerRef = useRef<number | null>(null);
-  const queuedFrameAnimationRef = useRef<number | null>(null);
-  const navigateToFrameRef = useRef<(next: FrameNavigationRequest) => void>(() => undefined);
+  const frameScrubTimerRef = useRef<number | null>(null);
 
   const toggleFrameAnimations = useCallback(() => {
     setFrameAnimations((current) => {
@@ -598,22 +611,54 @@ export default function TrackerApp() {
     const last = Math.max(0, (selectedReview?.turns.length || 1) - 1);
     const target = resolveFrameNavigationTarget(requestedTurnIndexRef.current, next, last);
     requestedTurnIndexRef.current = target;
+    if (target === current && !frameTransitionInFlightRef.current && !frameScrubbingRef.current) return;
 
-    if (frameTransitionInFlightRef.current) {
-      queuedFrameTargetRef.current = target;
-      return;
-    }
-    if (target === current) return;
+    const generation = ++frameNavigationGenerationRef.current;
 
     const apply = () => {
+      if (generation !== frameNavigationGenerationRef.current) return;
       turnIndexRef.current = target;
       flushSync(() => setTurnIndex(target));
     };
+    const stopActiveTransition = () => {
+      const activeTransition = viewTransitionRef.current;
+      viewTransitionRef.current = null;
+      activeTransition?.skipTransition?.();
+      frameTransitionInFlightRef.current = false;
+      if (fallbackAnimationTimerRef.current != null) {
+        window.clearTimeout(fallbackAnimationTimerRef.current);
+        fallbackAnimationTimerRef.current = null;
+      }
+      document.querySelector('.board-frame')?.classList.remove('frame-fallback-forward', 'frame-fallback-backward');
+      document.documentElement.classList.remove('trace-frame-transition');
+      delete document.documentElement.dataset.frameDirection;
+    };
+    const continueScrubbing = () => {
+      frameScrubbingRef.current = true;
+      setFrameScrubbing(true);
+      if (frameScrubTimerRef.current != null) window.clearTimeout(frameScrubTimerRef.current);
+      frameScrubTimerRef.current = window.setTimeout(() => {
+        frameScrubTimerRef.current = null;
+        frameScrubbingRef.current = false;
+        requestedTurnIndexRef.current = turnIndexRef.current;
+        setFrameScrubbing(false);
+      }, 120);
+    };
     const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    if (!frameAnimations || reduceMotion) {
-      queuedFrameTargetRef.current = null;
-      setTurnIndex(target);
-      turnIndexRef.current = target;
+    const navigationMode = frameNavigationMode(frameAnimations, Boolean(reduceMotion), frameTransitionInFlightRef.current, frameScrubbingRef.current);
+    if (navigationMode === 'instant') {
+      stopActiveTransition();
+      apply();
+      return;
+    }
+
+    // A second navigation request turns the interaction into scrubbing. Cancel the
+    // decorative transition and commit every requested frame immediately until the
+    // user pauses, instead of buffering input behind a 320 ms animation.
+    if (navigationMode === 'scrub') {
+      stopActiveTransition();
+      continueScrubbing();
+      apply();
       return;
     }
 
@@ -621,13 +666,6 @@ export default function TrackerApp() {
     const transitionDocument = document as TransitionDocument;
     const finish = () => {
       frameTransitionInFlightRef.current = false;
-      const queued = queuedFrameTargetRef.current;
-      queuedFrameTargetRef.current = null;
-      if (queued == null || queued === turnIndexRef.current) return;
-      queuedFrameAnimationRef.current = window.requestAnimationFrame(() => {
-        queuedFrameAnimationRef.current = null;
-        navigateToFrameRef.current(queued);
-      });
     };
 
     frameTransitionInFlightRef.current = true;
@@ -660,7 +698,6 @@ export default function TrackerApp() {
       finish();
     });
   }, [frameAnimations, selectedReview?.turns.length]);
-  navigateToFrameRef.current = navigateToFrame;
 
   const selectedTurn = selectedReview?.turns[Math.min(turnIndex, Math.max(0, selectedReview.turns.length - 1))] || null;
   const selectedCanonical = useMemo(() => selectedReview && selectedTurn
@@ -1091,21 +1128,31 @@ export default function TrackerApp() {
   useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
   useEffect(() => {
     turnIndexRef.current = turnIndex;
-    if (!frameTransitionInFlightRef.current && queuedFrameTargetRef.current == null) requestedTurnIndexRef.current = turnIndex;
+    if (!frameTransitionInFlightRef.current && !frameScrubbingRef.current) requestedTurnIndexRef.current = turnIndex;
   }, [turnIndex]);
 
   useEffect(() => () => {
+    frameNavigationGenerationRef.current += 1;
     viewTransitionRef.current?.skipTransition?.();
     if (fallbackAnimationTimerRef.current != null) window.clearTimeout(fallbackAnimationTimerRef.current);
-    if (queuedFrameAnimationRef.current != null) window.cancelAnimationFrame(queuedFrameAnimationRef.current);
-    queuedFrameTargetRef.current = null;
+    if (frameScrubTimerRef.current != null) window.clearTimeout(frameScrubTimerRef.current);
     frameTransitionInFlightRef.current = false;
+    frameScrubbingRef.current = false;
     document.documentElement.classList.remove('trace-frame-transition');
     delete document.documentElement.dataset.frameDirection;
   }, []);
 
   useEffect(() => {
-    queuedFrameTargetRef.current = null;
+    frameNavigationGenerationRef.current += 1;
+    viewTransitionRef.current?.skipTransition?.();
+    viewTransitionRef.current = null;
+    frameTransitionInFlightRef.current = false;
+    frameScrubbingRef.current = false;
+    if (frameScrubTimerRef.current != null) {
+      window.clearTimeout(frameScrubTimerRef.current);
+      frameScrubTimerRef.current = null;
+    }
+    setFrameScrubbing(false);
     requestedTurnIndexRef.current = Math.min(turnIndexRef.current, Math.max(0, (selectedReview?.turns.length || 1) - 1));
     setTurnIndex((current) => Math.min(current, Math.max(0, (selectedReview?.turns.length || 1) - 1)));
   }, [selectedReview]);
@@ -1303,12 +1350,12 @@ export default function TrackerApp() {
 
         <section className="review-stage">
           {restoringReview && !selectedReview ? <div className="welcome-state loading-review"><BookOpenText size={54} weight="duotone" /><span>Restoring match</span><h2>Loading the reconstructed board…</h2><p>The archive index is ready; only this selected match is being read.</p></div> : selectedReview && selectedTurn && localBoard && opponentBoard && selectedCanonical && localCanonicalPlayer && opponentCanonicalPlayer && turnStatus ? <>
-            <div className="board-frame">
+            <div className={`board-frame ${frameAnimations ? 'frame-motion-enabled' : ''} ${frameScrubbing ? 'frame-scrubbing' : ''}`}>
               <div className="reconstructed-chip"><CheckCircle size={18} weight="fill" />Board reconstructed</div>
               <PlayerField board={opponentBoard} canonical={opponentCanonicalPlayer} visibility={selectedCanonical.visibility} catalog={cardCatalog} choiceFrames={turnChoiceFrames.filter((frame) => frame.actor === opponentBoard.name)} currentReviewIndex={turnIndex} turnNumber={selectedCanonical.state.turnNumber} status={turnStatus.players[opponentBoard.name]} stadiumCard={selectedCanonical.state.stadium} stadiumName={turnStatus.stadiumName} stadiumOwner={turnStatus.stadiumOwner} localPlayerName={localBoard.name} opponentName={opponentBoard.name} defeatedIds={defeatedIds} defeatedNames={defeatedNames} damageChanges={damageChanges} positionChanges={positionChanges} attackerId={attackResolution?.sourceId} opponent avatar={TRAINER_ART[0]} onOpenPokemon={openPokemon} onOpenChoice={openChoiceCard} onOpenCard={openCard} onOpenZone={openZone} />
               <div className="midline"><span /></div>
               <PlayerField board={localBoard} canonical={localCanonicalPlayer} visibility={selectedCanonical.visibility} catalog={cardCatalog} choiceFrames={turnChoiceFrames.filter((frame) => frame.actor === localBoard.name)} currentReviewIndex={turnIndex} turnNumber={selectedCanonical.state.turnNumber} status={turnStatus.players[localBoard.name]} stadiumCard={selectedCanonical.state.stadium} stadiumName={turnStatus.stadiumName} stadiumOwner={turnStatus.stadiumOwner} localPlayerName={localBoard.name} opponentName={opponentBoard.name} defeatedIds={defeatedIds} defeatedNames={defeatedNames} damageChanges={damageChanges} positionChanges={positionChanges} attackerId={attackResolution?.sourceId} avatar={TRAINER_ART[2]} onOpenPokemon={openPokemon} onOpenChoice={openChoiceCard} onOpenCard={openCard} onOpenZone={openZone} />
-              {attackResolution && <AttackRoute resolution={attackResolution} />}
+              {frameAnimations && !frameScrubbing && attackResolution && <AttackRoute key={`${selectedReview.id}:${turnIndex}:${attackResolution.sourceId || attackResolution.source}`} resolution={attackResolution} opponentAttacking={attackResolution.attacker === opponentBoard.name} />}
             </div>
             <div className="turn-controls">
               <div className="turn-caption">

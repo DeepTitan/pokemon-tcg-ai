@@ -1,6 +1,7 @@
 export const FRAME_ANIMATIONS_STORAGE_KEY = 'trace/replay-frame-animations-v1';
 
 export type FrameNavigationRequest = number | ((current: number) => number);
+export type FrameNavigationMode = 'animate' | 'scrub' | 'instant';
 
 export function frameAnimationsFromStoredPreference(value: string | null): boolean {
   return value === 'on';
@@ -9,6 +10,12 @@ export function frameAnimationsFromStoredPreference(value: string | null): boole
 export function resolveFrameNavigationTarget(current: number, request: FrameNavigationRequest, last: number): number {
   const requested = typeof request === 'function' ? request(current) : request;
   return Math.max(0, Math.min(Math.max(0, last), requested));
+}
+
+export function frameNavigationMode(animationsEnabled: boolean, prefersReducedMotion: boolean, transitionActive: boolean, alreadyScrubbing: boolean): FrameNavigationMode {
+  if (!animationsEnabled || prefersReducedMotion) return 'instant';
+  if (transitionActive || alreadyScrubbing) return 'scrub';
+  return 'animate';
 }
 
 export function frameCardTransitionName(id: string): string {

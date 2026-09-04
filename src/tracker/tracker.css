@@ -1299,12 +1299,15 @@ body,
 .pokemon-slot.defeated > .attached-tool-preview { opacity: .34; filter: grayscale(.8) saturate(.45); }
 .pokemon-slot.defeated::after { position: absolute; inset: -3px; content: ''; border: 2px solid rgba(183, 64, 54, .8); border-radius: 9px; background: repeating-linear-gradient(-45deg, transparent 0 9px, rgba(161, 58, 49, .08) 9px 15px); box-shadow: 0 0 0 4px rgba(183, 64, 54, .1); pointer-events: none; }
 .pokemon-slot.attacking { z-index: 7; box-shadow: 0 0 0 4px rgba(241, 182, 45, .34), 0 8px 20px rgba(57, 38, 21, .28); }
+.frame-motion-enabled .local .pokemon-slot.attacking { animation: trace-attack-lunge-local 760ms 220ms cubic-bezier(.2, .85, .32, 1) both; }
+.frame-motion-enabled .opponent .pokemon-slot.attacking { animation: trace-attack-lunge-opponent 760ms 220ms cubic-bezier(.2, .85, .32, 1) both; }
 .knockout-stamp { position: absolute; top: 5px; left: 5px; z-index: 8; color: #fff; pointer-events: none; }
 .knockout-stamp b { width: 29px; height: 29px; display: grid; place-items: center; border: 2px solid #fff; border-radius: 50%; background: #b74339; box-shadow: 0 3px 9px rgba(83, 35, 30, .34); font-family: Nunito, sans-serif; font-size: 11px; font-weight: 1000; transform: rotate(-7deg); }
 .knockout-stamp small { display: none; }
 
 .pokemon-slot.damage-increased { z-index: 7; box-shadow: 0 0 0 3px rgba(201, 73, 62, .3), 0 8px 18px rgba(91, 43, 37, .24); animation: damage-change-emphasis .42s ease-out; }
 .pokemon-slot.damage-decreased { z-index: 7; box-shadow: 0 0 0 3px rgba(75, 145, 91, .3), 0 8px 18px rgba(43, 85, 52, .2); animation: damage-change-emphasis .42s ease-out; }
+.frame-motion-enabled .pokemon-slot.damage-increased { animation: trace-attack-impact-card 720ms 560ms cubic-bezier(.2, .8, .35, 1) both; }
 .damage-change-badge { position: absolute; right: 50%; bottom: -8px; z-index: 12; padding: 3px 7px; display: inline-flex; align-items: baseline; gap: 3px; transform: translateX(50%); border: 1.5px solid #fff; border-radius: 999px; color: #fff; box-shadow: 0 3px 9px rgba(63, 43, 34, .25); white-space: nowrap; pointer-events: none; }
 .damage-change-badge.added { background: #c6493e; }
 .damage-change-badge.removed { background: #438457; }
@@ -1314,6 +1317,141 @@ body,
 @keyframes damage-change-emphasis {
   from { transform: scale(.96); filter: brightness(1.12); }
   to { transform: scale(1); filter: brightness(1); }
+}
+
+/* Attacks use a short, legible motion layer like the reference replay: the
+   attacker commits, energy crosses the center line, and the target absorbs a
+   compact impact. The board itself never flashes or leaves the page. */
+.attack-route {
+  --attack-start: 150px;
+  --attack-end: -150px;
+  position: absolute;
+  inset: 45px 90px;
+  z-index: 12;
+  overflow: hidden;
+  pointer-events: none;
+}
+.attack-route.from-opponent { --attack-start: -150px; --attack-end: 150px; }
+.attack-route-core,
+.attack-route-impact,
+.attack-route-trail { position: absolute; top: 50%; left: 50%; display: block; pointer-events: none; }
+.attack-route-core {
+  width: 46px;
+  height: 46px;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  border: 2px solid rgba(255, 255, 255, .92);
+  border-radius: 50%;
+  color: #fff;
+  background: conic-gradient(from 30deg, #6c4eae, #3d8fd2, #f0b72e, #d55249, #6c4eae);
+  box-shadow: 0 0 0 6px rgba(112, 79, 174, .13), 0 0 24px rgba(91, 89, 199, .7), inset 0 0 11px rgba(255, 255, 255, .62);
+  animation: trace-attack-core 720ms 230ms cubic-bezier(.18, .75, .24, 1) both;
+}
+.attack-route-core::before,
+.attack-route-core::after {
+  position: absolute;
+  inset: -8px;
+  content: '';
+  border: 2px solid rgba(132, 198, 255, .72);
+  border-radius: 50%;
+  transform: rotate(28deg) scaleY(.43);
+}
+.attack-route-core::after { inset: -13px; border-color: rgba(247, 197, 73, .58); transform: rotate(-34deg) scaleY(.36); }
+.attack-route-trail {
+  width: 5px;
+  height: 92px;
+  z-index: 2;
+  border-radius: 999px;
+  background: linear-gradient(to bottom, transparent, rgba(117, 83, 190, .18), rgba(86, 158, 226, .9), #fff, transparent);
+  filter: drop-shadow(0 0 6px rgba(81, 142, 217, .8));
+  opacity: 0;
+  animation: trace-attack-trail 620ms 245ms cubic-bezier(.18, .72, .22, 1) both;
+}
+.attack-route .trail-left { margin-left: -16px; transform: rotate(7deg); }
+.attack-route .trail-right { margin-left: 12px; transform: rotate(-7deg); animation-delay: 285ms; }
+.attack-route-impact {
+  width: 86px;
+  height: 86px;
+  z-index: 4;
+  margin: -43px 0 0 -43px;
+  border: 3px solid rgba(255, 244, 188, .95);
+  border-radius: 50%;
+  box-shadow: 0 0 0 7px rgba(219, 78, 62, .18), 0 0 28px rgba(240, 174, 45, .62);
+  opacity: 0;
+  animation: trace-attack-impact 460ms 720ms cubic-bezier(.16, .78, .28, 1) both;
+}
+.attack-route-impact::before,
+.attack-route-impact::after,
+.attack-route-impact > span::before,
+.attack-route-impact > span::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 68px;
+  content: '';
+  border-radius: 999px;
+  background: linear-gradient(#fff1a8, rgba(225, 75, 61, 0));
+  transform-origin: 50% 0;
+}
+.attack-route-impact::before { transform: rotate(45deg); }
+.attack-route-impact::after { transform: rotate(135deg); }
+.attack-route-impact > span::before { transform: rotate(225deg); }
+.attack-route-impact > span::after { transform: rotate(315deg); }
+.attack-route.effect-only .attack-route-impact { opacity: 0; animation-name: none; }
+
+@keyframes trace-attack-core {
+  0% { opacity: 0; transform: translate(-50%, calc(-50% + var(--attack-start))) scale(.25) rotate(-18deg); }
+  18% { opacity: 1; transform: translate(-50%, calc(-50% + var(--attack-start))) scale(.72) rotate(0); }
+  72% { opacity: 1; transform: translate(-50%, calc(-50% + var(--attack-end))) scale(1.08) rotate(168deg); }
+  100% { opacity: 0; transform: translate(-50%, calc(-50% + var(--attack-end))) scale(.46) rotate(220deg); }
+}
+@keyframes trace-attack-trail {
+  0% { opacity: 0; translate: -50% calc(-50% + var(--attack-start)); scale: .45 .25; }
+  22% { opacity: .86; }
+  78% { opacity: .72; translate: -50% calc(-50% + var(--attack-end)); scale: 1 1; }
+  100% { opacity: 0; translate: -50% calc(-50% + var(--attack-end)); scale: .6 .2; }
+}
+@keyframes trace-attack-impact {
+  0%, 38% { opacity: 0; transform: translateY(var(--attack-end)) scale(.18) rotate(-12deg); }
+  48% { opacity: 1; transform: translateY(var(--attack-end)) scale(1.08) rotate(3deg); }
+  100% { opacity: 0; transform: translateY(var(--attack-end)) scale(1.42) rotate(10deg); }
+}
+@keyframes trace-attack-lunge-local {
+  0%, 16% { transform: translateY(0) scale(1); }
+  40% { transform: translateY(-13px) scale(1.035); }
+  64% { transform: translateY(-9px) scale(1.02); }
+  100% { transform: translateY(0) scale(1); }
+}
+@keyframes trace-attack-lunge-opponent {
+  0%, 16% { transform: translateY(0) scale(1); }
+  40% { transform: translateY(13px) scale(1.035); }
+  64% { transform: translateY(9px) scale(1.02); }
+  100% { transform: translateY(0) scale(1); }
+}
+@keyframes trace-attack-impact-card {
+  0%, 22% { transform: translateX(0) scale(1); filter: brightness(1); }
+  32% { transform: translateX(-5px) scale(.985); filter: brightness(1.3); }
+  43% { transform: translateX(5px) scale(1.015); }
+  54% { transform: translateX(-3px) scale(1); filter: brightness(1.08); }
+  68% { transform: translateX(2px) scale(1); }
+  100% { transform: translateX(0) scale(1); filter: brightness(1); }
+}
+
+.frame-scrubbing .attack-route { display: none; }
+.frame-scrubbing .pokemon-slot.attacking,
+.frame-scrubbing .pokemon-slot.damage-increased { animation: none; }
+
+@media (max-height: 850px) {
+  .attack-route { --attack-start: 112px; --attack-end: -112px; inset: 39px 74px; }
+  .attack-route.from-opponent { --attack-start: -112px; --attack-end: 112px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .attack-route { display: none; }
+  .frame-motion-enabled .pokemon-slot.attacking,
+  .frame-motion-enabled .pokemon-slot.damage-increased { animation: none; }
 }
 
 @media (max-height: 850px) {
