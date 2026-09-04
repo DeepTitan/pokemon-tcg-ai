@@ -6,13 +6,9 @@ import {
   Drop, Eye, FunnelSimple, GearSix, Hand, MagnifyingGlass, Pause, Play,
   ShieldCheck, SkipBack, SkipForward, Sparkle, Sword, Trophy, WifiHigh, Wrench, X,
 } from '@phosphor-icons/react';
-import { ArrowsClockwise } from '@phosphor-icons/react/ArrowsClockwise';
 import { CalendarBlank } from '@phosphor-icons/react/CalendarBlank';
 import { Clock } from '@phosphor-icons/react/Clock';
-import { Fire } from '@phosphor-icons/react/Fire';
-import { Lightning } from '@phosphor-icons/react/Lightning';
 import { List } from '@phosphor-icons/react/List';
-import { MoonStars } from '@phosphor-icons/react/MoonStars';
 import { Skull } from '@phosphor-icons/react/Skull';
 import { Coin } from '@phosphor-icons/react/Coin';
 import { Prohibit } from '@phosphor-icons/react/Prohibit';
@@ -173,7 +169,18 @@ function resolvedCardImage(card: TrackedCard, catalog: ReadonlyMap<string, CardI
   return resolvedCardArt(card.cardId, card.imageDataUrl || resolvedCardInfo(card, catalog)?.imageDataUrl);
 }
 
-function EventIcon({ kind, size = 17 }: { kind: TrackerEventKind; size?: number }) {
+const CONDITION_ORDER = ['Poisoned', 'Burned', 'Asleep', 'Confused', 'Paralyzed'];
+
+function conditionFromEventText(text = ''): string | null {
+  if (/poison/i.test(text)) return 'Poisoned';
+  if (/burn/i.test(text)) return 'Burned';
+  if (/asleep|sleep/i.test(text)) return 'Asleep';
+  if (/confus/i.test(text)) return 'Confused';
+  if (/paraly/i.test(text)) return 'Paralyzed';
+  return null;
+}
+
+function EventIcon({ kind, size = 17, text }: { kind: TrackerEventKind; size?: number; text?: string }) {
   const props = { size, weight: 'fill' as const };
   switch (kind) {
     case 'attack': return <Sword {...props} />;
@@ -186,37 +193,51 @@ function EventIcon({ kind, size = 17 }: { kind: TrackerEventKind; size?: number 
     case 'knockout': return <Trophy {...props} />;
     case 'trainer': return <Hand {...props} />;
     case 'draw': return <CardsThree {...props} />;
-    case 'condition': return <Skull {...props} />;
+    case 'condition': {
+      const condition = conditionFromEventText(text);
+      return condition
+        ? <SpecialConditionIcon condition={condition} size={size} className="event-condition-icon" />
+        : <Skull {...props} />;
+    }
     default: return <BookOpenText {...props} />;
   }
 }
 
-const CONDITION_ABBREVIATIONS: Record<string, string> = {
-  Poisoned: 'PSN',
-  Burned: 'BRN',
-  Asleep: 'SLP',
-  Confused: 'CNF',
-  Paralyzed: 'PAR',
-};
-
-function SpecialConditionIcon({ condition }: { condition: string }) {
-  const props = { size: 11, weight: 'fill' as const };
+function SpecialConditionIcon({ condition, size, className = 'special-condition-icon' }: { condition: string; size?: number; className?: string }) {
+  const props = { className, viewBox: '0 0 32 32', 'aria-hidden': true, focusable: false, width: size, height: size };
   switch (condition) {
-    case 'Poisoned': return <Skull {...props} />;
-    case 'Burned': return <Fire {...props} />;
-    case 'Asleep': return <MoonStars {...props} />;
-    case 'Confused': return <ArrowsClockwise {...props} />;
-    case 'Paralyzed': return <Lightning {...props} />;
-    default: return <Sparkle {...props} />;
+    case 'Poisoned': return <svg {...props}>
+      <path d="M1 17.2c3.7 0 3.1 6.1 6.4 6.1 3.8 0 2.2-10 6.1-10 3.6 0 2 8.4 5.5 8.4 3.3 0 1.9-7 5.3-7 3.2 0 1.9 6.5 6.7 6.5V32H1Z" />
+    </svg>;
+    case 'Burned': return <svg {...props}>
+      <path d="M16.8 2.5c1.3 5.4-3 7.1-1.1 11.2 1.1-1.9 2.7-3.7 5.3-5-.4 4.1 5.3 6.3 5.3 12.8 0 5-4.5 8.8-10.3 8.8S5.7 26.5 5.7 21.5c0-4.2 2.4-7.8 6.8-10.7-.4 3.7 1.2 6 3.4 7.6-.5-5 4.2-8.3.9-15.9Z" />
+    </svg>;
+    case 'Asleep': return <svg {...props}>
+      <path d="M7 9h9.5L8 19h9.5M18.5 6h6L19 12.5h6" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M8.5 24.5c4.6 2.8 10.9 2.8 15.5-.1" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" opacity=".72" />
+    </svg>;
+    case 'Confused': return <svg {...props}>
+      <path d="M7.1 17.2c0-5.3 4-9.2 9.3-9.2 4.8 0 8.3 3.2 8.3 7.4 0 3.8-2.9 6.5-6.5 6.5-3.2 0-5.5-2.1-5.5-4.8 0-2.4 1.8-4.1 4-4.1 1.9 0 3.1 1.2 3.1 2.7 0 1.2-.8 2.1-1.9 2.1" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+      <path d="m6.1 5.2.8 2.1 2.1.8-2.1.8-.8 2.1-.8-2.1-2.1-.8 2.1-.8.8-2.1Zm19 16.7.6 1.6 1.6.6-1.6.6-.6 1.6-.6-1.6-1.6-.6 1.6-.6.6-1.6Z" />
+    </svg>;
+    case 'Paralyzed': return <svg {...props}>
+      <path d="M18.1 2.5 8.7 17h6l-1 12.5L23.6 14h-6.1Z" />
+      <path d="m5.1 8 3.1 2.1M26.9 8l-3.1 2.1M4.2 22.2l3.7-1.1M27.8 22.2l-3.7-1.1" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+    </svg>;
+    default: return <svg {...props}><path d="m16 5 2.5 8.5L27 16l-8.5 2.5L16 27l-2.5-8.5L5 16l8.5-2.5Z" /></svg>;
   }
 }
 
 function SpecialConditionMarkers({ conditions }: { conditions: string[] }) {
   if (!conditions.length) return null;
+  const displayedConditions = [...new Set(conditions)].sort((a, b) => {
+    const left = CONDITION_ORDER.indexOf(a);
+    const right = CONDITION_ORDER.indexOf(b);
+    return (left < 0 ? CONDITION_ORDER.length : left) - (right < 0 ? CONDITION_ORDER.length : right);
+  });
   return <span className="special-condition-preview" aria-label={`Special conditions: ${conditions.join(', ')}`}>
-    {conditions.map((condition) => <span className={`special-condition-badge condition-${condition.toLowerCase()}`} title={condition} key={condition}>
+    {displayedConditions.map((condition) => <span className={`special-condition-badge condition-${condition.toLowerCase()}`} data-condition={condition} title={condition} key={condition}>
       <SpecialConditionIcon condition={condition} />
-      <b>{CONDITION_ABBREVIATIONS[condition] || condition.slice(0, 3).toUpperCase()}</b>
     </span>)}
   </span>;
 }
@@ -387,7 +408,7 @@ function ChoiceStage({ boardName, frames, currentReviewIndex, catalog, onOpen }:
       {canSeeTurn && <button type="button" className="see-turn-button" aria-pressed={showTurn} onClick={() => setShowTurn((value) => !value)}>{showTurn ? 'See action' : 'See turn'}</button>}
     </div>
     <div className="choice-stage-story">
-      {primaryEvent && <span className="primary"><EventIcon kind={primaryEvent.kind} size={14} /><strong>{primaryEvent.text}</strong></span>}
+      {primaryEvent && <span className="primary"><EventIcon kind={primaryEvent.kind} size={14} text={primaryEvent.text} /><strong>{primaryEvent.text}</strong></span>}
       {supportingCopy && <span className="supporting-summary"><strong>{supportingCopy}</strong></span>}
     </div>
     <div className="choice-stage-cards">
@@ -1426,13 +1447,14 @@ export default function TrackerApp() {
                     const eventSelectedChoiceNames = selectedCardNames(selection);
                     const visibleFacts = event.facts || [];
                     const displayLabel = eventDisplayLabel(event);
+                    const eventCondition = event.kind === 'condition' ? conditionFromEventText(event.text) : null;
                     const eventCard = event.cardId
                       ? cardCatalog.get(event.cardId) || cardCatalog.get(event.cardId.toLowerCase())
                       : undefined;
                     const effect = cardEffectSummary(event, eventCard);
                     return <article className={`timeline-event-wrap kind-${event.kind} ${event.coinResult ? `coin-${event.coinResult}` : ''} ${selected ? 'selected' : ''}`} key={entry.key} role="listitem" aria-setsize={timeline.entries.length} aria-posinset={entry.position}>
                       <button ref={selected ? selectedTimelineEventRef : undefined} className="timeline-event" type="button" aria-current={selected ? 'step' : undefined} aria-label={`Event ${entry.position} of ${timeline.entries.length}. ${displayLabel}. ${event.text}`} onClick={() => { setSelectedEventKey(entry.key); navigateToFrame(Math.min(entry.reviewIndex, (selectedReview?.turns.length || 1) - 1)); setPlaying(false); setInspector(null); }}>
-                        <span className="event-icon"><EventIcon kind={event.kind} /></span>
+                        <span className={`event-icon ${eventCondition ? `condition-${eventCondition.toLowerCase()}` : ''}`}><EventIcon kind={event.kind} text={event.text} /></span>
                         <span className="event-copy"><span className="event-meta"><small>{displayLabel}</small><span>Event {entry.position}</span></span><strong>{event.text}</strong></span>
                         <span className="event-trailing">{event.coinResult ? <b className={`coin-outcome ${event.coinResult}`}><Coin size={10} weight="fill" />{event.coinResult === 'heads' ? 'Heads' : event.coinResult === 'tails' ? 'Tails' : 'Mixed'}</b> : selected ? <b>Viewing</b> : event.id.includes(':selection:') ? <MagnifyingGlass size={14} weight="bold" /> : <CaretRight size={14} weight="bold" />}</span>
                       </button>
