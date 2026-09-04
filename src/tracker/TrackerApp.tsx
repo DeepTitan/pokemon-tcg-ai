@@ -38,7 +38,7 @@ import { buildKeyMoments, stepKeyMoment } from './key-moment-navigation.js';
 import { deriveReviewTurnStatus, type PlayerTurnStatus } from './turn-status-model.js';
 import { capturedAtIso, collectCardSourceIds, finalizeReviewForClientExit, matchSummaryFromReview, operationKey, recordingSummaryFromOperation, REDUCER_VERSION } from './match-storage.js';
 import { initialClientLifecycleState, observeClientLifecycle } from './client-lifecycle-model.js';
-import { captureIndicator } from './capture-status-model.js';
+import { captureIndicator, visibleCaptureError } from './capture-status-model.js';
 import { archiveMatchup, formatMatchDuration, formatPrizeScore } from './archive-summary-model.js';
 import { handFanCardCount, opponentHandFanSlots } from './hand-layout-model.js';
 import { prizeSlotStates } from './prize-layout-model.js';
@@ -647,6 +647,7 @@ export default function TrackerApp() {
   const [cardCatalog, setCardCatalog] = useState<ReadonlyMap<string, CardInfo>>(new Map());
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [captureError, setCaptureError] = useState<string | null>(null);
   const [inspector, setInspector] = useState<ReviewInspector | null>(null);
   const [selectedEventKey, setSelectedEventKey] = useState<string | null>(null);
   const liveAssembler = useRef(new LiveReviewAssembler());
@@ -968,8 +969,8 @@ export default function TrackerApp() {
 
   useEffect(() => {
     if (isTauri()) setTracking(environment.capture.enabled);
-    if (environment.capture.lastError) setError(environment.capture.lastError);
-  }, [environment.capture.enabled, environment.capture.lastError]);
+    setCaptureError(visibleCaptureError(environment));
+  }, [environment.capture.enabled, environment.capture.clientAttached, environment.capture.lastError]);
 
   useEffect(() => {
     if (!isTauri() || !environment.capture.permissionReady || autoStartAttempted.current || busy || showSetup) return;
@@ -1487,7 +1488,7 @@ export default function TrackerApp() {
       {showSetup && <div className="modal-backdrop"><div className="setup-modal"><div className="modal-title"><div><span>Trace settings</span><h2>Replay and capture</h2></div><button type="button" disabled={busy} onClick={closeSetup} aria-label="Close settings"><X size={21} weight="bold" /></button></div><p>Choose how replays move, then manage Trace's connection to TCG Live.</p><div className="settings-toggle-row replay-animation-setting"><div><Sparkle size={22} weight="duotone" /><span><strong>Animated replay frames</strong><small>Cards glide, fade, and scale between their exact board positions.</small></span></div><button type="button" role="switch" aria-label="Animated replay frames" aria-checked={frameAnimations} className={frameAnimations ? 'enabled' : ''} onClick={toggleFrameAnimations}><span />{frameAnimations ? 'On' : 'Off'}</button></div><small className="capture-privacy-disclosure">By connecting, Trace securely sends and stores captured match data, including player names and game actions.</small><div className="modal-actions"><button type="button" disabled={busy} onClick={closeSetup}>Close</button><button className="primary" type="button" disabled={busy} onClick={() => void finishSetup()}>{busy ? 'Working…' : environment.capture.permissionReady ? 'Reconnect capture' : 'Connect capture'}</button></div></div></div>}
       <ReviewOverlay inspector={inspector} catalog={cardCatalog} onClose={() => setInspector(null)} onInspectCard={openCard} />
       <UpdateNotice />
-      {(notice || error) && <div className={`toast ${error ? 'error' : ''}`}><span>{error ? <X size={18} weight="bold" /> : <CheckCircle size={18} weight="fill" />}</span><p>{error || notice}</p><button type="button" onClick={() => { setError(null); setNotice(null); }} aria-label="Dismiss notification"><X size={16} weight="bold" /></button></div>}
+      {(notice || error || captureError) && <div className={`toast ${error || captureError ? 'error' : ''}`}><span>{error || captureError ? <X size={18} weight="bold" /> : <CheckCircle size={18} weight="fill" />}</span><p>{error || captureError || notice}</p><button type="button" onClick={() => { setError(null); setCaptureError(null); setNotice(null); }} aria-label="Dismiss notification"><X size={16} weight="bold" /></button></div>}
     </div>
   );
 }

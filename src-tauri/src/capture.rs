@@ -1273,6 +1273,12 @@ async fn observe_connection(
     result
 }
 
+fn connection_error_needs_attention(error: &str, healthy_connections: u64) -> bool {
+    let benign_disconnect =
+        error.contains("peer closed connection without sending TLS close_notify");
+    !benign_disconnect && healthy_connections == 0
+}
+
 #[cfg(target_os = "windows")]
 async fn serve_crl_connection(
     mut stream: TcpStream,
@@ -1368,12 +1374,28 @@ async fn run_observer(
                 let recorder = recorder.clone();
                 tauri::async_runtime::spawn(async move {
                     if let Err(error) = observe_connection(stream, acceptor, connector, recorder.clone()).await {
-                        let benign_disconnect = error
-                            .contains("peer closed connection without sending TLS close_notify");
-                        if recorder.state.enabled.load(Ordering::Relaxed) && !benign_disconnect {
+                        let healthy_connections = recorder
+                            .state
+                            .client_connections
+                            .load(Ordering::Relaxed);
+                        let needs_attention = connection_error_needs_attention(
+                            &error,
+                            healthy_connections,
+                        );
+                        if recorder.state.enabled.load(Ordering::Relaxed)
+                            && !error.contains("peer closed connection without sending TLS close_notify")
+                        {
                             recorder.record_error(&error);
-                            if let Ok(mut last_error) = recorder.state.last_error.lock() {
-                                *last_error = Some(error);
+                            // TCG Live opens several parallel connections through
+                            // different Unity networking stacks. One auxiliary
+                            // socket can reject the local certificate while the
+                            // healthy match WebSocket continues recording. Preserve
+                            // that diagnostic in the log without turning the whole
+                            // app red unless every capture connection is down.
+                            if needs_attention {
+                                if let Ok(mut last_error) = recorder.state.last_error.lock() {
+                                    *last_error = Some(error);
+                                }
                             }
                         }
                     }
@@ -1487,12 +1509,8 @@ fn ensure_manager(state: &Arc<CaptureState>) {
             {
                 let captured_connections =
                     manager_state.client_connections.load(Ordering::Relaxed) as usize;
-                let game_server_connections =
-                    privileged::game_server_connection_count(pokemon_pid);
-                if !detached_route_needs_refresh(
-                    captured_connections,
-                    game_server_connections,
-                ) {
+                let game_server_connections = privileged::game_server_connection_count(pokemon_pid);
+                if !detached_route_needs_refresh(captured_connections, game_server_connections) {
                     next_attachment_probe = None;
                 } else {
                     let now = std::time::Instant::now();
@@ -1644,6 +1662,24 @@ mod tests {
     #[test]
     fn mono_store_hash_matches_openssl_subject_hash() {
         assert_eq!(super::mono_subject_hash(), "bfb0f28f");
+    }
+
+    #[test]
+    fn connection_errors_only_surface_when_no_capture_stream_is_healthy() {
+        let certificate_rejection =
+            "TCG Live rejected the local capture certificate: received fatal alert: CertificateUnknown";
+        assert!(super::connection_error_needs_attention(
+            certificate_rejection,
+            0
+        ));
+        assert!(!super::connection_error_needs_attention(
+            certificate_rejection,
+            1
+        ));
+        assert!(!super::connection_error_needs_attention(
+            "peer closed connection without sending TLS close_notify",
+            0
+        ));
     }
 
     #[cfg(target_os = "windows")]

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { captureIndicator } from '../capture-status-model.js';
+import { captureIndicator, visibleCaptureError } from '../capture-status-model.js';
 import type { TrackerEnvironment } from '../types.js';
 
 function environment(overrides: Partial<TrackerEnvironment['capture']> = {}, clientRunning = true): TrackerEnvironment {
@@ -28,5 +28,12 @@ assert.deepEqual(captureIndicator(environment({}, false)), { label: 'Ready', ton
 assert.deepEqual(captureIndicator(environment()), { label: 'Connecting', tone: 'connecting' });
 assert.deepEqual(captureIndicator(environment({ clientAttached: true })), { label: 'Live', tone: 'live' });
 assert.deepEqual(captureIndicator(environment({ lastError: 'route failed' })), { label: 'Attention', tone: 'error' });
+const healthyCaptureWithAuxiliaryFailure = environment({
+  clientAttached: true,
+  lastError: 'TCG Live rejected the local capture certificate: received fatal alert: CertificateUnknown',
+});
+assert.deepEqual(captureIndicator(healthyCaptureWithAuxiliaryFailure), { label: 'Live', tone: 'live' });
+assert.equal(visibleCaptureError(healthyCaptureWithAuxiliaryFailure), null);
+assert.equal(visibleCaptureError(environment({ lastError: 'route failed' })), 'route failed');
 
-console.log('capture-status-model: reports real attachment instead of toggle state');
+console.log('capture-status-model: healthy recordings override auxiliary connection errors');

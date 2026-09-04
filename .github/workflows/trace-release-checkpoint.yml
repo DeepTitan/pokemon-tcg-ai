@@ -112,6 +112,10 @@ jobs:
           TRACE_SYNC_API_URL: ${{ vars.TRACE_SYNC_API_URL }}
         run: node -e "const value=process.env.TRACE_SYNC_API_URL; if (!value || new URL(value).protocol !== 'https:') throw new Error('TRACE_SYNC_API_URL must be a configured HTTPS endpoint')"
 
+      - name: Run Windows capture integration tests
+        if: matrix.platform == 'windows-latest'
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+
       - name: Build and upload signed update
         uses: tauri-apps/tauri-action@v1
         env:

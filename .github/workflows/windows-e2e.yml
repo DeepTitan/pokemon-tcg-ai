@@ -32,12 +32,7 @@ jobs:
         run: npm run tracker:test
 
       - name: Test live capture transport and immediate match registration
-        run: |
-          cargo test --manifest-path src-tauri/Cargo.toml capture_hosts::tests
-          cargo test --manifest-path src-tauri/Cargo.toml preserves_permessage_deflate_context_across_server_messages
-          cargo test --manifest-path src-tauri/Cargo.toml windows_upstream_supports_more_than_reserved_port_pool
-          cargo test --manifest-path src-tauri/Cargo.toml storage::tests::deduplicates_raw_operations_and_round_trips_reviews
-          cargo test --manifest-path src-tauri/Cargo.toml cards::tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
 
       - name: Build Windows NSIS package
         env:
