@@ -181,10 +181,21 @@ def public_summary(item):
 def read_json(event):
     raw = event.get("body") or "{}"
     if event.get("isBase64Encoded"):
-        raw = base64.b64decode(raw).decode("utf-8")
+        raw = base64.b64decode(raw)
+    elif isinstance(raw, str):
+        raw = raw.encode("utf-8")
+    else:
+        raise ValueError("invalid_body")
+    headers = {str(key).lower(): value for key, value in (event.get("headers") or {}).items()}
+    content_encoding = str(headers.get("content-encoding", "")).lower()
+    if "gzip" in content_encoding and raw.startswith(b"\x1f\x8b"):
+        try:
+            raw = gzip.decompress(raw)
+        except (OSError, EOFError) as error:
+            raise ValueError("invalid_gzip") from error
     try:
-        data = json.loads(raw)
-    except json.JSONDecodeError as error:
+        data = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
         raise ValueError("invalid_json") from error
     if not isinstance(data, dict):
         raise ValueError("invalid_json_object")

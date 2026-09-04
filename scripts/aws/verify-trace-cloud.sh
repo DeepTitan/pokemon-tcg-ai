@@ -7,6 +7,7 @@ STACK_NAME="${TRACE_STACK_NAME:-trace-production}"
 
 command -v aws >/dev/null
 command -v curl >/dev/null
+command -v gzip >/dev/null
 command -v jq >/dev/null
 
 stack_output() {
@@ -67,11 +68,13 @@ IMPORTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 jq -cn --arg id "$MATCH_ID" --arg importedAt "$IMPORTED_AT" \
   '{review:{id:$id,importedAt:$importedAt,source:"trace-cloud-e2e",localPlayer:"Trace Tester",opponent:"Cloud Verify",winner:"Trace Tester",turns:[{number:1,actions:[]}]},reducerVersion:999}' \
   > "$WORK_DIR/put-request.json"
+gzip -c "$WORK_DIR/put-request.json" > "$WORK_DIR/put-request.json.gz"
 
 PUT_STATUS="$(curl --silent --show-error --output "$WORK_DIR/put-response.json" \
   --write-out '%{http_code}' --request PUT --header 'content-type: application/json' \
+  --header 'content-encoding: gzip' \
   --header "x-trace-device: $DEVICE_ID" --header "authorization: Bearer $TOKEN" \
-  --data-binary "@$WORK_DIR/put-request.json" "$API_URL/v1/matches/$MATCH_ID")"
+  --data-binary "@$WORK_DIR/put-request.json.gz" "$API_URL/v1/matches/$MATCH_ID")"
 test "$PUT_STATUS" = "200"
 jq -e --arg id "$MATCH_ID" '.id == $id and .turnCount == 1 and .reducerVersion == 999' \
   "$WORK_DIR/put-response.json" >/dev/null

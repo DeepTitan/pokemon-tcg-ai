@@ -1,8 +1,9 @@
 use crate::storage::{MatchStorage, PendingCloudReview};
+use flate2::{write::GzEncoder, Compression};
 use reqwest::{Client, StatusCode, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::{fs, path::PathBuf, sync::Arc, time::Duration};
+use std::{fs, io::Write, path::PathBuf, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -149,16 +150,33 @@ impl CloudSync {
             url.path_segments_mut()
                 .map_err(|_| SyncFailure::global("Cloud backup URL cannot accept path segments."))?
                 .extend(["v1", "matches", pending.match_id.as_str()]);
+            let request = serde_json::to_vec(&json!({
+                "review": &pending.review,
+                "reducerVersion": pending.reducer_version,
+            }))
+            .map_err(|error| {
+                SyncFailure::item(format!("Cloud backup review could not be encoded: {error}"))
+            })?;
+            let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+            encoder.write_all(&request).map_err(|error| {
+                SyncFailure::item(format!(
+                    "Cloud backup review could not be compressed: {error}"
+                ))
+            })?;
+            let compressed = encoder.finish().map_err(|error| {
+                SyncFailure::item(format!(
+                    "Cloud backup review could not be compressed: {error}"
+                ))
+            })?;
 
             let response = self
                 .client
                 .put(url)
                 .header("x-trace-device", &device_id)
                 .bearer_auth(&token)
-                .json(&json!({
-                    "review": &pending.review,
-                    "reducerVersion": pending.reducer_version,
-                }))
+                .header(reqwest::header::CONTENT_TYPE, "application/json")
+                .header(reqwest::header::CONTENT_ENCODING, "gzip")
+                .body(compressed)
                 .send()
                 .await
                 .map_err(|error| {

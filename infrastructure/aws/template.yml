@@ -30,7 +30,7 @@ Resources:
         ThrottlingBurstLimit: 20
         ThrottlingRateLimit: 10
       CorsConfiguration:
-        AllowHeaders: [authorization, content-type, x-trace-device]
+        AllowHeaders: [authorization, content-encoding, content-type, x-trace-device]
         AllowMethods: [GET, PUT, POST, OPTIONS]
         AllowOrigins: ['*']
         MaxAge: 600

@@ -1,6 +1,6 @@
 # Trace cloud backup
 
-Trace keeps SQLite as the offline source of truth and automatically mirrors reconstructed match reviews over HTTPS. Each installation uses an anonymous device identity. Upload failures never interrupt local capture: an on-device outbox retries them with backoff, and the first release with this behavior queues existing reconstructed matches for backfill.
+Trace keeps SQLite as the offline source of truth and automatically mirrors reconstructed match reviews over HTTPS. Each installation uses an anonymous device identity. Upload failures never interrupt local capture: an on-device outbox retries them with backoff, and the first release with this behavior queues existing reconstructed matches for backfill. Request bodies are gzip-compressed so complete long matches stay below the gateway payload limit.
 
 Match payloads include the player names and game actions needed to replay a match. This automatic backup is disclosed in Trace's capture setup rather than presented as an optional setting.
 
