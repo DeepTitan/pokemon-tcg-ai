@@ -50,4 +50,17 @@ assert.deepEqual(damageChangesForTurn(beforeLegacyPhantomDive, afterLegacyPhanto
   { pokemonId: 'legacy-bench', before: 0, after: 60, delta: 60, source: 'captured-counter' },
 ]);
 
-console.log('damage-change-model: board deltas, removed counters, direct attacks, and both captured counter formats stay visible');
+const poisonFact = { id: 'poison-counter', kind: 'damage' as const, label: 'Damage counters', value: "N's Zoroark ex: 10 damage marked", tone: 'negative' as const };
+const afterPoisonTick = turn(66, board('isaiahw', pokemon('shaymin', 'Shaymin', 0), []), board('opponent', pokemon('zoroark', "N's Zoroark ex", 10), []), [
+  { id: 'attack', kind: 'attack', text: "opponent: N's Zoroark ex used Night Joker", turnIndex: 66, detail: false, facts: [poisonFact] },
+]);
+const forcedPromotion = turn(67, board('isaiahw', pokemon('shaymin', 'Shaymin', 0), []), board('opponent', pokemon('zoroark', "N's Zoroark ex", 10), []), [
+  { id: 'promotion', kind: 'system', text: 'isaiahw: promoted Shaymin to the Active Spot', turnIndex: 67, detail: false, facts: [poisonFact] },
+]);
+assert.deepEqual(
+  damageChangesForTurn(afterPoisonTick, forcedPromotion),
+  [],
+  'a forced-promotion frame must not apply the preceding attack frame\'s captured Poison counters a second time',
+);
+
+console.log('damage-change-model: board deltas, removed counters, direct attacks, captured counter formats, and staged promotions stay accurate');

@@ -21,9 +21,12 @@ type CapturedCounterChange =
   | { kind: 'transition'; name: string; before: number; after: number }
   | { kind: 'marked'; name: string; amount: number };
 
-function capturedCounterChanges(turn: TrackedTurn): CapturedCounterChange[] {
+function capturedCounterChanges(turn: TrackedTurn, priorFactIds: ReadonlySet<string>): CapturedCounterChange[] {
   const seen = new Set<string>();
   return turn.events.flatMap((event) => event.facts || []).flatMap((fact) => {
+    // Forced-promotion frames reuse the resolving attack's facts. Those facts
+    // describe the preceding frame and must not animate the same counters again.
+    if (priorFactIds.has(fact.id)) return [];
     if (fact.kind !== 'damage' || !/damage counters/i.test(fact.label)) return [];
     const transition = fact.value.match(/^(.+?):\s*(\d+)\s*→\s*(\d+)\s*damage$/i);
     const marked = fact.value.match(/^(.+?):\s*(\d+)\s*damage marked$/i);
@@ -44,6 +47,7 @@ function capturedCounterChanges(turn: TrackedTurn): CapturedCounterChange[] {
 
 export function damageChangesForTurn(previous: TrackedTurn | undefined, current: TrackedTurn | undefined): PokemonDamageChange[] {
   if (!previous || !current) return [];
+  const priorFactIds = new Set(previous.events.flatMap((event) => event.facts || []).map((fact) => fact.id));
   const previousPokemon = pokemonOnBoard(previous);
   const currentPokemon = pokemonOnBoard(current);
   const previousById = new Map(previousPokemon.map((pokemon) => [pokemon.id, pokemon]));
@@ -83,7 +87,7 @@ export function damageChangesForTurn(previous: TrackedTurn | undefined, current:
   });
 
   const capturedTargets = new Set<string>();
-  capturedCounterChanges(current).forEach((counterChange) => {
+  capturedCounterChanges(current, priorFactIds).forEach((counterChange) => {
     if (counterChange.kind === 'transition' && counterChange.before === counterChange.after) return;
     if (counterChange.kind === 'marked' && counterChange.amount <= 0) return;
     const candidates = currentPokemon.filter((pokemon) => (
