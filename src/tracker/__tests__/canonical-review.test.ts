@@ -150,6 +150,90 @@ assert.equal(setup.appliedEffects.top[0].name, 'Subjugating Chains');
 assert.equal(setup.appliedEffects.top[0].effectType, 'SpecialConditionEffect');
 assert.equal(setup.state.players[1].active?.card.cardType, CardType.Pokemon);
 
+const retreatAssembler = new LiveReviewAssembler(catalog);
+const retreatBoard = structuredClone(fullBoard);
+retreatBoard.gameId = 'retreat-game';
+retreatBoard.matchId = 'retreat-match';
+retreatBoard.operationId = 'retreat-board';
+retreatBoard.messageIndex = 20;
+const retreatMatchBoard = (retreatBoard.operation as { matchBoard: Record<string, unknown> }).matchBoard;
+retreatMatchBoard.p2Active = {
+  entityID: 'retreating-top', ownerPlayerId: 'local-account', currentGamePos: 16,
+  cardSourceID: 'top-mon', appliedStatusEffects: capturedConditions,
+};
+retreatMatchBoard.p2Bench = [{
+  entityID: 'promotion-target', ownerPlayerId: 'local-account', currentGamePos: 14,
+  cardSourceID: 'option-b', appliedStatusEffects: [],
+}];
+retreatAssembler.ingest(retreatBoard);
+
+const retreatReview = retreatAssembler.ingest({
+  ...base,
+  gameId: 'retreat-game',
+  matchId: 'retreat-match',
+  receivedAt: 'retreat-switch',
+  operationId: 'retreat-switch',
+  messageIndex: 21,
+  operation: {
+    operationNumber: 3,
+    playerOperation: { operationType: 5, accountID: 'local-account', originEntityID: 'retreating-top' },
+    actionModifications: [{
+      $type: 'MatchLogic.SwapCardsModification, MatchLogic',
+      actionModificationID: 'retreat-swap',
+      swapCardDeltas: [{
+        fromCardAddress: { entityID: 'retreating-top', pos: 16 },
+        toCardAddress: { entityID: 'retreating-top', pos: 14 },
+      }, {
+        fromCardAddress: { entityID: 'promotion-target', pos: 14 },
+        toCardAddress: { entityID: 'promotion-target', pos: 16 },
+      }],
+      // Real retreat/switch logs may contain only these position fields. They
+      // do not always include a replacement appliedStatusEffects array.
+      UpdatedEntities: { $values: [
+        { entityID: 'retreating-top', prevPos: 16, curPos: 14, isCard: true },
+        { entityID: 'promotion-target', prevPos: 14, curPos: 16, isCard: true },
+      ] },
+    }],
+  },
+});
+const retreatTurn = retreatReview?.turns.at(-1);
+assert.equal(retreatTurn?.snapshot.players.Isaiah.active?.name, 'Munkidori', 'SwapCards must update the Active Pokemon even when only partial entities are emitted');
+assert.equal(retreatTurn?.snapshot.players.Isaiah.bench.find((pokemon) => pokemon.id === 'retreating-top')?.name, 'Dragapult ex');
+assert.deepEqual(retreatTurn?.snapshot.players.Isaiah.bench.find((pokemon) => pokemon.id === 'retreating-top')?.statusConditions, [], 'a retreated Pokemon must lose every Special Condition');
+assert.deepEqual(retreatTurn?.canonical?.state.players[1].bench.find((pokemon) => pokemon.card.id === 'retreating-top')?.statusConditions, [], 'canonical replay state must clear conditions on retreat');
+assert.equal(retreatTurn?.canonical?.appliedEffects['retreating-top'], undefined, 'cleared conditions must not survive in canonical applied effects');
+assert.deepEqual(
+  retreatTurn?.events.filter((event) => /is no longer/.test(event.text)).map((event) => event.text).sort(),
+  capturedConditions.map((_, index) => `Dragapult ex is no longer ${['Poisoned', 'Burned', 'Paralyzed', 'Confused', 'Asleep'][index]}`).sort(),
+  'the timeline must record every condition removed by the retreat',
+);
+
+const returnReview = retreatAssembler.ingest({
+  ...base,
+  gameId: 'retreat-game',
+  matchId: 'retreat-match',
+  receivedAt: 'forced-switch-back',
+  operationId: 'forced-switch-back',
+  messageIndex: 22,
+  operation: {
+    operationNumber: 4,
+    playerOperation: { operationType: 1, accountID: 'local-account', originEntityID: 'promotion-target' },
+    actionModifications: [{
+      $type: 'MatchLogic.SwapCardsModification, MatchLogic',
+      actionModificationID: 'forced-switch-swap',
+      swapCardDeltas: [{
+        fromCardAddress: { entityID: 'promotion-target', pos: 16 },
+        toCardAddress: { entityID: 'promotion-target', pos: 14 },
+      }, {
+        fromCardAddress: { entityID: 'retreating-top', pos: 14 },
+        toCardAddress: { entityID: 'retreating-top', pos: 16 },
+      }],
+    }],
+  },
+});
+assert.equal(returnReview?.turns.at(-1)?.snapshot.players.Isaiah.active?.name, 'Dragapult ex');
+assert.deepEqual(returnReview?.turns.at(-1)?.snapshot.players.Isaiah.active?.statusConditions, [], 'cleared conditions must not reappear when the Pokemon returns Active');
+
 const checkupAssembler = new LiveReviewAssembler(catalog);
 checkupAssembler.ingest({
   ...base,

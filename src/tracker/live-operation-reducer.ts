@@ -369,6 +369,30 @@ function statusConditions(entity: Entity): StatusCondition[] {
   return [...found];
 }
 
+function clearSpecialConditionsWhenBenched(entity: Entity): Entity {
+  if (!position(entity).endsWith('Bench')) return entity;
+  const effectKeys = Object.keys(entity).filter((key) => key.toLowerCase() === 'appliedstatuseffects');
+  if (!effectKeys.length) return entity;
+  const effects = list(entity, 'appliedStatusEffects', 'AppliedStatusEffects');
+  const retained = effects.filter((candidate) => {
+    const effect = record(candidate);
+    return !effect || !specialConditionFromEffect(effect);
+  });
+  if (retained.length === effects.length) return entity;
+
+  const cleared = { ...entity };
+  for (const key of effectKeys) {
+    const container = entity[key];
+    const wrapped = record(container);
+    cleared[key] = Array.isArray(container)
+      ? retained
+      : wrapped
+        ? { ...wrapped, $values: retained }
+        : retained;
+  }
+  return cleared;
+}
+
 // Values from MatchLogic.SpecialConditionEffect.EffectTag in the installed
 // TCG Live client. specialConditionValue is the condition's strength (for
 // example, one Poison counter), not the identity of the condition.
@@ -1378,11 +1402,14 @@ function updateZoneCountsFromCardTransitions(
 ): void {
   const type = modificationType(modification);
   const isMove = type === 'MoveCardsModification';
+  const isSwap = type === 'SwapCardsModification';
   const isAttachment = type === 'AttachCardsModification';
   const isEvolution = type === 'EvolveModification';
-  if (!isMove && !isAttachment && !isEvolution) return;
+  if (!isMove && !isSwap && !isAttachment && !isEvolution) return;
   const deltas = isMove
     ? list(modification, 'moveCardDeltas', 'MoveCardDeltas')
+    : isSwap
+      ? list(modification, 'swapCardDeltas', 'SwapCardDeltas')
     : isAttachment
       ? list(modification, 'attachCardDeltas', 'AttachCardDeltas')
       : list(modification, 'evolveCardDeltas', 'EvolveCardDeltas');
@@ -1447,7 +1474,7 @@ function updateZoneCountsFromCardTransitions(
         Math.max(authoritativePrivateHandCounts.get(to) || 0, destinationIndex + 1),
       );
     }
-    if ((isMove || isEvolution) && movedEntityId && to != null) {
+    if ((isMove || isSwap || isEvolution) && movedEntityId && to != null) {
       movements.set(movedEntityId, {
         from,
         to,
@@ -1790,7 +1817,7 @@ export class LiveReviewAssembler {
       const wasMainPokemon = previous ? isMainPokemon(previous, assembly.entities) : false;
       const previousKnockouts = battleStat(previous, 'CardEntityTimesKnockedOut') || 0;
       const previousPrizes = battleStat(previous, 'PrizeCardsTaken') || 0;
-      const merged = deepMerge(previous, entityUpdate);
+      let merged = deepMerge(previous, entityUpdate);
       const movement = cardMovements.get(id);
       if (movement) {
         merged.previousGamePos = movement.from;
@@ -1804,6 +1831,11 @@ export class LiveReviewAssembler {
         merged.parentEntityID = movement.toParent ?? null;
         merged.parentEntityId = movement.toParent ?? null;
       }
+      // TCG Live sometimes reports the status removal that accompanies a
+      // retreat/switch without returning a full replacement effect list. The
+      // board position is still authoritative: Special Conditions exist only
+      // on the Active Pokemon and are removed as soon as it reaches the Bench.
+      merged = clearSpecialConditionsWhenBenched(merged);
       assembly.entities.set(id, merged);
 
       const nextPosition = position(merged);
@@ -1829,7 +1861,7 @@ export class LiveReviewAssembler {
     for (const [id, movement] of cardMovements) {
       if (updatedEntityIds.has(id)) continue;
       const previous = assembly.entities.get(id);
-      assembly.entities.set(id, {
+      assembly.entities.set(id, clearSpecialConditionsWhenBenched({
         ...(previous || {}),
         entityID: id,
         previousGamePos: movement.from,
@@ -1838,7 +1870,7 @@ export class LiveReviewAssembler {
         currentPos: movement.to,
         currentParentEntityID: movement.toParent ?? null,
         currentParentEntityId: movement.toParent ?? null,
-      });
+      }));
     }
 
     const completedSelectionIds = new Set(list(operation, 'completedSelections', 'CompletedSelections').filter((candidate): candidate is string => typeof candidate === 'string'));
