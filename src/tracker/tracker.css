@@ -2298,20 +2298,13 @@ button.stadium-marker:focus-visible {
 .settings-toggle-row > button:disabled { cursor: not-allowed; opacity: .55; }
 .replay-animation-setting > div { color: #79619a; }
 
-.cloud-backup-disclosure {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  margin: 9px 0 4px;
-  padding: 13px 14px;
-  border: 1px solid #c8d9ce;
-  border-radius: 14px;
-  color: #387252;
-  background: #f2f8f4;
+.capture-privacy-disclosure {
+  display: block;
+  margin: 9px 4px 0;
+  color: #7b7d7d;
+  font-size: 10px;
+  line-height: 1.4;
 }
-.cloud-backup-disclosure > span { display: grid; gap: 3px; }
-.cloud-backup-disclosure strong { color: #2b5840; font-size: 13px; }
-.cloud-backup-disclosure small { color: #63766a; font-size: 11px; line-height: 1.45; }
 
 /* Matchup-led archive: the two deck-defining Pokemon are the primary scan target. */
 .workspace.archive-open.timeline-open {

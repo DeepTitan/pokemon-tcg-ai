@@ -65,7 +65,7 @@ import './tracker.css';
 // Keep the legacy key so the rebrand never strands a user's saved match archive.
 const STORAGE_KEY = 'match-lens/reviews-v1';
 const STORAGE_MIGRATED_KEY = 'trace/reviews-sqlite-v1';
-const CLOUD_BACKUP_DISCLOSURE_KEY = 'trace/cloud-backup-disclosure-v1';
+const CAPTURE_DISCLOSURE_KEY = 'trace/cloud-backup-disclosure-v1';
 const MAX_REVIEWS = 24;
 const CARD_ART_RETRY_DELAY_MS = 10_000;
 
@@ -615,7 +615,7 @@ export default function TrackerApp() {
   });
   const [showSetup, setShowSetup] = useState(() => {
     if (!isTauri()) return false;
-    try { return localStorage.getItem(CLOUD_BACKUP_DISCLOSURE_KEY) !== 'acknowledged'; }
+    try { return localStorage.getItem(CAPTURE_DISCLOSURE_KEY) !== 'acknowledged'; }
     catch { return true; }
   });
   const [archiveOpen, setArchiveOpen] = useState(true);
@@ -1275,7 +1275,7 @@ export default function TrackerApp() {
   }, [environment.capture.permissionReady, environment.capture.enabled]);
 
   const closeSetup = useCallback(() => {
-    try { localStorage.setItem(CLOUD_BACKUP_DISCLOSURE_KEY, 'acknowledged'); }
+    try { localStorage.setItem(CAPTURE_DISCLOSURE_KEY, 'acknowledged'); }
     catch { /* Disclosure persistence is best-effort. */ }
     setShowSetup(false);
   }, []);
@@ -1462,7 +1462,7 @@ export default function TrackerApp() {
       {!archiveOpen && <button className="panel-restore-button archive-restore-button" type="button" aria-label="Open match archive" aria-expanded="false" title="Open match archive" onClick={() => setArchiveOpen(true)}><CardsThree size={22} weight="duotone" /></button>}
       {!timelineOpen && <button className="panel-restore-button timeline-restore-button" type="button" aria-label="Open game log" aria-expanded="false" title="Open game log" onClick={() => setTimelineOpen(true)}><List size={22} weight="bold" /></button>}
 
-      {showSetup && <div className="modal-backdrop"><div className="setup-modal"><div className="modal-title"><div><span>Trace settings</span><h2>Replay and capture</h2></div><button type="button" disabled={busy} onClick={closeSetup} aria-label="Close settings"><X size={21} weight="bold" /></button></div><p>Choose how replays move, then manage Trace's connection to TCG Live.</p><div className="settings-toggle-row replay-animation-setting"><div><Sparkle size={22} weight="duotone" /><span><strong>Animated replay frames</strong><small>Cards glide, fade, and scale between their exact board positions.</small></span></div><button type="button" role="switch" aria-label="Animated replay frames" aria-checked={frameAnimations} className={frameAnimations ? 'enabled' : ''} onClick={toggleFrameAnimations}><span />{frameAnimations ? 'On' : 'Off'}</button></div><div className="cloud-backup-disclosure"><ShieldCheck size={22} weight="duotone" /><span><strong>Automatic match backup</strong><small>Captured matches—including player names and game actions—are securely backed up to Trace's cloud archive. Capture keeps working offline and unsent matches retry later.</small></span></div><div className="modal-actions"><button type="button" disabled={busy} onClick={closeSetup}>Close</button><button className="primary" type="button" disabled={busy} onClick={() => void finishSetup()}>{busy ? 'Working…' : environment.capture.permissionReady ? 'Reconnect capture' : 'Connect capture'}</button></div></div></div>}
+      {showSetup && <div className="modal-backdrop"><div className="setup-modal"><div className="modal-title"><div><span>Trace settings</span><h2>Replay and capture</h2></div><button type="button" disabled={busy} onClick={closeSetup} aria-label="Close settings"><X size={21} weight="bold" /></button></div><p>Choose how replays move, then manage Trace's connection to TCG Live.</p><div className="settings-toggle-row replay-animation-setting"><div><Sparkle size={22} weight="duotone" /><span><strong>Animated replay frames</strong><small>Cards glide, fade, and scale between their exact board positions.</small></span></div><button type="button" role="switch" aria-label="Animated replay frames" aria-checked={frameAnimations} className={frameAnimations ? 'enabled' : ''} onClick={toggleFrameAnimations}><span />{frameAnimations ? 'On' : 'Off'}</button></div><small className="capture-privacy-disclosure">By connecting, Trace securely sends and stores captured match data, including player names and game actions.</small><div className="modal-actions"><button type="button" disabled={busy} onClick={closeSetup}>Close</button><button className="primary" type="button" disabled={busy} onClick={() => void finishSetup()}>{busy ? 'Working…' : environment.capture.permissionReady ? 'Reconnect capture' : 'Connect capture'}</button></div></div></div>}
       <ReviewOverlay inspector={inspector} catalog={cardCatalog} onClose={() => setInspector(null)} onInspectCard={openCard} />
       <UpdateNotice />
       {(notice || error) && <div className={`toast ${error ? 'error' : ''}`}><span>{error ? <X size={18} weight="bold" /> : <CheckCircle size={18} weight="fill" />}</span><p>{error || notice}</p><button type="button" onClick={() => { setError(null); setNotice(null); }} aria-label="Dismiss notification"><X size={16} weight="bold" /></button></div>}
