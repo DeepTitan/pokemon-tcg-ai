@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowClockwise, DownloadSimple, X } from '@phosphor-icons/react';
+import { X } from '@phosphor-icons/react';
+import { ArrowClockwise } from '@phosphor-icons/react/ArrowClockwise';
+import { DownloadSimple } from '@phosphor-icons/react/DownloadSimple';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { check, type DownloadEvent, type Update } from '@tauri-apps/plugin-updater';
 import { isTauri } from './tauri.js';

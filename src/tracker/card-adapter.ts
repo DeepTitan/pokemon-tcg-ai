@@ -118,7 +118,7 @@ export function cardInfoToEngineCard(
       ...hiddenReviewCard(instanceId),
       name: fallbackName,
       reviewSourceId: fallbackSourceId,
-    };
+    } as Card & { reviewSourceId?: string };
   }
 
   const base = {

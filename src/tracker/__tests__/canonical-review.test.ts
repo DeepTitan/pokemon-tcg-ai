@@ -68,6 +68,31 @@ const base: Omit<CapturedOperation, 'receivedAt' | 'operationId' | 'messageIndex
   accountId: 'local-account',
 };
 
+function specialConditionEffect(effectTag: number, applicationID: string, actionName = 'Captured condition') {
+  return {
+    actionName,
+    applicationID,
+    activated: true,
+    effectEnabled: true,
+    remainingDuration: -1,
+    statusEffect: {
+      $type: 'MatchLogic.SpecialConditionEffect, MatchLogic',
+      effectTag,
+      // This number is the strength, not the condition enum. It deliberately
+      // stays 1 for every fixture so the EffectTag mapping is what is tested.
+      specialConditionValue: { value1: { explicitValue: 1 } },
+    },
+  };
+}
+
+const capturedConditions = [
+  specialConditionEffect(1, '[Ability] Subjugating Chains_SpecialCondition_Poison', '[Ability] Subjugating Chains'),
+  specialConditionEffect(2, 'captured-effect-tag-2'),
+  specialConditionEffect(3, 'captured-effect-tag-3'),
+  specialConditionEffect(4, 'captured-effect-tag-4'),
+  specialConditionEffect(5, 'captured-effect-tag-5'),
+];
+
 const fullBoard: CapturedOperation = {
   ...base,
   receivedAt: '1.000Z',
@@ -94,7 +119,7 @@ const fullBoard: CapturedOperation = {
         attachedPokemon: [{ entityID: 'base', ownerPlayerId: 'local-account', currentGamePos: 16, currentParentEntityID: 'top', cardSourceID: 'base-mon' }],
         attachedEnergy: [{ entityID: 'energy', ownerPlayerId: 'local-account', currentGamePos: 16, currentParentEntityID: 'top', cardSourceID: 'energy-p' }],
         attachedTools: [{ entityID: 'tool', ownerPlayerId: 'local-account', currentGamePos: 16, currentParentEntityID: 'top', cardSourceID: 'tool-one' }],
-        appliedStatusEffects: [{ actionName: 'Poisoned', activated: true, effectEnabled: true, statusEffect: { $type: 'PoisonStatusEffect' } }],
+        appliedStatusEffects: capturedConditions,
       },
       stadium: null,
     },
@@ -119,9 +144,120 @@ assert.equal(setup.state.players[1].active?.previousStage?.card.name, 'Drakloak'
 assert.deepEqual(setup.state.players[1].active?.attachedEnergy.map((card) => card.name), ['Basic Psychic Energy']);
 assert.deepEqual(setup.state.players[1].active?.attachedTools.map((card) => card.name), ['Maximum Belt']);
 assert.equal(setup.state.players[1].active?.attachedTools[0]?.trainerType, TrainerType.Tool);
-assert.deepEqual(setup.state.players[1].active?.statusConditions, ['Poisoned']);
-assert.equal(setup.appliedEffects.top[0].name, 'Poisoned');
+assert.deepEqual(setup.state.players[1].active?.statusConditions, ['Poisoned', 'Burned', 'Paralyzed', 'Confused', 'Asleep']);
+assert.deepEqual(setupReview.turns[0].snapshot.players.Isaiah.active?.statusConditions, ['Poisoned', 'Burned', 'Paralyzed', 'Confused', 'Asleep']);
+assert.equal(setup.appliedEffects.top[0].name, 'Subjugating Chains');
+assert.equal(setup.appliedEffects.top[0].effectType, 'SpecialConditionEffect');
 assert.equal(setup.state.players[1].active?.card.cardType, CardType.Pokemon);
+
+const checkupAssembler = new LiveReviewAssembler(catalog);
+checkupAssembler.ingest({
+  ...base,
+  receivedAt: 'checkup-rules',
+  operationId: 'checkup-rules',
+  messageIndex: 1,
+  messageType: 8,
+  operation: {
+    gameActions: [
+      { actionGuid: 'handle-poison-guid', actionName: 'Handle poison' },
+      { actionGuid: 'handle-burn-guid', actionName: 'Handle burn' },
+    ],
+  },
+});
+checkupAssembler.ingest({ ...fullBoard, receivedAt: 'checkup-board', messageIndex: 2 });
+const poisonCheckupReview = checkupAssembler.ingest({
+  ...base,
+  receivedAt: 'checkup-damage',
+  operationId: 'poison-checkup',
+  messageIndex: 3,
+  operation: {
+    operationNumber: 2,
+    actionModifications: [{
+      $type: 'MatchLogic.EndTurnModification, MatchLogic',
+      actionModificationID: 'end-turn-before-checkup',
+    }, {
+      $type: 'MatchLogic.MoveDCModification, MatchLogic',
+      actionModificationID: 'poison-damage-counters',
+      actionGUID: 'handle-poison-guid',
+      isFinal: true,
+      modifiedDCEntities: [{ cardAddress: { entityID: 'top', pos: 16 }, previousDC: 4, newDC: 5 }],
+    }, {
+      $type: 'MatchLogic.MoveDCModification, MatchLogic',
+      actionModificationID: 'burn-damage-counters',
+      actionGUID: 'handle-burn-guid',
+      isFinal: true,
+      modifiedDCEntities: [{ cardAddress: { entityID: 'top', pos: 16 }, previousDC: 5, newDC: 7 }],
+    }],
+    updatedEntities: [{
+      entityID: 'top', ownerPlayerId: 'local-account', currentGamePos: 16,
+      cardSourceID: 'top-mon', damageCounters: 7, appliedStatusEffects: capturedConditions,
+    }],
+  },
+});
+const poisonCheckupTurn = poisonCheckupReview?.turns.at(-1);
+assert.equal(poisonCheckupTurn?.snapshot.players.Isaiah.active?.damage, 70, 'between-turn Poison and Burn must update the visible board damage');
+assert.equal(poisonCheckupTurn?.canonical?.state.players[1].active?.damageCounters, 7, 'between-turn conditions must update canonical damage counters');
+assert.match(poisonCheckupTurn?.events.find((event) => /Poison between turns/.test(event.text))?.text || '', /Dragapult ex took 10 damage from Poison between turns/);
+assert.match(poisonCheckupTurn?.events.find((event) => /Burn between turns/.test(event.text))?.text || '', /Dragapult ex took 20 damage from Burn between turns/);
+assert.ok(poisonCheckupTurn?.events[0].facts?.some((fact) => fact.label === 'Damage counters' && fact.value === 'Dragapult ex: 40 → 50 damage'));
+assert.ok(poisonCheckupTurn?.events[0].facts?.some((fact) => fact.label === 'Damage counters' && fact.value === 'Dragapult ex: 50 → 70 damage'));
+
+const knockoutCheckupAssembler = new LiveReviewAssembler(catalog);
+knockoutCheckupAssembler.ingest({
+  ...base,
+  receivedAt: 'knockout-checkup-rules',
+  operationId: 'knockout-checkup-rules',
+  messageIndex: 4,
+  messageType: 8,
+  operation: { gameActions: [{ actionGuid: 'handle-poison-guid', actionName: 'Handle poison' }] },
+});
+const knockoutBoard = structuredClone(fullBoard);
+knockoutBoard.receivedAt = 'knockout-checkup-board';
+knockoutBoard.messageIndex = 5;
+const knockoutMatchBoard = (knockoutBoard.operation as { matchBoard: Record<string, unknown> }).matchBoard;
+knockoutMatchBoard.p1Active = {
+  entityID: 'knockout-target', ownerPlayerId: 'opponent-account', isPlayer1: true,
+  currentGamePos: 15, cardSourceID: 'option-a', damageCounters: 0,
+  battleFlagCounts: { CardEntityTimesKnockedOut: 0 },
+};
+knockoutCheckupAssembler.ingest(knockoutBoard);
+const knockoutCheckupReview = knockoutCheckupAssembler.ingest({
+  ...base,
+  receivedAt: 'knockout-checkup-damage',
+  operationId: 'attack-with-poison-checkup',
+  messageIndex: 6,
+  operation: {
+    operationNumber: 3,
+    playerOperation: { operationType: 1, accountID: 'local-account', originEntityID: 'top' },
+    actionModifications: [{
+      $type: 'MatchLogic.ApplyDamageModification, MatchLogic',
+      actionModificationID: 'knockout-attack-damage',
+      isFinal: true,
+      appliedDamageDeltas: [{ cardAddress: { entityID: 'knockout-target', pos: 15 }, damageAmount: 70 }],
+    }, {
+      $type: 'MatchLogic.EndTurnModification, MatchLogic',
+      actionModificationID: 'knockout-end-turn',
+    }, {
+      $type: 'MatchLogic.MoveDCModification, MatchLogic',
+      actionModificationID: 'knockout-poison-damage',
+      actionGUID: 'handle-poison-guid',
+      isFinal: true,
+      modifiedDCEntities: [{ cardAddress: { entityID: 'top', pos: 16 }, previousDC: 4, newDC: 5 }],
+    }],
+    updatedEntities: [{
+      entityID: 'top', ownerPlayerId: 'local-account', currentGamePos: 16,
+      cardSourceID: 'top-mon', damageCounters: 5, appliedStatusEffects: capturedConditions,
+    }, {
+      entityID: 'knockout-target', ownerPlayerId: 'opponent-account', isPlayer1: true,
+      previousGamePos: 15, currentGamePos: 9, cardSourceID: 'option-a', damageCounters: 7,
+      battleFlagCounts: { CardEntityTimesKnockedOut: 1 },
+    }],
+  },
+});
+const knockoutCheckupTurn = knockoutCheckupReview?.turns.at(-1);
+assert.equal(knockoutCheckupTurn?.snapshot.players.Isaiah.active?.damage, 50, 'the staged KO frame must not roll back Poison damage on a surviving Pokémon');
+assert.equal(knockoutCheckupTurn?.snapshot.players.Opponent.active?.id, 'knockout-target', 'the defeated Pokémon must remain staged for the KO frame');
+assert.match(knockoutCheckupTurn?.events.find((event) => event.id.includes(':condition-damage:'))?.text || '', /10 damage from Poison between turns/);
 
 const search: CapturedOperation = {
   ...base,

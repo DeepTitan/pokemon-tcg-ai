@@ -288,13 +288,6 @@ function asPokemon(entity: Entity, entities: Map<string, Entity>, catalog: Reado
   const toolIds = attachedEntityIds(entity, entities, 'attachedTools', 'AttachedTools');
   const energies = energyIds.map((energyId) => cardName(entities.get(energyId), catalog));
   const evolutionStack = attachedPokemonIds.map((pokemonId) => cardName(entities.get(pokemonId), catalog));
-  const statuses = list(entity, 'appliedStatusEffects', 'AppliedStatusEffects')
-    .map(record)
-    .filter((status): status is Entity => Boolean(status))
-    .filter((status) => bool(status, 'activated') !== false && bool(status, 'effectEnabled') !== false)
-    .map((status) => text(status, 'actionName', 'ActionName'))
-    .filter((name): name is string => Boolean(name))
-    .map((name) => name.replace(/^\[Ability\]\s*/, ''));
   return {
     ...tracked,
     damage: (number(entity, 'damageCounters', 'DamageCounters') || 0) * 10,
@@ -304,7 +297,7 @@ function asPokemon(entity: Entity, entities: Map<string, Entity>, catalog: Reado
     energyCards: energyIds.map((id) => entities.get(id)).filter((candidate): candidate is Entity => Boolean(candidate)).map((candidate) => asTrackedCard(candidate, catalog)),
     evolutionCards: attachedPokemonIds.map((id) => entities.get(id)).filter((candidate): candidate is Entity => Boolean(candidate)).map((candidate) => asTrackedCard(candidate, catalog)),
     toolCards: toolIds.map((id) => entities.get(id)).filter((candidate): candidate is Entity => Boolean(candidate)).map((candidate) => asTrackedCard(candidate, catalog)),
-    statusConditions: statuses,
+    statusConditions: statusConditions(entity),
   };
 }
 
@@ -364,20 +357,59 @@ function pokemonCard(entity: Entity, catalog: ReadonlyMap<string, CardInfo>): Po
 }
 
 function statusConditions(entity: Entity): StatusCondition[] {
-  const names = list(entity, 'appliedStatusEffects', 'AppliedStatusEffects')
+  const found = new Set<StatusCondition>();
+  list(entity, 'appliedStatusEffects', 'AppliedStatusEffects')
     .map(record)
     .filter((status): status is Entity => Boolean(status))
     .filter((status) => bool(status, 'activated') !== false && bool(status, 'effectEnabled') !== false)
-    .map((status) => `${text(status, 'actionName', 'ActionName') || ''} ${text(record(value(status, 'statusEffect')), '$type') || ''}`.toLowerCase());
-  const found = new Set<StatusCondition>();
-  for (const name of names) {
-    if (name.includes('poison')) found.add(StatusCondition.Poisoned);
-    if (name.includes('burn')) found.add(StatusCondition.Burned);
-    if (name.includes('sleep') || name.includes('asleep')) found.add(StatusCondition.Asleep);
-    if (name.includes('confus')) found.add(StatusCondition.Confused);
-    if (name.includes('paraly')) found.add(StatusCondition.Paralyzed);
-  }
+    .forEach((status) => {
+      const condition = specialConditionFromEffect(status);
+      if (condition) found.add(condition);
+    });
   return [...found];
+}
+
+// Values from MatchLogic.SpecialConditionEffect.EffectTag in the installed
+// TCG Live client. specialConditionValue is the condition's strength (for
+// example, one Poison counter), not the identity of the condition.
+const SPECIAL_CONDITION_BY_EFFECT_TAG: Record<number, StatusCondition> = {
+  1: StatusCondition.Poisoned,
+  2: StatusCondition.Burned,
+  3: StatusCondition.Paralyzed,
+  4: StatusCondition.Confused,
+  5: StatusCondition.Asleep,
+};
+
+function specialConditionFromText(candidate: string): StatusCondition | undefined {
+  const normalized = candidate.toLowerCase();
+  if (normalized.includes('poison')) return StatusCondition.Poisoned;
+  if (normalized.includes('burn')) return StatusCondition.Burned;
+  if (normalized.includes('sleep') || normalized.includes('asleep')) return StatusCondition.Asleep;
+  if (normalized.includes('confus')) return StatusCondition.Confused;
+  if (normalized.includes('paraly')) return StatusCondition.Paralyzed;
+  return undefined;
+}
+
+function specialConditionFromEffect(effect: Entity): StatusCondition | undefined {
+  const status = record(value(effect, 'statusEffect', 'StatusEffect'));
+  const effectType = text(status, '$type', 'type') || '';
+  const applicationId = text(effect, 'applicationID', 'applicationId') || '';
+  const actionName = text(effect, 'actionName', 'ActionName') || '';
+  if (/SpecialConditionEffect/i.test(effectType)) {
+    const effectTag = number(status, 'effectTag', 'EffectTag');
+    if (effectTag != null && SPECIAL_CONDITION_BY_EFFECT_TAG[effectTag]) {
+      return SPECIAL_CONDITION_BY_EFFECT_TAG[effectTag];
+    }
+  }
+  // Older logs and synthetic imports sometimes carry a named status type,
+  // while current Live payloads expose the name in applicationID. Only accept
+  // an action name by itself when it is literally a condition name; abilities
+  // such as "Burning Energy" must not make a Pokémon appear Burned.
+  const encodedCondition = specialConditionFromText(`${applicationId} ${effectType}`);
+  if (encodedCondition) return encodedCondition;
+  return /^(?:poison(?:ed)?|burn(?:ed)?|sleep|asleep|confus(?:e|ed|ion)|paraly(?:ze|zed|sed|sis))$/i.test(actionName.trim())
+    ? specialConditionFromText(actionName)
+    : undefined;
 }
 
 function inPlayPokemon(
@@ -751,6 +783,7 @@ interface OperationAssembly {
   events: Map<string, TrackerEvent>;
   eventOrder: string[];
   damageByTarget: Map<string, number>;
+  conditionDamageByTarget: Map<string, { targetId: string; amount: number; condition: StatusCondition }>;
   knockoutTargets: Set<string>;
   prizesBySide: Map<1 | 2, number>;
   hasDamage: boolean;
@@ -1040,7 +1073,8 @@ function buildOperationFacts(
         const delta = record(candidate);
         const address = record(value(delta, 'cardAddress', 'CardAddress'));
         const target = reviewedEntityName(address ? entityId(address) : undefined, entities, catalog, names) || 'Unknown Pokémon';
-        const next = number(delta, 'newDC', 'NewDC');
+        const hasCounterValue = value(delta, 'newDC', 'NewDC') != null || value(delta, 'previousDC', 'PreviousDC') != null;
+        const next = hasCounterValue ? number(delta, 'newDC', 'NewDC') ?? 0 : undefined;
         const previous = number(delta, 'previousDC', 'PreviousDC');
         if (next == null) continue;
         const copy = previous == null
@@ -1258,6 +1292,7 @@ interface MatchAssembly {
   entities: Map<string, Entity>;
   zoneCounts: Map<number, number>;
   exactDeckPositions: Set<number>;
+  actionNames: Map<string, string>;
   matchStarted: boolean;
   review: MatchReview | null;
   messageIds: Set<string>;
@@ -1514,6 +1549,7 @@ export class LiveReviewAssembler {
         entities: new Map(),
         zoneCounts: new Map(),
         exactDeckPositions: new Set(),
+        actionNames: new Map(),
         matchStarted: false,
         review: null,
         messageIds: new Set(),
@@ -1532,6 +1568,12 @@ export class LiveReviewAssembler {
     assembly.messageIds.add(messageId);
 
     const operation = record(captured.operation) || {};
+    for (const candidate of list(operation, 'gameActions', 'GameActions')) {
+      const gameAction = record(candidate);
+      const actionGuid = text(gameAction, 'actionGuid', 'actionGUID', 'ActionGuid', 'ActionGUID');
+      const actionName = text(gameAction, 'actionName', 'ActionName');
+      if (actionGuid && actionName) assembly.actionNames.set(actionGuid, actionName);
+    }
     assembly.matchStarted ||= bool(operation, 'matchStarted', 'MatchStarted') === true;
     updateZoneCountsFromBoard(operation, assembly.zoneCounts);
     const operationId = captured.operationId
@@ -1547,6 +1589,7 @@ export class LiveReviewAssembler {
         events: new Map(),
         eventOrder: [],
         damageByTarget: new Map(),
+        conditionDamageByTarget: new Map(),
         knockoutTargets: new Set(),
         prizesBySide: new Map(),
         hasDamage: false,
@@ -1605,6 +1648,7 @@ export class LiveReviewAssembler {
 
     const originId = text(assembledOperation.playerOperation, 'originEntityID', 'originEntityId');
     const modifications = list(operation, 'actionModifications', 'ActionModifications').map(record).filter(Boolean) as Entity[];
+    const operationEndsTurn = modifications.some((modification) => modificationType(modification) === 'EndTurnModification');
     const cardMovements = new Map<string, CardMovement>();
     modifications.forEach((modification, index) => {
       const modificationId = text(modification, 'actionModificationID', 'actionModificationId') || `${messageId}:${index}`;
@@ -1649,6 +1693,38 @@ export class LiveReviewAssembler {
               assembledOperation!.damageByTarget.set(targetId, (assembledOperation!.damageByTarget.get(targetId) || 0) + amount);
             }
           }
+        }
+      }
+
+      if (type === 'MoveDCModification' && bool(modification, 'isFinal', 'IsFinal') !== false) {
+        const actionGuid = text(modification, 'actionGUID', 'actionGuid', 'ActionGUID', 'ActionGuid');
+        const checkupAction = actionGuid ? assembly!.actionNames.get(actionGuid) : undefined;
+        for (const candidate of list(modification, 'modifiedDCEntities', 'ModifiedDCEntities')) {
+          const delta = record(candidate);
+          const address = record(value(delta, 'cardAddress', 'CardAddress'));
+          const targetId = address && entityId(address);
+          const hasCounterValue = value(delta, 'newDC', 'NewDC') != null || value(delta, 'previousDC', 'PreviousDC') != null;
+          if (!targetId || !hasCounterValue) continue;
+          const currentCounters = number(assembly!.entities.get(targetId) || null, 'damageCounters', 'DamageCounters') || 0;
+          const previous = number(delta, 'previousDC', 'PreviousDC') ?? currentCounters;
+          const next = number(delta, 'newDC', 'NewDC') ?? 0;
+          const amount = (next - previous) * 10;
+          if (amount <= 0) continue;
+          let condition = specialConditionFromText(checkupAction || '');
+          if (condition !== StatusCondition.Poisoned && condition !== StatusCondition.Burned) condition = undefined;
+          if (!condition && operationEndsTurn) {
+            const damagingConditions = statusConditions(assembly!.entities.get(targetId) || {})
+              .filter((candidateCondition) => candidateCondition === StatusCondition.Poisoned || candidateCondition === StatusCondition.Burned);
+            if (damagingConditions.length === 1) condition = damagingConditions[0];
+          }
+          if (!condition) continue;
+          const damageKey = `${targetId}:${condition}`;
+          const previousDamage = assembledOperation!.conditionDamageByTarget.get(damageKey);
+          assembledOperation!.conditionDamageByTarget.set(damageKey, {
+            targetId,
+            amount: (previousDamage?.amount || 0) + amount,
+            condition,
+          });
         }
       }
 
@@ -2048,6 +2124,50 @@ export class LiveReviewAssembler {
       });
     }
 
+    const pokemonFromSnapshot = (candidateSnapshot: TrackerBoardSnapshot | undefined, pokemonId: string): TrackedPokemon | undefined => {
+      if (!candidateSnapshot) return undefined;
+      return Object.values(candidateSnapshot.players).flatMap((board) => [
+        ...(board.active ? [board.active] : []),
+        ...board.bench,
+      ]).find((pokemon) => pokemon.id === pokemonId);
+    };
+    const currentPokemon = Object.values(snapshot.players).flatMap((board) => [
+      ...(board.active ? [board.active] : []),
+      ...board.bench,
+    ]);
+    for (const pokemon of currentPokemon) {
+      const beforeConditions = new Set(pokemonFromSnapshot(assembledOperation.snapshotBefore, pokemon.id)?.statusConditions || []);
+      const afterConditions = new Set(pokemon.statusConditions || []);
+      for (const condition of afterConditions) {
+        if (beforeConditions.has(condition)) continue;
+        upsertEvent(assembledOperation, `condition:added:${pokemon.id}:${condition}`, {
+          id: `${operationId}:condition:added:${pokemon.id}:${condition}`,
+          turnIndex,
+          actor,
+          sourceEntityId: assembledOriginId,
+          targetEntityId: pokemon.id,
+          cardId: originInfo?.id,
+          cardFormat: originInfo?.format,
+          cardType: originInfo?.cardType,
+          text: `${pokemon.name} is now ${condition}`,
+          detail: false,
+          kind: 'condition',
+        });
+      }
+      for (const condition of beforeConditions) {
+        if (afterConditions.has(condition)) continue;
+        upsertEvent(assembledOperation, `condition:removed:${pokemon.id}:${condition}`, {
+          id: `${operationId}:condition:removed:${pokemon.id}:${condition}`,
+          turnIndex,
+          actor,
+          targetEntityId: pokemon.id,
+          text: `${pokemon.name} is no longer ${condition}`,
+          detail: false,
+          kind: 'condition',
+        });
+      }
+    }
+
     for (const [coinFlipId, results] of assembledOperation.coinFlips) {
       const outcome = coinFlipSummary(results);
       upsertEvent(assembledOperation, `coin:${coinFlipId}`, {
@@ -2076,6 +2196,22 @@ export class LiveReviewAssembler {
         text: `${actorPrefix}${assembledOperation.attackName || originName || 'Attack'} dealt ${amount} damage to ${targetName}`,
         detail: false,
         kind: 'damage',
+      });
+    }
+
+    for (const [damageKey, damage] of assembledOperation.conditionDamageByTarget) {
+      const { targetId } = damage;
+      const targetName = cardName(assembly.entities.get(targetId), this.catalog);
+      const conditionName = damage.condition === StatusCondition.Poisoned ? 'Poison' : 'Burn';
+      upsertEvent(assembledOperation, `condition-damage:${damageKey}`, {
+        id: `${operationId}:condition-damage:${damageKey}`,
+        turnIndex,
+        actor,
+        sourceEntityId: targetId,
+        targetEntityId: targetId,
+        text: `${targetName} took ${damage.amount} damage from ${conditionName} between turns`,
+        detail: false,
+        kind: 'condition',
       });
     }
 
@@ -2271,7 +2407,9 @@ export class LiveReviewAssembler {
     const eventRank = (key: string): number => {
       if (key === 'primary') return 0;
       if (key.startsWith('coin:')) return 1;
+      if (key.startsWith('condition:')) return 2;
       if (key.startsWith('damage:')) return 2;
+      if (key.startsWith('condition-damage:')) return 2;
       if (key.startsWith('draw:effect:')) return 3;
       if (key.startsWith('knockout:')) return 4;
       if (key.startsWith('prize:')) return 5;
@@ -2289,9 +2427,24 @@ export class LiveReviewAssembler {
         ...snapshot,
         players: Object.fromEntries(Object.entries(snapshot.players).map(([playerName, playerBoard]) => {
           const beforeBoard = assembledOperation!.snapshotBefore!.players[playerName];
-          return [playerName, beforeBoard
-            ? { ...playerBoard, active: beforeBoard.active, bench: beforeBoard.bench }
-            : playerBoard];
+          if (!beforeBoard) return [playerName, playerBoard];
+          const currentById = new Map([
+            ...(playerBoard.active ? [playerBoard.active] : []),
+            ...playerBoard.bench,
+          ].map((pokemon) => [pokemon.id, pokemon]));
+          const keepPreKnockoutPosition = (pokemon: TrackedPokemon | null): TrackedPokemon | null => {
+            if (!pokemon) return null;
+            // A knocked-out Pokémon has already left the final board, so keep
+            // its old card in place for this attack frame. Every survivor uses
+            // its current entity data so simultaneous Poison/Burn damage,
+            // attachments, and conditions are never rolled back visually.
+            return currentById.get(pokemon.id) || pokemon;
+          };
+          return [playerName, {
+            ...playerBoard,
+            active: keepPreKnockoutPosition(beforeBoard.active),
+            bench: beforeBoard.bench.map(keepPreKnockoutPosition).filter((pokemon): pokemon is TrackedPokemon => Boolean(pokemon)),
+          }];
         })),
       }
       : snapshot;

@@ -10,6 +10,7 @@ export type TrackerEventKind =
   | 'ability'
   | 'attack'
   | 'damage'
+  | 'condition'
   | 'coin'
   | 'knockout'
   | 'prize'
@@ -136,6 +137,8 @@ export interface TrackedPlayerBoard {
   lostZoneCards?: TrackedCard[];
   prizeCards?: TrackedCard[];
   prizesTaken: number;
+  /** False until a partial live capture includes an authoritative prize count. */
+  prizesKnown?: boolean;
 }
 
 export type ReviewCardVisibility = 'known' | 'hidden' | 'temporarily-revealed';

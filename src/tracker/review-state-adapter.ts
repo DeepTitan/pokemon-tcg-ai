@@ -3,6 +3,7 @@ import {
   EnergyType,
   GamePhase,
   PokemonStage,
+  StatusCondition,
   TrainerType,
   type Card,
   type PlayerState,
@@ -72,7 +73,8 @@ function previewPokemon(tracked: TrackedPokemon, index: number): PokemonInPlay {
     damageCounters: Math.floor(tracked.damage / 10),
     attachedEnergy: [],
     attachedTools: [],
-    statusConditions: [],
+    statusConditions: (tracked.statusConditions || []).filter((condition): condition is StatusCondition =>
+      Object.values(StatusCondition).includes(condition as StatusCondition)),
     isEvolved: false,
     turnPlayed: 0,
     damageShields: [],

@@ -2,10 +2,18 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { flushSync } from 'react-dom';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
-  BookOpenText, CalendarBlank, CardsThree, CaretLeft, CaretRight, CheckCircle, Clock,
-  Drop, Eye, FunnelSimple, GearSix, Hand, List, MagnifyingGlass, Pause, Play,
+  BookOpenText, CardsThree, CaretLeft, CaretRight, CheckCircle,
+  Drop, Eye, FunnelSimple, GearSix, Hand, MagnifyingGlass, Pause, Play,
   ShieldCheck, SkipBack, SkipForward, Sparkle, Sword, Trophy, WifiHigh, Wrench, X,
 } from '@phosphor-icons/react';
+import { ArrowsClockwise } from '@phosphor-icons/react/ArrowsClockwise';
+import { CalendarBlank } from '@phosphor-icons/react/CalendarBlank';
+import { Clock } from '@phosphor-icons/react/Clock';
+import { Fire } from '@phosphor-icons/react/Fire';
+import { Lightning } from '@phosphor-icons/react/Lightning';
+import { List } from '@phosphor-icons/react/List';
+import { MoonStars } from '@phosphor-icons/react/MoonStars';
+import { Skull } from '@phosphor-icons/react/Skull';
 import { Coin } from '@phosphor-icons/react/Coin';
 import { Prohibit } from '@phosphor-icons/react/Prohibit';
 import { ArrowDown } from '@phosphor-icons/react/ArrowDown';
@@ -95,7 +103,7 @@ function beginWindowDrag(event: ReactMouseEvent<HTMLElement>): void {
 const EVENT_LABELS: Record<TrackerEventKind, string> = {
   setup: 'Setup', draw: 'Draw', pokemon: 'Pokémon', trainer: 'Trainer', tool: 'Tool', energy: 'Energy',
   ability: 'Ability', attack: 'Attack', damage: 'Damage', coin: 'Coin flip', knockout: 'KO', prize: 'Prize',
-  stadium: 'Stadium', system: 'Game',
+  stadium: 'Stadium', condition: 'Special condition', system: 'Game',
 };
 
 function eventDisplayLabel(event: { id: string; kind: TrackerEventKind; text: string }): string {
@@ -178,8 +186,39 @@ function EventIcon({ kind, size = 17 }: { kind: TrackerEventKind; size?: number 
     case 'knockout': return <Trophy {...props} />;
     case 'trainer': return <Hand {...props} />;
     case 'draw': return <CardsThree {...props} />;
+    case 'condition': return <Skull {...props} />;
     default: return <BookOpenText {...props} />;
   }
+}
+
+const CONDITION_ABBREVIATIONS: Record<string, string> = {
+  Poisoned: 'PSN',
+  Burned: 'BRN',
+  Asleep: 'SLP',
+  Confused: 'CNF',
+  Paralyzed: 'PAR',
+};
+
+function SpecialConditionIcon({ condition }: { condition: string }) {
+  const props = { size: 11, weight: 'fill' as const };
+  switch (condition) {
+    case 'Poisoned': return <Skull {...props} />;
+    case 'Burned': return <Fire {...props} />;
+    case 'Asleep': return <MoonStars {...props} />;
+    case 'Confused': return <ArrowsClockwise {...props} />;
+    case 'Paralyzed': return <Lightning {...props} />;
+    default: return <Sparkle {...props} />;
+  }
+}
+
+function SpecialConditionMarkers({ conditions }: { conditions: string[] }) {
+  if (!conditions.length) return null;
+  return <span className="special-condition-preview" aria-label={`Special conditions: ${conditions.join(', ')}`}>
+    {conditions.map((condition) => <span className={`special-condition-badge condition-${condition.toLowerCase()}`} title={condition} key={condition}>
+      <SpecialConditionIcon condition={condition} />
+      <b>{CONDITION_ABBREVIATIONS[condition] || condition.slice(0, 3).toUpperCase()}</b>
+    </span>)}
+  </span>;
 }
 
 function StadiumMarker({
@@ -239,10 +278,13 @@ function PokemonSlot({ pokemon, catalog, active = false, defeated = false, attac
     };
   });
   const tools = pokemon.toolCards || [];
+  const specialConditions = pokemon.statusConditions || [];
+  const inspectionLabel = `Inspect ${displayName}${pokemon.cardId ? ` · ${pokemon.cardId}` : ''}${specialConditions.length ? ` · ${specialConditions.join(', ')}` : ''}`;
   return (
-    <button type="button" className={`pokemon-slot ${active ? 'active' : ''} ${defeated ? 'defeated' : ''} ${attacking ? 'attacking' : ''} ${damageChange ? damageChange.delta > 0 ? 'damage-increased' : 'damage-decreased' : ''} ${positionChange ? `position-changed moved-to-${positionChange.to}` : ''}`} style={cardTransitionStyle(pokemon.id)} data-pokemon-id={pokemon.id} data-pokemon-name={displayName} title={`Inspect ${displayName}${pokemon.cardId ? ` · ${pokemon.cardId}` : ''}`} onClick={() => onOpen?.(pokemon.id)}>
+    <button type="button" className={`pokemon-slot ${active ? 'active' : ''} ${defeated ? 'defeated' : ''} ${attacking ? 'attacking' : ''} ${damageChange ? damageChange.delta > 0 ? 'damage-increased' : 'damage-decreased' : ''} ${positionChange ? `position-changed moved-to-${positionChange.to}` : ''}`} style={cardTransitionStyle(pokemon.id)} data-pokemon-id={pokemon.id} data-pokemon-name={displayName} title={inspectionLabel} aria-label={inspectionLabel} onClick={() => onOpen?.(pokemon.id)}>
       <img className="card-art" src={image} data-card-id={pokemon.cardId} alt={displayName} onError={showCardBackOnError} />
       {displayedDamage > 0 && <b className="damage-token">{displayedDamage}</b>}
+      <SpecialConditionMarkers conditions={specialConditions} />
       {damageChange && <span className={`damage-change-badge ${damageChange.delta > 0 ? 'added' : 'removed'}`} aria-label={damageChange.delta > 0 ? `${damageChange.delta} damage added; ${damageChange.after} total damage` : `${Math.abs(damageChange.delta)} damage removed; ${damageChange.after} total damage`}><b>{damageChange.delta > 0 ? '+' : '−'}{Math.abs(damageChange.delta)}</b><small>damage</small></span>}
       {positionChange && <span className={`position-change-badge to-${positionChange.to}`} aria-label={`${displayName} moved from ${positionChange.from} to ${positionChange.to} by ${positionChange.cause}`} title={`${positionChange.from === 'active' ? 'Active' : 'Bench'} → ${positionChange.to === 'active' ? 'Active' : 'Bench'} · ${positionChange.cause}`}>
         {positionChange.to === 'active' ? <ArrowUp size={10} weight="bold" /> : <ArrowDown size={10} weight="bold" />}
