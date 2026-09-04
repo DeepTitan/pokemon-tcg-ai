@@ -14,10 +14,9 @@ import type { Card, PlayerState, PokemonInPlay } from '../engine/types.js';
 import { parseBattleLog } from './battle-log-parser.js';
 import { DEMO_BATTLE_LOG } from './demo-log.js';
 import {
-  getCloudSyncStatus, getRecentMatchOperations, getTrackerEnvironment, initializeTrackerStorage, isTauri, listMatchSummaries,
+  getRecentMatchOperations, getTrackerEnvironment, initializeTrackerStorage, isTauri, listMatchSummaries,
   listRawMatchIds, loadMatchOperations, loadMatchReview, onMatchOperation, persistMatchReview,
-  requestCapturePermission, resolveCardSources, setCloudSyncEnabled, startTracking, stopTracking,
-  type CloudSyncStatus,
+  requestCapturePermission, resolveCardSources, startTracking, stopTracking,
 } from './tauri.js';
 import { LiveReviewAssembler } from './live-operation-reducer.js';
 import { ReviewOverlay, type ReviewInspector } from './ReviewInteractions.js';
@@ -57,6 +56,7 @@ import './tracker.css';
 // Keep the legacy key so the rebrand never strands a user's saved match archive.
 const STORAGE_KEY = 'match-lens/reviews-v1';
 const STORAGE_MIGRATED_KEY = 'trace/reviews-sqlite-v1';
+const CLOUD_BACKUP_DISCLOSURE_KEY = 'trace/cloud-backup-disclosure-v1';
 const MAX_REVIEWS = 24;
 const CARD_ART_RETRY_DELAY_MS = 10_000;
 
@@ -555,12 +555,15 @@ export default function TrackerApp() {
     clientInstalled: false, clientRunning: false, pid: null, captureMode: 'existing-client',
     capture: { permissionReady: false, enabled: false, observerRunning: false, routeActive: false, clientAttached: false, frameCount: 0, operationCount: 0, lastError: null, observerPort: 8899 },
   });
-  const [showSetup, setShowSetup] = useState(false);
+  const [showSetup, setShowSetup] = useState(() => {
+    if (!isTauri()) return false;
+    try { return localStorage.getItem(CLOUD_BACKUP_DISCLOSURE_KEY) !== 'acknowledged'; }
+    catch { return true; }
+  });
   const [archiveOpen, setArchiveOpen] = useState(true);
   const [timelineOpen, setTimelineOpen] = useState(false);
   const [frameScrubbing, setFrameScrubbing] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [cloudSync, setCloudSync] = useState<CloudSyncStatus>({ configured: false, enabled: false, deviceId: 'pending', lastError: null });
   const [liveOperations, setLiveOperations] = useState<CapturedOperation[]>([]);
   const [cardCatalog, setCardCatalog] = useState<ReadonlyMap<string, CardInfo>>(new Map());
   const [notice, setNotice] = useState<string | null>(null);
@@ -898,13 +901,6 @@ export default function TrackerApp() {
   }, [environment.capture.enabled, environment.capture.lastError]);
 
   useEffect(() => {
-    if (!showSetup || !isTauri()) return;
-    void getCloudSyncStatus()
-      .then(setCloudSync)
-      .catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)));
-  }, [showSetup]);
-
-  useEffect(() => {
     if (!isTauri() || !environment.capture.permissionReady || autoStartAttempted.current || busy || showSetup) return;
     autoStartAttempted.current = true;
     if (environment.capture.enabled) return;
@@ -1228,6 +1224,12 @@ export default function TrackerApp() {
     finally { setBusy(false); }
   }, [environment.capture.permissionReady, environment.capture.enabled]);
 
+  const closeSetup = useCallback(() => {
+    try { localStorage.setItem(CLOUD_BACKUP_DISCLOSURE_KEY, 'acknowledged'); }
+    catch { /* Disclosure persistence is best-effort. */ }
+    setShowSetup(false);
+  }, []);
+
   const finishSetup = useCallback(async () => {
     setBusy(true);
     setError(null);
@@ -1237,32 +1239,12 @@ export default function TrackerApp() {
       if (permission.permissionReady) {
         const capture = await startTracking();
         setEnvironment((current) => ({ ...current, capture }));
-        setShowSetup(false);
+        closeSetup();
         setNotice('Setup complete. Your next game will be recorded automatically.');
       }
     } catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); }
     finally { setBusy(false); }
-  }, []);
-
-  const toggleCloudSync = useCallback(async () => {
-    if (!isTauri() || !cloudSync.configured) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const next = await setCloudSyncEnabled(!cloudSync.enabled);
-      setCloudSync(next);
-      if (next.enabled && selectedReview) {
-        await persistMatchReview(selectedReview, REDUCER_VERSION);
-      }
-      setNotice(next.enabled
-        ? 'Private AWS cloud backup is on. This match and future matches will be backed up.'
-        : 'Cloud backup is off. Your local match archive is unchanged.');
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
-    } finally {
-      setBusy(false);
-    }
-  }, [cloudSync.configured, cloudSync.enabled, selectedReview]);
+  }, [closeSetup]);
 
   const openCard = useCallback((card: Card, pokemon?: PokemonInPlay) => {
     setInspector({ kind: 'card', card, pokemon, effects: selectedCanonical?.appliedEffects[card.id], title: pokemon ? 'Pokémon in play' : 'Card details' });
@@ -1430,7 +1412,7 @@ export default function TrackerApp() {
       {!archiveOpen && <button className="panel-restore-button archive-restore-button" type="button" aria-label="Open match archive" aria-expanded="false" title="Open match archive" onClick={() => setArchiveOpen(true)}><CardsThree size={22} weight="duotone" /></button>}
       {!timelineOpen && <button className="panel-restore-button timeline-restore-button" type="button" aria-label="Open game log" aria-expanded="false" title="Open game log" onClick={() => setTimelineOpen(true)}><List size={22} weight="bold" /></button>}
 
-      {showSetup && <div className="modal-backdrop"><div className="setup-modal"><div className="modal-title"><div><span>Trace settings</span><h2>Replay and capture</h2></div><button type="button" disabled={busy} onClick={() => setShowSetup(false)} aria-label="Close settings"><X size={21} weight="bold" /></button></div><p>Choose how replays move, then manage Trace's connection to TCG Live.</p><div className="settings-toggle-row replay-animation-setting"><div><Sparkle size={22} weight="duotone" /><span><strong>Animated replay frames</strong><small>Cards glide, fade, and scale between their exact board positions.</small></span></div><button type="button" role="switch" aria-label="Animated replay frames" aria-checked={frameAnimations} className={frameAnimations ? 'enabled' : ''} onClick={toggleFrameAnimations}><span />{frameAnimations ? 'On' : 'Off'}</button></div><div className="settings-toggle-row cloud-backup-setting"><div><ShieldCheck size={22} weight="duotone" /><span><strong>Private cloud backup</strong><small>{cloudSync.configured ? 'Store reconstructed matches in your encrypted AWS-backed archive.' : 'Available after installing the next network-enabled Trace release.'}</small>{cloudSync.lastError && <em>{cloudSync.lastError}</em>}</span></div><button type="button" role="switch" aria-label="Private cloud backup" aria-checked={cloudSync.enabled} className={cloudSync.enabled ? 'enabled' : ''} disabled={busy || !cloudSync.configured} onClick={() => void toggleCloudSync()}><span />{cloudSync.enabled ? 'On' : 'Off'}</button></div><div className="modal-actions"><button type="button" disabled={busy} onClick={() => setShowSetup(false)}>Close</button><button className="primary" type="button" disabled={busy} onClick={() => void finishSetup()}>{busy ? 'Working…' : environment.capture.permissionReady ? 'Reconnect capture' : 'Connect capture'}</button></div></div></div>}
+      {showSetup && <div className="modal-backdrop"><div className="setup-modal"><div className="modal-title"><div><span>Trace settings</span><h2>Replay and capture</h2></div><button type="button" disabled={busy} onClick={closeSetup} aria-label="Close settings"><X size={21} weight="bold" /></button></div><p>Choose how replays move, then manage Trace's connection to TCG Live.</p><div className="settings-toggle-row replay-animation-setting"><div><Sparkle size={22} weight="duotone" /><span><strong>Animated replay frames</strong><small>Cards glide, fade, and scale between their exact board positions.</small></span></div><button type="button" role="switch" aria-label="Animated replay frames" aria-checked={frameAnimations} className={frameAnimations ? 'enabled' : ''} onClick={toggleFrameAnimations}><span />{frameAnimations ? 'On' : 'Off'}</button></div><div className="cloud-backup-disclosure"><ShieldCheck size={22} weight="duotone" /><span><strong>Automatic match backup</strong><small>Captured matches—including player names and game actions—are securely backed up to Trace's cloud archive. Capture keeps working offline and unsent matches retry later.</small></span></div><div className="modal-actions"><button type="button" disabled={busy} onClick={closeSetup}>Close</button><button className="primary" type="button" disabled={busy} onClick={() => void finishSetup()}>{busy ? 'Working…' : environment.capture.permissionReady ? 'Reconnect capture' : 'Connect capture'}</button></div></div></div>}
       <ReviewOverlay inspector={inspector} catalog={cardCatalog} onClose={() => setInspector(null)} onInspectCard={openCard} />
       <UpdateNotice />
       {(notice || error) && <div className={`toast ${error ? 'error' : ''}`}><span>{error ? <X size={18} weight="bold" /> : <CheckCircle size={18} weight="fill" />}</span><p>{error || notice}</p><button type="button" onClick={() => { setError(null); setNotice(null); }} aria-label="Dismiss notification"><X size={16} weight="bold" /></button></div>}

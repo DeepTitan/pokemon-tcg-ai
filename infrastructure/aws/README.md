@@ -1,6 +1,8 @@
 # Trace cloud backup
 
-Trace keeps SQLite as the offline source of truth. When a user explicitly enables cloud backup, the desktop app registers an anonymous per-install identity and sends reconstructed match reviews over HTTPS.
+Trace keeps SQLite as the offline source of truth and automatically mirrors reconstructed match reviews over HTTPS. Each installation uses an anonymous device identity. Upload failures never interrupt local capture: an on-device outbox retries them with backoff, and the first release with this behavior queues existing reconstructed matches for backfill.
+
+Match payloads include the player names and game actions needed to replay a match. This automatic backup is disclosed in Trace's capture setup rather than presented as an optional setting.
 
 The AWS stack uses:
 

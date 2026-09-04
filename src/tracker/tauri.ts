@@ -8,13 +8,6 @@ declare global {
   }
 }
 
-export interface CloudSyncStatus {
-  configured: boolean;
-  enabled: boolean;
-  deviceId: string;
-  lastError: string | null;
-}
-
 export function isTauri(): boolean {
   return Boolean(window.__TAURI_INTERNALS__);
 }
@@ -126,18 +119,6 @@ export async function persistMatchReview(review: MatchReview, reducerVersion: nu
   if (!isTauri()) throw new Error('Persistent match storage is only available in the native app.');
   const { invoke } = await import('@tauri-apps/api/core');
   return invoke<MatchSummary>('persist_match_review', { review, reducerVersion });
-}
-
-export async function getCloudSyncStatus(): Promise<CloudSyncStatus> {
-  if (!isTauri()) return { configured: false, enabled: false, deviceId: 'browser', lastError: null };
-  const { invoke } = await import('@tauri-apps/api/core');
-  return invoke<CloudSyncStatus>('cloud_sync_status');
-}
-
-export async function setCloudSyncEnabled(enabled: boolean): Promise<CloudSyncStatus> {
-  if (!isTauri()) throw new Error('Cloud backup is only available in the native app.');
-  const { invoke } = await import('@tauri-apps/api/core');
-  return invoke<CloudSyncStatus>('set_cloud_sync_enabled', { enabled });
 }
 
 export async function loadMatchOperations(matchId: string): Promise<CapturedOperation[]> {

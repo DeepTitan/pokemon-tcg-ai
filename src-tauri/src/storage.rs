@@ -10,7 +10,16 @@ use std::{
     path::{Path, PathBuf},
 };
 
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
+
+#[derive(Clone, Debug)]
+pub struct PendingCloudReview {
+    pub match_id: String,
+    pub reducer_version: i64,
+    pub generation: i64,
+    pub attempt_count: i64,
+    pub review: Value,
+}
 
 #[derive(Clone)]
 pub struct MatchStorage {
@@ -152,6 +161,24 @@ impl MatchStorage {
                     payload_json TEXT NOT NULL,
                     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
+                CREATE TABLE IF NOT EXISTS cloud_sync_outbox (
+                    match_id TEXT PRIMARY KEY,
+                    reducer_version INTEGER NOT NULL,
+                    generation INTEGER NOT NULL DEFAULT 1,
+                    queued_at INTEGER NOT NULL,
+                    next_attempt_at INTEGER NOT NULL,
+                    attempt_count INTEGER NOT NULL DEFAULT 0,
+                    last_error TEXT,
+                    FOREIGN KEY(match_id) REFERENCES matches(id) ON DELETE CASCADE
+                );
+                CREATE TABLE IF NOT EXISTS cloud_sync_receipts (
+                    match_id TEXT PRIMARY KEY,
+                    reducer_version INTEGER NOT NULL,
+                    synced_at INTEGER NOT NULL,
+                    FOREIGN KEY(match_id) REFERENCES matches(id) ON DELETE CASCADE
+                );
+                CREATE INDEX IF NOT EXISTS cloud_sync_outbox_due
+                    ON cloud_sync_outbox(next_attempt_at, queued_at);
                 INSERT OR IGNORE INTO matches(
                     id, first_received, last_received, imported_at, source, operation_count,
                     reducer_version, summary_json, review_gzip
@@ -166,6 +193,20 @@ impl MatchStorage {
                 WHERE match_id NOT LIKE 'live-%';
                 DELETE FROM matches
                 WHERE operation_count > 0 AND id NOT LIKE 'live-%';
+                INSERT OR IGNORE INTO cloud_sync_outbox(
+                    match_id, reducer_version, generation, queued_at,
+                    next_attempt_at, attempt_count, last_error
+                )
+                SELECT
+                    matches.id, matches.reducer_version, 1, unixepoch(), unixepoch(), 0, NULL
+                FROM matches
+                LEFT JOIN cloud_sync_receipts
+                    ON cloud_sync_receipts.match_id = matches.id
+                WHERE matches.review_gzip IS NOT NULL
+                  AND (
+                    cloud_sync_receipts.match_id IS NULL
+                    OR cloud_sync_receipts.reducer_version < matches.reducer_version
+                  );
                 ",
             )
             .map_err(|error| error.to_string())?;
@@ -364,7 +405,7 @@ impl MatchStorage {
                 .rev()
                 .find_map(|turn| turn.get("snapshot").cloned())
         });
-        let connection = self.connection()?;
+        let mut connection = self.connection()?;
         let timing = connection
             .query_row(
                 "SELECT operation_count, first_received, last_received FROM matches WHERE id=?1",
@@ -398,7 +439,10 @@ impl MatchStorage {
         };
         let summary_json = serde_json::to_string(&summary).map_err(|error| error.to_string())?;
         let review_json = serde_json::to_vec(review).map_err(|error| error.to_string())?;
-        connection
+        let transaction = connection
+            .transaction()
+            .map_err(|error| error.to_string())?;
+        transaction
             .execute(
                 "INSERT INTO matches(
                     id, first_received, last_received, imported_at, source,
@@ -420,7 +464,149 @@ impl MatchStorage {
                 ],
             )
             .map_err(|error| error.to_string())?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |duration| duration.as_secs() as i64);
+        // Live reviews are rewritten as operations arrive. Delay unfinished
+        // reviews briefly so a normal match generally produces one cloud
+        // object, while still leaving a durable obligation if Trace exits.
+        let next_attempt_at = now + if summary.recording { 30 } else { 0 };
+        transaction
+            .execute(
+                "INSERT INTO cloud_sync_outbox(
+                    match_id, reducer_version, generation, queued_at,
+                    next_attempt_at, attempt_count, last_error
+                 ) VALUES(?1, ?2, 1, ?3, ?4, 0, NULL)
+                 ON CONFLICT(match_id) DO UPDATE SET
+                    reducer_version=excluded.reducer_version,
+                    generation=cloud_sync_outbox.generation + 1,
+                    queued_at=excluded.queued_at,
+                    next_attempt_at=excluded.next_attempt_at,
+                    attempt_count=0,
+                    last_error=NULL",
+                params![&id, reducer_version, now, next_attempt_at],
+            )
+            .map_err(|error| error.to_string())?;
+        transaction.commit().map_err(|error| error.to_string())?;
         Ok(summary)
+    }
+
+    pub fn pending_cloud_reviews(&self, limit: i64) -> Result<Vec<PendingCloudReview>, String> {
+        let connection = self.connection()?;
+        let mut statement = connection
+            .prepare(
+                "SELECT
+                    cloud_sync_outbox.match_id,
+                    cloud_sync_outbox.reducer_version,
+                    cloud_sync_outbox.generation,
+                    cloud_sync_outbox.attempt_count,
+                    matches.review_gzip
+                 FROM cloud_sync_outbox
+                 JOIN matches ON matches.id = cloud_sync_outbox.match_id
+                 WHERE cloud_sync_outbox.next_attempt_at <= unixepoch()
+                 ORDER BY cloud_sync_outbox.next_attempt_at, cloud_sync_outbox.queued_at
+                 LIMIT ?1",
+            )
+            .map_err(|error| error.to_string())?;
+        let rows = statement
+            .query_map([limit.clamp(1, 50)], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, Vec<u8>>(4)?,
+                ))
+            })
+            .map_err(|error| error.to_string())?;
+        let mut pending = Vec::new();
+        for row in rows {
+            let (match_id, reducer_version, generation, attempt_count, compressed) =
+                row.map_err(|error| error.to_string())?;
+            let review =
+                serde_json::from_slice(&gunzip(&compressed)?).map_err(|error| error.to_string())?;
+            pending.push(PendingCloudReview {
+                match_id,
+                reducer_version,
+                generation,
+                attempt_count,
+                review,
+            });
+        }
+        Ok(pending)
+    }
+
+    pub fn mark_cloud_sync_success(
+        &self,
+        match_id: &str,
+        reducer_version: i64,
+        generation: i64,
+    ) -> Result<bool, String> {
+        let mut connection = self.connection()?;
+        let transaction = connection
+            .transaction()
+            .map_err(|error| error.to_string())?;
+        let removed = transaction
+            .execute(
+                "DELETE FROM cloud_sync_outbox WHERE match_id=?1 AND generation=?2",
+                params![match_id, generation],
+            )
+            .map_err(|error| error.to_string())?
+            > 0;
+        if removed {
+            transaction
+                .execute(
+                    "INSERT INTO cloud_sync_receipts(match_id, reducer_version, synced_at)
+                     VALUES(?1, ?2, unixepoch())
+                     ON CONFLICT(match_id) DO UPDATE SET
+                        reducer_version=excluded.reducer_version,
+                        synced_at=excluded.synced_at",
+                    params![match_id, reducer_version],
+                )
+                .map_err(|error| error.to_string())?;
+        }
+        transaction.commit().map_err(|error| error.to_string())?;
+        Ok(removed)
+    }
+
+    pub fn mark_cloud_sync_failure(
+        &self,
+        match_id: &str,
+        generation: i64,
+        attempt_count: i64,
+        error: &str,
+    ) -> Result<bool, String> {
+        let exponent = (attempt_count + 1).clamp(0, 6) as u32;
+        let retry_seconds = (15_i64.saturating_mul(2_i64.pow(exponent))).min(15 * 60);
+        let concise_error = error.chars().take(500).collect::<String>();
+        Ok(self
+            .connection()?
+            .execute(
+                "UPDATE cloud_sync_outbox
+                 SET attempt_count=attempt_count + 1,
+                     next_attempt_at=unixepoch() + ?3,
+                     last_error=?4
+                 WHERE match_id=?1 AND generation=?2",
+                params![match_id, generation, retry_seconds, concise_error],
+            )
+            .map_err(|error| error.to_string())?
+            > 0)
+    }
+
+    #[cfg(test)]
+    fn cloud_sync_counts(&self) -> Result<(i64, i64), String> {
+        let connection = self.connection()?;
+        let outbox = connection
+            .query_row("SELECT COUNT(*) FROM cloud_sync_outbox", [], |row| {
+                row.get(0)
+            })
+            .map_err(|error| error.to_string())?;
+        let receipts = connection
+            .query_row("SELECT COUNT(*) FROM cloud_sync_receipts", [], |row| {
+                row.get(0)
+            })
+            .map_err(|error| error.to_string())?;
+        Ok((outbox, receipts))
     }
 
     pub fn list_summaries(&self, offset: i64, limit: i64) -> Result<Vec<MatchSummary>, String> {
@@ -588,16 +774,12 @@ impl MatchStorage {
 mod tests {
     use super::*;
     use serde_json::json;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temporary_storage() -> (PathBuf, MatchStorage) {
-        let suffix = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
         let directory = std::env::temp_dir().join(format!(
-            "trace-storage-test-{}-{suffix}",
-            std::process::id()
+            "trace-storage-test-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
         ));
         fs::create_dir_all(&directory).unwrap();
         let storage = MatchStorage::new(directory.join("trace.sqlite3")).unwrap();
@@ -664,11 +846,153 @@ mod tests {
         assert_eq!(summaries[0].duration_seconds, Some(95));
         assert_eq!(storage.load_review("live-match-1").unwrap(), Some(review));
         assert_eq!(storage.status(0).unwrap().pending_matches, 0);
+        assert_eq!(storage.cloud_sync_counts().unwrap(), (1, 0));
         assert!(storage.raw_match_ids(true, 1, 10).unwrap().is_empty());
         assert_eq!(
             storage.raw_match_ids(true, 2, 10).unwrap(),
             vec!["live-match-1"]
         );
+
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn cloud_outbox_retries_without_losing_newer_revisions() {
+        let (directory, storage) = temporary_storage();
+        let review = json!({
+            "id": "completed-match",
+            "importedAt": "2026-09-04T10:00:00Z",
+            "source": "live-network",
+            "localPlayer": "Local",
+            "opponent": "Opponent",
+            "winner": "Local",
+            "turns": [{"index": 0, "events": [], "snapshot": {"players": {}}}]
+        });
+
+        storage.persist_review(&review, 3).unwrap();
+        let first = storage.pending_cloud_reviews(10).unwrap();
+        assert_eq!(first.len(), 1);
+        assert_eq!(first[0].generation, 1);
+
+        let mut revised = review.clone();
+        revised["turns"] = json!([
+            {"index": 0, "events": [], "snapshot": {"players": {}}},
+            {"index": 1, "events": [{"kind": "game"}], "snapshot": {"players": {}}}
+        ]);
+        storage.persist_review(&revised, 3).unwrap();
+        assert!(!storage
+            .mark_cloud_sync_success("completed-match", 3, first[0].generation)
+            .unwrap());
+
+        let second = storage.pending_cloud_reviews(10).unwrap();
+        assert_eq!(second.len(), 1);
+        assert_eq!(second[0].generation, 2);
+        assert!(storage
+            .mark_cloud_sync_failure(
+                "completed-match",
+                second[0].generation,
+                second[0].attempt_count,
+                "offline",
+            )
+            .unwrap());
+        assert!(storage.pending_cloud_reviews(10).unwrap().is_empty());
+
+        storage
+            .connection()
+            .unwrap()
+            .execute(
+                "UPDATE cloud_sync_outbox SET next_attempt_at=0 WHERE match_id='completed-match'",
+                [],
+            )
+            .unwrap();
+        let retry = storage.pending_cloud_reviews(10).unwrap();
+        assert_eq!(retry[0].attempt_count, 1);
+        assert!(storage
+            .mark_cloud_sync_success("completed-match", 3, retry[0].generation)
+            .unwrap());
+        assert_eq!(storage.cloud_sync_counts().unwrap(), (0, 1));
+
+        let reopened = MatchStorage::new(directory.join("trace.sqlite3")).unwrap();
+        assert_eq!(reopened.cloud_sync_counts().unwrap(), (0, 1));
+        reopened.persist_review(&revised, 4).unwrap();
+        assert_eq!(reopened.cloud_sync_counts().unwrap(), (1, 1));
+
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn migrates_existing_reviews_into_the_cloud_outbox() {
+        let directory = std::env::temp_dir().join(format!(
+            "trace-storage-v1-test-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let database_path = directory.join("trace.sqlite3");
+        let review = json!({
+            "id": "archived-match",
+            "importedAt": "2026-09-03T10:00:00Z",
+            "source": "live-network",
+            "localPlayer": "Local",
+            "opponent": "Opponent",
+            "winner": "Local",
+            "turns": []
+        });
+        let connection = Connection::open(&database_path).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                 CREATE TABLE matches (
+                    id TEXT PRIMARY KEY,
+                    first_received TEXT NOT NULL,
+                    last_received TEXT NOT NULL,
+                    imported_at TEXT NOT NULL,
+                    source TEXT NOT NULL DEFAULT 'live-network',
+                    operation_count INTEGER NOT NULL DEFAULT 0,
+                    reducer_version INTEGER NOT NULL DEFAULT 0,
+                    summary_json TEXT,
+                    review_gzip BLOB
+                 );
+                 CREATE TABLE operations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    match_id TEXT NOT NULL,
+                    received_at TEXT NOT NULL,
+                    message_index INTEGER,
+                    operation_id TEXT,
+                    fingerprint TEXT NOT NULL UNIQUE,
+                    payload_gzip BLOB NOT NULL,
+                    FOREIGN KEY(match_id) REFERENCES matches(id) ON DELETE CASCADE
+                 );
+                 CREATE TABLE cards (
+                    id TEXT PRIMARY KEY,
+                    payload_json TEXT NOT NULL,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                 );
+                 INSERT INTO metadata(key, value) VALUES('schema_version', '1');",
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO matches(
+                    id, first_received, last_received, imported_at, source,
+                    operation_count, reducer_version, summary_json, review_gzip
+                 ) VALUES(?1, ?2, ?2, ?2, 'live-network', 0, 11, NULL, ?3)",
+                params![
+                    "archived-match",
+                    "2026-09-03T10:00:00Z",
+                    gzip(&serde_json::to_vec(&review).unwrap()).unwrap()
+                ],
+            )
+            .unwrap();
+        drop(connection);
+
+        let storage = MatchStorage::new(database_path).unwrap();
+        assert_eq!(storage.load_review("archived-match").unwrap(), Some(review));
+        let queued = storage.pending_cloud_reviews(10).unwrap();
+        assert_eq!(queued.len(), 1);
+        assert_eq!(queued[0].match_id, "archived-match");
+        assert_eq!(queued[0].reducer_version, 11);
+        assert_eq!(storage.cloud_sync_counts().unwrap(), (1, 0));
 
         fs::remove_dir_all(directory).unwrap();
     }

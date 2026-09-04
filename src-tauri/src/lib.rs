@@ -219,34 +219,17 @@ async fn persist_match_review(
     reducer_version: i64,
 ) -> Result<storage::MatchSummary, String> {
     let storage = storage.inner().clone();
-    let review_for_cloud = review.clone();
+    let storage_for_persist = storage.clone();
     let summary = tauri::async_runtime::spawn_blocking(move || {
-        storage.persist_review(&review, reducer_version)
+        storage_for_persist.persist_review(&review, reducer_version)
     })
     .await
     .map_err(|error| error.to_string())??;
     let cloud_sync = cloud_sync.inner().clone();
     tauri::async_runtime::spawn(async move {
-        cloud_sync
-            .sync_review(review_for_cloud, reducer_version)
-            .await;
+        cloud_sync.sync_pending(storage).await;
     });
     Ok(summary)
-}
-
-#[tauri::command]
-async fn cloud_sync_status(
-    cloud_sync: tauri::State<'_, cloud_sync::CloudSync>,
-) -> Result<cloud_sync::CloudSyncStatus, String> {
-    Ok(cloud_sync.status().await)
-}
-
-#[tauri::command]
-async fn set_cloud_sync_enabled(
-    cloud_sync: tauri::State<'_, cloud_sync::CloudSync>,
-    enabled: bool,
-) -> Result<cloud_sync::CloudSyncStatus, String> {
-    cloud_sync.set_enabled(enabled).await
 }
 
 #[tauri::command]
@@ -376,11 +359,17 @@ pub fn run() {
             let database_path = app.path().app_data_dir()?.join("trace.sqlite3");
             let storage =
                 storage::MatchStorage::new(database_path).map_err(std::io::Error::other)?;
-            app.manage(storage);
             let cloud_sync_path = app.path().app_data_dir()?.join("cloud-sync.json");
-            let cloud_sync =
-                cloud_sync::CloudSync::new(cloud_sync_path).map_err(std::io::Error::other)?;
-            app.manage(cloud_sync);
+            let cloud_sync = cloud_sync::CloudSync::new(cloud_sync_path);
+            app.manage(storage.clone());
+            app.manage(cloud_sync.clone());
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                loop {
+                    cloud_sync.sync_pending(storage.clone()).await;
+                    tokio::time::sleep(std::time::Duration::from_secs(20)).await;
+                }
+            });
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -396,8 +385,6 @@ pub fn run() {
             list_match_summaries,
             load_match_review,
             persist_match_review,
-            cloud_sync_status,
-            set_cloud_sync_enabled,
             load_match_operations,
             list_raw_match_ids,
             resolve_card_sources,
