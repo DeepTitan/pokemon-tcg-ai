@@ -149,11 +149,6 @@ function formatMatchDate(iso: string): string {
   return `${new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date)}, ${time}`;
 }
 
-function formatArchiveDate(iso: string): string {
-  const date = new Date(capturedAtIso(iso));
-  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date);
-}
-
 function prizesRemaining(board: TrackedPlayerBoard): number {
   return Math.max(0, 6 - board.prizesTaken);
 }
@@ -612,7 +607,7 @@ function ArchiveFeaturedCard({ card, label, rating, tone, catalog }: { card: Tra
   const name = card ? (resolvedCardInfo(card, catalog)?.name || card.name) : 'Unknown deck';
   return <span className={`session-featured-card ${tone}`} title={`${label}: ${name}${rating != null ? ` · ${rating} Elo` : ''}`}>
     <img src={card ? resolvedCardImage(card, catalog) : fallbackCardArt(name)} alt={`${label} deck: ${name}`} onError={showCardBackOnError} />
-    <small><span>{label}</span>{rating != null && <b>{rating}</b>}</small>
+    <small>{label}{rating != null && <> · {rating}</>}</small>
   </span>;
 }
 
@@ -622,17 +617,13 @@ function ArchiveRow({ summary, selected, catalog, onSelect }: { summary: MatchSu
   const localCardName = matchup.localCard ? (resolvedCardInfo(matchup.localCard, catalog)?.name || matchup.localCard.name) : 'Unknown deck';
   const opponentCardName = matchup.opponentCard ? (resolvedCardInfo(matchup.opponentCard, catalog)?.name || matchup.opponentCard.name) : 'Unknown deck';
   const dateLabel = formatMatchDate(summary.importedAt);
-  const archiveDateLabel = formatArchiveDate(summary.importedAt);
   const durationLabel = formatMatchDuration(summary.durationSeconds);
   const prizeLabel = formatPrizeScore(matchup.localPrizesTaken, matchup.opponentPrizesTaken);
   const ratingChangeLabel = summary.ratingChange != null ? formatSignedRatingChange(summary.ratingChange) : null;
-  const ratingSummary = summary.ratingAfter != null
-    ? `New rating ${summary.ratingAfter}`
-    : summary.localRating != null ? `Rating ${summary.localRating}` : null;
   return (
     <button
       type="button"
-      className={`session-card result-${result.toLowerCase()} ${selected ? 'selected' : ''} ${summary.recording ? 'recording' : ''}`}
+      className={`session-card ${selected ? 'selected' : ''} ${summary.recording ? 'recording' : ''}`}
       onClick={onSelect}
       aria-label={`${result} against ${summary.opponent}. ${localCardName} versus ${opponentCardName}.${summary.localRating != null ? ` Your Elo ${summary.localRating}.` : ''}${summary.opponentRating != null ? ` Opponent Elo ${summary.opponentRating}.` : ''}${ratingChangeLabel ? ` ${ratingChangeLabel} Elo. New rating ${summary.ratingAfter}.` : ''} ${dateLabel}. ${durationLabel}. ${prizeLabel}.`}
     >
@@ -642,14 +633,13 @@ function ArchiveRow({ summary, selected, catalog, onSelect }: { summary: MatchSu
         <ArchiveFeaturedCard card={matchup.opponentCard} label="Them" rating={summary.opponentRating} tone="opponent" catalog={catalog} />
       </span>
       <span className="session-copy">
-        <span className="session-heading"><strong>vs. {summary.opponent}</strong></span>
-        <span className="session-result-line"><em className={result.toLowerCase()}>{result}</em>{ratingChangeLabel && <b className={summary.ratingChange! >= 0 ? 'positive' : 'negative'}>· {ratingChangeLabel} Elo</b>}</span>
-        {ratingSummary && <span className="session-new-rating">{ratingSummary}</span>}
-      </span>
-      <span className="session-meta">
-        <time dateTime={summary.importedAt} title={dateLabel}><CalendarBlank size={12} weight="bold" />{archiveDateLabel}</time>
-        <small><Clock size={12} weight="bold" />{durationLabel.replace(/^Time\s+/, '')}</small>
-        <small><Trophy size={12} weight="fill" />{prizeLabel.replace(/^Prizes\s+/, '')}</small>
+        <span className="session-heading"><strong>vs. {summary.opponent}</strong><em className={result.toLowerCase()}>{result}</em></span>
+        <span className="session-decks" title={`${localCardName} versus ${opponentCardName}`}><b>{localCardName}</b><i>vs</i><b>{opponentCardName}</b></span>
+        <span className="session-meta">
+          <time dateTime={summary.importedAt}><CalendarBlank size={12} weight="bold" />{dateLabel}</time>
+          <small><Clock size={12} weight="bold" />{durationLabel}</small>
+          <small><Trophy size={12} weight="fill" />{prizeLabel}</small>
+        </span>
       </span>
     </button>
   );
