@@ -1,4 +1,5 @@
 import type { TrackedTurn, TrackerEvent } from './types.js';
+import { presentTurnEvents } from './game-log-copy.js';
 
 export interface TimelineEntry {
   event: TrackerEvent;
@@ -24,8 +25,7 @@ export function timelineEventKey(reviewIndex: number, event: TrackerEvent): stri
 }
 
 export function buildTimeline(turns: TrackedTurn[]): { entries: TimelineEntry[]; groups: TimelineGroup[] } {
-  const entries = turns.flatMap((turn, reviewIndex) => turn.events
-    .filter((event) => !event.detail)
+  const entries = turns.flatMap((turn, reviewIndex) => presentTurnEvents(turn)
     .map((event) => ({
       event,
       turn,

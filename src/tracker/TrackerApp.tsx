@@ -25,6 +25,7 @@ import { cardInfoToEngineCard, cardSourceIdFromReviewCard } from './card-adapter
 import { sortCardsForDisplay } from './card-order-model.js';
 import { findEnergyType } from './EnergyBadge.js';
 import { buildTimeline, eventKeyForReviewIndex } from './timeline-model.js';
+import { presentTurnEvents, selectionForEvent } from './game-log-copy.js';
 import { cardEffectSummary } from './card-effect-model.js';
 import { attackResolutionForTurn, type AttackResolution } from './attack-resolution-model.js';
 import { damageChangesForTurn, type PokemonDamageChange } from './damage-change-model.js';
@@ -96,6 +97,20 @@ const EVENT_LABELS: Record<TrackerEventKind, string> = {
   ability: 'Ability', attack: 'Attack', damage: 'Damage', coin: 'Coin flip', knockout: 'KO', prize: 'Prize',
   stadium: 'Stadium', system: 'Game',
 };
+
+function eventDisplayLabel(event: { id: string; kind: TrackerEventKind; text: string }): string {
+  if (/\bended their turn$/i.test(event.text)) return 'Turn end';
+  if (/^Game over\b/i.test(event.text)) return 'Result';
+  if (/\bbenched\s+/i.test(event.text)) return 'Bench';
+  if (/\bevolved\s+/i.test(event.text)) return 'Evolution';
+  if (!event.id.includes(':selection:')) return EVENT_LABELS[event.kind];
+  if (/searched their deck|from their deck/i.test(event.text)) return 'Deck search';
+  if (/discarded /i.test(event.text)) return 'Cards discarded';
+  if (/(?:returned|recovered|from the discard pile)/i.test(event.text)) return 'Discard recovery';
+  if (/switched |promoted |to the Active Spot/i.test(event.text)) return 'Switch';
+  if (/attached /i.test(event.text)) return 'Attachment';
+  return 'Choice';
+}
 
 const TRAINER_ART = [
   '/tracker-assets/trainer-riley.png', '/tracker-assets/trainer-jordan.png',
@@ -287,8 +302,7 @@ function actionCardsForTurn(turn: TrackedTurn, catalog: ReadonlyMap<string, Card
 function actionEventsForTurn(turn: TrackedTurn): TurnChoiceFrame['events'] {
   const actor = turn.player || '';
   const grouped = new Map<string, { id: string; kind: TrackerEventKind; text: string; count: number; targetIds: Set<string> }>();
-  turn.events
-    .filter((event) => !event.detail)
+  presentTurnEvents(turn)
     .map((event) => ({ ...event, text: actor ? withoutActorPrefix(event.text, actor) : event.text }))
     .forEach((event) => {
       const key = event.text.trim().toLowerCase();
@@ -708,14 +722,6 @@ export default function TrackerApp() {
   const selectedCanonical = useMemo(() => selectedReview && selectedTurn
     ? selectedTurn.canonical || trackedTurnToCanonical(selectedReview, selectedTurn)
     : null, [selectedReview, selectedTurn]);
-  const currentSelection = useMemo(() => {
-    if (!selectedCanonical || !selectedTurn) return undefined;
-    const selectionEvent = selectedTurn.events.find((event) => event.id.includes(':selection:'));
-    if (!selectionEvent) return undefined;
-    const selectionId = selectionEvent.id.split(':selection:').at(-1);
-    return selectedCanonical.selections.find((selection) => selection.id === selectionId) || selectedCanonical.selection;
-  }, [selectedCanonical, selectedTurn]);
-  const selectedChoiceNames = useMemo(() => selectedCardNames(currentSelection), [currentSelection]);
   const localBoard = selectedReview && selectedTurn ? selectedTurn.snapshot.players[selectedReview.localPlayer] : null;
   const opponentBoard = selectedReview && selectedTurn ? selectedTurn.snapshot.players[selectedReview.opponent] : null;
   const localCanonicalPlayer = selectedCanonical ? selectedCanonical.state.players[selectedCanonical.localPlayerIndex] : null;
@@ -1374,16 +1380,18 @@ export default function TrackerApp() {
                   {group.entries.map((entry) => {
                     const { event, turn } = entry;
                     const selected = entry.key === selectedEventKey;
-                    const selectionId = event.id.includes(':selection:') ? event.id.split(':selection:').at(-1) : undefined;
-                    const selection = selectionId ? turn.canonical?.selections.find((candidate) => candidate.id === selectionId) : undefined;
+                    const selection = selectionForEvent(turn, event);
+                    const eventSelectedChoiceNames = selectedCardNames(selection);
+                    const visibleFacts = event.facts || [];
+                    const displayLabel = eventDisplayLabel(event);
                     const eventCard = event.cardId
                       ? cardCatalog.get(event.cardId) || cardCatalog.get(event.cardId.toLowerCase())
                       : undefined;
                     const effect = cardEffectSummary(event, eventCard);
                     return <article className={`timeline-event-wrap kind-${event.kind} ${event.coinResult ? `coin-${event.coinResult}` : ''} ${selected ? 'selected' : ''}`} key={entry.key} role="listitem" aria-setsize={timeline.entries.length} aria-posinset={entry.position}>
-                      <button ref={selected ? selectedTimelineEventRef : undefined} className="timeline-event" type="button" aria-current={selected ? 'step' : undefined} aria-label={`Event ${entry.position} of ${timeline.entries.length}. ${event.id.includes(':selection:') ? 'Captured choice' : EVENT_LABELS[event.kind]}. ${event.text}`} onClick={() => { setSelectedEventKey(entry.key); navigateToFrame(Math.min(entry.reviewIndex, (selectedReview?.turns.length || 1) - 1)); setPlaying(false); setInspector(null); }}>
+                      <button ref={selected ? selectedTimelineEventRef : undefined} className="timeline-event" type="button" aria-current={selected ? 'step' : undefined} aria-label={`Event ${entry.position} of ${timeline.entries.length}. ${displayLabel}. ${event.text}`} onClick={() => { setSelectedEventKey(entry.key); navigateToFrame(Math.min(entry.reviewIndex, (selectedReview?.turns.length || 1) - 1)); setPlaying(false); setInspector(null); }}>
                         <span className="event-icon"><EventIcon kind={event.kind} /></span>
-                        <span className="event-copy"><span className="event-meta"><small>{event.id.includes(':selection:') ? 'Captured choice' : EVENT_LABELS[event.kind]}</small><span>Event {entry.position}</span></span><strong>{event.text}</strong></span>
+                        <span className="event-copy"><span className="event-meta"><small>{displayLabel}</small><span>Event {entry.position}</span></span><strong>{event.text}</strong></span>
                         <span className="event-trailing">{event.coinResult ? <b className={`coin-outcome ${event.coinResult}`}><Coin size={10} weight="fill" />{event.coinResult === 'heads' ? 'Heads' : event.coinResult === 'tails' ? 'Tails' : 'Mixed'}</b> : selected ? <b>Viewing</b> : event.id.includes(':selection:') ? <MagnifyingGlass size={14} weight="bold" /> : <CaretRight size={14} weight="bold" />}</span>
                       </button>
                       {selected && effect && eventCard && <button className="event-effect-detail" type="button" onClick={() => openChoiceCard({ id: `${event.id}:card`, cardId: eventCard.id, name: eventCard.name })} aria-label={`${effect.label}: ${effect.title}. ${effect.text}. Open card details`}>
@@ -1391,15 +1399,13 @@ export default function TrackerApp() {
                         <span><small>{effect.label}</small><strong>{effect.title}</strong><p>{effect.text}</p></span>
                         <CaretRight size={14} weight="bold" />
                       </button>}
-                      {selected && Boolean(event.facts?.length) && <details className="event-data-detail">
-                        <summary><CaretRight size={12} weight="bold" /><span><b>Captured action data</b><small>Readable facts from the exact game payload</small></span><strong>{event.facts!.length}</strong></summary>
+                      {selected && Boolean(visibleFacts.length) && <details className="event-data-detail">
+                        <summary><CaretRight size={12} weight="bold" /><span><b>Action details</b><small>What happened during this action</small></span><strong>{visibleFacts.length}</strong></summary>
                         <dl>
-                          {event.facts!.map((fact) => <div className={`fact-${fact.kind} tone-${fact.tone || 'neutral'}`} key={fact.id}><dt><i />{fact.label}</dt><dd>{fact.value}</dd></div>)}
+                          {visibleFacts.map((fact) => <div className={`fact-${fact.kind} tone-${fact.tone || 'neutral'}`} key={fact.id}><dt><i />{fact.label}</dt><dd>{fact.value}</dd></div>)}
                         </dl>
-                        {Boolean(event.protocolGroups?.length) && <details className="event-protocol-detail"><summary><span>Protocol trace</span><small>{event.protocolGroups!.length} data categor{event.protocolGroups!.length === 1 ? 'y' : 'ies'}</small></summary><div>{event.protocolGroups!.map((group) => <span key={group.id}><b>{group.label}</b><small>×{group.count}</small><em>{group.readableCount === group.count ? 'shown above' : group.readableCount ? `${group.readableCount} shown` : 'engine-only'}</em></span>)}</div></details>}
-                        <footer><span>{event.protocolChanges || 0} protocol change{event.protocolChanges === 1 ? '' : 's'} captured</span>{Boolean(event.internalChanges) && <span>{event.internalChanges} engine-only transition{event.internalChanges === 1 ? '' : 's'} condensed in the trace</span>}</footer>
                       </details>}
-                      {selected && selection && <div className="timeline-event-detail"><span>{selection.candidateVisibility === 'private' ? <><b>{selectedChoiceNames.length ? selectedChoiceNames.join(' + ') : 'Private selection'}</b><small>{selection.selectedOptionIds.length} chosen · candidate list stayed private in the payload</small></> : selection.allOptionIds.length > 0 ? <><b>{selectedChoiceNames.length ? selectedChoiceNames.join(' + ') : `${selection.allOptionIds.length} viewed`}</b><small>{selection.allOptionIds.length} viewed · {selection.eligibleOptionIds.length} eligible · {selection.selectedOptionIds.length} chosen</small></> : <><b>{selection.kind === 'damage' ? 'Damage placement' : 'Captured decision'}</b><small>{selection.completed ? 'Resolved in this action' : 'Pending at capture'}</small></>}</span><button type="button" onClick={() => openSelection(selection)}>{selection.candidateVisibility === 'private' ? 'View result' : selection.allOptionIds.length > 0 ? 'Review cards' : 'Review choice'}</button></div>}
+                      {selected && selection && (eventSelectedChoiceNames.length > 0 || selection.allOptionIds.length > 0) && <div className="timeline-event-detail"><span>{selection.candidateVisibility === 'private' ? <><b>{eventSelectedChoiceNames.length ? eventSelectedChoiceNames.join(' + ') : 'Hidden choice'}</b><small>{eventSelectedChoiceNames.length ? 'Only the chosen card was revealed' : 'The available cards stayed hidden'}</small></> : <><b>{eventSelectedChoiceNames.length ? eventSelectedChoiceNames.join(' + ') : 'Cards viewed'}</b><small>{selection.allOptionIds.length} card{selection.allOptionIds.length === 1 ? '' : 's'} viewed · {eventSelectedChoiceNames.length} chosen</small></>}</span><button type="button" onClick={() => openSelection(selection)}>{eventSelectedChoiceNames.length ? 'View chosen cards' : 'Review cards'}</button></div>}
                     </article>;
                   })}
                 </div>
