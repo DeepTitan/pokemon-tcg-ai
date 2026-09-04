@@ -36,6 +36,10 @@ const operation: CapturedOperation = {
   messageIndex: 1,
   operation: {
     operationNumber: 1,
+    players: [
+      { playerId: 'player-1', playerName: 'Isaiah', competitiveElo: 1753 },
+      { playerId: 'player-2', playerName: 'Opponent', competitiveElo: 1755 },
+    ],
     playerOperation: { operationType: 2, accountID: 'player-1', originEntityID: 'card-active' },
     updatedEntities: [
       { entityID: 'player-entity-1', ownerPlayerId: 'player-1', currentPos: 3, isPlayer1: true, userName: 'Isaiah' },
@@ -53,6 +57,8 @@ assert.ok(review);
 assert.equal(review.source, 'live-network');
 assert.equal(review.localPlayer, 'Isaiah');
 assert.equal(review.opponent, 'Opponent');
+assert.equal(review.localRating, 1753);
+assert.equal(review.opponentRating, 1755);
 assert.equal(review.turns.length, 2);
 assert.equal(review.turns[1].snapshot.players.Isaiah.active?.name, 'Dragapult ex');
 assert.equal(review.turns[1].snapshot.players.Isaiah.active?.damage, 30);

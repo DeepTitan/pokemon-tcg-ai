@@ -24,7 +24,7 @@ assert.equal(recording.operationCount, 1);
 
 const review = {
   id: 'live-match-1', importedAt: '2026-08-21T00:00:00.000Z', source: 'live-network', players: ['A', 'B'],
-  localPlayer: 'A', opponent: 'B', winner: 'A', rawLog: '', turns: [{
+  localPlayer: 'A', opponent: 'B', winner: 'A', localRating: 1684, opponentRating: 1770, rawLog: '', turns: [{
     index: 0, label: 'Capture baseline', events: [], snapshot: { players: {}, stadium: null },
   }],
 } satisfies MatchReview;
@@ -34,6 +34,8 @@ assert.equal(summary.operationCount, 12);
 assert.equal(summary.reducerVersion, REDUCER_VERSION);
 assert.equal(summary.finalSnapshot?.stadium, null);
 assert.equal(summary.recording, false);
+assert.equal(summary.ratingChange, 15);
+assert.equal(summary.ratingAfter, 1699);
 
 const unfinished = {
   ...review,

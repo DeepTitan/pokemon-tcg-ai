@@ -46,6 +46,14 @@ pub struct MatchSummary {
     pub local_player: String,
     pub opponent: String,
     pub winner: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_rating: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opponent_rating: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rating_change: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rating_after: Option<i64>,
     pub turn_count: usize,
     pub operation_count: i64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -68,6 +76,17 @@ fn capture_elapsed_seconds(
     let last = last_received.trim_end_matches('Z').parse::<f64>().ok()?;
     let elapsed = last - first;
     (elapsed.is_finite() && elapsed >= 0.0).then(|| elapsed.round() as u64)
+}
+
+fn competitive_rating_result(
+    local_rating: i64,
+    opponent_rating: i64,
+    local_won: bool,
+) -> (i64, i64) {
+    let expected_score = 1.0 / (1.0 + 10_f64.powf((opponent_rating - local_rating) as f64 / 400.0));
+    let actual_score = if local_won { 1.0 } else { 0.0 };
+    let change = (25.0 * (actual_score - expected_score)).floor() as i64;
+    (change, local_rating + change)
 }
 
 fn gzip(bytes: &[u8]) -> Result<Vec<u8>, String> {
@@ -397,6 +416,15 @@ impl MatchStorage {
             .get("winner")
             .and_then(Value::as_str)
             .map(str::to_owned);
+        let local_rating = review.get("localRating").and_then(Value::as_i64);
+        let opponent_rating = review.get("opponentRating").and_then(Value::as_i64);
+        let rating_result = winner.as_ref().and_then(|winner| {
+            Some(competitive_rating_result(
+                local_rating?,
+                opponent_rating?,
+                winner == &local_player,
+            ))
+        });
         let turns = review.get("turns").and_then(Value::as_array);
         let turn_count = turns.map_or(0, Vec::len);
         let final_snapshot = turns.and_then(|values| {
@@ -430,6 +458,10 @@ impl MatchStorage {
             local_player,
             opponent,
             winner,
+            local_rating,
+            opponent_rating,
+            rating_change: rating_result.map(|result| result.0),
+            rating_after: rating_result.map(|result| result.1),
             turn_count,
             operation_count,
             duration_seconds: capture_elapsed_seconds(&timing.1, &timing.2, operation_count),
@@ -655,6 +687,10 @@ impl MatchStorage {
                 local_player: "You".to_owned(),
                 opponent: "Live game".to_owned(),
                 winner: None,
+                local_rating: None,
+                opponent_rating: None,
+                rating_change: None,
+                rating_after: None,
                 turn_count: 0,
                 operation_count,
                 duration_seconds: None,
@@ -799,6 +835,13 @@ mod tests {
             message_index: Some(7),
             operation: json!({"operationNumber": 7}),
         }
+    }
+
+    #[test]
+    fn calculates_tcg_live_competitive_elo_changes() {
+        assert_eq!(competitive_rating_result(1753, 1755, false), (-13, 1740));
+        assert_eq!(competitive_rating_result(1684, 1770, true), (15, 1699));
+        assert_eq!(competitive_rating_result(1736, 1716, false), (-14, 1722));
     }
 
     #[test]

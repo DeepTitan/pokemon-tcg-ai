@@ -1321,6 +1321,7 @@ interface MatchAssembly {
   review: MatchReview | null;
   messageIds: Set<string>;
   operations: Map<string, OperationAssembly>;
+  matchRatings: Map<string, number>;
   localAccountId?: string;
 }
 
@@ -1586,6 +1587,7 @@ export class LiveReviewAssembler {
         review: null,
         messageIds: new Set(),
         operations: new Map(),
+        matchRatings: new Map(),
         localAccountId: captured.accountId || undefined,
       };
       this.matches.set(matchKey, assembly);
@@ -1600,6 +1602,14 @@ export class LiveReviewAssembler {
     assembly.messageIds.add(messageId);
 
     const operation = record(captured.operation) || {};
+    for (const candidate of list(operation, 'players', 'Players')) {
+      const player = record(candidate);
+      const playerName = text(player, 'playerName', 'userName', 'PlayerName', 'UserName');
+      const competitiveElo = number(player, 'competitiveElo', 'CompetitiveElo');
+      if (playerName && competitiveElo != null) {
+        assembly.matchRatings.set(playerName.toLocaleLowerCase(), Math.round(competitiveElo));
+      }
+    }
     for (const candidate of list(operation, 'gameActions', 'GameActions')) {
       const gameAction = record(candidate);
       const actionGuid = text(gameAction, 'actionGuid', 'actionGUID', 'ActionGuid', 'ActionGUID');
@@ -2032,6 +2042,8 @@ export class LiveReviewAssembler {
     assembly.review.players = [names[1], names[2]];
     assembly.review.localPlayer = names[localSide];
     assembly.review.opponent = names[localSide === 1 ? 2 : 1];
+    assembly.review.localRating = assembly.matchRatings.get(assembly.review.localPlayer.toLocaleLowerCase());
+    assembly.review.opponentRating = assembly.matchRatings.get(assembly.review.opponent.toLocaleLowerCase());
     if (boardSnapshotEntities.length) {
       const baseline = assembly.review.turns[0];
       baseline.label = 'Capture baseline';

@@ -207,6 +207,9 @@ export interface MatchReview {
   localPlayer: string;
   opponent: string;
   winner?: string;
+  /** Competitive Elo values captured from TCG Live's match-start payload. */
+  localRating?: number;
+  opponentRating?: number;
   resultReason?: 'local-client-closed';
   turns: TrackedTurn[];
   rawLog: string;
@@ -219,6 +222,10 @@ export interface MatchSummary {
   localPlayer: string;
   opponent: string;
   winner?: string;
+  localRating?: number;
+  opponentRating?: number;
+  ratingChange?: number;
+  ratingAfter?: number;
   turnCount: number;
   operationCount: number;
   /** Elapsed capture time for live matches. Imported logs may not contain timing data. */

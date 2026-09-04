@@ -41,6 +41,7 @@ import { capturedAtIso, collectCardSourceIds, finalizeReviewForClientExit, match
 import { initialClientLifecycleState, observeClientLifecycle } from './client-lifecycle-model.js';
 import { captureIndicator, visibleCaptureError } from './capture-status-model.js';
 import { archiveMatchup, formatMatchDuration, formatPrizeScore } from './archive-summary-model.js';
+import { formatSignedRatingChange } from './rating-model.js';
 import { handFanCardCount, opponentHandFanSlots } from './hand-layout-model.js';
 import { prizeSlotStates } from './prize-layout-model.js';
 import {
@@ -146,6 +147,11 @@ function formatMatchDate(iso: string): string {
   const time = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(date);
   if (sameDay) return `Today, ${time}`;
   return `${new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date)}, ${time}`;
+}
+
+function formatArchiveDate(iso: string): string {
+  const date = new Date(capturedAtIso(iso));
+  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(date);
 }
 
 function prizesRemaining(board: TrackedPlayerBoard): number {
@@ -602,11 +608,11 @@ function findPokemonById(canonical: CanonicalReviewState, id: string): PokemonIn
   return undefined;
 }
 
-function ArchiveFeaturedCard({ card, label, tone, catalog }: { card: TrackedCard | undefined; label: string; tone: 'local' | 'opponent'; catalog: ReadonlyMap<string, CardInfo> }) {
+function ArchiveFeaturedCard({ card, label, rating, tone, catalog }: { card: TrackedCard | undefined; label: string; rating?: number; tone: 'local' | 'opponent'; catalog: ReadonlyMap<string, CardInfo> }) {
   const name = card ? (resolvedCardInfo(card, catalog)?.name || card.name) : 'Unknown deck';
-  return <span className={`session-featured-card ${tone}`} title={`${label}: ${name}`}>
+  return <span className={`session-featured-card ${tone}`} title={`${label}: ${name}${rating != null ? ` · ${rating} Elo` : ''}`}>
     <img src={card ? resolvedCardImage(card, catalog) : fallbackCardArt(name)} alt={`${label} deck: ${name}`} onError={showCardBackOnError} />
-    <small>{label}</small>
+    <small><span>{label}</span>{rating != null && <b>{rating}</b>}</small>
   </span>;
 }
 
@@ -616,28 +622,34 @@ function ArchiveRow({ summary, selected, catalog, onSelect }: { summary: MatchSu
   const localCardName = matchup.localCard ? (resolvedCardInfo(matchup.localCard, catalog)?.name || matchup.localCard.name) : 'Unknown deck';
   const opponentCardName = matchup.opponentCard ? (resolvedCardInfo(matchup.opponentCard, catalog)?.name || matchup.opponentCard.name) : 'Unknown deck';
   const dateLabel = formatMatchDate(summary.importedAt);
+  const archiveDateLabel = formatArchiveDate(summary.importedAt);
   const durationLabel = formatMatchDuration(summary.durationSeconds);
   const prizeLabel = formatPrizeScore(matchup.localPrizesTaken, matchup.opponentPrizesTaken);
+  const ratingChangeLabel = summary.ratingChange != null ? formatSignedRatingChange(summary.ratingChange) : null;
+  const ratingSummary = summary.ratingAfter != null
+    ? `New rating ${summary.ratingAfter}`
+    : summary.localRating != null ? `Rating ${summary.localRating}` : null;
   return (
     <button
       type="button"
-      className={`session-card ${selected ? 'selected' : ''} ${summary.recording ? 'recording' : ''}`}
+      className={`session-card result-${result.toLowerCase()} ${selected ? 'selected' : ''} ${summary.recording ? 'recording' : ''}`}
       onClick={onSelect}
-      aria-label={`${result} against ${summary.opponent}. ${localCardName} versus ${opponentCardName}. ${dateLabel}. ${durationLabel}. ${prizeLabel}.`}
+      aria-label={`${result} against ${summary.opponent}. ${localCardName} versus ${opponentCardName}.${summary.localRating != null ? ` Your Elo ${summary.localRating}.` : ''}${summary.opponentRating != null ? ` Opponent Elo ${summary.opponentRating}.` : ''}${ratingChangeLabel ? ` ${ratingChangeLabel} Elo. New rating ${summary.ratingAfter}.` : ''} ${dateLabel}. ${durationLabel}. ${prizeLabel}.`}
     >
       <span className="session-matchup" aria-hidden="true">
-        <ArchiveFeaturedCard card={matchup.localCard} label="You" tone="local" catalog={catalog} />
+        <ArchiveFeaturedCard card={matchup.localCard} label="You" rating={summary.localRating} tone="local" catalog={catalog} />
         <span className="session-matchup-versus">VS</span>
-        <ArchiveFeaturedCard card={matchup.opponentCard} label="Them" tone="opponent" catalog={catalog} />
+        <ArchiveFeaturedCard card={matchup.opponentCard} label="Them" rating={summary.opponentRating} tone="opponent" catalog={catalog} />
       </span>
       <span className="session-copy">
-        <span className="session-heading"><strong>vs. {summary.opponent}</strong><em className={result.toLowerCase()}>{result}</em></span>
-        <span className="session-decks" title={`${localCardName} versus ${opponentCardName}`}><b>{localCardName}</b><i>vs</i><b>{opponentCardName}</b></span>
-        <span className="session-meta">
-          <time dateTime={summary.importedAt}><CalendarBlank size={12} weight="bold" />{dateLabel}</time>
-          <small><Clock size={12} weight="bold" />{durationLabel}</small>
-          <small><Trophy size={12} weight="fill" />{prizeLabel}</small>
-        </span>
+        <span className="session-heading"><strong>vs. {summary.opponent}</strong></span>
+        <span className="session-result-line"><em className={result.toLowerCase()}>{result}</em>{ratingChangeLabel && <b className={summary.ratingChange! >= 0 ? 'positive' : 'negative'}>· {ratingChangeLabel} Elo</b>}</span>
+        {ratingSummary && <span className="session-new-rating">{ratingSummary}</span>}
+      </span>
+      <span className="session-meta">
+        <time dateTime={summary.importedAt} title={dateLabel}><CalendarBlank size={12} weight="bold" />{archiveDateLabel}</time>
+        <small><Clock size={12} weight="bold" />{durationLabel.replace(/^Time\s+/, '')}</small>
+        <small><Trophy size={12} weight="fill" />{prizeLabel.replace(/^Prizes\s+/, '')}</small>
       </span>
     </button>
   );
@@ -1181,12 +1193,18 @@ export default function TrackerApp() {
             : [];
           const rebuilt = await rebuildOperations(latestOperations);
           if (active && rebuilt.review) {
-            activeMatchIdRef.current = rebuilt.review.id;
+            const previewingCompletedEloCard = !isTauri()
+              && ['127.0.0.1', 'localhost'].includes(window.location.hostname)
+              && new URLSearchParams(window.location.search).get('preview') === 'elo-card';
+            const review = previewingCompletedEloCard
+              ? { ...rebuilt.review, winner: rebuilt.review.opponent }
+              : rebuilt.review;
+            activeMatchIdRef.current = review.id;
             activeOperationsRef.current = latestOperations;
             activeOperationKeysRef.current = new Set(latestOperations.map(operationKey));
             liveAssembler.current = rebuilt.assembler;
-            upsertSummary(matchSummaryFromReview(rebuilt.review, latestOperations.length));
-            displayReview(rebuilt.review, true);
+            upsertSummary(matchSummaryFromReview(review, latestOperations.length));
+            displayReview(review, true);
           }
         }
         setRestoringReview(false);
@@ -1427,7 +1445,7 @@ export default function TrackerApp() {
             {!summaries.length && !restoringReview && <div className="empty-library"><BookOpenText size={38} weight="duotone" /><strong>No matches yet</strong><p>Turn on automatic capture and play normally. Your games will collect here.</p><button type="button" onClick={() => importLog(DEMO_BATTLE_LOG)}>Explore a sample</button></div>}
             {!summaries.length && restoringReview && <div className="empty-library archive-loading"><BookOpenText size={38} weight="duotone" /><strong>Restoring your archive…</strong><p>Loading the latest saved match.</p></div>}
           </div>
-          <button className="all-matches" type="button" disabled={summaries.length >= archiveTotal} onClick={() => void loadOlderMatches()}><BookOpenText size={19} weight="duotone" /><span>{summaries.length < archiveTotal ? 'Load older matches' : 'All matches loaded'}</span><CaretRight size={17} weight="bold" /></button>
+          {summaries.length < archiveTotal && <button className="all-matches" type="button" onClick={() => void loadOlderMatches()}><BookOpenText size={19} weight="duotone" /><span>Load older matches</span><CaretRight size={17} weight="bold" /></button>}
         </aside>}
 
         <section className="review-stage">
