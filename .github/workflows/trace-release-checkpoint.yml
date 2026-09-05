@@ -174,7 +174,7 @@ jobs:
           security list-keychains -d user -s "$keychain_path"
 
           signing_identity="$(security find-identity -v -p codesigning "$keychain_path" \
-            | awk '/Developer ID Application/ { print $2; exit }')"
+            | awk -F'"' '/Developer ID Application/ { print $2; exit }')"
           test -n "$signing_identity" || {
             echo "::error::The imported certificate has no valid Developer ID Application identity."
             exit 1
