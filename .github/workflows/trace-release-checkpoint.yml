@@ -209,6 +209,37 @@ jobs:
           releaseAssetNamePattern: "[name]_[arch][setup].[ext]"
           args: ${{ matrix.args }}
 
+      - name: Notarize, staple, and replace the macOS disk image
+        if: matrix.platform == 'macos-latest'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          RELEASE_TAG: ${{ needs.checkpoint.outputs.tag }}
+        run: |
+          bundle_root="src-tauri/target/${{ matrix.rustTargets }}/release/bundle"
+          dmg_path="$(find "$bundle_root/dmg" -maxdepth 1 -type f -name '*.dmg' -print -quit)"
+          test -f "$dmg_path" || {
+            echo "::error::Missing signed Trace DMG."
+            exit 1
+          }
+
+          xcrun notarytool submit "$dmg_path" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          xcrun stapler staple "$dmg_path"
+          xcrun stapler validate "$dmg_path"
+          codesign --verify --strict --verbose=2 "$dmg_path"
+
+          published_dmg="$RUNNER_TEMP/Trace_aarch64.dmg"
+          ditto "$dmg_path" "$published_dmg"
+          gh release upload "$RELEASE_TAG" "$published_dmg" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
+
       - name: Verify signed download on a clean Mac install path
         if: matrix.platform == 'macos-latest'
         env:
@@ -231,6 +262,7 @@ jobs:
           signature_report="$(codesign -dv --verbose=4 "$app_path" 2>&1)"
           grep -Fq 'Authority=Developer ID Application:' <<< "$signature_report"
           grep -Fq "TeamIdentifier=$APPLE_TEAM_ID" <<< "$signature_report"
+          xcrun stapler validate "$app_path"
           xcrun stapler validate "$dmg_path"
           spctl -a -vv -t open --context context:primary-signature "$dmg_path"
 
