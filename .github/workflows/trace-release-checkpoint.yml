@@ -116,6 +116,71 @@ jobs:
         if: matrix.platform == 'windows-latest'
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib
 
+      - name: Validate Apple notarization access
+        if: matrix.platform == 'macos-latest'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          for name in \
+            APPLE_CERTIFICATE \
+            APPLE_CERTIFICATE_PASSWORD \
+            APPLE_ID \
+            APPLE_PASSWORD \
+            APPLE_TEAM_ID; do
+            test -n "${!name}" || {
+              echo "::error::Missing required Apple release secret: $name"
+              exit 1
+            }
+          done
+
+          if ! xcrun notarytool history \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --output-format json >/dev/null; then
+            echo "::error::Apple notarization credentials were rejected."
+            exit 1
+          fi
+
+      - name: Import Developer ID certificate
+        if: matrix.platform == 'macos-latest'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          certificate_path="$RUNNER_TEMP/trace-signing-certificate.p12"
+          keychain_path="$RUNNER_TEMP/trace-signing.keychain-db"
+          keychain_password="$(openssl rand -base64 32)"
+
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$certificate_path"
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security import "$certificate_path" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$keychain_path"
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$keychain_password" \
+            "$keychain_path"
+          security list-keychains -d user -s "$keychain_path"
+
+          signing_identity="$(security find-identity -v -p codesigning "$keychain_path" \
+            | awk '/Developer ID Application/ { print $2; exit }')"
+          test -n "$signing_identity" || {
+            echo "::error::The imported certificate has no valid Developer ID Application identity."
+            exit 1
+          }
+          echo "APPLE_SIGNING_IDENTITY=$signing_identity" >> "$GITHUB_ENV"
+
       - name: Build and upload signed update
         uses: tauri-apps/tauri-action@v1
         env:
@@ -123,6 +188,12 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           TRACE_SYNC_API_URL: ${{ vars.TRACE_SYNC_API_URL }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tagName: v__VERSION__
           releaseName: Trace v__VERSION__
@@ -137,6 +208,85 @@ jobs:
           uploadUpdaterSignatures: false
           releaseAssetNamePattern: "[name]_[arch][setup].[ext]"
           args: ${{ matrix.args }}
+
+      - name: Verify signed download on a clean Mac install path
+        if: matrix.platform == 'macos-latest'
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          bundle_root="src-tauri/target/${{ matrix.rustTargets }}/release/bundle"
+          app_path="$bundle_root/macos/Trace.app"
+          dmg_path="$(find "$bundle_root/dmg" -maxdepth 1 -type f -name '*.dmg' -print -quit)"
+
+          test -d "$app_path" || {
+            echo "::error::Missing signed Trace.app bundle."
+            exit 1
+          }
+          test -f "$dmg_path" || {
+            echo "::error::Missing signed Trace DMG."
+            exit 1
+          }
+
+          codesign --verify --deep --strict --verbose=2 "$app_path"
+          signature_report="$(codesign -dv --verbose=4 "$app_path" 2>&1)"
+          grep -Fq 'Authority=Developer ID Application:' <<< "$signature_report"
+          grep -Fq "TeamIdentifier=$APPLE_TEAM_ID" <<< "$signature_report"
+          xcrun stapler validate "$dmg_path"
+          spctl -a -vv -t open --context context:primary-signature "$dmg_path"
+
+          fresh_root="$(mktemp -d "$RUNNER_TEMP/trace-fresh-install.XXXXXX")"
+          fresh_dmg="$fresh_root/Trace.dmg"
+          mount_path="$fresh_root/mount"
+          install_path="$fresh_root/Applications"
+          mkdir "$mount_path" "$install_path"
+          ditto "$dmg_path" "$fresh_dmg"
+          xattr -w com.apple.quarantine \
+            "0083;$(printf '%x' "$(date +%s)");GitHub_Actions;https://github.com/$GITHUB_REPOSITORY" \
+            "$fresh_dmg"
+
+          hdiutil verify "$fresh_dmg"
+          hdiutil attach "$fresh_dmg" \
+            -readonly \
+            -nobrowse \
+            -mountpoint "$mount_path"
+          trap 'hdiutil detach "$mount_path" >/dev/null 2>&1 || true' EXIT
+
+          fresh_app="$install_path/Trace.app"
+          ditto "$mount_path/Trace.app" "$fresh_app"
+          xattr -r -w com.apple.quarantine \
+            "0083;$(printf '%x' "$(date +%s)");GitHub_Actions;https://github.com/$GITHUB_REPOSITORY" \
+            "$fresh_app"
+          spctl -a -vv -t exec "$fresh_app"
+
+          executable_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' \
+            "$fresh_app/Contents/Info.plist")"
+          executable_path="$fresh_app/Contents/MacOS/$executable_name"
+          "$executable_path" >"$fresh_root/trace-launch.log" 2>&1 &
+          trace_pid=$!
+          sleep 5
+          if ! kill -0 "$trace_pid" 2>/dev/null; then
+            cat "$fresh_root/trace-launch.log"
+            echo "::error::Trace did not remain running after a clean DMG install."
+            exit 1
+          fi
+          kill "$trace_pid"
+          wait "$trace_pid" || true
+
+          {
+            echo '### macOS distribution verification'
+            echo
+            echo '- Developer ID signature: accepted'
+            echo '- Apple notarization ticket: stapled and valid'
+            echo '- Quarantined DMG: accepted by Gatekeeper'
+            echo '- Freshly copied app: accepted by Gatekeeper'
+            echo '- Freshly copied app: launched successfully'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove temporary signing keychain
+        if: always() && matrix.platform == 'macos-latest'
+        run: |
+          security delete-keychain "$RUNNER_TEMP/trace-signing.keychain-db" || true
+          rm -f "$RUNNER_TEMP/trace-signing-certificate.p12"
 
   publish:
     needs: [checkpoint, build]
