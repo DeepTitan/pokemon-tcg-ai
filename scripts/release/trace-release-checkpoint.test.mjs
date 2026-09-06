@@ -20,6 +20,8 @@ assert.match(releaseWorkflow, /id-token: write/);
 assert.doesNotMatch(releaseWorkflow, /AZURE_CLIENT_SECRET/);
 assert.match(releaseWorkflow, /Microsoft\.ArtifactSigning\.Client/);
 assert.match(releaseWorkflow, /sign-windows-artifact\.ps1/);
+assert.match(releaseWorkflow, /cmd = 'pwsh'/);
+assert.match(releaseWorkflow, /args = @\(/);
 assert.match(releaseWorkflow, /AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE/);
 assert.match(releaseWorkflow, /Verify trusted Windows publisher signatures/);
 assert.match(releaseWorkflow, /Get-AuthenticodeSignature/);

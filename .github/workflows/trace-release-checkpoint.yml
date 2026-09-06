@@ -223,7 +223,21 @@ jobs:
           $configurationPath = 'src-tauri/tauri.conf.json'
           $configuration = Get-Content $configurationPath -Raw | ConvertFrom-Json
           $signingScript = (Resolve-Path 'scripts/release/sign-windows-artifact.ps1').Path
-          $signCommand = 'pwsh -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" %1' -f $signingScript
+          # Use Tauri's structured form: its string form splits on spaces without
+          # interpreting quotes, which makes PowerShell's -File path invalid.
+          $signCommand = @{
+            cmd = 'pwsh'
+            args = @(
+              '-NoLogo'
+              '-NoProfile'
+              '-NonInteractive'
+              '-ExecutionPolicy'
+              'Bypass'
+              '-File'
+              $signingScript
+              '%1'
+            )
+          }
           $configuration.bundle.windows | Add-Member `
             -NotePropertyName signCommand `
             -NotePropertyValue $signCommand `
