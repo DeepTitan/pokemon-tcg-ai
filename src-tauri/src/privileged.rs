@@ -2,6 +2,7 @@ use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde::{Deserialize, Serialize};
 use socket2::{Domain, Protocol, Socket, Type};
 use std::{
+    ffi::OsStr,
     fs,
     io::{self, BufRead, BufReader, Write},
     net::{Ipv4Addr, Shutdown, SocketAddr, TcpListener, TcpStream as StdTcpStream},
@@ -9,7 +10,7 @@ use std::{
         fs::PermissionsExt,
         net::{UnixListener, UnixStream},
     },
-    path::Path,
+    path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -24,7 +25,12 @@ const HELPER_ARGUMENT: &str = "--match-lens-capture-helper";
 // changes. App-only releases must continue reusing an already-approved helper.
 const HELPER_VERSION: &str = "0.1.11";
 const HELPER_LABEL: &str = "com.isaiahw.matchlens.capture-helper";
-const HELPER_PATH: &str = "/Library/PrivilegedHelperTools/com.isaiahw.matchlens.capture-helper";
+const LEGACY_HELPER_PATH: &str =
+    "/Library/PrivilegedHelperTools/com.isaiahw.matchlens.capture-helper";
+const HELPER_BUNDLE_PATH: &str =
+    "/Library/PrivilegedHelperTools/com.isaiahw.matchlens.capture-helper.app";
+const HELPER_BUNDLE_EXECUTABLE_PATH: &str =
+    "/Library/PrivilegedHelperTools/com.isaiahw.matchlens.capture-helper.app/Contents/MacOS/match-lens";
 const HELPER_VERSION_PATH: &str =
     "/Library/PrivilegedHelperTools/com.isaiahw.matchlens.capture-helper.version";
 const HELPER_PLIST: &str = "/Library/LaunchDaemons/com.isaiahw.matchlens.capture-helper.plist";
@@ -104,7 +110,7 @@ fn current_uid() -> Result<u32, String> {
         .map_err(|error| error.to_string())
 }
 
-fn helper_plist(uid: u32) -> String {
+fn helper_plist(uid: u32, helper_path: &str) -> String {
     format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -113,7 +119,7 @@ fn helper_plist(uid: u32) -> String {
   <key>Label</key><string>{HELPER_LABEL}</string>
   <key>ProgramArguments</key>
   <array>
-    <string>{HELPER_PATH}</string>
+    <string>{helper_path}</string>
     <string>{HELPER_ARGUMENT}</string>
     <string>{uid}</string>
   </array>
@@ -128,20 +134,96 @@ fn helper_plist(uid: u32) -> String {
     )
 }
 
+fn enclosing_app_bundle(executable: &Path) -> Option<&Path> {
+    let macos = executable.parent()?;
+    if macos.file_name()? != OsStr::new("MacOS") {
+        return None;
+    }
+    let contents = macos.parent()?;
+    if contents.file_name()? != OsStr::new("Contents") {
+        return None;
+    }
+    let bundle = contents.parent()?;
+    (bundle.extension()? == OsStr::new("app")).then_some(bundle)
+}
+
+enum HelperInstallSource {
+    Bundle(PathBuf),
+    Executable(PathBuf),
+}
+
+fn helper_install_source(executable: &Path) -> HelperInstallSource {
+    enclosing_app_bundle(executable)
+        .filter(|bundle| bundle.join("Contents/Info.plist").is_file())
+        .map(|bundle| HelperInstallSource::Bundle(bundle.to_owned()))
+        .unwrap_or_else(|| HelperInstallSource::Executable(executable.to_owned()))
+}
+
+fn helper_install_command(source: &HelperInstallSource) -> (String, &'static str) {
+    match source {
+        HelperInstallSource::Bundle(bundle) => (
+            format!(
+                "/bin/rm -rf {installed_bundle}; \
+                 /usr/bin/ditto {source_bundle} {installed_bundle}; \
+                 /usr/sbin/chown -R root:wheel {installed_bundle}; \
+                 /bin/chmod -R go-w {installed_bundle}; \
+                 /bin/chmod 755 {installed_executable}; \
+                 /bin/rm -f {legacy_executable}",
+                source_bundle = shell_quote(&bundle.to_string_lossy()),
+                installed_bundle = shell_quote(HELPER_BUNDLE_PATH),
+                installed_executable = shell_quote(HELPER_BUNDLE_EXECUTABLE_PATH),
+                legacy_executable = shell_quote(LEGACY_HELPER_PATH),
+            ),
+            HELPER_BUNDLE_EXECUTABLE_PATH,
+        ),
+        HelperInstallSource::Executable(executable) => (
+            format!(
+                "/bin/rm -rf {installed_bundle}; \
+                 /usr/bin/install -o root -g wheel -m 755 {source_executable} {legacy_executable}",
+                installed_bundle = shell_quote(HELPER_BUNDLE_PATH),
+                source_executable = shell_quote(&executable.to_string_lossy()),
+                legacy_executable = shell_quote(LEGACY_HELPER_PATH),
+            ),
+            LEGACY_HELPER_PATH,
+        ),
+    }
+}
+
+fn compatible_helper_reply(reply: &HelperReply) -> bool {
+    reply.ok && reply.version == HELPER_VERSION
+}
+
+fn helper_start_error(last_error: Option<String>) -> String {
+    let launchd = Command::new("/bin/launchctl")
+        .args(["print", &format!("system/{HELPER_LABEL}")])
+        .output()
+        .ok();
+    let launchd_detail = launchd
+        .as_ref()
+        .filter(|output| !output.status.success())
+        .map(|output| String::from_utf8_lossy(&output.stderr).trim().to_owned())
+        .filter(|detail| !detail.is_empty());
+    let detail = last_error
+        .filter(|detail| !detail.is_empty())
+        .or(launchd_detail)
+        .map(|detail| format!(" Last system response: {detail}"))
+        .unwrap_or_default();
+    format!("The local capture helper could not start after installation.{detail}")
+}
+
 pub fn install_helper(certificate_path: &Path) -> Result<(), String> {
     let uid = current_uid()?;
     let executable = std::env::current_exe().map_err(|error| error.to_string())?;
-    let executable = executable
-        .to_str()
-        .ok_or("The Trace executable path is not valid UTF-8.")?;
+    let install_source = helper_install_source(&executable);
+    let (install_command, installed_executable) = helper_install_command(&install_source);
     let certificate = certificate_path
         .to_str()
         .ok_or("The Trace certificate path is not valid UTF-8.")?;
-    let plist = BASE64.encode(helper_plist(uid));
+    let plist = BASE64.encode(helper_plist(uid, installed_executable));
     let command = format!(
         "set -e; \
          /bin/launchctl bootout system/{label} >/dev/null 2>&1 || true; \
-         /usr/bin/install -o root -g wheel -m 755 {source} {helper}; \
+         {install_helper}; \
          /bin/echo {version} > {version_file}; \
          /usr/sbin/chown root:wheel {version_file}; \
          /bin/chmod 644 {version_file}; \
@@ -150,13 +232,13 @@ pub fn install_helper(certificate_path: &Path) -> Result<(), String> {
          /bin/chmod 644 {daemon}; \
          /bin/rm -f {socket}; \
          /bin/launchctl bootstrap system {daemon}; \
+         /bin/launchctl kickstart system/{label}; \
          while /usr/bin/security delete-certificate -c {ca_name} \
            /Library/Keychains/System.keychain >/dev/null 2>&1; do :; done; \
          /usr/bin/security add-trusted-cert -d -r trustRoot -p ssl \
            -k /Library/Keychains/System.keychain {certificate} >/dev/null 2>&1 || true",
         label = HELPER_LABEL,
-        source = shell_quote(executable),
-        helper = shell_quote(HELPER_PATH),
+        install_helper = install_command,
         version = shell_quote(HELPER_VERSION),
         version_file = shell_quote(HELPER_VERSION_PATH),
         plist = shell_quote(&plist),
@@ -182,17 +264,26 @@ pub fn install_helper(certificate_path: &Path) -> Result<(), String> {
         });
     }
 
-    for _ in 0..50 {
-        if helper_status().is_ok() {
-            return Ok(());
+    let mut last_error = None;
+    for _ in 0..100 {
+        match helper_status() {
+            Ok(reply) if compatible_helper_reply(&reply) => return Ok(()),
+            Ok(reply) => {
+                last_error = Some(format!(
+                    "helper protocol version {} responded instead of {}",
+                    reply.version, HELPER_VERSION
+                ));
+            }
+            Err(error) => last_error = Some(error),
         }
         thread::sleep(Duration::from_millis(100));
     }
-    Err("The local capture helper did not start after installation.".to_owned())
+    Err(helper_start_error(last_error))
 }
 
 pub fn helper_ready() -> bool {
-    let installed = Path::new(HELPER_PATH).exists()
+    let installed = (Path::new(HELPER_BUNDLE_EXECUTABLE_PATH).is_file()
+        || Path::new(LEGACY_HELPER_PATH).is_file())
         && Path::new(HELPER_PLIST).exists()
         && Path::new(HELPER_SOCKET).exists()
         && fs::read_to_string(HELPER_VERSION_PATH)
@@ -743,8 +834,41 @@ pub fn run_if_requested() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{pf_rules, pf_state_kill_args, reconnect_rules};
-    use std::net::Ipv4Addr;
+    use super::{
+        enclosing_app_bundle, helper_install_command, helper_plist, pf_rules, pf_state_kill_args,
+        reconnect_rules, HelperInstallSource, HELPER_BUNDLE_EXECUTABLE_PATH,
+    };
+    use std::{net::Ipv4Addr, path::Path};
+
+    #[test]
+    fn production_helper_install_preserves_the_signed_app_bundle() {
+        let executable = Path::new("/Applications/Trace.app/Contents/MacOS/match-lens");
+        let bundle = enclosing_app_bundle(executable).expect("Trace app bundle");
+        assert_eq!(bundle, Path::new("/Applications/Trace.app"));
+
+        let (command, installed_executable) =
+            helper_install_command(&HelperInstallSource::Bundle(bundle.to_owned()));
+        assert!(command.contains("/usr/bin/ditto"));
+        assert!(!command.contains("/usr/bin/install -o root"));
+        assert_eq!(installed_executable, HELPER_BUNDLE_EXECUTABLE_PATH);
+        assert!(helper_plist(501, installed_executable)
+            .contains(&format!("<string>{HELPER_BUNDLE_EXECUTABLE_PATH}</string>")));
+    }
+
+    #[test]
+    fn development_helper_can_still_install_from_a_standalone_binary() {
+        let executable = Path::new("/tmp/target/debug/match-lens");
+        assert!(enclosing_app_bundle(executable).is_none());
+
+        let (command, installed_executable) =
+            helper_install_command(&HelperInstallSource::Executable(executable.to_owned()));
+        assert!(command.contains("/usr/bin/install -o root"));
+        assert!(!command.contains("/usr/bin/ditto"));
+        assert_eq!(
+            installed_executable,
+            "/Library/PrivilegedHelperTools/com.isaiahw.matchlens.capture-helper"
+        );
+    }
 
     #[test]
     fn emits_all_translation_rules_before_filter_rules() {

@@ -507,6 +507,8 @@ jobs:
           kill "$trace_pid"
           wait "$trace_pid" || true
 
+          scripts/release/verify-macos-helper-bundle.sh "$fresh_app"
+
           {
             echo '### macOS distribution verification'
             echo
@@ -515,6 +517,7 @@ jobs:
             echo '- Quarantined DMG: accepted by Gatekeeper'
             echo '- Freshly copied app: accepted by Gatekeeper'
             echo '- Freshly copied app: launched successfully'
+            echo '- Relocated local capture helper: signature valid and executable'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove temporary signing keychain
