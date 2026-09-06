@@ -348,7 +348,6 @@ jobs:
           $releaseRoot = 'src-tauri/target/${{ matrix.rustTargets }}/release'
           $applicationExecutables = @(Get-ChildItem $releaseRoot -File -Filter '*.exe')
           $installerExecutables = @(Get-ChildItem "$releaseRoot/bundle/nsis" -File -Filter '*.exe')
-          $signedFiles = @($applicationExecutables + $installerExecutables)
 
           if ($applicationExecutables.Count -eq 0) {
             throw 'The built Trace application executable was not found.'
@@ -357,7 +356,7 @@ jobs:
             throw 'The built Trace NSIS installer was not found.'
           }
 
-          foreach ($file in $signedFiles) {
+          function Assert-TrustedSignature([System.IO.FileInfo]$file) {
             $signature = Get-AuthenticodeSignature $file.FullName
             if ($signature.Status -ne 'Valid' -or -not $signature.SignerCertificate) {
               throw "Invalid Authenticode signature on $($file.FullName): $($signature.StatusMessage)"
@@ -365,18 +364,50 @@ jobs:
             if (-not $signature.SignerCertificate.Verify()) {
               throw "The publisher certificate chain is not trusted for $($file.FullName)."
             }
-            & $env:SIGNTOOL_PATH verify /pa /all /v $file.FullName
-            if ($LASTEXITCODE -ne 0) {
+            & $env:SIGNTOOL_PATH verify /pa /all /v $file.FullName | Out-Host
+            $verificationExitCode = $LASTEXITCODE
+            if ($verificationExitCode -ne 0) {
               throw "SignTool verification failed for $($file.FullName)."
             }
             Write-Host "Verified publisher: $($signature.SignerCertificate.Subject)"
+            return $signature.SignerCertificate.Subject
+          }
+
+          foreach ($installer in $installerExecutables) {
+            $publisher = Assert-TrustedSignature $installer
+
+            # Verify the application exactly as shipped inside the installer.
+            # Tauri may restore the loose target executable after bundling, so
+            # that staging file is not authoritative for the installed bytes.
+            $extractRoot = Join-Path $env:RUNNER_TEMP "trace-nsis-$([Guid]::NewGuid())"
+            New-Item -ItemType Directory -Path $extractRoot | Out-Null
+            & 7z x -y "-o$extractRoot" $installer.FullName
+            if ($LASTEXITCODE -ne 0) {
+              throw "Could not extract the NSIS installer for verification: $($installer.FullName)"
+            }
+
+            $packagedApplications = @(
+              foreach ($application in $applicationExecutables) {
+                Get-ChildItem $extractRoot -Recurse -File -Filter $application.Name
+              }
+            )
+            if ($packagedApplications.Count -eq 0) {
+              throw "The packaged Trace application was not found inside $($installer.FullName)."
+            }
+
+            foreach ($packagedApplication in $packagedApplications) {
+              $packagedPublisher = Assert-TrustedSignature $packagedApplication
+              if ($packagedPublisher -ne $publisher) {
+                throw "Installer and packaged application publishers do not match."
+              }
+            }
           }
 
           @(
             '### Windows distribution verification',
             '',
-            '- Application Authenticode signature: valid',
             '- NSIS installer Authenticode signature: valid',
+            '- Packaged application Authenticode signature: valid',
             '- Publisher certificate chain: trusted by Windows',
             "- Publisher: $((Get-AuthenticodeSignature $installerExecutables[0].FullName).SignerCertificate.Subject)"
           ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append

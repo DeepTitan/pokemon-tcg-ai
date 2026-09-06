@@ -25,6 +25,8 @@ assert.match(releaseWorkflow, /args = @\(/);
 assert.match(releaseWorkflow, /AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE/);
 assert.match(releaseWorkflow, /Verify trusted Windows publisher signatures/);
 assert.match(releaseWorkflow, /Get-AuthenticodeSignature/);
+assert.match(releaseWorkflow, /7z x/);
+assert.match(releaseWorkflow, /Packaged application Authenticode signature: valid/);
 assert.match(releaseWorkflow, /SIGNTOOL_PATH verify \/pa \/all \/v/);
 assert.match(signingSmokeWorkflow, /workflow_dispatch/);
 assert.match(signingSmokeWorkflow, /Authenticate to Azure with GitHub OIDC/);
