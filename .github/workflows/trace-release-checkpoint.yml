@@ -6,7 +6,7 @@ on:
       - main
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ${{ (contains(github.event.head_commit.message, '[MAJOR]') || contains(github.event.head_commit.message, '[MINOR]') || contains(github.event.head_commit.message, '[PATCH]')) && 'trace-release' || github.run_id }}
@@ -68,6 +68,9 @@ jobs:
     name: Build ${{ matrix.name }}
     needs: checkpoint
     if: needs.checkpoint.outputs.shouldRelease == 'true'
+    permissions:
+      contents: write
+      id-token: write
     strategy:
       fail-fast: false
       max-parallel: 1
@@ -115,6 +118,121 @@ jobs:
       - name: Run Windows capture integration tests
         if: matrix.platform == 'windows-latest'
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+
+      - name: Require Microsoft Artifact Signing configuration
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        env:
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          AZURE_ARTIFACT_SIGNING_ENDPOINT: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+          AZURE_ARTIFACT_SIGNING_ACCOUNT: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+          AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE: ${{ vars.AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE }}
+        run: |
+          $required = @(
+            'AZURE_CLIENT_ID',
+            'AZURE_TENANT_ID',
+            'AZURE_SUBSCRIPTION_ID',
+            'AZURE_ARTIFACT_SIGNING_ENDPOINT',
+            'AZURE_ARTIFACT_SIGNING_ACCOUNT',
+            'AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE'
+          )
+          foreach ($name in $required) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              throw "Missing required Windows signing setting: $name"
+            }
+          }
+
+      - name: Authenticate to Azure with GitHub OIDC
+        if: matrix.platform == 'windows-latest'
+        uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Configure Microsoft Artifact Signing
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        env:
+          AZURE_ARTIFACT_SIGNING_ENDPOINT: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+          AZURE_ARTIFACT_SIGNING_ACCOUNT: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+          AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE: ${{ vars.AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE }}
+        run: |
+          $endpoint = [Uri]$env:AZURE_ARTIFACT_SIGNING_ENDPOINT
+          if ($endpoint.Scheme -ne 'https') {
+            throw 'AZURE_ARTIFACT_SIGNING_ENDPOINT must use HTTPS.'
+          }
+          if ($env:AZURE_ARTIFACT_SIGNING_ACCOUNT -notmatch '^[a-zA-Z0-9-]+$') {
+            throw 'AZURE_ARTIFACT_SIGNING_ACCOUNT contains unsupported characters.'
+          }
+          if ($env:AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE -notmatch '^[a-zA-Z0-9-]+$') {
+            throw 'AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE contains unsupported characters.'
+          }
+
+          $signTool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" `
+            -Recurse -Filter signtool.exe -File |
+            Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+            Sort-Object { [version]$_.Directory.Parent.Name } -Descending |
+            Select-Object -First 1
+          if (-not $signTool) {
+            throw 'A Windows x64 SignTool installation is required.'
+          }
+          if ([version]$signTool.Directory.Parent.Name -lt [version]'10.0.26100.0') {
+            throw 'Windows SDK 10.0.26100.0 or newer is required for Artifact Signing.'
+          }
+
+          $clientRoot = Join-Path $env:RUNNER_TEMP 'artifact-signing-client'
+          $clientArchive = Join-Path $env:RUNNER_TEMP 'artifact-signing-client.zip'
+          $clientVersion = '1.0.128'
+          Invoke-WebRequest `
+            -Uri "https://www.nuget.org/api/v2/package/Microsoft.ArtifactSigning.Client/$clientVersion" `
+            -OutFile $clientArchive
+          Expand-Archive -LiteralPath $clientArchive -DestinationPath $clientRoot -Force
+
+          $dlibPath = Join-Path $clientRoot 'bin\x64\Azure.CodeSigning.Dlib.dll'
+          if (-not (Test-Path $dlibPath)) {
+            throw 'The Microsoft Artifact Signing client library was not found.'
+          }
+
+          $metadataPath = Join-Path $env:RUNNER_TEMP 'trace-artifact-signing-metadata.json'
+          @{
+            Endpoint = $endpoint.AbsoluteUri.TrimEnd('/')
+            CodeSigningAccountName = $env:AZURE_ARTIFACT_SIGNING_ACCOUNT
+            CertificateProfileName = $env:AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE
+            ExcludeCredentials = @(
+              'EnvironmentCredential'
+              'WorkloadIdentityCredential'
+              'ManagedIdentityCredential'
+              'SharedTokenCacheCredential'
+              'VisualStudioCredential'
+              'VisualStudioCodeCredential'
+              'AzurePowerShellCredential'
+              'AzureDeveloperCliCredential'
+              'InteractiveBrowserCredential'
+            )
+          } | ConvertTo-Json -Depth 5 | Set-Content `
+            -Path $metadataPath `
+            -Encoding utf8NoBOM
+
+          "SIGNTOOL_PATH=$($signTool.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "ARTIFACT_SIGNING_DLIB=$dlibPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "ARTIFACT_SIGNING_METADATA=$metadataPath" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+          $configurationPath = 'src-tauri/tauri.conf.json'
+          $configuration = Get-Content $configurationPath -Raw | ConvertFrom-Json
+          $signingScript = (Resolve-Path 'scripts/release/sign-windows-artifact.ps1').Path
+          $signCommand = 'pwsh -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" %1' -f $signingScript
+          $configuration.bundle.windows | Add-Member `
+            -NotePropertyName signCommand `
+            -NotePropertyValue $signCommand `
+            -Force
+          $configuration | ConvertTo-Json -Depth 100 | Set-Content `
+            -Path $configurationPath `
+            -Encoding utf8NoBOM
+
+          az account show --query id --output tsv
 
       - name: Validate Apple notarization access
         if: matrix.platform == 'macos-latest'
@@ -208,6 +326,46 @@ jobs:
           uploadUpdaterSignatures: false
           releaseAssetNamePattern: "[name]_[arch][setup].[ext]"
           args: ${{ matrix.args }}
+
+      - name: Verify trusted Windows publisher signatures
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          $releaseRoot = 'src-tauri/target/${{ matrix.rustTargets }}/release'
+          $applicationExecutables = @(Get-ChildItem $releaseRoot -File -Filter '*.exe')
+          $installerExecutables = @(Get-ChildItem "$releaseRoot/bundle/nsis" -File -Filter '*.exe')
+          $signedFiles = @($applicationExecutables + $installerExecutables)
+
+          if ($applicationExecutables.Count -eq 0) {
+            throw 'The built Trace application executable was not found.'
+          }
+          if ($installerExecutables.Count -eq 0) {
+            throw 'The built Trace NSIS installer was not found.'
+          }
+
+          foreach ($file in $signedFiles) {
+            $signature = Get-AuthenticodeSignature $file.FullName
+            if ($signature.Status -ne 'Valid' -or -not $signature.SignerCertificate) {
+              throw "Invalid Authenticode signature on $($file.FullName): $($signature.StatusMessage)"
+            }
+            if (-not $signature.SignerCertificate.Verify()) {
+              throw "The publisher certificate chain is not trusted for $($file.FullName)."
+            }
+            & $env:SIGNTOOL_PATH verify /pa /all /v $file.FullName
+            if ($LASTEXITCODE -ne 0) {
+              throw "SignTool verification failed for $($file.FullName)."
+            }
+            Write-Host "Verified publisher: $($signature.SignerCertificate.Subject)"
+          }
+
+          @(
+            '### Windows distribution verification',
+            '',
+            '- Application Authenticode signature: valid',
+            '- NSIS installer Authenticode signature: valid',
+            '- Publisher certificate chain: trusted by Windows',
+            "- Publisher: $((Get-AuthenticodeSignature $installerExecutables[0].FullName).SignerCertificate.Subject)"
+          ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
 
       - name: Notarize, staple, and replace the macOS disk image
         if: matrix.platform == 'macos-latest'
@@ -324,6 +482,8 @@ jobs:
     needs: [checkpoint, build]
     if: needs.checkpoint.outputs.shouldRelease == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { bumpVersion, readMarker, stripMarkers } from './trace-release-checkpoint.mjs';
 
 assert.equal(readMarker('ship it [PATCH]'), 'PATCH');
@@ -9,4 +10,22 @@ assert.equal(bumpVersion('0.1.17', 'PATCH'), '0.1.18');
 assert.equal(bumpVersion('0.1.17', 'MINOR'), '0.2.0');
 assert.equal(bumpVersion('0.1.17', 'MAJOR'), '1.0.0');
 assert.equal(stripMarkers('[PATCH] ship updater'), 'ship updater');
+
+const releaseWorkflow = fs.readFileSync('.github/workflows/trace-release-checkpoint.yml', 'utf8');
+const signingSmokeWorkflow = fs.readFileSync('.github/workflows/trace-windows-signing-smoke.yml', 'utf8');
+assert.match(releaseWorkflow, /Configure Microsoft Artifact Signing/);
+assert.match(releaseWorkflow, /Authenticate to Azure with GitHub OIDC/);
+assert.match(releaseWorkflow, /uses: azure\/login@v3/);
+assert.match(releaseWorkflow, /id-token: write/);
+assert.doesNotMatch(releaseWorkflow, /AZURE_CLIENT_SECRET/);
+assert.match(releaseWorkflow, /Microsoft\.ArtifactSigning\.Client/);
+assert.match(releaseWorkflow, /sign-windows-artifact\.ps1/);
+assert.match(releaseWorkflow, /AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE/);
+assert.match(releaseWorkflow, /Verify trusted Windows publisher signatures/);
+assert.match(releaseWorkflow, /Get-AuthenticodeSignature/);
+assert.match(releaseWorkflow, /SIGNTOOL_PATH verify \/pa \/all \/v/);
+assert.match(signingSmokeWorkflow, /workflow_dispatch/);
+assert.match(signingSmokeWorkflow, /Authenticate to Azure with GitHub OIDC/);
+assert.match(signingSmokeWorkflow, /sign-windows-artifact\.ps1/);
+assert.match(signingSmokeWorkflow, /Get-AuthenticodeSignature/);
 console.log('Trace release checkpoint tests passed.');
