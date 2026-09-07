@@ -1036,7 +1036,9 @@ body,
 
 .archive-brand > span img { width: 34px; height: 31px; object-fit: contain; object-position: center bottom; }
 .archive-brand > div:nth-child(2) { min-width: 0; display: grid; }
+.archive-brand-name { min-width: 0; display: flex; align-items: baseline; gap: 5px; }
 .archive-brand strong { font-family: Nunito, sans-serif; font-size: 14px; font-weight: 900; line-height: 1; }
+.archive-brand-name > b { color: #73818b; font-size: 7px; font-weight: 900; letter-spacing: .035em; line-height: 1; white-space: nowrap; }
 .archive-brand small { overflow: hidden; color: #657681; font-size: 6.5px; font-weight: 900; letter-spacing: .09em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
 .archive-brand .header-status { gap: 5px; }
 .archive-brand .header-status > i { width: 7px; height: 7px; }

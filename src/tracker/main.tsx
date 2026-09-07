@@ -1,5 +1,6 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import TrackerApp from './TrackerApp.js';
 
 interface FatalBoundaryState { error: Error | null }
 
@@ -31,13 +32,4 @@ function FatalScreen({ error }: { error: Error }): React.ReactElement {
 }
 
 const root = ReactDOM.createRoot(document.getElementById('root')!);
-
-void import('./TrackerApp.js')
-  .then(({ default: TrackerApp }) => {
-    root.render(<React.StrictMode><FatalBoundary><TrackerApp /></FatalBoundary></React.StrictMode>);
-  })
-  .catch((caught: unknown) => {
-    const error = caught instanceof Error ? caught : new Error(String(caught));
-    console.error('Trace module failure', error);
-    root.render(<FatalScreen error={error} />);
-  });
+root.render(<React.StrictMode><FatalBoundary><TrackerApp /></FatalBoundary></React.StrictMode>);

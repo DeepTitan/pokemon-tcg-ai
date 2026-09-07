@@ -18,7 +18,7 @@ import type { Card, PlayerState, PokemonInPlay } from '../engine/types.js';
 import { parseBattleLog } from './battle-log-parser.js';
 import { DEMO_BATTLE_LOG } from './demo-log.js';
 import {
-  getRecentMatchOperations, getTrackerEnvironment, initializeTrackerStorage, isTauri, listMatchSummaries,
+  getRecentMatchOperations, getTraceVersion, getTrackerEnvironment, initializeTrackerStorage, isTauri, listMatchSummaries,
   listRawMatchIds, loadMatchOperations, loadMatchReview, onMatchOperation, persistMatchReview,
   requestCapturePermission, resolveCardSources, startTracking, stopTracking,
 } from './tauri.js';
@@ -672,6 +672,7 @@ export default function TrackerApp() {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [captureError, setCaptureError] = useState<string | null>(null);
+  const [appVersion, setAppVersion] = useState<string | null>(null);
   const [inspector, setInspector] = useState<ReviewInspector | null>(null);
   const [selectedEventKey, setSelectedEventKey] = useState<string | null>(null);
   const liveAssembler = useRef(new LiveReviewAssembler());
@@ -704,6 +705,14 @@ export default function TrackerApp() {
   const viewTransitionRef = useRef<TraceViewTransition | null>(null);
   const fallbackAnimationTimerRef = useRef<number | null>(null);
   const frameScrubTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void getTraceVersion()
+      .then((version) => { if (active) setAppVersion(version); })
+      .catch((caught) => { console.warn('Could not read Trace version', caught); });
+    return () => { active = false; };
+  }, []);
 
   const toggleFrameAnimations = useCallback(() => {
     setFrameAnimations((current) => {
@@ -1425,7 +1434,7 @@ export default function TrackerApp() {
       <main className={`workspace ${archiveOpen ? 'archive-open' : 'archive-collapsed'} ${timelineOpen ? 'timeline-open' : 'timeline-collapsed'}`}>
         {archiveOpen && <aside className="session-rail">
           <div className="archive-heading" onMouseDown={beginWindowDrag}>
-            <div className="archive-brand"><span><img src="/tracker-assets/trace-mascot.png" alt="" /></span><div><strong>Trace</strong><small>Every turn, in view</small></div><div className={`header-status ${captureStatus.tone}`} title={environment.capture.lastError || undefined}><i /><b>{captureStatus.label}</b></div></div>
+            <div className="archive-brand"><span><img src="/tracker-assets/trace-mascot.png" alt="" /></span><div><span className="archive-brand-name"><strong>Trace</strong>{appVersion && <b>v{appVersion}</b>}</span><small>Every turn, in view</small></div><div className={`header-status ${captureStatus.tone}`} title={environment.capture.lastError || undefined}><i /><b>{captureStatus.label}</b></div></div>
             <div className="archive-title"><div><h2>Match archive</h2><p>{archiveTotal} matches recorded</p></div><button className="panel-collapse-button" type="button" aria-label="Collapse match archive" aria-expanded="true" title="Collapse match archive" onClick={() => setArchiveOpen(false)}><CaretLeft size={17} weight="bold" /></button></div>
           </div>
           <div className="sessions">

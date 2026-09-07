@@ -10,6 +10,47 @@ function safeSessionId(value: unknown): string {
   return raw.replace(/[^a-zA-Z0-9_.-]/g, '_').slice(0, 96);
 }
 
+function makeTrackerBundleSelfContained(): void {
+  const outputDirectory = path.resolve(process.cwd(), 'dist/ui');
+  const htmlPath = path.join(outputDirectory, 'tracker.html');
+  let html = fs.readFileSync(htmlPath, 'utf8');
+  let embeddedStyleCount = 0;
+
+  html = html.replace(
+    /<link\b(?=[^>]*\brel=["']stylesheet["'])(?=[^>]*\bhref=["']([^"']+\.css)["'])[^>]*>/gi,
+    (_link, href: string) => {
+      const relativePath = href.replace(/^\//, '');
+      const stylePath = path.resolve(outputDirectory, relativePath);
+      if (!stylePath.startsWith(`${outputDirectory}${path.sep}`) || !fs.existsSync(stylePath)) {
+        throw new Error(`Trace stylesheet could not be embedded: ${href}`);
+      }
+      const css = fs.readFileSync(stylePath, 'utf8').replace(/<\/style/gi, '<\\/style');
+      fs.rmSync(stylePath);
+      embeddedStyleCount += 1;
+      return `<style data-trace-bundled-css>${css}</style>`;
+    },
+  );
+
+  if (embeddedStyleCount === 0) {
+    throw new Error('Trace production builds must embed their stylesheet in tracker.html.');
+  }
+  if (/<link\b(?=[^>]*\brel=["']stylesheet["'])/i.test(html)) {
+    throw new Error('Trace production build still contains an external stylesheet.');
+  }
+
+  fs.writeFileSync(htmlPath, html);
+
+  const scriptFiles = fs.readdirSync(path.join(outputDirectory, 'assets'))
+    .filter((fileName) => fileName.endsWith('.js'));
+  if (scriptFiles.length !== 1) {
+    throw new Error(`Trace production build must contain one startup script; found ${scriptFiles.length}.`);
+  }
+  const startupScript = fs.readFileSync(path.join(outputDirectory, 'assets', scriptFiles[0]), 'utf8');
+  if (startupScript.includes('Unable to preload CSS')) {
+    throw new Error('Trace production build still contains Vite\'s runtime CSS preloader.');
+  }
+}
+
 export default defineConfig(({ mode }) => {
   const trackerBuild = mode === 'tracker';
   return {
@@ -144,13 +185,14 @@ export default defineConfig(({ mode }) => {
       },
     },
     ...(trackerBuild ? [{
-      name: 'trace-tracker-assets',
+      name: 'trace-self-contained-bundle',
       closeBundle() {
         fs.cpSync(
           path.resolve(process.cwd(), 'public/tracker-assets'),
           path.resolve(process.cwd(), 'dist/ui/tracker-assets'),
           { recursive: true },
         );
+        makeTrackerBundleSelfContained();
       },
     }] : []),
   ],
@@ -158,6 +200,9 @@ export default defineConfig(({ mode }) => {
   root: '.',
   build: {
     outDir: 'dist/ui',
+    target: trackerBuild
+      ? process.env.TAURI_ENV_PLATFORM === 'windows' ? 'chrome105' : 'safari13'
+      : undefined,
     rollupOptions: {
       input: trackerBuild
         ? { tracker: path.resolve(process.cwd(), 'tracker.html') }
@@ -165,6 +210,7 @@ export default defineConfig(({ mode }) => {
             viewer: path.resolve(process.cwd(), 'index.html'),
             tracker: path.resolve(process.cwd(), 'tracker.html'),
           },
+      output: trackerBuild ? { inlineDynamicImports: true } : undefined,
     },
   },
   server: {
