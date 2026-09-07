@@ -1476,11 +1476,13 @@ const ROUTE_ATTACH_GRACE: std::time::Duration = std::time::Duration::from_secs(3
 const ROUTE_ATTACHMENT_PROBE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
 
 #[cfg(target_os = "macos")]
-fn detached_route_needs_refresh(
-    captured_connections: usize,
-    game_server_connections: usize,
-) -> bool {
-    game_server_connections > captured_connections
+fn detached_route_needs_refresh(game_server_connections: usize) -> bool {
+    // Every captured PTCGL connection terminates at Trace's loopback relay.
+    // Therefore any PTCGL-owned connection that still terminates at a live
+    // game-server address is bypassing the relay. Comparing that count with
+    // Trace's healthy connection count can hide an invited-match socket when
+    // an equal number of lobby sockets are already captured.
+    game_server_connections > 0
 }
 
 #[cfg(target_os = "macos")]
@@ -1507,10 +1509,8 @@ fn ensure_manager(state: &Arc<CaptureState>) {
             if manager_state.route_active.load(Ordering::Relaxed)
                 && manager_state.routed_pid.load(Ordering::Relaxed) == u64::from(pokemon_pid)
             {
-                let captured_connections =
-                    manager_state.client_connections.load(Ordering::Relaxed) as usize;
                 let game_server_connections = privileged::game_server_connection_count(pokemon_pid);
-                if !detached_route_needs_refresh(captured_connections, game_server_connections) {
+                if !detached_route_needs_refresh(game_server_connections) {
                     next_attachment_probe = None;
                 } else {
                     let now = std::time::Instant::now();
@@ -1523,10 +1523,7 @@ fn ensure_manager(state: &Arc<CaptureState>) {
                         // socket must not hide an uncaptured match socket, so keep
                         // recovering until every live game-server connection has a
                         // corresponding observer connection.
-                        if detached_route_needs_refresh(
-                            captured_connections,
-                            game_server_connections,
-                        ) {
+                        if detached_route_needs_refresh(game_server_connections) {
                             next_attachment_probe = None;
                             release_route(&manager_state);
                             continue;
@@ -1648,11 +1645,9 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn detached_route_retries_until_every_game_socket_is_captured() {
-        assert!(super::detached_route_needs_refresh(0, 1));
-        assert!(super::detached_route_needs_refresh(1, 2));
-        assert!(!super::detached_route_needs_refresh(1, 1));
-        assert!(!super::detached_route_needs_refresh(2, 1));
-        assert!(!super::detached_route_needs_refresh(0, 0));
+        assert!(super::detached_route_needs_refresh(1));
+        assert!(super::detached_route_needs_refresh(2));
+        assert!(!super::detached_route_needs_refresh(0));
     }
 
     #[cfg(target_os = "windows")]

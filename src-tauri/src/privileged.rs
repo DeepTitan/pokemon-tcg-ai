@@ -402,13 +402,6 @@ fn established_ipv4_destinations(pid: u32) -> Result<Vec<Ipv4Addr>, String> {
     Ok(ips)
 }
 
-fn established_ipv4_ips(pid: u32) -> Result<Vec<Ipv4Addr>, String> {
-    let mut ips = established_ipv4_destinations(pid)?;
-    ips.sort_unstable();
-    ips.dedup();
-    Ok(ips)
-}
-
 fn resolved_game_server_ips() -> Result<Vec<Ipv4Addr>, String> {
     let resolved = Command::new("/usr/bin/dig")
         .args(["+short", GAME_HOST, "A"])
@@ -425,13 +418,15 @@ fn resolved_game_server_ips() -> Result<Vec<Ipv4Addr>, String> {
     }
 }
 
-fn pokemon_server_ips(pid: u32) -> Result<Vec<Ipv4Addr>, String> {
-    let mut ips = established_ipv4_ips(pid)?;
-    let resolved = resolved_game_server_ips()?;
-    ips.retain(|ip| resolved.contains(ip));
-    if ips.is_empty() {
-        ips = resolved;
-    }
+fn pokemon_server_ips() -> Result<Vec<Ipv4Addr>, String> {
+    // The game API publishes more than one address and TCG Live may choose a
+    // different one when it opens a fresh socket for a match. Routing only the
+    // address used by the lobby lets that match socket bypass Trace entirely.
+    // Install rules for the complete current DNS answer so lobby, matchmaking,
+    // and invited-match sockets all take the same capture path.
+    let mut ips = resolved_game_server_ips()?;
+    ips.sort_unstable();
+    ips.dedup();
     Ok(ips)
 }
 
@@ -754,7 +749,7 @@ fn handle_client(mut stream: UnixStream, owner_uid: u32) {
                 {
                     reply_error("The requested processes do not belong to the approved macOS user.")
                 } else {
-                    match pokemon_server_ips(pokemon_pid).and_then(|ips| {
+                    match pokemon_server_ips().and_then(|ips| {
                         let next_relay = start_relay()?;
                         match enable_pf(pokemon_pid, &ips) {
                             Ok(next_token) => Ok((ips, next_relay, next_token)),
