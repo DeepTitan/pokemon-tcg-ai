@@ -118,6 +118,16 @@ export async function persistMatchReview(review: MatchReview, reducerVersion: nu
   return invoke<MatchSummary>('persist_match_review', { review, reducerVersion });
 }
 
+export interface ShareLink {
+  shareId: string;
+  url: string;
+}
+
+export async function shareMatch(review: MatchReview, reducerVersion: number): Promise<ShareLink> {
+  if (!isTauri()) throw new Error('Match sharing is only available in the Trace desktop app.');
+  return invoke<ShareLink>('share_match', { review, reducerVersion });
+}
+
 export async function loadMatchOperations(matchId: string): Promise<CapturedOperation[]> {
   if (!isTauri()) return [];
   return invoke<CapturedOperation[]>('load_match_operations', { matchId });

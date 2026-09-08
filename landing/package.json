@@ -1,0 +1,7 @@
+{
+  "name": "trace-landing",
+  "private": true,
+  "scripts": {
+    "build": "npm --prefix .. ci && npm --prefix .. run tracker:build && node build.mjs"
+  }
+}

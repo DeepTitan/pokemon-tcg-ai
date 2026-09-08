@@ -14,13 +14,16 @@ import { Coin } from '@phosphor-icons/react/Coin';
 import { Prohibit } from '@phosphor-icons/react/Prohibit';
 import { ArrowDown } from '@phosphor-icons/react/ArrowDown';
 import { ArrowUp } from '@phosphor-icons/react/ArrowUp';
+import { Copy } from '@phosphor-icons/react/Copy';
+import { LinkSimple } from '@phosphor-icons/react/LinkSimple';
+import { ShareNetwork } from '@phosphor-icons/react/ShareNetwork';
 import type { Card, PlayerState, PokemonInPlay } from '../engine/types.js';
 import { parseBattleLog } from './battle-log-parser.js';
 import { DEMO_BATTLE_LOG } from './demo-log.js';
 import {
   getRecentMatchOperations, getTraceVersion, getTrackerEnvironment, initializeTrackerStorage, isTauri, listMatchSummaries,
   listRawMatchIds, loadMatchOperations, loadMatchReview, onMatchOperation, persistMatchReview,
-  requestCapturePermission, resolveCardSources, startTracking, stopTracking,
+  requestCapturePermission, resolveCardSources, shareMatch, startTracking, stopTracking,
 } from './tauri.js';
 import { LiveReviewAssembler } from './live-operation-reducer.js';
 import { ReviewOverlay, type ReviewInspector } from './ReviewInteractions.js';
@@ -53,6 +56,7 @@ import {
   type FrameNavigationRequest,
 } from './frame-animation-model.js';
 import { UpdateNotice } from './UpdateNotice.js';
+import { loadSharedReplay, sharedReplayIdFromPath } from './share-replay.js';
 import { CARD_BACK_ART, cardCatalogEntryNeedsRefresh, findCatalogCard, publicCardArtUrl, resolvedCardArt, showCardBackOnError } from './card-art.js';
 import type {
   CapturedOperation, CardInfo, CanonicalReviewState, MatchReview, MatchSummary, ReviewCardVisibility, ReviewSelection, TrackedCard, TrackedChoiceCard, TrackedPlayerBoard,
@@ -644,14 +648,16 @@ function ArchiveRow({ summary, selected, catalog, onSelect }: { summary: MatchSu
 }
 
 export default function TrackerApp() {
-  const initial = useMemo(initialReviews, []);
+  const sharedReplayId = useMemo(() => sharedReplayIdFromPath(window.location.pathname), []);
+  const sharedMode = sharedReplayId != null;
+  const initial = useMemo(() => sharedMode ? [] : initialReviews(), [sharedMode]);
   const [summaries, setSummaries] = useState<MatchSummary[]>(() => initial.map((review) => matchSummaryFromReview(review)));
   const [selectedReview, setSelectedReview] = useState<MatchReview | null>(initial[0] || null);
   const [selectedId, setSelectedId] = useState<string | null>(initial[0]?.id || null);
   const [turnIndex, setTurnIndex] = useState(() => Math.max(0, (initial[0]?.turns.length || 1) - 1));
   const [archiveTotal, setArchiveTotal] = useState(initial.length);
-  const [restoringReview, setRestoringReview] = useState(isTauri());
-  const [tracking, setTracking] = useState(() => !isTauri());
+  const [restoringReview, setRestoringReview] = useState(() => isTauri() || sharedMode);
+  const [tracking, setTracking] = useState(() => !isTauri() && !sharedMode);
   const [playing, setPlaying] = useState(false);
   const [frameAnimations, setFrameAnimations] = useState(initialFrameAnimations);
   const [environment, setEnvironment] = useState<TrackerEnvironment>({
@@ -663,7 +669,7 @@ export default function TrackerApp() {
     try { return localStorage.getItem(CAPTURE_DISCLOSURE_KEY) !== 'acknowledged'; }
     catch { return true; }
   });
-  const [archiveOpen, setArchiveOpen] = useState(true);
+  const [archiveOpen, setArchiveOpen] = useState(() => !sharedMode);
   const [timelineOpen, setTimelineOpen] = useState(false);
   const [frameScrubbing, setFrameScrubbing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -672,6 +678,8 @@ export default function TrackerApp() {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [captureError, setCaptureError] = useState<string | null>(null);
+  const [sharing, setSharing] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [appVersion, setAppVersion] = useState<string | null>(null);
   const [inspector, setInspector] = useState<ReviewInspector | null>(null);
   const [selectedEventKey, setSelectedEventKey] = useState<string | null>(null);
@@ -707,6 +715,7 @@ export default function TrackerApp() {
   const frameScrubTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
+    if (sharedMode) return undefined;
     let active = true;
     void getTraceVersion()
       .then((version) => { if (active) setAppVersion(version); })
@@ -1001,19 +1010,20 @@ export default function TrackerApp() {
     void refresh();
     const timer = window.setInterval(refresh, 1500);
     return () => { active = false; window.clearInterval(timer); };
-  }, [finalizeActiveMatchForClientExit]);
+  }, [finalizeActiveMatchForClientExit, sharedMode]);
 
   useEffect(() => {
+    if (sharedMode) return;
     if (isTauri()) setTracking(environment.capture.enabled);
     setCaptureError(visibleCaptureError(environment));
-  }, [environment.capture.enabled, environment.capture.clientAttached, environment.capture.lastError]);
+  }, [environment.capture.enabled, environment.capture.clientAttached, environment.capture.lastError, sharedMode]);
 
   useEffect(() => {
-    if (!isTauri() || !environment.capture.permissionReady || autoStartAttempted.current || busy || showSetup) return;
+    if (sharedMode || !isTauri() || !environment.capture.permissionReady || autoStartAttempted.current || busy || showSetup) return;
     autoStartAttempted.current = true;
     if (environment.capture.enabled) return;
     void startTracking().then((capture) => { setEnvironment((current) => ({ ...current, capture })); setError(null); }).catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)));
-  }, [environment.capture.permissionReady, environment.capture.enabled, busy, showSetup]);
+  }, [environment.capture.permissionReady, environment.capture.enabled, busy, sharedMode, showSetup]);
 
   useEffect(() => {
     let unlisten: () => void = () => undefined;
@@ -1133,6 +1143,22 @@ export default function TrackerApp() {
 
     const bootstrap = async () => {
       try {
+        if (sharedReplayId) {
+          const payload = await loadSharedReplay(sharedReplayId);
+          if (!active) return;
+          const summary = matchSummaryFromReview(payload.review);
+          knownSummaryIdsRef.current.add(summary.id);
+          setSummaries([summary]);
+          setArchiveTotal(1);
+          selectedIdRef.current = payload.review.id;
+          setSelectedId(payload.review.id);
+          displayReview(payload.review, true);
+          void resolveCardsForPayload(payload.review);
+          document.title = `${payload.review.localPlayer} vs. ${payload.review.opponent} — Trace replay`;
+          setRestoringReview(false);
+          runtimeReadyRef.current = true;
+          return;
+        }
         if (isTauri()) {
           const legacyReviews = localStorage.getItem(STORAGE_MIGRATED_KEY) === '1' ? [] : loadReviews();
           for (const review of legacyReviews) await commitReview(review);
@@ -1227,7 +1253,7 @@ export default function TrackerApp() {
       persistTimersRef.current.forEach((timer) => window.clearTimeout(timer));
       persistTimersRef.current.clear();
     };
-  }, [commitReview, displayReview, mergeCatalog, rebuildOperations, rebuildStoredMatch, resolveCardsForPayload, upsertSummary]);
+  }, [commitReview, displayReview, mergeCatalog, rebuildOperations, rebuildStoredMatch, resolveCardsForPayload, sharedReplayId, upsertSummary]);
 
   useEffect(() => {
     if (!notice) return undefined;
@@ -1427,11 +1453,40 @@ export default function TrackerApp() {
     }
   }, [archiveTotal, resolveCardsForPayload, summaries.length]);
 
-  return (
-    <div className="app-shell">
-      <div className="window-drag-region" onMouseDown={beginWindowDrag} aria-hidden="true" />
+  const copyShareUrl = useCallback(async (url: string): Promise<boolean> => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setNotice('Share link copied.');
+      return true;
+    } catch {
+      setError('Trace could not access the clipboard. Select and copy the link manually.');
+      return false;
+    }
+  }, []);
 
-      <main className={`workspace ${archiveOpen ? 'archive-open' : 'archive-collapsed'} ${timelineOpen ? 'timeline-open' : 'timeline-collapsed'}`}>
+  const createShareLink = useCallback(async () => {
+    if (!selectedReview || sharedMode || sharing) return;
+    setSharing(true);
+    setError(null);
+    try {
+      const share = await shareMatch(selectedReview, REDUCER_VERSION);
+      setShareUrl(share.url);
+      if (!await copyShareUrl(share.url)) {
+        setNotice('Share link created. Copy it from the dialog.');
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setSharing(false);
+    }
+  }, [copyShareUrl, selectedReview, sharedMode, sharing]);
+
+  return (
+    <div className={`app-shell ${sharedMode ? 'shared-replay' : ''}`}>
+      {!sharedMode && <div className="window-drag-region" onMouseDown={beginWindowDrag} aria-hidden="true" />}
+      {sharedMode && <header className="shared-replay-header"><a href="/" aria-label="Trace home"><img src="/tracker-assets/trace-mascot.png" alt="" /><strong>Trace</strong></a><span><LinkSimple size={15} weight="bold" />Shared replay</span><a className="shared-replay-download" href="/">Get Trace</a></header>}
+
+      <main className={`workspace ${archiveOpen ? 'archive-open' : 'archive-collapsed'} ${timelineOpen ? 'timeline-open' : 'timeline-collapsed'} ${sharedMode ? 'shared-mode' : ''}`}>
         {archiveOpen && <aside className="session-rail">
           <div className="archive-heading" onMouseDown={beginWindowDrag}>
             <div className="archive-brand"><span><img src="/tracker-assets/trace-mascot.png" alt="" /></span><div><span className="archive-brand-name"><strong>Trace</strong>{appVersion && <b>v{appVersion}</b>}</span><small>Every turn, in view</small></div><div className={`header-status ${captureStatus.tone}`} title={environment.capture.lastError || undefined}><i /><b>{captureStatus.label}</b></div></div>
@@ -1446,7 +1501,7 @@ export default function TrackerApp() {
         </aside>}
 
         <section className="review-stage">
-          {restoringReview && !selectedReview ? <div className="welcome-state loading-review"><BookOpenText size={54} weight="duotone" /><span>Restoring match</span><h2>Loading the reconstructed board…</h2><p>The archive index is ready; only this selected match is being read.</p></div> : selectedReview && selectedTurn && localBoard && opponentBoard && selectedCanonical && localCanonicalPlayer && opponentCanonicalPlayer && turnStatus ? <>
+          {restoringReview && !selectedReview ? <div className="welcome-state loading-review"><BookOpenText size={54} weight="duotone" /><span>{sharedMode ? 'Shared replay' : 'Restoring match'}</span><h2>Loading the reconstructed board…</h2><p>{sharedMode ? 'Fetching the match and its exact sequence of actions.' : 'The archive index is ready; only this selected match is being read.'}</p></div> : selectedReview && selectedTurn && localBoard && opponentBoard && selectedCanonical && localCanonicalPlayer && opponentCanonicalPlayer && turnStatus ? <>
             <div className={`board-frame ${frameAnimations ? 'frame-motion-enabled' : ''} ${frameScrubbing ? 'frame-scrubbing' : ''}`}>
               <div className="reconstructed-chip"><CheckCircle size={18} weight="fill" />Board reconstructed</div>
               <PlayerField board={opponentBoard} canonical={opponentCanonicalPlayer} visibility={selectedCanonical.visibility} catalog={cardCatalog} choiceFrames={turnChoiceFrames.filter((frame) => frame.actor === opponentBoard.name)} currentReviewIndex={turnIndex} turnNumber={selectedCanonical.state.turnNumber} status={turnStatus.players[opponentBoard.name]} handoff={turnPass ? turnPass.passer === opponentBoard.name ? turnPass.reason === 'timeout' ? 'timed-out' : 'passing' : 'receiving' : undefined} stadiumCard={selectedCanonical.state.stadium} stadiumName={turnStatus.stadiumName} stadiumOwner={turnStatus.stadiumOwner} localPlayerName={localBoard.name} opponentName={opponentBoard.name} defeatedIds={defeatedIds} defeatedNames={defeatedNames} damageChanges={damageChanges} positionChanges={positionChanges} attackerId={attackResolution?.sourceId} opponent avatar={TRAINER_ART[0]} onOpenPokemon={openPokemon} onOpenChoice={openChoiceCard} onOpenCard={openCard} onOpenZone={openZone} />
@@ -1463,6 +1518,7 @@ export default function TrackerApp() {
               </div>
               <label className="turn-scrubber"><span className="sr-only">Replay position</span><span className="turn-scrubber-rail" aria-hidden="true"><i style={{ width: `${selectedReview.turns.length > 1 ? (turnIndex / (selectedReview.turns.length - 1)) * 100 : 0}%` }} /></span><input type="range" min="0" max={Math.max(0, selectedReview.turns.length - 1)} value={turnIndex} onChange={(event) => { navigateToFrame(Number(event.target.value)); setPlaying(false); }} /></label>
               <div className="transport-buttons">
+                {isTauri() && <button className="share-replay-button" type="button" disabled={sharing} aria-label="Share this match" title="Create a link to this replay" onClick={() => void createShareLink()}><ShareNetwork size={16} weight="bold" /><span>{sharing ? 'Sharing…' : 'Share'}</span></button>}
                 <button className={`frame-motion-button ${frameAnimations ? 'enabled' : ''}`} type="button" aria-pressed={frameAnimations} aria-label={`Replay animations ${frameAnimations ? 'on' : 'off'}`} title={`Replay animations ${frameAnimations ? 'on' : 'off'} · Click to ${frameAnimations ? 'disable' : 'enable'}`} onClick={toggleFrameAnimations}><Sparkle size={18} weight="regular" /></button>
                 <span className="transport-divider" aria-hidden="true" />
                 <button type="button" onClick={() => navigateToFrame(0)} disabled={turnIndex === 0} aria-label="First frame" aria-keyshortcuts="Shift+A" title="First frame · Shift+A"><SkipBack size={18} weight="regular" /></button>
@@ -1472,12 +1528,12 @@ export default function TrackerApp() {
                 <button type="button" onClick={() => navigateToFrame(selectedReview.turns.length - 1)} disabled={turnIndex >= selectedReview.turns.length - 1} aria-label="Latest frame" aria-keyshortcuts="Shift+D" title="Latest frame · Shift+D"><SkipForward size={18} weight="regular" /></button>
               </div>
             </div>
-          </> : selectedSummary?.recording ? <div className="welcome-state live-capture-state"><WifiHigh size={58} weight="duotone" /><span>Game detected</span><h2>Capturing this match.</h2><p>Trace registered the game immediately. The reconstructed board will appear as soon as the opening state arrives.</p><small>{Math.max(selectedSummary.operationCount, liveOperations.length)} exact operation{Math.max(selectedSummary.operationCount, liveOperations.length) === 1 ? '' : 's'} safely stored</small></div> : <div className="welcome-state"><img src="/tracker-assets/trace-mascot.png" alt="Trace's furry archivist reading a field guide" /><span>Ready when you are</span><h2>See the whole match.</h2><p>Trace captures exact live operations and rebuilds every turn automatically—no OCR, screenshots, or manual imports.</p><div><button className="primary" type="button" disabled={busy} onClick={() => void changeTracking()}>{tracking ? 'Automatic capture is on' : 'Start automatic capture'}</button><button type="button" onClick={() => importLog(DEMO_BATTLE_LOG)}>Explore a sample</button></div>{liveOperations.length > 0 && <small>{liveOperations.length} exact operations decoded</small>}</div>}
+          </> : sharedMode ? <div className="welcome-state shared-replay-error"><img src="/tracker-assets/trace-mascot.png" alt="" /><span>Shared replay</span><h2>This match could not be opened.</h2><p>{error || 'The link may be incomplete or no longer available.'}</p><a href="/">Learn about Trace</a></div> : selectedSummary?.recording ? <div className="welcome-state live-capture-state"><WifiHigh size={58} weight="duotone" /><span>Game detected</span><h2>Capturing this match.</h2><p>Trace registered the game immediately. The reconstructed board will appear as soon as the opening state arrives.</p><small>{Math.max(selectedSummary.operationCount, liveOperations.length)} exact operation{Math.max(selectedSummary.operationCount, liveOperations.length) === 1 ? '' : 's'} safely stored</small></div> : <div className="welcome-state"><img src="/tracker-assets/trace-mascot.png" alt="Trace's furry archivist reading a field guide" /><span>Ready when you are</span><h2>See the whole match.</h2><p>Trace captures exact live operations and rebuilds every turn automatically—no OCR, screenshots, or manual imports.</p><div><button className="primary" type="button" disabled={busy} onClick={() => void changeTracking()}>{tracking ? 'Automatic capture is on' : 'Start automatic capture'}</button><button type="button" onClick={() => importLog(DEMO_BATTLE_LOG)}>Explore a sample</button></div>{liveOperations.length > 0 && <small>{liveOperations.length} exact operations decoded</small>}</div>}
         </section>
 
         {timelineOpen && <aside className="timeline-panel">
           <div className="timeline-heading" onMouseDown={beginWindowDrag}><div><span id="match-timeline-heading">Game log</span><small>{timeline.entries.length ? `${timeline.entries.length} events · ${selectedTurn?.label || 'Replay'}` : 'Waiting for a match'}</small></div><div className="timeline-heading-actions"><button type="button" aria-label="Jump to the selected event" title="Jump to selected event" disabled={!selectedEventKey} onClick={() => selectedTimelineEventRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })}><SkipForward size={19} weight="fill" /></button><button className="panel-collapse-button" type="button" aria-label="Collapse game log" aria-expanded="true" title="Collapse game log" onClick={() => setTimelineOpen(false)}><CaretRight size={17} weight="bold" /></button></div></div>
-          <div className="timeline-tools"><Toggle on={tracking} disabled={busy} onChange={() => void changeTracking()} /><button className="icon-button" type="button" aria-label="Settings" onClick={() => setShowSetup(true)}><GearSix size={21} weight="bold" /></button></div>
+          {!sharedMode && <div className="timeline-tools"><Toggle on={tracking} disabled={busy} onChange={() => void changeTracking()} /><button className="icon-button" type="button" aria-label="Settings" onClick={() => setShowSetup(true)}><GearSix size={21} weight="bold" /></button></div>}
           <div className="timeline-list" role="list" aria-labelledby="match-timeline-heading">
             {timeline.groups.map((group) => {
               const current = group.entries.some((entry) => entry.reviewIndex === turnIndex);
@@ -1527,12 +1583,13 @@ export default function TrackerApp() {
         </aside>}
       </main>
 
-      {!archiveOpen && <button className="panel-restore-button archive-restore-button" type="button" aria-label="Open match archive" aria-expanded="false" title="Open match archive" onClick={() => setArchiveOpen(true)}><CardsThree size={22} weight="duotone" /></button>}
+      {!sharedMode && !archiveOpen && <button className="panel-restore-button archive-restore-button" type="button" aria-label="Open match archive" aria-expanded="false" title="Open match archive" onClick={() => setArchiveOpen(true)}><CardsThree size={22} weight="duotone" /></button>}
       {!timelineOpen && <button className="panel-restore-button timeline-restore-button" type="button" aria-label="Open game log" aria-expanded="false" title="Open game log" onClick={() => setTimelineOpen(true)}><List size={22} weight="bold" /></button>}
 
-      {showSetup && <div className="modal-backdrop"><div className="setup-modal"><div className="modal-title"><div><span>Trace settings</span><h2>Replay and capture</h2></div><button type="button" disabled={busy} onClick={closeSetup} aria-label="Close settings"><X size={21} weight="bold" /></button></div><p>Choose how replays move, then manage Trace's connection to TCG Live.</p><div className="settings-toggle-row replay-animation-setting"><div><Sparkle size={22} weight="duotone" /><span><strong>Animated replay frames</strong><small>Cards glide, fade, and scale between their exact board positions.</small></span></div><button type="button" role="switch" aria-label="Animated replay frames" aria-checked={frameAnimations} className={frameAnimations ? 'enabled' : ''} onClick={toggleFrameAnimations}><span />{frameAnimations ? 'On' : 'Off'}</button></div><small className="capture-privacy-disclosure">By connecting, Trace securely sends and stores captured match data, including player names and game actions.</small><div className="modal-actions"><button type="button" disabled={busy} onClick={closeSetup}>Close</button><button className="primary" type="button" disabled={busy} onClick={() => void finishSetup()}>{busy ? 'Working…' : environment.capture.permissionReady ? 'Reconnect capture' : 'Connect capture'}</button></div></div></div>}
+      {!sharedMode && showSetup && <div className="modal-backdrop"><div className="setup-modal"><div className="modal-title"><div><span>Trace settings</span><h2>Replay and capture</h2></div><button type="button" disabled={busy} onClick={closeSetup} aria-label="Close settings"><X size={21} weight="bold" /></button></div><p>Choose how replays move, then manage Trace's connection to TCG Live.</p><div className="settings-toggle-row replay-animation-setting"><div><Sparkle size={22} weight="duotone" /><span><strong>Animated replay frames</strong><small>Cards glide, fade, and scale between their exact board positions.</small></span></div><button type="button" role="switch" aria-label="Animated replay frames" aria-checked={frameAnimations} className={frameAnimations ? 'enabled' : ''} onClick={toggleFrameAnimations}><span />{frameAnimations ? 'On' : 'Off'}</button></div><small className="capture-privacy-disclosure">By connecting, Trace securely sends and stores captured match data, including player names and game actions.</small><div className="modal-actions"><button type="button" disabled={busy} onClick={closeSetup}>Close</button><button className="primary" type="button" disabled={busy} onClick={() => void finishSetup()}>{busy ? 'Working…' : environment.capture.permissionReady ? 'Reconnect capture' : 'Connect capture'}</button></div></div></div>}
+      {shareUrl && <div className="modal-backdrop share-modal-backdrop"><div className="share-modal" role="dialog" aria-modal="true" aria-labelledby="share-match-title"><div className="modal-title"><div><span>Ready to send</span><h2 id="share-match-title">Share this match</h2></div><button type="button" onClick={() => setShareUrl(null)} aria-label="Close share dialog"><X size={21} weight="bold" /></button></div><p>Anyone with this link can click through the replay in their browser.</p><div className="share-link-row"><input value={shareUrl} readOnly aria-label="Share link" onFocus={(event) => event.currentTarget.select()} /><button className="primary" type="button" onClick={() => void copyShareUrl(shareUrl)}><Copy size={16} weight="bold" />Copy link</button></div></div></div>}
       <ReviewOverlay inspector={inspector} catalog={cardCatalog} onClose={() => setInspector(null)} onInspectCard={openCard} />
-      <UpdateNotice />
+      {!sharedMode && <UpdateNotice />}
       {(notice || error || captureError) && <div className={`toast ${error || captureError ? 'error' : ''}`}><span>{error || captureError ? <X size={18} weight="bold" /> : <CheckCircle size={18} weight="fill" />}</span><p>{error || captureError || notice}</p><button type="button" onClick={() => { setError(null); setCaptureError(null); setNotice(null); }} aria-label="Dismiss notification"><X size={16} weight="bold" /></button></div>}
     </div>
   );

@@ -1,6 +1,14 @@
 {
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
   "cleanUrls": true,
   "trailingSlash": false,
+  "rewrites": [
+    {
+      "source": "/trace/:shareId",
+      "destination": "/shared-replay"
+    }
+  ],
   "redirects": [
     {
       "source": "/discord",

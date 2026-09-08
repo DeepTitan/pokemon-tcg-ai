@@ -9,18 +9,23 @@ import re
 import secrets
 
 import boto3
+from botocore.exceptions import ClientError
 from boto3.dynamodb.conditions import Key
 
 
 DEVICES_TABLE = os.environ["DEVICES_TABLE"]
 MATCHES_TABLE = os.environ["MATCHES_TABLE"]
+SHARES_TABLE = os.environ["SHARES_TABLE"]
 PAYLOAD_BUCKET = os.environ["PAYLOAD_BUCKET"]
+PUBLIC_SHARE_BASE_URL = os.environ.get("PUBLIC_SHARE_BASE_URL", "https://victoryroad.app/trace").rstrip("/")
 DEVICE_ID = re.compile(r"^[A-Za-z0-9._-]{16,128}$")
 MATCH_ID = re.compile(r"^[A-Za-z0-9._:-]{1,220}$")
+SHARE_ID = re.compile(r"^[A-Za-z0-9_-]{20,64}$")
 
 dynamodb = boto3.resource("dynamodb")
 devices = dynamodb.Table(DEVICES_TABLE)
 matches = dynamodb.Table(MATCHES_TABLE)
+shares = dynamodb.Table(SHARES_TABLE)
 s3 = boto3.client("s3")
 
 
@@ -30,6 +35,12 @@ def handler(event, _context):
     try:
         if method == "POST" and path == "/v1/register":
             return register(event)
+
+        share_id = (event.get("pathParameters") or {}).get("shareId", "")
+        if method == "GET" and path.startswith("/v1/shares/"):
+            if not SHARE_ID.fullmatch(share_id):
+                return response(400, {"error": "invalid_share_id"})
+            return get_shared_match(share_id)
 
         identity = authorize(event)
         if not identity:
@@ -45,6 +56,8 @@ def handler(event, _context):
             return put_match(identity, match_id, event)
         if method == "GET":
             return get_match(identity, match_id)
+        if method == "POST" and path.endswith("/share"):
+            return share_match(identity, match_id)
         return response(404, {"error": "not_found"})
     except ValueError as error:
         return response(400, {"error": str(error)})
@@ -114,15 +127,20 @@ def put_match(device_id, match_id, event):
     )
 
     summary = match_summary(review)
-    item = {
+    existing = matches.get_item(
+        Key={"deviceId": device_id, "matchId": match_id},
+        ConsistentRead=True,
+    ).get("Item") or {}
+    item = clean({
         "deviceId": device_id,
         "matchId": match_id,
         "objectKey": object_key,
         "updatedAt": now,
         "payloadBytes": len(compressed),
         "reducerVersion": reducer_version,
+        "shareId": existing.get("shareId"),
         **summary,
-    }
+    })
     matches.put_item(Item=item)
     return response(200, public_summary(item))
 
@@ -143,6 +161,75 @@ def get_match(device_id, match_id):
     ).get("Item")
     if not item:
         return response(404, {"error": "match_not_found"})
+    stored = s3.get_object(Bucket=PAYLOAD_BUCKET, Key=item["objectKey"])["Body"].read()
+    review = json.loads(gzip.decompress(stored))
+    return response(200, {
+        "review": review,
+        "reducerVersion": int(item.get("reducerVersion", 0)),
+        "updatedAt": item.get("updatedAt"),
+    })
+
+
+def share_match(device_id, match_id):
+    item = matches.get_item(
+        Key={"deviceId": device_id, "matchId": match_id},
+        ConsistentRead=True,
+    ).get("Item")
+    if not item:
+        return response(404, {"error": "match_not_found"})
+
+    share_id = item.get("shareId")
+    if not isinstance(share_id, str) or not SHARE_ID.fullmatch(share_id):
+        for _ in range(5):
+            candidate = secrets.token_urlsafe(18)
+            try:
+                shares.put_item(
+                    Item={
+                        "shareId": candidate,
+                        "deviceId": device_id,
+                        "matchId": match_id,
+                        "createdAt": timestamp(),
+                    },
+                    ConditionExpression="attribute_not_exists(shareId)",
+                )
+                share_id = candidate
+                break
+            except ClientError as error:
+                if error.response.get("Error", {}).get("Code") != "ConditionalCheckFailedException":
+                    raise
+        else:
+            raise RuntimeError("share_id_generation_failed")
+
+        matches.update_item(
+            Key={"deviceId": device_id, "matchId": match_id},
+            UpdateExpression="SET shareId = :share_id",
+            ExpressionAttributeValues={":share_id": share_id},
+        )
+    else:
+        # Repair the public lookup if a retained match outlived a replaced share table.
+        shares.put_item(Item={
+            "shareId": share_id,
+            "deviceId": device_id,
+            "matchId": match_id,
+            "createdAt": item.get("updatedAt", timestamp()),
+        })
+
+    return response(200, {
+        "shareId": share_id,
+        "url": f"{PUBLIC_SHARE_BASE_URL}/{share_id}",
+    })
+
+
+def get_shared_match(share_id):
+    shared = shares.get_item(Key={"shareId": share_id}, ConsistentRead=True).get("Item")
+    if not shared:
+        return response(404, {"error": "share_not_found"})
+    item = matches.get_item(
+        Key={"deviceId": shared["deviceId"], "matchId": shared["matchId"]},
+        ConsistentRead=True,
+    ).get("Item")
+    if not item:
+        return response(404, {"error": "share_not_found"})
     stored = s3.get_object(Bucket=PAYLOAD_BUCKET, Key=item["objectKey"])["Body"].read()
     review = json.loads(gzip.decompress(stored))
     return response(200, {

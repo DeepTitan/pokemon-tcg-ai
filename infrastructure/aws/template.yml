@@ -19,7 +19,9 @@ Globals:
       Variables:
         DEVICES_TABLE: !Ref TraceDevices
         MATCHES_TABLE: !Ref TraceMatches
+        SHARES_TABLE: !Ref TraceShares
         PAYLOAD_BUCKET: !Ref TracePayloads
+        PUBLIC_SHARE_BASE_URL: https://victoryroad.app/trace
 
 Resources:
   TraceApi:
@@ -83,6 +85,28 @@ Resources:
         - Key: environment
           Value: !Ref Environment
 
+  TraceShares:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: shareId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: shareId
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+      Tags:
+        - Key: app
+          Value: trace
+        - Key: environment
+          Value: !Ref Environment
+
   TracePayloads:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
@@ -121,6 +145,8 @@ Resources:
             TableName: !Ref TraceDevices
         - DynamoDBCrudPolicy:
             TableName: !Ref TraceMatches
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TraceShares
         - S3CrudPolicy:
             BucketName: !Ref TracePayloads
       Events:
@@ -148,6 +174,18 @@ Resources:
             ApiId: !Ref TraceApi
             Path: /v1/matches/{matchId}
             Method: GET
+        ShareMatch:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref TraceApi
+            Path: /v1/matches/{matchId}/share
+            Method: POST
+        GetSharedMatch:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref TraceApi
+            Path: /v1/shares/{shareId}
+            Method: GET
 
   TraceCloudFunctionLogs:
     Type: AWS::Logs::LogGroup
@@ -165,5 +203,7 @@ Outputs:
     Value: !Ref TraceDevices
   MatchesTable:
     Value: !Ref TraceMatches
+  SharesTable:
+    Value: !Ref TraceShares
   PayloadBucket:
     Value: !Ref TracePayloads

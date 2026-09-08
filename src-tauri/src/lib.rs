@@ -233,6 +233,23 @@ async fn persist_match_review(
 }
 
 #[tauri::command]
+async fn share_match(
+    storage: tauri::State<'_, storage::MatchStorage>,
+    cloud_sync: tauri::State<'_, cloud_sync::CloudSync>,
+    review: Value,
+    reducer_version: i64,
+) -> Result<cloud_sync::ShareLink, String> {
+    let stored_review = review.clone();
+    let storage = storage.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        storage.persist_review(&stored_review, reducer_version)
+    })
+    .await
+    .map_err(|error| error.to_string())??;
+    cloud_sync.share_review(&review, reducer_version).await
+}
+
+#[tauri::command]
 async fn load_match_operations(
     storage: tauri::State<'_, storage::MatchStorage>,
     match_id: String,
@@ -385,6 +402,7 @@ pub fn run() {
             list_match_summaries,
             load_match_review,
             persist_match_review,
+            share_match,
             load_match_operations,
             list_raw_match_ids,
             resolve_card_sources,

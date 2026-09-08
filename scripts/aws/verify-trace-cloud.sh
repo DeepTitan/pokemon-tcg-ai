@@ -22,11 +22,13 @@ stack_output() {
 API_URL="$(stack_output ApiUrl)"
 DEVICES_TABLE="$(stack_output DevicesTable)"
 MATCHES_TABLE="$(stack_output MatchesTable)"
+SHARES_TABLE="$(stack_output SharesTable)"
 PAYLOAD_BUCKET="$(stack_output PayloadBucket)"
 DEVICE_ID="trace-e2e-$(uuidgen | tr '[:upper:]' '[:lower:]')"
 MATCH_ID="trace-e2e-$(date -u +%Y%m%dT%H%M%SZ)-${RANDOM}"
 WORK_DIR="$(mktemp -d)"
 OBJECT_KEY=""
+SHARE_ID=""
 
 cleanup() {
   if [[ -n "$OBJECT_KEY" ]]; then
@@ -44,6 +46,12 @@ cleanup() {
     --table-name "$MATCHES_TABLE" \
     --key "$(jq -cn --arg device "$DEVICE_ID" --arg match "$MATCH_ID" '{deviceId:{S:$device},matchId:{S:$match}}')" \
     >/dev/null 2>&1 || true
+  if [[ -n "$SHARE_ID" ]]; then
+    aws dynamodb delete-item --profile "$AWS_PROFILE_NAME" --region "$AWS_REGION_NAME" \
+      --table-name "$SHARES_TABLE" \
+      --key "$(jq -cn --arg share "$SHARE_ID" '{shareId:{S:$share}}')" \
+      >/dev/null 2>&1 || true
+  fi
   aws dynamodb delete-item --profile "$AWS_PROFILE_NAME" --region "$AWS_REGION_NAME" \
     --table-name "$DEVICES_TABLE" \
     --key "$(jq -cn --arg device "$DEVICE_ID" '{deviceId:{S:$device}}')" \
@@ -90,6 +98,17 @@ jq -e --arg id "$MATCH_ID" \
   '.review.id == $id and .review.source == "trace-cloud-e2e" and .reducerVersion == 999' \
   "$WORK_DIR/get-response.json" >/dev/null
 
+curl --fail --silent --show-error --request POST --header "x-trace-device: $DEVICE_ID" \
+  --header "authorization: Bearer $TOKEN" "$API_URL/v1/matches/$MATCH_ID/share" > "$WORK_DIR/share-response.json"
+SHARE_ID="$(jq -er '.shareId | select(length >= 20)' "$WORK_DIR/share-response.json")"
+jq -e --arg share "$SHARE_ID" '.url == ("https://victoryroad.app/trace/" + $share)' \
+  "$WORK_DIR/share-response.json" >/dev/null
+
+curl --fail --silent --show-error "$API_URL/v1/shares/$SHARE_ID" > "$WORK_DIR/public-response.json"
+jq -e --arg id "$MATCH_ID" \
+  '.review.id == $id and .review.source == "trace-cloud-e2e" and .reducerVersion == 999 and (has("deviceId") | not)' \
+  "$WORK_DIR/public-response.json" >/dev/null
+
 aws dynamodb get-item --profile "$AWS_PROFILE_NAME" --region "$AWS_REGION_NAME" \
   --table-name "$MATCHES_TABLE" --consistent-read \
   --key "$(jq -cn --arg device "$DEVICE_ID" --arg match "$MATCH_ID" '{deviceId:{S:$device},matchId:{S:$match}}')" \
@@ -101,4 +120,4 @@ aws s3api head-object --profile "$AWS_PROFILE_NAME" --region "$AWS_REGION_NAME" 
 jq -e '.ServerSideEncryption == "AES256" and .ContentEncoding == "gzip"' \
   "$WORK_DIR/s3-object.json" >/dev/null
 
-printf 'Trace cloud verification passed: auth, upload, list, retrieval, DynamoDB, and encrypted S3.\n'
+printf 'Trace cloud verification passed: auth, upload, list, retrieval, sharing, DynamoDB, and encrypted S3.\n'

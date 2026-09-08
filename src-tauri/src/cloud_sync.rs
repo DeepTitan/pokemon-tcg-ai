@@ -30,6 +30,13 @@ struct Registration {
     token: String,
 }
 
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShareLink {
+    pub share_id: String,
+    pub url: String,
+}
+
 #[derive(Debug)]
 struct SyncFailure {
     message: String,
@@ -128,16 +135,23 @@ impl CloudSync {
     }
 
     async fn put_review(&self, pending: &PendingCloudReview) -> Result<(), SyncFailure> {
-        let review_id = pending
-            .review
+        self.put_review_value(&pending.match_id, &pending.review, pending.reducer_version)
+            .await
+    }
+
+    async fn put_review_value(
+        &self,
+        match_id: &str,
+        review: &Value,
+        reducer_version: i64,
+    ) -> Result<(), SyncFailure> {
+        let review_id = review
             .get("id")
             .and_then(Value::as_str)
-            .filter(|value| !value.is_empty())
-            .ok_or_else(|| SyncFailure::item("Cloud backup review is missing an id."))?;
-        if review_id != pending.match_id {
-            return Err(SyncFailure::item(
-                "Cloud backup review id does not match its outbox id.",
-            ));
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| SyncFailure::item("This replay is missing its match id."))?;
+        if review_id != match_id {
+            return Err(SyncFailure::item("This replay's match id is inconsistent."));
         }
 
         let mut retried_auth = false;
@@ -146,28 +160,22 @@ impl CloudSync {
             let mut url = self
                 .endpoint
                 .clone()
-                .ok_or_else(|| SyncFailure::global("Cloud backup is not configured."))?;
+                .ok_or_else(|| SyncFailure::global("Match sharing is unavailable in this build."))?;
             url.path_segments_mut()
-                .map_err(|_| SyncFailure::global("Cloud backup URL cannot accept path segments."))?
-                .extend(["v1", "matches", pending.match_id.as_str()]);
+                .map_err(|_| SyncFailure::global("Match sharing is not configured correctly."))?
+                .extend(["v1", "matches", match_id]);
             let request = serde_json::to_vec(&json!({
-                "review": &pending.review,
-                "reducerVersion": pending.reducer_version,
+                "review": review,
+                "reducerVersion": reducer_version,
             }))
-            .map_err(|error| {
-                SyncFailure::item(format!("Cloud backup review could not be encoded: {error}"))
-            })?;
+            .map_err(|error| SyncFailure::item(format!("Replay could not be encoded: {error}")))?;
             let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-            encoder.write_all(&request).map_err(|error| {
-                SyncFailure::item(format!(
-                    "Cloud backup review could not be compressed: {error}"
-                ))
-            })?;
-            let compressed = encoder.finish().map_err(|error| {
-                SyncFailure::item(format!(
-                    "Cloud backup review could not be compressed: {error}"
-                ))
-            })?;
+            encoder
+                .write_all(&request)
+                .map_err(|error| SyncFailure::item(format!("Replay could not be compressed: {error}")))?;
+            let compressed = encoder
+                .finish()
+                .map_err(|error| SyncFailure::item(format!("Replay could not be compressed: {error}")))?;
 
             let response = self
                 .client
@@ -179,9 +187,7 @@ impl CloudSync {
                 .body(compressed)
                 .send()
                 .await
-                .map_err(|error| {
-                    SyncFailure::global(format!("Cloud backup request failed: {error}"))
-                })?;
+                .map_err(|error| SyncFailure::global(format!("Could not publish this replay: {error}")))?;
 
             if response.status() == StatusCode::UNAUTHORIZED && !retried_auth {
                 {
@@ -194,7 +200,7 @@ impl CloudSync {
             }
             if !response.status().is_success() {
                 let status = response.status();
-                let message = format!("Cloud backup returned {status}.");
+                let message = format!("Match sharing returned {status}.");
                 return Err(
                     if status == StatusCode::BAD_REQUEST || status == StatusCode::PAYLOAD_TOO_LARGE
                     {
@@ -205,6 +211,65 @@ impl CloudSync {
                 );
             }
             return Ok(());
+        }
+    }
+
+    pub async fn share_review(
+        &self,
+        review: &Value,
+        reducer_version: i64,
+    ) -> Result<ShareLink, String> {
+        let _guard = self.sweep_lock.lock().await;
+        let match_id = review
+            .get("id")
+            .and_then(Value::as_str)
+            .filter(|value| !value.trim().is_empty())
+            .ok_or_else(|| "This replay is missing its match id.".to_string())?;
+        self.put_review_value(match_id, review, reducer_version)
+            .await
+            .map_err(|failure| failure.message)?;
+
+        let mut retried_auth = false;
+        loop {
+            let (device_id, token) = self
+                .ensure_registration()
+                .await
+                .map_err(|failure| failure.message)?;
+            let mut url = self
+                .endpoint
+                .clone()
+                .ok_or_else(|| "Match sharing is unavailable in this build.".to_string())?;
+            url.path_segments_mut()
+                .map_err(|_| "Match sharing is not configured correctly.".to_string())?
+                .extend(["v1", "matches", match_id, "share"]);
+            let response = self
+                .client
+                .post(url)
+                .header("x-trace-device", &device_id)
+                .bearer_auth(&token)
+                .send()
+                .await
+                .map_err(|error| format!("Could not create a share link: {error}"))?;
+            if response.status() == StatusCode::UNAUTHORIZED && !retried_auth {
+                {
+                    let mut config = self.config.lock().await;
+                    config.token = None;
+                }
+                let _ = self.save_config_blocking();
+                retried_auth = true;
+                continue;
+            }
+            if !response.status().is_success() {
+                return Err(format!("Could not create a share link ({}).", response.status()));
+            }
+            let share = response
+                .json::<ShareLink>()
+                .await
+                .map_err(|error| format!("The share link response was unreadable: {error}"))?;
+            if share.share_id.is_empty() || share.url.is_empty() {
+                return Err("The share link response was incomplete.".to_string());
+            }
+            return Ok(share);
         }
     }
 
