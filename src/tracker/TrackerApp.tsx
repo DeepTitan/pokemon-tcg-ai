@@ -15,6 +15,7 @@ import { Prohibit } from '@phosphor-icons/react/Prohibit';
 import { ArrowDown } from '@phosphor-icons/react/ArrowDown';
 import { ArrowUp } from '@phosphor-icons/react/ArrowUp';
 import { Copy } from '@phosphor-icons/react/Copy';
+import { CircleNotch } from '@phosphor-icons/react/CircleNotch';
 import { LinkSimple } from '@phosphor-icons/react/LinkSimple';
 import { ShareNetwork } from '@phosphor-icons/react/ShareNetwork';
 import type { Card, PlayerState, PokemonInPlay } from '../engine/types.js';
@@ -56,7 +57,7 @@ import {
   type FrameNavigationRequest,
 } from './frame-animation-model.js';
 import { UpdateNotice } from './UpdateNotice.js';
-import { loadSharedReplay, sharedReplayIdFromPath } from './share-replay.js';
+import { loadSharedReplay, readStoredShareLinks, sharedReplayIdFromPath, storeShareLink } from './share-replay.js';
 import { CARD_BACK_ART, cardCatalogEntryNeedsRefresh, findCatalogCard, publicCardArtUrl, resolvedCardArt, showCardBackOnError } from './card-art.js';
 import type {
   CapturedOperation, CardInfo, CanonicalReviewState, MatchReview, MatchSummary, ReviewCardVisibility, ReviewSelection, TrackedCard, TrackedChoiceCard, TrackedPlayerBoard,
@@ -680,6 +681,10 @@ export default function TrackerApp() {
   const [captureError, setCaptureError] = useState<string | null>(null);
   const [sharing, setSharing] = useState(false);
   const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareLinks, setShareLinks] = useState<Record<string, string>>(() => {
+    try { return readStoredShareLinks(localStorage); }
+    catch { return {}; }
+  });
   const [appVersion, setAppVersion] = useState<string | null>(null);
   const [inspector, setInspector] = useState<ReviewInspector | null>(null);
   const [selectedEventKey, setSelectedEventKey] = useState<string | null>(null);
@@ -1466,11 +1471,19 @@ export default function TrackerApp() {
 
   const createShareLink = useCallback(async () => {
     if (!selectedReview || sharedMode || sharing) return;
+    const existingUrl = shareLinks[selectedReview.id];
+    if (existingUrl) {
+      setError(null);
+      setShareUrl(existingUrl);
+      await copyShareUrl(existingUrl);
+      return;
+    }
     setSharing(true);
     setError(null);
     try {
       const share = await shareMatch(selectedReview, REDUCER_VERSION);
       setShareUrl(share.url);
+      setShareLinks((current) => storeShareLink(localStorage, current, selectedReview.id, share.url));
       if (!await copyShareUrl(share.url)) {
         setNotice('Share link created. Copy it from the dialog.');
       }
@@ -1479,7 +1492,9 @@ export default function TrackerApp() {
     } finally {
       setSharing(false);
     }
-  }, [copyShareUrl, selectedReview, sharedMode, sharing]);
+  }, [copyShareUrl, selectedReview, shareLinks, sharedMode, sharing]);
+
+  const selectedShareUrl = selectedReview ? shareLinks[selectedReview.id] : null;
 
   return (
     <div className={`app-shell ${sharedMode ? 'shared-replay' : ''}`}>
@@ -1518,7 +1533,7 @@ export default function TrackerApp() {
               </div>
               <label className="turn-scrubber"><span className="sr-only">Replay position</span><span className="turn-scrubber-rail" aria-hidden="true"><i style={{ width: `${selectedReview.turns.length > 1 ? (turnIndex / (selectedReview.turns.length - 1)) * 100 : 0}%` }} /></span><input type="range" min="0" max={Math.max(0, selectedReview.turns.length - 1)} value={turnIndex} onChange={(event) => { navigateToFrame(Number(event.target.value)); setPlaying(false); }} /></label>
               <div className="transport-buttons">
-                {isTauri() && <button className="share-replay-button" type="button" disabled={sharing} aria-label="Share this match" title="Create a link to this replay" onClick={() => void createShareLink()}><ShareNetwork size={16} weight="bold" /><span>{sharing ? 'Sharing…' : 'Share'}</span></button>}
+                {isTauri() && <button className={`share-replay-button ${selectedShareUrl ? 'has-link' : ''}`} type="button" disabled={sharing} aria-label={selectedShareUrl ? 'Copy this match link' : 'Share this match'} title={selectedShareUrl ? 'Copy the existing replay link' : 'Create a link to this replay'} onClick={() => void createShareLink()}>{sharing ? <CircleNotch className="share-spinner" size={16} weight="bold" /> : selectedShareUrl ? <Copy size={16} weight="bold" /> : <ShareNetwork size={16} weight="bold" />}<span>{sharing ? 'Creating' : selectedShareUrl ? 'Copy link' : 'Share'}</span></button>}
                 <button className={`frame-motion-button ${frameAnimations ? 'enabled' : ''}`} type="button" aria-pressed={frameAnimations} aria-label={`Replay animations ${frameAnimations ? 'on' : 'off'}`} title={`Replay animations ${frameAnimations ? 'on' : 'off'} · Click to ${frameAnimations ? 'disable' : 'enable'}`} onClick={toggleFrameAnimations}><Sparkle size={18} weight="regular" /></button>
                 <span className="transport-divider" aria-hidden="true" />
                 <button type="button" onClick={() => navigateToFrame(0)} disabled={turnIndex === 0} aria-label="First frame" aria-keyshortcuts="Shift+A" title="First frame · Shift+A"><SkipBack size={18} weight="regular" /></button>

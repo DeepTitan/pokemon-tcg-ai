@@ -219,16 +219,30 @@ impl CloudSync {
         review: &Value,
         reducer_version: i64,
     ) -> Result<ShareLink, String> {
-        let _guard = self.sweep_lock.lock().await;
         let match_id = review
             .get("id")
             .and_then(Value::as_str)
             .filter(|value| !value.trim().is_empty())
             .ok_or_else(|| "This replay is missing its match id.".to_string())?;
+
+        // Most completed matches have already been uploaded by the automatic
+        // sync sweep. Ask for their permanent link first so reopening Share is
+        // a quick lookup instead of another full replay upload.
+        if let Some(share) = self.request_share_link(match_id).await? {
+            return Ok(share);
+        }
+
+        let _guard = self.sweep_lock.lock().await;
         self.put_review_value(match_id, review, reducer_version)
             .await
             .map_err(|failure| failure.message)?;
 
+        self.request_share_link(match_id).await?.ok_or_else(|| {
+            "Trace uploaded the match but could not create its share link.".to_string()
+        })
+    }
+
+    async fn request_share_link(&self, match_id: &str) -> Result<Option<ShareLink>, String> {
         let mut retried_auth = false;
         loop {
             let (device_id, token) = self
@@ -259,8 +273,14 @@ impl CloudSync {
                 retried_auth = true;
                 continue;
             }
+            if response.status() == StatusCode::NOT_FOUND {
+                return Ok(None);
+            }
             if !response.status().is_success() {
-                return Err(format!("Could not create a share link ({}).", response.status()));
+                return Err(format!(
+                    "Could not create a share link ({}).",
+                    response.status()
+                ));
             }
             let share = response
                 .json::<ShareLink>()
@@ -269,7 +289,7 @@ impl CloudSync {
             if share.share_id.is_empty() || share.url.is_empty() {
                 return Err("The share link response was incomplete.".to_string());
             }
-            return Ok(share);
+            return Ok(Some(share));
         }
     }
 
