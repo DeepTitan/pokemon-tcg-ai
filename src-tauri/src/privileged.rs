@@ -437,6 +437,8 @@ pub fn game_server_connection_count(pid: u32) -> usize {
     let Ok(resolved) = resolved_game_server_ips() else {
         return 0;
     };
+    // TCG Live also maintains asset and telemetry HTTPS sockets. Only the
+    // production game API opens the extra live-match connection.
     active.iter().filter(|ip| resolved.contains(ip)).count()
 }
 

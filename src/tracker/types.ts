@@ -250,6 +250,8 @@ export interface CaptureStatus {
   observerRunning: boolean;
   routeActive: boolean;
   clientAttached: boolean;
+  waitingForMatchEnd: boolean;
+  matchInProgress: boolean;
   frameCount: number;
   operationCount: number;
   lastError: string | null;

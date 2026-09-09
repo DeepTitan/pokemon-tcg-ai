@@ -9,7 +9,11 @@ import { isTauri } from './tauri.js';
 const POLL_MS = 30 * 60 * 1000;
 const DISMISSED_KEY = 'trace/dismissed-update-v1';
 
-type UpdatePhase = 'available' | 'downloading' | 'ready' | 'restarting' | 'error';
+type UpdatePhase = 'available' | 'downloading' | 'downloaded' | 'installing' | 'ready' | 'restarting' | 'error';
+
+interface UpdateNoticeProps {
+  matchInProgress?: boolean;
+}
 
 function updateErrorMessage(error: unknown, fallback: string) {
   if (error instanceof Error && error.message.trim()) return error.message;
@@ -21,12 +25,17 @@ function updateErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
-export function UpdateNotice() {
+export function UpdateNotice({ matchInProgress = false }: UpdateNoticeProps) {
   const [update, setUpdate] = useState<Update | null>(null);
   const [phase, setPhase] = useState<UpdatePhase>('available');
   const [progress, setProgress] = useState<number | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const checkingRef = useRef(false);
+  const matchInProgressRef = useRef(matchInProgress);
+
+  useEffect(() => {
+    matchInProgressRef.current = matchInProgress;
+  }, [matchInProgress]);
 
   const refresh = useCallback(async () => {
     if (!isTauri() || checkingRef.current) return;
@@ -66,6 +75,29 @@ export function UpdateNotice() {
     };
   }, [refresh]);
 
+  const applyDownloaded = useCallback(async () => {
+    if (!update) return;
+    if (matchInProgressRef.current) {
+      setPhase('downloaded');
+      setMessage('The update is downloaded. Trace will install it after this match.');
+      return;
+    }
+    setPhase('installing');
+    setMessage('Installing the signed update…');
+    try {
+      await update.install();
+      setPhase('ready');
+      setMessage('The update is installed. Restart Trace to use it.');
+    } catch (error) {
+      setPhase('error');
+      setMessage(updateErrorMessage(error, 'Trace could not install the update.'));
+    }
+  }, [update]);
+
+  useEffect(() => {
+    if (!matchInProgress && phase === 'downloaded') void applyDownloaded();
+  }, [applyDownloaded, matchInProgress, phase]);
+
   if (!update) return null;
 
   const dismiss = () => {
@@ -75,6 +107,7 @@ export function UpdateNotice() {
   };
 
   const install = async () => {
+    if (matchInProgressRef.current) return;
     setPhase('downloading');
     setMessage(null);
     let downloaded = 0;
@@ -86,9 +119,9 @@ export function UpdateNotice() {
       else if (total) setProgress(Math.min(99, Math.round((downloaded / total) * 100)));
     };
     try {
-      await update.downloadAndInstall(onDownload, { timeout: 10 * 60 * 1000 });
-      setPhase('ready');
-      setMessage('The update is installed. Restart Trace to use it.');
+      await update.download(onDownload, { timeout: 10 * 60 * 1000 });
+      setProgress(100);
+      await applyDownloaded();
     } catch (error) {
       setPhase('error');
       setMessage(updateErrorMessage(error, 'Trace could not install the update.'));
@@ -96,6 +129,7 @@ export function UpdateNotice() {
   };
 
   const restart = async () => {
+    if (matchInProgressRef.current) return;
     setPhase('restarting');
     try {
       await relaunch();
@@ -105,18 +139,22 @@ export function UpdateNotice() {
     }
   };
 
-  const busy = phase === 'downloading' || phase === 'restarting';
+  const busy = phase === 'downloading' || phase === 'installing' || phase === 'restarting';
   const ready = phase === 'ready';
-  const action = ready ? restart : install;
+  const action = ready ? restart : phase === 'downloaded' ? applyDownloaded : install;
   const actionLabel = phase === 'downloading'
     ? progress == null ? 'Downloading…' : `Downloading ${progress}%`
     : phase === 'restarting'
       ? 'Restarting…'
-      : ready
-        ? 'Restart Trace'
-        : phase === 'error'
-          ? 'Try again'
-          : 'Install update';
+      : phase === 'installing'
+        ? 'Installing…'
+        : matchInProgress
+          ? 'After this match'
+          : ready
+            ? 'Restart Trace'
+            : phase === 'error'
+              ? 'Try again'
+              : 'Install update';
 
   return (
     <aside className={`update-notice phase-${phase}`} aria-live="polite">
@@ -124,14 +162,14 @@ export function UpdateNotice() {
         {ready ? <ArrowClockwise size={21} weight="bold" /> : <DownloadSimple size={21} weight="bold" />}
       </div>
       <div className="update-notice-copy">
-        <small>{ready ? 'Restart required' : phase === 'error' ? 'Update failed' : 'Update available'}</small>
+        <small>{matchInProgress ? 'Waiting for match' : ready ? 'Restart required' : phase === 'error' ? 'Update failed' : 'Update available'}</small>
         <strong>Trace {update.version}</strong>
-        <p>{message || update.body || 'A new signed Trace build is ready.'}</p>
+        <p>{matchInProgress ? (phase === 'downloaded' ? 'Downloaded and waiting. Installation starts when the match ends.' : 'Trace will not install or restart during your current game.') : message || update.body || 'A new signed Trace build is ready.'}</p>
       </div>
       <button className="update-notice-dismiss" type="button" onClick={dismiss} disabled={busy} aria-label="Dismiss update">
         <X size={15} weight="bold" />
       </button>
-      <button className="update-notice-action" type="button" onClick={() => void action()} disabled={busy}>
+      <button className="update-notice-action" type="button" onClick={() => void action()} disabled={busy || matchInProgress}>
         {actionLabel}
       </button>
       {phase === 'downloading' && progress != null && <span className="update-notice-progress" style={{ width: `${progress}%` }} />}

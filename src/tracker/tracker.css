@@ -66,6 +66,8 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(47, 126, 203
 .header-status.ready b { color: #3d7895; }
 .header-status.connecting > i { background: #d49a27; box-shadow: 0 0 0 4px rgba(212, 154, 39, .14); }
 .header-status.connecting b { color: #9b6a0e; }
+.header-status.waiting > i { background: #d9a40d; box-shadow: 0 0 0 4px rgba(217, 164, 13, .16); }
+.header-status.waiting b { color: #89650b; }
 .header-status.error > i { background: #ce5b52; box-shadow: 0 0 0 4px rgba(206, 91, 82, .14); }
 .header-status.error b { color: #a53e37; }
 
@@ -183,6 +185,12 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(47, 126, 203
 .board-zoom-controls output { font-size: 10px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .board-zoom-controls button:hover:not(:disabled) { background: #e7eef3; }
 .board-zoom-controls button:disabled { opacity: .35; cursor: default; }
+.capture-safety-banner { min-height: 48px; padding: 8px 12px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; border: 1px solid #d2a72b; border-radius: 13px; color: #4c3a12; background: #fff4c9; box-shadow: 0 4px 12px rgba(91, 68, 13, .12); }
+.capture-safety-banner > svg { color: #a87600; }
+.capture-safety-banner > span { min-width: 0; display: grid; gap: 1px; }
+.capture-safety-banner strong { font-family: Nunito, sans-serif; font-size: 12px; font-weight: 950; }
+.capture-safety-banner small { overflow: hidden; color: #776334; font-size: 9px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+.capture-safety-banner > b { padding: 5px 8px; border-radius: 999px; color: #6d5107; background: rgba(255, 255, 255, .55); font-size: 8px; font-weight: 950; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
 .board-frame { position: relative; flex: 1; min-height: 0; display: grid; grid-template-rows: 1fr 42px 1fr; overflow: hidden; border: 1px solid #d2c4ae; border-radius: 18px; background: #f8f1e2; box-shadow: 0 10px 24px rgba(89, 65, 39, .11); view-transition-name: none; }
 .reconstructed-chip { display: none; }
 

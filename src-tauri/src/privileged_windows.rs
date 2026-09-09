@@ -2,10 +2,8 @@ use crate::capture_hosts;
 pub use crate::capture_hosts::GAME_HOST;
 use serde::Serialize;
 use std::{
-    ffi::OsString,
     fs,
     net::{IpAddr, SocketAddr, TcpStream, ToSocketAddrs},
-    os::windows::ffi::OsStringExt,
     os::windows::process::CommandExt,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
@@ -14,10 +12,7 @@ use std::{
 };
 use windows_sys::Win32::{
     Foundation::CloseHandle,
-    System::Threading::{
-        OpenProcess, QueryFullProcessImageNameW, WaitForSingleObject, INFINITE,
-        PROCESS_QUERY_LIMITED_INFORMATION,
-    },
+    System::Threading::{OpenProcess, WaitForSingleObject, INFINITE},
 };
 
 pub const CA_COMMON_NAME: &str = "Turnlume Local Capture Root";
@@ -112,39 +107,47 @@ pub fn install_helper(certificate_path: &Path) -> Result<(), String> {
     }
 }
 
-fn process_image_path(pid: u32) -> Result<PathBuf, String> {
-    unsafe {
-        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
-        if handle.is_null() {
-            return Err("Could not inspect the running Pokémon client.".to_owned());
-        }
-        let mut buffer = vec![0u16; 32_768];
-        let mut length = buffer.len() as u32;
-        let result = QueryFullProcessImageNameW(handle, 0, buffer.as_mut_ptr(), &mut length);
-        let _ = CloseHandle(handle);
-        if result == 0 || length == 0 {
-            return Err("Could not locate the running Pokémon client.".to_owned());
-        }
-        buffer.truncate(length as usize);
-        Ok(PathBuf::from(OsString::from_wide(&buffer)))
-    }
+fn netstat_connection_count(output: &str, pid: u32, server_ips: &[IpAddr]) -> usize {
+    output
+        .lines()
+        .filter(|line| {
+            let columns = line.split_whitespace().collect::<Vec<_>>();
+            if columns.len() < 5
+                || !columns[0].eq_ignore_ascii_case("TCP")
+                || !columns[3].eq_ignore_ascii_case("ESTABLISHED")
+                || columns[4].parse::<u32>().ok() != Some(pid)
+            {
+                return false;
+            }
+            let Some((host, port)) = columns[2].rsplit_once(':') else {
+                return false;
+            };
+            port.parse::<u16>().ok() == Some(443)
+                && host
+                    .trim_matches(['[', ']'])
+                    .parse::<IpAddr>()
+                    .is_ok_and(|ip| server_ips.contains(&ip))
+        })
+        .count()
 }
 
-pub fn restart_pokemon_client(pid: u32) -> Result<(), String> {
-    let executable = process_image_path(pid)?;
-    let stopped = hidden_command("taskkill.exe")
-        .args(["/PID", &pid.to_string(), "/T", "/F"])
-        .output()
-        .map_err(|error| format!("Could not reconnect Pokémon TCG Live: {error}"))?;
-    if !stopped.status.success() {
-        return Err("Could not reconnect the already-running Pokémon client.".to_owned());
+pub fn game_server_connection_count(pid: u32) -> usize {
+    let server_ips = (GAME_HOST, 443)
+        .to_socket_addrs()
+        .map(|addresses| addresses.map(|address| address.ip()).collect::<Vec<_>>())
+        .unwrap_or_default();
+    if server_ips.is_empty() {
+        return 0;
     }
-    thread::sleep(Duration::from_millis(350));
-    Command::new("explorer.exe")
-        .arg(executable)
-        .spawn()
-        .map_err(|error| format!("Could not relaunch Pokémon TCG Live: {error}"))?;
-    Ok(())
+    hidden_command("netstat.exe")
+        .args(["-ano", "-p", "TCP"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| {
+            netstat_connection_count(&command_output_text(&output.stdout), pid, &server_ips)
+        })
+        .unwrap_or_default()
 }
 
 pub fn helper_ready() -> bool {
@@ -413,7 +416,7 @@ pub fn run_if_requested() -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::prioritize_fastest_server;
+    use super::{netstat_connection_count, prioritize_fastest_server};
     use std::net::{IpAddr, Ipv4Addr, TcpListener};
 
     #[test]
@@ -426,5 +429,24 @@ mod tests {
         let prioritized = prioritize_fastest_server(vec![failed, reachable], port);
 
         assert_eq!(prioritized, vec![reachable, failed]);
+    }
+
+    #[test]
+    fn netstat_counts_only_established_https_sockets_for_game_pid() {
+        let output = r#"
+  Proto  Local Address          Foreign Address        State           PID
+  TCP    192.168.1.4:51000      32.1.2.3:443           ESTABLISHED     4242
+  TCP    192.168.1.4:51001      32.1.2.4:443           ESTABLISHED     4242
+  TCP    127.0.0.1:51002        127.0.0.1:443          ESTABLISHED     4242
+  TCP    192.168.1.4:51003      32.1.2.4:443           TIME_WAIT       0
+  TCP    192.168.1.4:51004      32.1.2.5:80            ESTABLISHED     4242
+  TCP    192.168.1.4:51005      32.1.2.6:443           ESTABLISHED     99
+"#;
+        let server_ips = [
+            IpAddr::V4(Ipv4Addr::new(32, 1, 2, 3)),
+            IpAddr::V4(Ipv4Addr::new(32, 1, 2, 4)),
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+        ];
+        assert_eq!(netstat_connection_count(output, 4242, &server_ips), 3);
     }
 }

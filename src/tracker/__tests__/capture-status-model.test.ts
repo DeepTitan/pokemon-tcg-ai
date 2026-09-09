@@ -14,6 +14,8 @@ function environment(overrides: Partial<TrackerEnvironment['capture']> = {}, cli
       observerRunning: true,
       routeActive: true,
       clientAttached: false,
+      waitingForMatchEnd: false,
+      matchInProgress: false,
       frameCount: 0,
       operationCount: 0,
       lastError: null,
@@ -25,6 +27,8 @@ function environment(overrides: Partial<TrackerEnvironment['capture']> = {}, cli
 
 assert.deepEqual(captureIndicator(environment({ enabled: false })), { label: 'Paused', tone: 'paused' });
 assert.deepEqual(captureIndicator(environment({}, false)), { label: 'Ready', tone: 'ready' });
+assert.deepEqual(captureIndicator(environment({ waitingForMatchEnd: true, matchInProgress: true, lastError: 'stale route warning' })), { label: 'Waiting', tone: 'waiting' });
+assert.equal(visibleCaptureError(environment({ waitingForMatchEnd: true, matchInProgress: true, lastError: 'stale route warning' })), null);
 assert.deepEqual(captureIndicator(environment()), { label: 'Connecting', tone: 'connecting' });
 assert.deepEqual(captureIndicator(environment({ clientAttached: true })), { label: 'Live', tone: 'live' });
 assert.deepEqual(captureIndicator(environment({ lastError: 'route failed' })), { label: 'Attention', tone: 'error' });

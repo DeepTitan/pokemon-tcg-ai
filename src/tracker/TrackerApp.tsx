@@ -664,7 +664,7 @@ export default function TrackerApp() {
   const [frameAnimations, setFrameAnimations] = useState(initialFrameAnimations);
   const [environment, setEnvironment] = useState<TrackerEnvironment>({
     clientInstalled: false, clientRunning: false, pid: null, captureMode: 'existing-client',
-    capture: { permissionReady: false, enabled: false, observerRunning: false, routeActive: false, clientAttached: false, frameCount: 0, operationCount: 0, lastError: null, observerPort: 8899 },
+    capture: { permissionReady: false, enabled: false, observerRunning: false, routeActive: false, clientAttached: false, waitingForMatchEnd: false, matchInProgress: false, frameCount: 0, operationCount: 0, lastError: null, observerPort: 8899 },
   });
   const [showSetup, setShowSetup] = useState(() => {
     if (!isTauri()) return false;
@@ -1022,7 +1022,7 @@ export default function TrackerApp() {
     if (sharedMode) return;
     if (isTauri()) setTracking(environment.capture.enabled);
     setCaptureError(visibleCaptureError(environment));
-  }, [environment.capture.enabled, environment.capture.clientAttached, environment.capture.lastError, sharedMode]);
+  }, [environment.capture.enabled, environment.capture.clientAttached, environment.capture.waitingForMatchEnd, environment.capture.lastError, sharedMode]);
 
   useEffect(() => {
     if (sharedMode || !isTauri() || !environment.capture.permissionReady || autoStartAttempted.current || busy || showSetup) return;
@@ -1517,6 +1517,7 @@ export default function TrackerApp() {
         </aside>}
 
         <section className="review-stage">
+          {!sharedMode && environment.capture.waitingForMatchEnd && <aside className="capture-safety-banner" role="status" aria-live="polite"><ShieldCheck size={25} weight="fill" /><span><strong>Match in progress detected</strong><small>Trace is waiting until this game ends. TCG Live will not be restarted or disconnected.</small></span><b>Waiting safely</b></aside>}
           {restoringReview && !selectedReview ? <div className="welcome-state loading-review"><BookOpenText size={54} weight="duotone" /><span>{sharedMode ? 'Shared replay' : 'Restoring match'}</span><h2>Loading the reconstructed board…</h2><p>{sharedMode ? 'Fetching the match and its exact sequence of actions.' : 'The archive index is ready; only this selected match is being read.'}</p></div> : selectedReview && selectedTurn && localBoard && opponentBoard && selectedCanonical && localCanonicalPlayer && opponentCanonicalPlayer && turnStatus ? <>
             <BoardZoomViewport><div className={`board-frame ${frameAnimations ? 'frame-motion-enabled' : ''} ${frameScrubbing ? 'frame-scrubbing' : ''}`}>
               <div className="reconstructed-chip"><CheckCircle size={18} weight="fill" />Board reconstructed</div>
@@ -1605,7 +1606,7 @@ export default function TrackerApp() {
       {!sharedMode && showSetup && <div className="modal-backdrop"><div className="setup-modal"><div className="modal-title"><div><span>Trace settings</span><h2>Replay and capture</h2></div><button type="button" disabled={busy} onClick={closeSetup} aria-label="Close settings"><X size={21} weight="bold" /></button></div><p>Choose how replays move, then manage Trace's connection to TCG Live.</p><div className="settings-toggle-row replay-animation-setting"><div><Sparkle size={22} weight="duotone" /><span><strong>Animated replay frames</strong><small>Cards glide, fade, and scale between their exact board positions.</small></span></div><button type="button" role="switch" aria-label="Animated replay frames" aria-checked={frameAnimations} className={frameAnimations ? 'enabled' : ''} onClick={toggleFrameAnimations}><span />{frameAnimations ? 'On' : 'Off'}</button></div><small className="capture-privacy-disclosure">By connecting, Trace securely sends and stores captured match data, including player names and game actions.</small><div className="modal-actions"><button type="button" disabled={busy} onClick={closeSetup}>Close</button><button className="primary" type="button" disabled={busy} onClick={() => void finishSetup()}>{busy ? 'Working…' : environment.capture.permissionReady ? 'Reconnect capture' : 'Connect capture'}</button></div></div></div>}
       {shareUrl && <div className="modal-backdrop share-modal-backdrop"><div className="share-modal" role="dialog" aria-modal="true" aria-labelledby="share-match-title"><div className="modal-title"><div><span>Ready to send</span><h2 id="share-match-title">Share this match</h2></div><button type="button" onClick={() => setShareUrl(null)} aria-label="Close share dialog"><X size={21} weight="bold" /></button></div><p>Anyone with this link can click through the replay in their browser.</p><div className="share-link-row"><input value={shareUrl} readOnly aria-label="Share link" onFocus={(event) => event.currentTarget.select()} /><button className="primary" type="button" onClick={() => void copyShareUrl(shareUrl)}><Copy size={16} weight="bold" />Copy link</button></div></div></div>}
       <ReviewOverlay inspector={inspector} catalog={cardCatalog} onClose={() => setInspector(null)} onInspectCard={openCard} />
-      {!sharedMode && <UpdateNotice />}
+      {!sharedMode && <UpdateNotice matchInProgress={environment.capture.matchInProgress || environment.capture.waitingForMatchEnd || summaries.some((summary) => summary.recording)} />}
       {(notice || error || captureError) && <div className={`toast ${error || captureError ? 'error' : ''}`}><span>{error || captureError ? <X size={18} weight="bold" /> : <CheckCircle size={18} weight="fill" />}</span><p>{error || captureError || notice}</p><button type="button" onClick={() => { setError(null); setCaptureError(null); setNotice(null); }} aria-label="Dismiss notification"><X size={16} weight="bold" /></button></div>}
     </div>
   );

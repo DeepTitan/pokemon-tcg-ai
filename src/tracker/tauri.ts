@@ -33,6 +33,8 @@ export async function getTrackerEnvironment(): Promise<TrackerEnvironment> {
         observerRunning: false,
         routeActive: false,
         clientAttached: false,
+        waitingForMatchEnd: false,
+        matchInProgress: false,
         frameCount: 0,
         operationCount: 0,
         lastError: null,
