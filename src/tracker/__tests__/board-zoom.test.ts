@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { boardZoomShortcut, nextBoardZoom, boardZoomScroll } from '../board-zoom.js';
+import { boardPanPosition, boardZoomShortcut, nextBoardZoom, boardZoomScroll } from '../board-zoom.js';
 const key = (key: string, overrides = {}) => ({ key, code: '', metaKey: false, ctrlKey: false, altKey: false, isComposing: false, ...overrides });
 for (const modifier of [{ metaKey: true }, { ctrlKey: true }]) {
   for (const plus of ['+', '=']) assert.equal(boardZoomShortcut(key(plus, modifier)), 'in');
@@ -20,4 +20,11 @@ assert.equal(nextBoardZoom(2.5, 'reset'), 1);
 assert.equal(boardZoomScroll(0, 1000, 1, 1.5), 250);
 assert.equal(boardZoomScroll(250, 1000, 1.5, 1), 0);
 assert.equal(boardZoomScroll(0, 1000, 0.5, 1), 0);
-console.log('Board zoom: Mac/Windows shortcuts, limits, reset, center anchoring, and replay-key isolation passed.');
+const start = { x: 300, y: 200, left: 100, top: 80 };
+assert.equal(boardPanPosition(start, 302, 202, 400, 300), null, 'mouse wobble remains a card click');
+assert.deepEqual(boardPanPosition(start, 330, 220, 400, 300), { left: 70, top: 60 }, 'board follows a grab in both axes');
+assert.deepEqual(boardPanPosition(start, 250, 150, 400, 300), { left: 150, top: 130 });
+assert.deepEqual(boardPanPosition(start, 300, 200, 400, 300, true), { left: 100, top: 80 }, 'dragging back to origin keeps following');
+assert.deepEqual(boardPanPosition(start, 1000, 1000, 400, 300), { left: 0, top: 0 });
+assert.deepEqual(boardPanPosition(start, -1000, -1000, 400, 300), { left: 400, top: 300 });
+console.log('Board zoom: shortcuts, limits, reset, center anchoring, mouse panning, edge clamping, and click threshold passed.');

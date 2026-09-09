@@ -171,6 +171,10 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(47, 126, 203
 .board-zoom-viewport { position: absolute; inset: 0; overflow: auto; scrollbar-width: none; border-radius: 14px; overscroll-behavior: contain; background: #ebe9e3; }
 /* Keep native trackpad/wheel panning without visible scrollbar chrome. */
 .board-zoom-viewport::-webkit-scrollbar { display: none; width: 0; height: 0; }
+.board-zoom-viewport.is-pannable { user-select: none; -webkit-user-select: none; }
+.board-zoom-viewport.is-pannable, .board-zoom-viewport.is-pannable .board-zoom-surface * { cursor: grab; }
+.board-zoom-viewport.is-panning, .board-zoom-viewport.is-panning .board-zoom-surface * { cursor: grabbing; }
+.board-pan-hint { display: flex; align-items: center; gap: 5px; padding: 0 7px; color: #63778a; font-size: 10px; white-space: nowrap; }
 .board-zoom-canvas { position: relative; overflow: hidden; }
 .board-zoom-surface { position: absolute; transform-origin: top left; }
 .board-zoom-surface > .board-frame { width: 100%; height: 100%; }
