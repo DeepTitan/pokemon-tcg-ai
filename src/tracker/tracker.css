@@ -185,12 +185,76 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(47, 126, 203
 .board-zoom-controls output { font-size: 10px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .board-zoom-controls button:hover:not(:disabled) { background: #e7eef3; }
 .board-zoom-controls button:disabled { opacity: .35; cursor: default; }
-.capture-safety-banner { min-height: 48px; padding: 8px 12px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; border: 1px solid #d2a72b; border-radius: 13px; color: #4c3a12; background: #fff4c9; box-shadow: 0 4px 12px rgba(91, 68, 13, .12); }
-.capture-safety-banner > svg { color: #a87600; }
-.capture-safety-banner > span { min-width: 0; display: grid; gap: 1px; }
-.capture-safety-banner strong { font-family: Nunito, sans-serif; font-size: 12px; font-weight: 950; }
-.capture-safety-banner small { overflow: hidden; color: #776334; font-size: 9px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
-.capture-safety-banner > b { padding: 5px 8px; border-radius: 999px; color: #6d5107; background: rgba(255, 255, 255, .55); font-size: 8px; font-weight: 950; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+.capture-safety-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(35, 42, 52, .62);
+  backdrop-filter: blur(6px) saturate(.72);
+  animation: capture-safety-backdrop-in .2s ease-out both;
+}
+
+.capture-safety-dialog {
+  width: min(430px, calc(100vw - 40px));
+  padding: 29px 30px 25px;
+  border: 1px solid #e0c36d;
+  border-radius: 22px;
+  color: #263b59;
+  background: #fffdf7;
+  box-shadow: 0 30px 90px rgba(17, 27, 40, .38), 0 3px 10px rgba(17, 27, 40, .16);
+  text-align: center;
+  animation: capture-safety-dialog-in .24s cubic-bezier(.2, .8, .2, 1) both;
+}
+
+.capture-safety-icon {
+  position: relative;
+  width: 62px;
+  height: 62px;
+  margin: 0 auto 15px;
+  display: grid;
+  place-items: center;
+  border-radius: 19px;
+  color: #765600;
+  background: #ffdd69;
+  box-shadow: inset 0 0 0 1px rgba(164, 119, 0, .18);
+}
+.capture-safety-icon i {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  width: 11px;
+  height: 11px;
+  border: 2px solid #fffdf7;
+  border-radius: 50%;
+  background: #43a765;
+  animation: capture-safety-pulse 1.45s ease-in-out infinite;
+}
+.capture-safety-dialog > span { color: #8b6a12; font-size: 9px; font-weight: 1000; letter-spacing: .14em; text-transform: uppercase; }
+.capture-safety-dialog h2 { margin: 5px 0 8px; font-family: Nunito, sans-serif; font-size: 24px; font-weight: 1000; letter-spacing: -.02em; }
+.capture-safety-dialog > p { max-width: 340px; margin: 0 auto; color: #657186; font-size: 12px; font-weight: 700; line-height: 1.55; }
+.capture-safety-waiting { margin-top: 22px; padding: 13px 15px; display: flex; align-items: center; gap: 12px; border: 1px solid #e5dcc8; border-radius: 14px; background: #f7f3e9; text-align: left; }
+.capture-safety-waiting > i { width: 10px; height: 10px; flex: 0 0 auto; border: 2px solid #fff; border-radius: 50%; background: #d49e06; box-shadow: 0 0 0 4px rgba(212, 158, 6, .16); animation: capture-safety-pulse 1.45s ease-in-out infinite; }
+.capture-safety-waiting > span { min-width: 0; display: grid; gap: 2px; }
+.capture-safety-waiting strong { font-family: Nunito, sans-serif; font-size: 12px; font-weight: 950; }
+.capture-safety-waiting small { color: #777e87; font-size: 9px; font-weight: 750; line-height: 1.4; }
+
+@keyframes capture-safety-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes capture-safety-dialog-in {
+  from { opacity: 0; transform: translateY(8px) scale(.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes capture-safety-pulse {
+  0%, 100% { opacity: .55; transform: scale(.88); }
+  50% { opacity: 1; transform: scale(1); }
+}
 .board-frame { position: relative; flex: 1; min-height: 0; display: grid; grid-template-rows: 1fr 42px 1fr; overflow: hidden; border: 1px solid #d2c4ae; border-radius: 18px; background: #f8f1e2; box-shadow: 0 10px 24px rgba(89, 65, 39, .11); view-transition-name: none; }
 .reconstructed-chip { display: none; }
 
@@ -2358,7 +2422,11 @@ button.stadium-marker:focus-visible {
 
 @media (prefers-reduced-motion: reduce) {
   .session-rail,
-  .timeline-panel { animation: none; }
+  .timeline-panel,
+  .capture-safety-backdrop,
+  .capture-safety-dialog,
+  .capture-safety-icon i,
+  .capture-safety-waiting > i { animation: none; }
   .panel-restore-button,
   .panel-collapse-button { transition: none; }
 }

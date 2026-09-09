@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { captureIndicator, visibleCaptureError } from '../capture-status-model.js';
 import type { TrackerEnvironment } from '../types.js';
 
@@ -40,4 +41,15 @@ assert.deepEqual(captureIndicator(healthyCaptureWithAuxiliaryFailure), { label: 
 assert.equal(visibleCaptureError(healthyCaptureWithAuxiliaryFailure), null);
 assert.equal(visibleCaptureError(environment({ lastError: 'route failed' })), 'route failed');
 
-console.log('capture-status-model: healthy recordings override auxiliary connection errors');
+const trackerAppSource = readFileSync(new URL('../TrackerApp.tsx', import.meta.url), 'utf8');
+assert.match(trackerAppSource, /className="capture-safety-backdrop"/);
+assert.match(trackerAppSource, /role="alertdialog" aria-modal="true"/);
+assert.match(trackerAppSource, /Trace won’t connect, install an update, or restart while this game is active\./);
+assert.match(trackerAppSource, /if \(environment\.capture\.waitingForMatchEnd\) setPlaying\(false\)/);
+assert.doesNotMatch(trackerAppSource, /capture-safety-banner/);
+
+const updateNoticeSource = readFileSync(new URL('../UpdateNotice.tsx', import.meta.url), 'utf8');
+assert.match(updateNoticeSource, /if \(matchInProgressRef\.current\) \{/);
+assert.match(updateNoticeSource, /disabled=\{busy \|\| matchInProgress\}/);
+
+console.log('capture-status-model: healthy recordings, modal waiting state, and update deferral verified');

@@ -1312,7 +1312,7 @@ export default function TrackerApp() {
   }, [selectedEventKey, selectedReview?.id, timeline.entries.length]);
 
   useEffect(() => {
-    if (!selectedReview || showSetup || inspector) return undefined;
+    if (!selectedReview || showSetup || inspector || environment.capture.waitingForMatchEnd) return undefined;
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
@@ -1342,7 +1342,11 @@ export default function TrackerApp() {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [inspector, keyMoments, navigateToFrame, selectedReview, showSetup]);
+  }, [environment.capture.waitingForMatchEnd, inspector, keyMoments, navigateToFrame, selectedReview, showSetup]);
+
+  useEffect(() => {
+    if (environment.capture.waitingForMatchEnd) setPlaying(false);
+  }, [environment.capture.waitingForMatchEnd]);
 
   useEffect(() => {
     if (!playing || !selectedReview) return undefined;
@@ -1517,7 +1521,6 @@ export default function TrackerApp() {
         </aside>}
 
         <section className="review-stage">
-          {!sharedMode && environment.capture.waitingForMatchEnd && <aside className="capture-safety-banner" role="status" aria-live="polite"><ShieldCheck size={25} weight="fill" /><span><strong>Match in progress detected</strong><small>Trace is waiting until this game ends. TCG Live will not be restarted or disconnected.</small></span><b>Waiting safely</b></aside>}
           {restoringReview && !selectedReview ? <div className="welcome-state loading-review"><BookOpenText size={54} weight="duotone" /><span>{sharedMode ? 'Shared replay' : 'Restoring match'}</span><h2>Loading the reconstructed board…</h2><p>{sharedMode ? 'Fetching the match and its exact sequence of actions.' : 'The archive index is ready; only this selected match is being read.'}</p></div> : selectedReview && selectedTurn && localBoard && opponentBoard && selectedCanonical && localCanonicalPlayer && opponentCanonicalPlayer && turnStatus ? <>
             <BoardZoomViewport><div className={`board-frame ${frameAnimations ? 'frame-motion-enabled' : ''} ${frameScrubbing ? 'frame-scrubbing' : ''}`}>
               <div className="reconstructed-chip"><CheckCircle size={18} weight="fill" />Board reconstructed</div>
@@ -1603,6 +1606,7 @@ export default function TrackerApp() {
       {!sharedMode && !archiveOpen && <button className="panel-restore-button archive-restore-button" type="button" aria-label="Open match archive" aria-expanded="false" title="Open match archive" onClick={() => setArchiveOpen(true)}><CardsThree size={22} weight="duotone" /></button>}
       {!timelineOpen && <button className="panel-restore-button timeline-restore-button" type="button" aria-label="Open game log" aria-expanded="false" title="Open game log" onClick={() => setTimelineOpen(true)}><List size={22} weight="bold" /></button>}
 
+      {!sharedMode && environment.capture.waitingForMatchEnd && <div className="capture-safety-backdrop"><section className="capture-safety-dialog" role="alertdialog" aria-modal="true" aria-labelledby="capture-safety-title" aria-describedby="capture-safety-description"><div className="capture-safety-icon" aria-hidden="true"><ShieldCheck size={33} weight="fill" /><i /></div><span>Live match protected</span><h2 id="capture-safety-title">Match in progress detected</h2><p id="capture-safety-description">Trace won’t connect, install an update, or restart while this game is active.</p><div className="capture-safety-waiting"><i aria-hidden="true" /><span><strong>Keep playing in TCG Live</strong><small>Trace will continue automatically when the match ends.</small></span></div></section></div>}
       {!sharedMode && showSetup && <div className="modal-backdrop"><div className="setup-modal"><div className="modal-title"><div><span>Trace settings</span><h2>Replay and capture</h2></div><button type="button" disabled={busy} onClick={closeSetup} aria-label="Close settings"><X size={21} weight="bold" /></button></div><p>Choose how replays move, then manage Trace's connection to TCG Live.</p><div className="settings-toggle-row replay-animation-setting"><div><Sparkle size={22} weight="duotone" /><span><strong>Animated replay frames</strong><small>Cards glide, fade, and scale between their exact board positions.</small></span></div><button type="button" role="switch" aria-label="Animated replay frames" aria-checked={frameAnimations} className={frameAnimations ? 'enabled' : ''} onClick={toggleFrameAnimations}><span />{frameAnimations ? 'On' : 'Off'}</button></div><small className="capture-privacy-disclosure">By connecting, Trace securely sends and stores captured match data, including player names and game actions.</small><div className="modal-actions"><button type="button" disabled={busy} onClick={closeSetup}>Close</button><button className="primary" type="button" disabled={busy} onClick={() => void finishSetup()}>{busy ? 'Working…' : environment.capture.permissionReady ? 'Reconnect capture' : 'Connect capture'}</button></div></div></div>}
       {shareUrl && <div className="modal-backdrop share-modal-backdrop"><div className="share-modal" role="dialog" aria-modal="true" aria-labelledby="share-match-title"><div className="modal-title"><div><span>Ready to send</span><h2 id="share-match-title">Share this match</h2></div><button type="button" onClick={() => setShareUrl(null)} aria-label="Close share dialog"><X size={21} weight="bold" /></button></div><p>Anyone with this link can click through the replay in their browser.</p><div className="share-link-row"><input value={shareUrl} readOnly aria-label="Share link" onFocus={(event) => event.currentTarget.select()} /><button className="primary" type="button" onClick={() => void copyShareUrl(shareUrl)}><Copy size={16} weight="bold" />Copy link</button></div></div></div>}
       <ReviewOverlay inspector={inspector} catalog={cardCatalog} onClose={() => setInspector(null)} onInspectCard={openCard} />
