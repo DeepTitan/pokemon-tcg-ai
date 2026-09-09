@@ -26,6 +26,7 @@
         "minWidth": 1024,
         "minHeight": 680,
         "resizable": true,
+        "zoomHotkeysEnabled": true,
         "fullscreen": false,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true

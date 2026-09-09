@@ -10,7 +10,9 @@
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; min-width: 1180px; min-height: 720px; overflow: hidden; background: #f5f0e5; }
+/* Native/browser page zoom can shrink the CSS viewport below the board's
+   minimum size. Allow scrolling instead of cutting off the replay controls. */
+body { margin: 0; min-width: 1180px; min-height: 720px; overflow: auto; background: #f5f0e5; }
 button, textarea, input { font: inherit; }
 button { color: inherit; }
 button:focus-visible, input:focus-visible { outline: 3px solid rgba(47, 126, 203, .32); outline-offset: 2px; }
@@ -1018,6 +1020,7 @@ body,
 
 .workspace {
   height: 100vh;
+  min-height: 720px;
   padding: 32px 10px 10px;
 }
 
@@ -2723,6 +2726,7 @@ button.stadium-marker:focus-visible {
 
 .app-shell.shared-replay .workspace {
   height: calc(100vh - 46px);
+  min-height: 674px;
   padding: 8px;
 }
 
