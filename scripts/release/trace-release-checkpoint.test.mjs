@@ -13,6 +13,7 @@ assert.equal(stripMarkers('[PATCH] ship updater'), 'ship updater');
 
 const releaseWorkflow = fs.readFileSync('.github/workflows/trace-release-checkpoint.yml', 'utf8');
 const signingSmokeWorkflow = fs.readFileSync('.github/workflows/trace-windows-signing-smoke.yml', 'utf8');
+const installerHooks = fs.readFileSync('src-tauri/windows/installer-hooks.nsh', 'utf8');
 assert.match(releaseWorkflow, /Configure Microsoft Artifact Signing/);
 assert.match(releaseWorkflow, /Authenticate to Azure with GitHub OIDC/);
 assert.match(releaseWorkflow, /uses: azure\/login@v3/);
@@ -32,4 +33,8 @@ assert.match(signingSmokeWorkflow, /workflow_dispatch/);
 assert.match(signingSmokeWorkflow, /Authenticate to Azure with GitHub OIDC/);
 assert.match(signingSmokeWorkflow, /sign-windows-artifact\.ps1/);
 assert.match(signingSmokeWorkflow, /Get-AuthenticodeSignature/);
+assert.match(installerHooks, /\$PassiveMode != 1/);
+assert.match(installerHooks, /Get-Process -Name \$\\"Pokemon TCG Live\$\\"/);
+assert.match(installerHooks, /TRACE_BLOCK_UNSAFE_MANUAL_INSTALL[\s\S]*Abort/);
+assert.match(installerHooks, /NSIS_HOOK_PREINSTALL[\s\S]*TRACE_BLOCK_UNSAFE_MANUAL_INSTALL[\s\S]*TRACE_CLEAN_CAPTURE_ROUTE/);
 console.log('Trace release checkpoint tests passed.');
