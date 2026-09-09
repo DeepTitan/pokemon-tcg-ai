@@ -64,6 +64,7 @@ import type {
   TrackedPokemon, TrackedTurn, TrackerEnvironment, TrackerEventKind,
 } from './types.js';
 import './tracker.css';
+import { BoardZoomViewport } from './BoardZoomViewport.js';
 
 // Keep the legacy key so the rebrand never strands a user's saved match archive.
 const STORAGE_KEY = 'match-lens/reviews-v1';
@@ -1517,7 +1518,7 @@ export default function TrackerApp() {
 
         <section className="review-stage">
           {restoringReview && !selectedReview ? <div className="welcome-state loading-review"><BookOpenText size={54} weight="duotone" /><span>{sharedMode ? 'Shared replay' : 'Restoring match'}</span><h2>Loading the reconstructed board…</h2><p>{sharedMode ? 'Fetching the match and its exact sequence of actions.' : 'The archive index is ready; only this selected match is being read.'}</p></div> : selectedReview && selectedTurn && localBoard && opponentBoard && selectedCanonical && localCanonicalPlayer && opponentCanonicalPlayer && turnStatus ? <>
-            <div className={`board-frame ${frameAnimations ? 'frame-motion-enabled' : ''} ${frameScrubbing ? 'frame-scrubbing' : ''}`}>
+            <BoardZoomViewport><div className={`board-frame ${frameAnimations ? 'frame-motion-enabled' : ''} ${frameScrubbing ? 'frame-scrubbing' : ''}`}>
               <div className="reconstructed-chip"><CheckCircle size={18} weight="fill" />Board reconstructed</div>
               <PlayerField board={opponentBoard} canonical={opponentCanonicalPlayer} visibility={selectedCanonical.visibility} catalog={cardCatalog} choiceFrames={turnChoiceFrames.filter((frame) => frame.actor === opponentBoard.name)} currentReviewIndex={turnIndex} turnNumber={selectedCanonical.state.turnNumber} status={turnStatus.players[opponentBoard.name]} handoff={turnPass ? turnPass.passer === opponentBoard.name ? turnPass.reason === 'timeout' ? 'timed-out' : 'passing' : 'receiving' : undefined} stadiumCard={selectedCanonical.state.stadium} stadiumName={turnStatus.stadiumName} stadiumOwner={turnStatus.stadiumOwner} localPlayerName={localBoard.name} opponentName={opponentBoard.name} defeatedIds={defeatedIds} defeatedNames={defeatedNames} damageChanges={damageChanges} positionChanges={positionChanges} attackerId={attackResolution?.sourceId} opponent avatar={TRAINER_ART[0]} onOpenPokemon={openPokemon} onOpenChoice={openChoiceCard} onOpenCard={openCard} onOpenZone={openZone} />
               <div className="midline"><span /></div>
@@ -1525,7 +1526,7 @@ export default function TrackerApp() {
               {frameAnimations && !frameScrubbing && attackResolution && <AttackRoute key={`${selectedReview.id}:${turnIndex}:${attackResolution.sourceId || attackResolution.source}`} resolution={attackResolution} opponentAttacking={attackResolution.attacker === opponentBoard.name} hasImpact={attackResolution.hits.length > 0 || [...damageChanges.values()].some((change) => change.delta > 0)} />}
               {turnPass && <TurnPassMoment key={`${selectedReview.id}:${turnIndex}:${turnPass.reason}`} pass={turnPass} opponentPassing={turnPass.passer === opponentBoard.name} />}
             </div>
-            <div className="turn-controls">
+            </BoardZoomViewport><div className="turn-controls">
               <div className="turn-caption">
                 <span className="turn-caption-meta"><small>{selectedTurn.label}</small><b>{turnIndex} / {Math.max(1, selectedReview.turns.length - 1)}</b></span>
                 <strong>{currentActionEvents[0]?.text || (selectedTurn.player ? `${selectedTurn.player}'s action` : selectedTurn.label)}</strong>

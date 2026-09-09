@@ -10,9 +10,7 @@
 }
 
 * { box-sizing: border-box; }
-/* Native/browser page zoom can shrink the CSS viewport below the board's
-   minimum size. Allow scrolling instead of cutting off the replay controls. */
-body { margin: 0; min-width: 1180px; min-height: 720px; overflow: auto; background: #f5f0e5; }
+body { margin: 0; min-width: 1180px; min-height: 720px; overflow: hidden; background: #f5f0e5; }
 button, textarea, input { font: inherit; }
 button { color: inherit; }
 button:focus-visible, input:focus-visible { outline: 3px solid rgba(47, 126, 203, .32); outline-offset: 2px; }
@@ -169,6 +167,16 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(47, 126, 203
 .empty-library button { padding: 8px 12px; border: 1px solid #caa239; border-radius: 9px; background: #fff4c7; cursor: pointer; }
 
 .review-stage { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+.board-zoom { position: relative; flex: 1; min-height: 0; min-width: 0; }
+.board-zoom-viewport { position: absolute; inset: 0; overflow: auto; border-radius: 14px; overscroll-behavior: contain; background: #ebe9e3; }
+.board-zoom-canvas { position: relative; overflow: hidden; }
+.board-zoom-surface { position: absolute; transform-origin: top left; }
+.board-zoom-surface > .board-frame { width: 100%; height: 100%; }
+.board-zoom-controls { position: absolute; right: 18px; bottom: 18px; z-index: 20; display: flex; align-items: center; gap: 2px; padding: 3px; border: 1px solid #d2cec5; border-radius: 9px; background: #fbfaf6; box-shadow: 0 2px 8px #23345012; }
+.board-zoom-controls button { height: 26px; min-width: 26px; padding: 0 5px; border: 0; border-radius: 5px; color: #405b72; background: transparent; cursor: pointer; font-size: 17px; }
+.board-zoom-controls output { font-size: 10px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.board-zoom-controls button:hover:not(:disabled) { background: #e7eef3; }
+.board-zoom-controls button:disabled { opacity: .35; cursor: default; }
 .board-frame { position: relative; flex: 1; min-height: 0; display: grid; grid-template-rows: 1fr 42px 1fr; overflow: hidden; border: 1px solid #d2c4ae; border-radius: 18px; background: #f8f1e2; box-shadow: 0 10px 24px rgba(89, 65, 39, .11); view-transition-name: none; }
 .reconstructed-chip { display: none; }
 
@@ -1020,7 +1028,6 @@ body,
 
 .workspace {
   height: 100vh;
-  min-height: 720px;
   padding: 32px 10px 10px;
 }
 
@@ -2726,7 +2733,6 @@ button.stadium-marker:focus-visible {
 
 .app-shell.shared-replay .workspace {
   height: calc(100vh - 46px);
-  min-height: 674px;
   padding: 8px;
 }
 
