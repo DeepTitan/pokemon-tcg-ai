@@ -40,7 +40,7 @@ import { attackResolutionForTurn, type AttackResolution } from './attack-resolut
 import { damageChangesForTurn, type PokemonDamageChange } from './damage-change-model.js';
 import { positionChangesForTurn, type PokemonPositionChange } from './position-change-model.js';
 import { buildKeyMoments, stepKeyMoment } from './key-moment-navigation.js';
-import { turnPassForTurn, type TurnPass } from './turn-pass-model.js';
+import { turnPassForTurn } from './turn-pass-model.js';
 import { deriveReviewTurnStatus, type PlayerTurnStatus } from './turn-status-model.js';
 import { capturedAtIso, collectCardSourceIds, finalizeReviewForClientExit, matchSummaryFromReview, operationKey, recordingSummaryFromOperation, REDUCER_VERSION } from './match-storage.js';
 import { initialClientLifecycleState, observeClientLifecycle } from './client-lifecycle-model.js';
@@ -449,22 +449,6 @@ function AttackRoute({ resolution, opponentAttacking, hasImpact }: { resolution:
   </>;
 }
 
-function TurnPassMoment({ pass, opponentPassing }: { pass: TurnPass; opponentPassing: boolean }) {
-  const Direction = opponentPassing ? ArrowDown : ArrowUp;
-  const timedOut = pass.reason === 'timeout';
-  const outcome = timedOut
-    ? `${pass.passer}'s turn ended because their timer expired${pass.receiver ? `. ${pass.receiver}'s turn is next` : ''}`
-    : `${pass.passer} passed without attacking${pass.receiver ? `. ${pass.receiver}'s turn is next` : ''}`;
-
-  return <aside className={`turn-pass-moment ${opponentPassing ? 'from-opponent' : 'from-local'} ${timedOut ? 'timed-out' : ''}`} role="status" aria-label={outcome}>
-    <span className="turn-pass-route" aria-hidden="true" />
-    <span className="turn-pass-banner">
-      <span className="turn-pass-direction" aria-hidden="true"><Direction size={19} weight="bold" /></span>
-      <span className="turn-pass-copy"><small>{timedOut ? 'Timer expired' : 'No attack'}</small><strong>{timedOut ? `${pass.passer}'s turn ended` : `${pass.passer} passed`}</strong></span>
-      <span className="turn-pass-next"><small>Next turn</small><strong>{pass.receiver || 'Opponent'}</strong></span>
-    </span>
-  </aside>;
-}
 
 function ZoneStack({ label, count, tone, onOpen }: { label: string; count: number | string; tone: 'coral' | 'blue'; onOpen?: () => void }) {
   return <button type="button" className={`zone-stack ${tone}`} onClick={onOpen} title={`Open ${label}`}><span>{label}</span><span className="zone-stack-cards"><CardsThree size={36} weight="duotone" /></span><b>{count}</b></button>;
@@ -562,7 +546,8 @@ function PlayerField({ board, canonical, visibility, catalog, choiceFrames, curr
   return (
     <section className={`player-field ${opponent ? 'opponent' : 'local'} ${status.isCurrentTurn && !handoff ? 'current-turn' : ''} ${handoff ? `turn-${handoff}` : ''} ${status.itemLocked ? 'item-locked' : ''}`}>
       <div className="player-strip">
-        <div className="player-identity"><img src={avatar} alt="" /><div><span>{opponent ? 'Opponent' : 'You'}</span><strong>{board.name}</strong></div>{opponent && <OpponentHandSummary boardName={board.name} count={handCount} onOpen={openHand} />}</div>
+        {handoff && handoff !== 'receiving' && <div key={`pass-impact:${currentReviewIndex}:${handoff}`} className={`pass-impact ${handoff}`} aria-hidden="true"><span className="pass-impact-streak" /><b>{handoff === 'timed-out' ? 'TIME EXPIRED' : 'TURN PASSED'}</b><span className="pass-impact-arrow">{opponent ? '↓' : '↑'}</span></div>}
+        <div className="player-identity"><img src={avatar} alt="" /><div><span>{opponent ? 'Opponent' : 'You'}</span><strong key={`${currentReviewIndex}:${handoff || 'normal'}`} className={handoff ? `header-handoff ${handoff}` : undefined}><span className="header-player-name">{board.name}</span>{handoff && <span className="header-handoff-message" role="status">{handoff === 'receiving' ? opponent ? 'Opponent’s turn next' : 'Your turn next' : handoff === 'timed-out' ? 'Time expired →' : 'Passed turn →'}</span>}</strong></div>{opponent && <OpponentHandSummary boardName={board.name} count={handCount} onOpen={openHand} />}</div>
         <div className="turn-statuses" aria-label={`${board.name} turn status`}>
           <span className="status-slot turn-slot">{handoff === 'passing' || handoff === 'timed-out'
             ? <span className={`status-pill turn-handoff-pill ${handoff}`} aria-label={`Turn ${turnNumber} ${handoff === 'timed-out' ? 'ended when the timer expired' : 'ended without an attack'}`}><span>Turn {turnNumber}</span><b>{handoff === 'timed-out' ? 'Timed out' : 'Passed'}</b></span>
@@ -1540,11 +1525,10 @@ export default function TrackerApp() {
         {archiveOpen && <aside className="session-rail">
           <div className="archive-heading" onMouseDown={beginWindowDrag}>
             <div className="archive-brand"><span><img src="/tracker-assets/trace-mascot.png" alt="" /></span><div><span className="archive-brand-name"><strong>Trace</strong>{appVersion && <b>v{appVersion}</b>}</span><small>Every turn, in view</small></div><div className={`header-status ${captureStatus.tone}`} title={environment.capture.lastError || undefined}><i /><b>{captureStatus.label}</b></div></div>
-            <div className="archive-title"><div><h2>Match archive</h2><p>{archiveTotal} matches recorded</p></div><button className="panel-collapse-button" type="button" aria-label="Collapse match archive" aria-expanded="true" title="Collapse match archive" onClick={() => setArchiveOpen(false)}><CaretLeft size={17} weight="bold" /></button></div>
+            <div className="archive-title"><div><p>{archiveTotal} {archiveTotal === 1 ? 'match' : 'matches'} recorded</p></div><button className="panel-collapse-button" type="button" aria-label="Collapse match archive" aria-expanded="true" title="Collapse match archive" onClick={() => setArchiveOpen(false)}><CaretLeft size={17} weight="bold" /></button></div>
           </div>
           <div className="archive-search">
-            <div className="archive-search-field"><MagnifyingGlass size={16} aria-hidden="true" /><input type="search" aria-label="Search match archive" aria-describedby="archive-search-help" placeholder="Search players or Pokémon" value={archiveQuery} onChange={(event) => setArchiveQuery(event.target.value)} onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Escape') setArchiveQuery(''); }} />{searchActive && <button type="button" aria-label="Clear archive search" onClick={() => setArchiveQuery('')}><X size={14} /></button>}</div>
-            <small id="archive-search-help">Names, Pokémon, win/loss, today/yesterday</small>
+            <div className="archive-search-field"><MagnifyingGlass size={16} aria-hidden="true" /><input type="search" aria-label="Search match archive" placeholder="Search players or Pokémon" value={archiveQuery} onChange={(event) => setArchiveQuery(event.target.value)} onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Escape') setArchiveQuery(''); }} />{searchActive && <button type="button" aria-label="Clear archive search" onClick={() => setArchiveQuery('')}><X size={14} /></button>}</div>
             {searchActive && <small role="status">{searchLoading ? `Searching all games · ${visibleSummaries.length} found` : searchError ? 'Search incomplete — some older games could not load.' : `${visibleSummaries.length} ${visibleSummaries.length === 1 ? 'game' : 'games'} found`}{searchError && <button type="button" onClick={() => setSearchRetry(value => value + 1)}>Retry</button>}</small>}
           </div>
           <div className="sessions">
@@ -1564,7 +1548,6 @@ export default function TrackerApp() {
               <div className="midline"><span /></div>
               <PlayerField board={localBoard} canonical={localCanonicalPlayer} visibility={selectedCanonical.visibility} catalog={cardCatalog} choiceFrames={turnChoiceFrames.filter((frame) => frame.actor === localBoard.name)} currentReviewIndex={turnIndex} turnNumber={selectedCanonical.state.turnNumber} status={turnStatus.players[localBoard.name]} handoff={turnPass ? turnPass.passer === localBoard.name ? turnPass.reason === 'timeout' ? 'timed-out' : 'passing' : 'receiving' : undefined} stadiumCard={selectedCanonical.state.stadium} stadiumName={turnStatus.stadiumName} stadiumOwner={turnStatus.stadiumOwner} localPlayerName={localBoard.name} opponentName={opponentBoard.name} defeatedIds={defeatedIds} defeatedNames={defeatedNames} damageChanges={damageChanges} positionChanges={positionChanges} attackerId={attackResolution?.sourceId} avatar={TRAINER_ART[2]} onOpenPokemon={openPokemon} onOpenChoice={openChoiceCard} onOpenCard={openCard} onOpenZone={openZone} />
               {frameAnimations && !frameScrubbing && attackResolution && <AttackRoute key={`${selectedReview.id}:${turnIndex}:${attackResolution.sourceId || attackResolution.source}`} resolution={attackResolution} opponentAttacking={attackResolution.attacker === opponentBoard.name} hasImpact={attackResolution.hits.length > 0 || [...damageChanges.values()].some((change) => change.delta > 0)} />}
-              {turnPass && <TurnPassMoment key={`${selectedReview.id}:${turnIndex}:${turnPass.reason}`} pass={turnPass} opponentPassing={turnPass.passer === opponentBoard.name} />}
             </div>
             </BoardZoomViewport><div className="turn-controls">
               <div className="turn-caption">

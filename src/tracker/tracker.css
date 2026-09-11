@@ -1120,11 +1120,11 @@ body,
 }
 
 .archive-heading {
-  min-height: 112px;
+  min-height: 0;
   padding: 10px 14px 12px;
   display: grid;
   align-content: start;
-  gap: 11px;
+  gap: 6px;
 }
 
 .archive-brand {
@@ -1267,7 +1267,7 @@ body,
 
 @media (max-height: 850px) {
   .workspace { padding-top: 30px; }
-  .archive-heading { min-height: 102px; padding-top: 8px; gap: 8px; }
+  .archive-heading { min-height: 0; padding-top: 8px; gap: 6px; }
   .board-frame { grid-template-rows: minmax(225px, .88fr) 28px minmax(340px, 1.25fr); }
   .player-field { padding: 5px 8px; grid-template-rows: 32px minmax(0, 1fr); }
   .player-field.local { padding-bottom: 5px; grid-template-rows: 32px minmax(0, 1fr) 106px; }
@@ -1942,164 +1942,44 @@ body,
 .player-field.local.current-turn .player-strip::after { top: -3px; bottom: auto; }
 .player-field.item-locked:not(.current-turn) .player-strip { box-shadow: inset 0 -3px 0 #75458a; }
 
-/* Passing is a board handoff, not an empty action. Keep the cue centered and
-   compact while the player rails show where control is moving. */
-.player-field.turn-passing,
-.player-field.turn-timed-out {
-  box-shadow: inset 0 0 0 2px rgba(113, 102, 87, .3), inset 0 0 24px rgba(111, 99, 82, .07);
-}
-
-.player-field.turn-receiving {
-  z-index: 1;
-  box-shadow: inset 0 0 0 3px #e9b910, inset 0 0 28px rgba(255, 208, 57, .1);
-}
-
-.turn-handoff-pill {
-  min-height: 22px;
-  padding: 3px 6px;
-  gap: 4px;
-  border-color: #a99e8c;
-  color: #62584c;
-  background: #eee8dc;
-  box-shadow: 0 1px 3px rgba(68, 57, 44, .12);
-}
-
+/* Pass cues stay inside the player strips; never cover cards or the board. */
+.pass-impact { display: none; }
+.turn-passing > .player-strip, .turn-timed-out > .player-strip, .turn-receiving > .player-strip { overflow: hidden; }
+.frame-motion-enabled:not(.frame-scrubbing) .pass-impact { position: absolute; inset: 0; z-index: 12; display: flex; align-items: center; justify-content: center; gap: 16px; overflow: hidden; pointer-events: none; color: #fffaf0; background: #263d57; opacity: 0; animation: pass-impact-slam 1900ms cubic-bezier(.16,.8,.2,1) both; }
+.pass-impact b { position: relative; font-family: Nunito, sans-serif; font-size: clamp(18px, 2.4vw, 30px); font-weight: 1000; font-style: italic; letter-spacing: .12em; line-height: 1; text-shadow: 2px 2px 0 #0003; }
+.pass-impact-arrow { position: relative; font-size: 30px; font-weight: 900; color: #ffcf44; }
+.pass-impact-streak { position: absolute; inset: 0; background: repeating-linear-gradient(115deg, transparent 0 34px, #ffffff12 35px 39px, transparent 40px 70px); }
+.frame-motion-enabled:not(.frame-scrubbing) .pass-impact.receiving { background: #f5cc48; color: #233a53; animation: pass-impact-receive 1900ms 650ms cubic-bezier(.16,.8,.2,1) both; }
+.pass-impact.receiving .pass-impact-arrow { color: #233a53; }
+.pass-impact.timed-out { background: #88473f; }
+@keyframes pass-impact-slam { 0% { opacity: 0; transform: translateX(-35%); } 12%, 75% { opacity: 1; transform: translateX(0); } 100% { opacity: 0; transform: translateX(12%); } }
+@keyframes pass-impact-receive { 0% { opacity: 0; transform: translateX(-35%); } 16%, 72% { opacity: 1; transform: translateX(0); } 100% { opacity: 0; transform: translateX(12%); } }
+.player-field.turn-passing, .player-field.turn-timed-out, .player-field.turn-receiving { box-shadow: none; }
+.player-field.turn-receiving > .player-strip { box-shadow: inset 0 -3px 0 #f3cc54; }
+.turn-handoff-pill { min-height: 22px; padding: 3px 6px; gap: 4px; border-color: #b7aca0; color: #62584c; background: #eee8dc; }
 .turn-handoff-pill > span { font-size: 5.8px; }
 .turn-handoff-pill > b { font-size: 6.8px; letter-spacing: .04em; }
 .turn-handoff-pill.receiving { border-color: #b48611; color: #604400; background: #ffd34f; }
 .turn-handoff-pill.timed-out { border-color: #ad756f; color: #7a3934; background: #f4ded9; }
-
-.turn-pass-moment {
-  --pass-card-start: -14px;
-  position: absolute;
-  inset: 38px 76px;
-  z-index: 20;
-  display: grid;
-  place-items: center;
-  pointer-events: none;
-}
-
-.turn-pass-moment.from-local { --pass-card-start: 14px; }
-.turn-pass-route {
-  position: absolute;
-  top: calc(50% - 88px);
-  left: calc(50% - 2px);
-  width: 4px;
-  height: 176px;
-  display: block;
-  border-radius: 999px;
-  background: linear-gradient(to bottom, rgba(185, 95, 84, .72), rgba(255, 211, 79, .8) 49%, rgba(62, 126, 175, .74));
-  box-shadow: 0 0 10px rgba(133, 112, 75, .22);
-  opacity: .38;
-}
-
-.turn-pass-banner {
-  position: relative;
-  z-index: 1;
-  width: min(310px, calc(100% - 24px));
-  min-height: 58px;
-  padding: 8px 12px;
-  display: grid;
-  grid-template-columns: 38px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 9px;
-  overflow: hidden;
-  border: 1px solid #cdbfa9;
-  border-radius: 13px;
-  color: #2b3d55;
-  background: rgba(255, 253, 247, .97);
-  box-shadow: 0 8px 22px rgba(60, 45, 29, .2), inset 0 1px 0 rgba(255, 255, 255, .92);
-}
-
-.turn-pass-banner::after {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  height: 3px;
-  content: '';
-  background: linear-gradient(90deg, #b95f54, #efc339 50%, #3e7eaf);
-}
-
-.turn-pass-direction {
-  width: 36px;
-  height: 36px;
-  display: grid;
-  place-items: center;
-  border: 2px solid rgba(255, 255, 255, .9);
-  border-radius: 50%;
-  color: #fff;
-  background: linear-gradient(145deg, #b95f54, #3e7eaf);
-  box-shadow: 0 0 0 3px rgba(225, 185, 54, .2), 0 3px 8px rgba(61, 51, 39, .2);
-}
-
-.from-local .turn-pass-direction { background: linear-gradient(145deg, #3e7eaf, #b95f54); }
-.timed-out .turn-pass-direction { background: #9f5650; }
-.turn-pass-copy { min-width: 0; display: grid; gap: 2px; }
-.turn-pass-copy small,
-.turn-pass-next small { color: #87785f; font-size: 6px; font-weight: 950; letter-spacing: .1em; line-height: 1; text-transform: uppercase; }
-.turn-pass-copy strong { overflow: hidden; font-family: Nunito, sans-serif; font-size: 13px; font-weight: 950; line-height: 1.1; text-overflow: ellipsis; white-space: nowrap; }
-.turn-pass-next { min-width: 74px; padding-left: 10px; display: grid; gap: 3px; border-left: 1px solid #ddd2c1; text-align: right; }
-.turn-pass-next strong { max-width: 100px; overflow: hidden; color: #496478; font-size: 8px; font-weight: 950; text-overflow: ellipsis; white-space: nowrap; }
-
-.frame-motion-enabled:not(.frame-scrubbing) .turn-pass-route {
-  transform-origin: top;
-  animation: trace-turn-pass-route 720ms 80ms cubic-bezier(.2, .78, .28, 1) both;
-}
-
-.frame-motion-enabled:not(.frame-scrubbing) .turn-pass-moment.from-local .turn-pass-route { transform-origin: bottom; }
-.frame-motion-enabled:not(.frame-scrubbing) .turn-pass-banner { animation: trace-turn-pass-banner 620ms 150ms cubic-bezier(.18, .82, .28, 1) both; }
-.frame-motion-enabled:not(.frame-scrubbing) .turn-pass-direction { animation: trace-turn-pass-direction 700ms 180ms cubic-bezier(.18, .8, .3, 1) both; }
-.frame-motion-enabled:not(.frame-scrubbing) .player-field.turn-passing .player-strip,
-.frame-motion-enabled:not(.frame-scrubbing) .player-field.turn-timed-out .player-strip { animation: trace-turn-pass-source 720ms ease-out both; }
-.frame-motion-enabled:not(.frame-scrubbing) .player-field.turn-receiving .player-strip { animation: trace-turn-pass-receiver 780ms 240ms ease-out both; }
-
-@keyframes trace-turn-pass-route {
-  0% { opacity: 0; transform: scaleY(.08); }
-  48% { opacity: .72; transform: scaleY(.72); }
-  100% { opacity: .38; transform: scaleY(1); }
-}
-
-@keyframes trace-turn-pass-banner {
-  0% { opacity: 0; transform: translateY(var(--pass-card-start)) scale(.94); }
-  55% { opacity: 1; transform: translateY(0) scale(1.025); }
-  100% { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-@keyframes trace-turn-pass-direction {
-  0% { opacity: 0; transform: translateY(var(--pass-card-start)) scale(.55); }
-  62% { opacity: 1; transform: translateY(0) scale(1.12); }
-  100% { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-@keyframes trace-turn-pass-source {
-  0% { filter: saturate(1) brightness(1); }
-  46% { filter: saturate(.65) brightness(.93); }
-  100% { filter: saturate(.82) brightness(.97); }
-}
-
-@keyframes trace-turn-pass-receiver {
-  0% { filter: brightness(1); }
-  52% { filter: brightness(1.18); }
-  100% { filter: brightness(1); }
-}
-
-@media (max-width: 900px), (max-height: 720px) {
-  .turn-pass-moment { inset-inline: 42px; }
-  .turn-pass-banner { width: min(284px, calc(100% - 16px)); min-height: 52px; padding: 7px 9px; grid-template-columns: 32px minmax(0, 1fr) auto; gap: 7px; }
-  .turn-pass-direction { width: 30px; height: 30px; }
-  .turn-pass-copy strong { font-size: 11px; }
-  .turn-pass-next { min-width: 62px; padding-left: 7px; }
-  .turn-pass-next strong { max-width: 80px; font-size: 7px; }
-}
-
+.player-identity .header-handoff { position: relative; display: block; min-width: 125px; max-width: 100%; overflow: hidden; white-space: nowrap; }
+.header-player-name { display: block; overflow: hidden; text-overflow: ellipsis; }
+.player-identity strong > span { font: inherit; color: inherit; text-transform: none; letter-spacing: inherit; }
+.header-handoff-message { position: absolute; inset: 0; display: block; overflow: hidden; text-overflow: ellipsis; opacity: 0; pointer-events: none; }
+.frame-motion-enabled:not(.frame-scrubbing) .header-handoff:not(.receiving) .header-handoff-message { animation: header-pass-message 1200ms steps(1, end) both; }
+.frame-motion-enabled:not(.frame-scrubbing) .header-handoff:not(.receiving) .header-player-name { animation: header-pass-name 1200ms steps(1, end) both; }
+.frame-motion-enabled:not(.frame-scrubbing) .header-handoff.receiving .header-handoff-message { animation: header-next-message 2200ms steps(1, end) both; }
+.frame-motion-enabled:not(.frame-scrubbing) .header-handoff.receiving .header-player-name { animation: header-next-name 2200ms steps(1, end) both; }
+.frame-motion-enabled:not(.frame-scrubbing) .turn-receiving > .player-strip { animation: header-turn-arrives 1400ms ease-out both; }
+@keyframes header-pass-message { 0% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes header-pass-name { 0% { opacity: 0; } 100% { opacity: 1; } }
+@keyframes header-next-message { 0% { opacity: 0; } 45% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes header-next-name { 0% { opacity: 1; } 45% { opacity: 0; } 100% { opacity: 1; } }
+@keyframes header-turn-arrives { 0%, 65% { box-shadow: inset 0 -3px 0 transparent; } 100% { box-shadow: inset 0 -3px 0 #f3cc54; } }
 @media (prefers-reduced-motion: reduce) {
-  .turn-pass-route,
-  .turn-pass-banner,
-  .turn-pass-direction,
-  .player-field.turn-passing .player-strip,
-  .player-field.turn-timed-out .player-strip,
-  .player-field.turn-receiving .player-strip { animation: none !important; }
+  .frame-motion-enabled:not(.frame-scrubbing) .pass-impact { display: none; animation: none; }
+  .header-handoff .header-player-name, .header-handoff .header-handoff-message, .player-field.turn-receiving > .player-strip { animation: none !important; }
+  .header-handoff .header-player-name { opacity: 1; }
+  .header-handoff .header-handoff-message { opacity: 0; }
 }
 
 /* The Stadium occupies a real, raised board slot beside the Active Pokémon. */

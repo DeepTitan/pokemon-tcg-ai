@@ -35,9 +35,13 @@ reopen it. Never restart or reroute during a real match.
 - OS connection inspection confirmed seven connections through Trace's local
   listener and upstream sockets in the reserved 49000+ port range.
 - No new TLS errors were appended during this startup test.
-- Actual Casual match recording is still pending: the computer-use tool
-  reads the Unity client but its mouse input does not activate the Casual tab.
-  User was asked to start a Casual game for the end-to-end check.
+- Sep 11, user started the requested match against FugitiveBIake. Trace
+  immediately added a recording (archive count 58 -> 59), captured Heads,
+  both opening hand counts of seven, and advanced from action 1 to action 3
+  as the opponent completed their opening selection (hand count six).
+- Full-match completion and final-result persistence remain unverified while
+  the user plays. No restart, installation, or route reset was performed
+  during the match.
 
 This is a local candidate, not a published release. Existing recordings and
 the installed production app have not been removed or overwritten.
