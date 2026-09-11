@@ -21,6 +21,7 @@ import { ShareNetwork } from '@phosphor-icons/react/ShareNetwork';
 import type { Card, PlayerState, PokemonInPlay } from '../engine/types.js';
 import { parseBattleLog } from './battle-log-parser.js';
 import { DEMO_BATTLE_LOG } from './demo-log.js';
+import { readArchiveSearchIndex, searchArchive } from './archive-search.js';
 import {
   getRecentMatchOperations, getTraceVersion, getTrackerEnvironment, initializeTrackerStorage, isTauri, listMatchSummaries,
   listRawMatchIds, loadMatchOperations, loadMatchReview, onMatchOperation, persistMatchReview,
@@ -658,6 +659,24 @@ export default function TrackerApp() {
   const [selectedId, setSelectedId] = useState<string | null>(initial[0]?.id || null);
   const [turnIndex, setTurnIndex] = useState(() => Math.max(0, (initial[0]?.turns.length || 1) - 1));
   const [archiveTotal, setArchiveTotal] = useState(initial.length);
+  const [archiveQuery, setArchiveQuery] = useState('');
+  const [searchIndex, setSearchIndex] = useState<MatchSummary[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState(false);
+  const [searchRetry, setSearchRetry] = useState(0);
+  const searchActive = archiveQuery.trim().length > 0;
+  useEffect(() => {
+    if (!searchActive || !isTauri() || sharedMode) return;
+    let cancelled = false;
+    setSearchLoading(true);
+    setSearchError(false);
+    setSearchIndex([]);
+    void readArchiveSearchIndex(listMatchSummaries, () => cancelled, (page) => {
+      setSearchIndex((current) => [...new Map([...current, ...page].map(item => [item.id, item])).values()]);
+    }).catch(() => { if (!cancelled) setSearchError(true); })
+      .finally(() => { if (!cancelled) setSearchLoading(false); });
+    return () => { cancelled = true; };
+  }, [searchActive, archiveTotal, sharedMode, searchRetry]);
   const [restoringReview, setRestoringReview] = useState(() => isTauri() || sharedMode);
   const [tracking, setTracking] = useState(() => !isTauri() && !sharedMode);
   const [playing, setPlaying] = useState(false);
@@ -677,6 +696,13 @@ export default function TrackerApp() {
   const [busy, setBusy] = useState(false);
   const [liveOperations, setLiveOperations] = useState<CapturedOperation[]>([]);
   const [cardCatalog, setCardCatalog] = useState<ReadonlyMap<string, CardInfo>>(new Map());
+  const visibleSummaries = useMemo(() => {
+    if (!searchActive) return summaries;
+    // The live in-memory summary wins over an older index snapshot.
+    const indexed = [...new Map([...searchIndex, ...summaries].map(item => [item.id, item])).values()]
+      .sort((a, b) => b.importedAt.localeCompare(a.importedAt));
+    return searchArchive(indexed, archiveQuery, new Date(), cardCatalog);
+  }, [archiveQuery, searchActive, searchIndex, summaries, cardCatalog]);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [captureError, setCaptureError] = useState<string | null>(null);
@@ -904,6 +930,10 @@ export default function TrackerApp() {
     }
     return catalogRef.current;
   }, [mergeCatalog]);
+
+  useEffect(() => {
+    if (searchActive && !searchLoading && searchIndex.length) void resolveCardsForPayload(searchIndex);
+  }, [searchActive, searchLoading, searchIndex, resolveCardsForPayload]);
 
   const resolveCardsForOperations = useCallback(async (operations: CapturedOperation[]) => {
     return resolveCardsForPayload(operations.map((operation) => operation.operation));
@@ -1512,12 +1542,18 @@ export default function TrackerApp() {
             <div className="archive-brand"><span><img src="/tracker-assets/trace-mascot.png" alt="" /></span><div><span className="archive-brand-name"><strong>Trace</strong>{appVersion && <b>v{appVersion}</b>}</span><small>Every turn, in view</small></div><div className={`header-status ${captureStatus.tone}`} title={environment.capture.lastError || undefined}><i /><b>{captureStatus.label}</b></div></div>
             <div className="archive-title"><div><h2>Match archive</h2><p>{archiveTotal} matches recorded</p></div><button className="panel-collapse-button" type="button" aria-label="Collapse match archive" aria-expanded="true" title="Collapse match archive" onClick={() => setArchiveOpen(false)}><CaretLeft size={17} weight="bold" /></button></div>
           </div>
-          <div className="sessions">
-            {summaries.map((summary) => <ArchiveRow key={summary.id} summary={summary} selected={summary.id === selectedId} catalog={cardCatalog} onSelect={() => void selectSummary(summary)} />)}
-            {!summaries.length && !restoringReview && <div className="empty-library"><BookOpenText size={38} weight="duotone" /><strong>No matches yet</strong><p>Turn on automatic capture and play normally. Your games will collect here.</p><button type="button" onClick={() => importLog(DEMO_BATTLE_LOG)}>Explore a sample</button></div>}
-            {!summaries.length && restoringReview && <div className="empty-library archive-loading"><BookOpenText size={38} weight="duotone" /><strong>Restoring your archive…</strong><p>Loading the latest saved match.</p></div>}
+          <div className="archive-search">
+            <div className="archive-search-field"><MagnifyingGlass size={16} aria-hidden="true" /><input type="search" aria-label="Search match archive" aria-describedby="archive-search-help" placeholder="Search players or Pokémon" value={archiveQuery} onChange={(event) => setArchiveQuery(event.target.value)} onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Escape') setArchiveQuery(''); }} />{searchActive && <button type="button" aria-label="Clear archive search" onClick={() => setArchiveQuery('')}><X size={14} /></button>}</div>
+            <small id="archive-search-help">Names, Pokémon, win/loss, today/yesterday</small>
+            {searchActive && <small role="status">{searchLoading ? `Searching all games · ${visibleSummaries.length} found` : searchError ? 'Search incomplete — some older games could not load.' : `${visibleSummaries.length} ${visibleSummaries.length === 1 ? 'game' : 'games'} found`}{searchError && <button type="button" onClick={() => setSearchRetry(value => value + 1)}>Retry</button>}</small>}
           </div>
-          {summaries.length < archiveTotal && <button className="all-matches" type="button" onClick={() => void loadOlderMatches()}><BookOpenText size={19} weight="duotone" /><span>Load older matches</span><CaretRight size={17} weight="bold" /></button>}
+          <div className="sessions">
+            {visibleSummaries.map((summary) => <ArchiveRow key={summary.id} summary={summary} selected={summary.id === selectedId} catalog={cardCatalog} onSelect={() => void selectSummary(summary)} />)}
+            {searchActive && !visibleSummaries.length && !searchLoading && !searchError && <div className="empty-library"><MagnifyingGlass size={28} /><strong>No matching games</strong><p>Try part of a player’s name, a Pokémon, or a different date.</p><button type="button" onClick={() => setArchiveQuery('')}>Clear search</button></div>}
+            {!searchActive && !summaries.length && !restoringReview && <div className="empty-library"><BookOpenText size={38} weight="duotone" /><strong>No matches yet</strong><p>Turn on automatic capture and play normally. Your games will collect here.</p><button type="button" onClick={() => importLog(DEMO_BATTLE_LOG)}>Explore a sample</button></div>}
+            {!searchActive && !summaries.length && restoringReview && <div className="empty-library archive-loading"><BookOpenText size={38} weight="duotone" /><strong>Restoring your archive…</strong><p>Loading the latest saved match.</p></div>}
+          </div>
+          {!searchActive && summaries.length < archiveTotal && <button className="all-matches" type="button" onClick={() => void loadOlderMatches()}><BookOpenText size={19} weight="duotone" /><span>Load older matches</span><CaretRight size={17} weight="bold" /></button>}
         </aside>}
 
         <section className="review-stage">

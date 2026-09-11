@@ -1,5 +1,15 @@
 @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&family=Nunito+Sans:wght@400;600;700;800&display=swap');
 
+.archive-search { flex: 0 0 auto; padding: 10px 12px 6px; display: grid; gap: 5px; }
+.archive-search-field { display: flex; align-items: center; gap: 7px; padding: 0 9px; min-height: 36px; border: 1px solid #d6d2c8; border-radius: 9px; background: #fffdf8; color: #66716e; }
+.archive-search-field:focus-within { border-color: #467c9a; box-shadow: 0 0 0 2px #467c9a22; }
+.archive-search-field input { width: 100%; min-width: 0; border: 0; outline: none; background: transparent; color: #26394a; font: inherit; font-size: 12px; padding: 9px 0; }
+.archive-search-field input::-webkit-search-cancel-button { display: none; }
+.archive-search button { border: 0; background: transparent; color: #315e7b; cursor: pointer; }
+.archive-search-field button { display: grid; place-items: center; min-width: 26px; min-height: 28px; padding: 0; }
+.archive-search > small { color: #646b6d; font-size: 10px; line-height: 1.45; }
+.archive-search button:focus-visible { outline: 2px solid #467c9a; outline-offset: 2px; border-radius: 4px; }
+
 :root {
   color-scheme: light;
   font-family: 'Nunito Sans', -apple-system, BlinkMacSystemFont, sans-serif;
