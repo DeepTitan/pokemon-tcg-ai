@@ -44,7 +44,8 @@ assert.equal(visibleCaptureError(environment({ lastError: 'route failed' })), 'r
 const trackerAppSource = readFileSync(new URL('../TrackerApp.tsx', import.meta.url), 'utf8');
 assert.match(trackerAppSource, /className="capture-safety-backdrop"/);
 assert.match(trackerAppSource, /role="alertdialog" aria-modal="true"/);
-assert.match(trackerAppSource, /Trace won’t connect, install an update, or restart while this game is active\./);
+assert.match(trackerAppSource, /Trace can’t safely tell whether a match is active\./);
+assert.match(trackerAppSource, /leave Trace open until it says Ready/);
 assert.match(trackerAppSource, /if \(environment\.capture\.waitingForMatchEnd\) setPlaying\(false\)/);
 assert.doesNotMatch(trackerAppSource, /capture-safety-banner/);
 

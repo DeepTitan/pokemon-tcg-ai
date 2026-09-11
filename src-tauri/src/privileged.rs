@@ -303,6 +303,10 @@ pub fn helper_status() -> Result<HelperReply, String> {
 }
 
 pub fn enable_route(app_pid: u32, pokemon_pid: u32) -> Result<(HelperReply, RouteHandle), String> {
+    // Arm capture before TCG Live launches. The approved helper requires an
+    // owned, live PID; zero is not a process. While the game is absent, Trace
+    // itself is the owned process and has no game sockets to hand off.
+    let pokemon_pid = route_owner_pid(app_pid, pokemon_pid);
     let (reply, stream) = send_command(
         HelperCommand::Enable {
             app_pid,
@@ -317,6 +321,10 @@ pub fn enable_route(app_pid: u32, pokemon_pid: u32) -> Result<(HelperReply, Rout
             .unwrap_or_else(|| "The capture helper could not route the game stream.".to_owned()));
     }
     Ok((reply, stream))
+}
+
+fn route_owner_pid(app_pid: u32, pokemon_pid: u32) -> u32 {
+    if pokemon_pid == 0 { app_pid } else { pokemon_pid }
 }
 
 pub fn disable_route(stream: &mut RouteHandle) {
@@ -836,6 +844,12 @@ mod tests {
         reconnect_rules, HelperInstallSource, HELPER_BUNDLE_EXECUTABLE_PATH,
     };
     use std::{net::Ipv4Addr, path::Path};
+
+    #[test]
+    fn capture_can_arm_before_the_game_launches() {
+        assert_eq!(super::route_owner_pid(100, 0), 100);
+        assert_eq!(super::route_owner_pid(100, 200), 200);
+    }
 
     #[test]
     fn production_helper_install_preserves_the_signed_app_bundle() {
