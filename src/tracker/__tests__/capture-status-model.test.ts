@@ -50,7 +50,7 @@ assert.match(trackerAppSource, /if \(environment\.capture\.waitingForMatchEnd\) 
 assert.doesNotMatch(trackerAppSource, /capture-safety-banner/);
 
 const updateNoticeSource = readFileSync(new URL('../UpdateNotice.tsx', import.meta.url), 'utf8');
-assert.match(updateNoticeSource, /if \(matchInProgressRef\.current\) \{/);
-assert.match(updateNoticeSource, /disabled=\{busy \|\| matchInProgress\}/);
+assert.match(updateNoticeSource, /if \(matchInProgressRef\.current \|\| \(await getTrackerEnvironment\(\)\)\.clientRunning\) \{/);
+assert.match(updateNoticeSource, /disabled=\{busy \|\| checking \|\| matchInProgress\}/);
 
 console.log('capture-status-model: healthy recordings, modal waiting state, and update deferral verified');

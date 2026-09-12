@@ -4,7 +4,7 @@ export type FrameNavigationRequest = number | ((current: number) => number);
 export type FrameNavigationMode = 'animate' | 'scrub' | 'instant';
 
 export function frameAnimationsFromStoredPreference(value: string | null): boolean {
-  return value === 'on';
+  return value !== 'off';
 }
 
 export function resolveFrameNavigationTarget(current: number, request: FrameNavigationRequest, last: number): number {

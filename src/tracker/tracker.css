@@ -2321,6 +2321,11 @@ button.stadium-marker:focus-visible {
   .panel-collapse-button { transition: none; }
 }
 
+.settings-updates { margin: 18px 0; padding: 16px 0; border-block: 1px solid #ded5c5; }
+.settings-updates p { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.settings-updates button { padding: 9px 12px; margin: 4px 6px 4px 0; border: 1px solid #c9bc9e; border-radius: 9px; background: #fff9e9; color: #263b59; cursor: pointer; }
+.settings-updates button:disabled { opacity: .6; cursor: default; }
+.setup-modal { max-height: 90vh; overflow-y: auto; }
 .update-notice {
   position: fixed;
   right: 18px;
