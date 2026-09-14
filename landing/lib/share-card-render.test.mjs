@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { socialCardSvg, renderSocialCardPng } from '../api/share-card.mjs';
 import { socialCardData } from './share-card-data.mjs';
-import { socialMeta } from '../api/share-page.mjs';
+import { socialMeta, renderShareHtml } from '../api/share-page.mjs';
 
 const markup = (card) => socialCardSvg(card).replace(/href="data:[^"]+"/g, 'href="image-asset"');
 
@@ -31,10 +31,24 @@ test('head-to-head thumbnail preserves the selected header and inline Elo withou
 
 test('share metadata uses the updated thumbnail without changing the persistent match URL', () => {
   const meta = socialMeta(sample(), 'existing-share-id', 'https://victoryroad.app');
-  assert.equal((meta.match(/api\/share-card\?shareId=existing-share-id&amp;v=6/g) || []).length, 3);
+  assert.equal((meta.match(/https:\/\/victoryroad-lovat\.vercel\.app\/api\/share-card\?shareId=existing-share-id&amp;v=7/g) || []).length, 3);
   assert.match(meta, /property="og:url" content="https:\/\/victoryroad\.app\/trace\/existing-share-id"/);
   assert.match(meta, /rel="canonical" href="https:\/\/victoryroad\.app\/trace\/existing-share-id"/);
-  assert.doesNotMatch(meta, /v=[45]|ratings, duration/);
+  assert.doesNotMatch(meta, /v=[456]|ratings, duration/);
+});
+
+test('preview metadata precedes large inline styles and preserves charset, privacy and canonical URL', () => {
+  const shell = '<!doctype html><html><head><meta charset="UTF-8" /><title>Trace</title>'
+    + '<meta name="robots" content="noindex, nofollow" /><style>' + ' '.repeat(120_000)
+    + '</style></head><body><div id="root"></div></body></html>';
+  const html = renderShareHtml(shell, sample(), 'existing-share-id', 'https://victoryroad.app');
+  assert.ok(html.indexOf('charset=') < 100);
+  assert.ok(html.indexOf('property="og:image"') < 2000);
+  assert.ok(html.indexOf('og:image:height') < html.indexOf('<style>'));
+  assert.equal((html.match(/property="og:image"/g) || []).length, 1);
+  assert.ok(html.includes('noindex, nofollow'));
+  assert.ok(html.includes('<div id="root"></div>'));
+  assert.ok(html.includes('rel="canonical" href="https://victoryroad.app/trace/existing-share-id"'));
 });
 
 test('renders a valid 1200 by 630 PNG even when card artwork is unavailable', () => {

@@ -22,3 +22,5 @@ Verified public cases before deployment:
 - `Bqni_fMtxvQrDl6zNHRlyEhS`: Dragapult ex vs. Mega Starmie ex, 0–0 prizes (recorded values unchanged).
 
 The approved visual layout is unchanged. Only selected cards, their captions, artwork availability, and corresponding social metadata are corrected.
+
+The Facebook crawler compatibility release uses image version 7. Preview media is served from the existing Trace host (`victoryroad-lovat.vercel.app`), whose robots.txt explicitly allows `/api/share-card`; the apex site's robots.txt disallows `/api/`. Match and canonical URLs remain on `victoryroad.app`. Social metadata is inserted immediately after the charset declaration, before the large inlined replay stylesheet. The replay's existing `noindex, nofollow` directive is preserved.

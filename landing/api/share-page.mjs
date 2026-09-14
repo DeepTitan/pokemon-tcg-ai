@@ -4,6 +4,9 @@ import {
 } from '../lib/share-card-data.mjs';
 
 const VIEWER_ORIGIN = process.env.TRACE_VIEWER_ORIGIN || 'https://victoryroad-lovat.vercel.app';
+// The apex site disallows /api/ in robots.txt. Serve preview media from Trace's
+// existing host, whose robots.txt explicitly allows /api/share-card.
+const IMAGE_ORIGIN = process.env.TRACE_IMAGE_ORIGIN || 'https://victoryroad-lovat.vercel.app';
 
 function escapeHtml(value) {
   return String(value)
@@ -27,7 +30,7 @@ export function socialMeta(card, shareId, origin) {
   const title = escapeHtml(`${card.title} — Trace match replay`);
   const description = escapeHtml(card.description);
   const url = `${origin}/trace/${encodeURIComponent(shareId)}`;
-  const image = `${origin}/api/share-card?shareId=${encodeURIComponent(shareId)}&v=6`;
+  const image = `${IMAGE_ORIGIN}/api/share-card?shareId=${encodeURIComponent(shareId)}&v=7`;
   return [
     `<meta property="og:title" content="${title}" />`,
     `<meta property="og:description" content="${description}" />`,
@@ -47,6 +50,15 @@ export function socialMeta(card, shareId, origin) {
   ].join('\n    ');
 }
 
+export function renderShareHtml(shell, card, shareId, origin) {
+  return shell
+    .replace(/<title>[^<]*<\/title>/i, `<title>${escapeHtml(card.title)} — Trace match replay</title>`)
+    // Keep social metadata ahead of the large inlined replay stylesheet, while
+    // preserving an early charset declaration for bounded crawler responses.
+    .replace(/(<head\b[^>]*>)(\s*<meta\b[^>]*charset[^>]*>)?/i,
+      (_match, head, charset = '') => `${head}${charset}\n    ${socialMeta(card, shareId, origin)}\n`);
+}
+
 export default async function handler(request, response) {
   const shareId = requestShareId(request);
   const origin = deploymentOrigin(request);
@@ -59,10 +71,7 @@ export default async function handler(request, response) {
       }),
     ]);
     if (!shellResponse.ok) throw new Error('Replay viewer is temporarily unavailable');
-    let html = await shellResponse.text();
-    html = html
-      .replace(/<title>[^<]*<\/title>/i, `<title>${escapeHtml(card.title)} — Trace match replay</title>`)
-      .replace('</head>', `    ${socialMeta(card, shareId, origin)}\n  </head>`);
+    const html = renderShareHtml(await shellResponse.text(), card, shareId, origin);
     response.statusCode = 200;
     response.setHeader('content-type', 'text/html; charset=utf-8');
     response.setHeader('cache-control', 'public, max-age=0, s-maxage=300, stale-while-revalidate=86400');
