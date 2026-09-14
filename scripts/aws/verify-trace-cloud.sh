@@ -28,20 +28,22 @@ DEVICE_ID="trace-e2e-$(uuidgen | tr '[:upper:]' '[:lower:]')"
 MATCH_ID="trace-e2e-$(date -u +%Y%m%dT%H%M%SZ)-${RANDOM}"
 WORK_DIR="$(mktemp -d)"
 OBJECT_KEY=""
+PREPARED_OBJECT_KEY=""
 SHARE_ID=""
 
 cleanup() {
-  if [[ -n "$OBJECT_KEY" ]]; then
+  for TEST_OBJECT_KEY in "$OBJECT_KEY" "$PREPARED_OBJECT_KEY"; do
+    if [[ -z "$TEST_OBJECT_KEY" ]]; then continue; fi
     aws s3api list-object-versions --profile "$AWS_PROFILE_NAME" --region "$AWS_REGION_NAME" \
-      --bucket "$PAYLOAD_BUCKET" --prefix "$OBJECT_KEY" > "$WORK_DIR/s3-versions.json" 2>/dev/null || true
-    jq --arg key "$OBJECT_KEY" \
+      --bucket "$PAYLOAD_BUCKET" --prefix "$TEST_OBJECT_KEY" > "$WORK_DIR/s3-versions.json" 2>/dev/null || true
+    jq --arg key "$TEST_OBJECT_KEY" \
       '{Objects: (([.Versions[]? | select(.Key == $key)] + [.DeleteMarkers[]? | select(.Key == $key)]) | map({Key, VersionId})), Quiet: true}' \
       "$WORK_DIR/s3-versions.json" > "$WORK_DIR/s3-delete.json" 2>/dev/null || true
     if jq -e '.Objects | length > 0' "$WORK_DIR/s3-delete.json" >/dev/null 2>&1; then
       aws s3api delete-objects --profile "$AWS_PROFILE_NAME" --region "$AWS_REGION_NAME" \
         --bucket "$PAYLOAD_BUCKET" --delete "file://$WORK_DIR/s3-delete.json" >/dev/null 2>&1 || true
     fi
-  fi
+  done
   aws dynamodb delete-item --profile "$AWS_PROFILE_NAME" --region "$AWS_REGION_NAME" \
     --table-name "$MATCHES_TABLE" \
     --key "$(jq -cn --arg device "$DEVICE_ID" --arg match "$MATCH_ID" '{deviceId:{S:$device},matchId:{S:$match}}')" \
@@ -87,6 +89,14 @@ test "$PUT_STATUS" = "200"
 jq -e --arg id "$MATCH_ID" '.id == $id and .turnCount == 1 and .reducerVersion == 999 and .durationSeconds == 1197 and .localRating == 1836 and .socialPreview.localCardName == "Dragapult ex" and .socialPreview.opponentCardName == "Drakloak"' \
   "$WORK_DIR/put-response.json" >/dev/null
 
+# Resolve the exact test-owned source key early so later assertion failures can
+# still clean up this fixture's versions without touching any captured matches.
+aws dynamodb get-item --profile "$AWS_PROFILE_NAME" --region "$AWS_REGION_NAME" \
+  --table-name "$MATCHES_TABLE" --consistent-read \
+  --key "$(jq -cn --arg device "$DEVICE_ID" --arg match "$MATCH_ID" '{deviceId:{S:$device},matchId:{S:$match}}')" \
+  > "$WORK_DIR/dynamodb-item.json"
+OBJECT_KEY="$(jq -er '.Item.objectKey.S' "$WORK_DIR/dynamodb-item.json")"
+
 curl --fail --silent --show-error --compressed --header "x-trace-device: $DEVICE_ID" \
   --header "authorization: Bearer $TOKEN" "$API_URL/v1/matches" > "$WORK_DIR/list-response.json"
 jq -e --arg id "$MATCH_ID" '.matches | any(.id == $id and .turnCount == 1)' \
@@ -104,25 +114,46 @@ SHARE_ID="$(jq -er '.shareId | select(length >= 20)' "$WORK_DIR/share-response.j
 jq -e --arg share "$SHARE_ID" '.url == ("https://victoryroad.app/trace/" + $share)' \
   "$WORK_DIR/share-response.json" >/dev/null
 
-curl --fail --silent --show-error --compressed "$API_URL/v1/shares/$SHARE_ID" > "$WORK_DIR/public-response.json"
+aws dynamodb get-item --profile "$AWS_PROFILE_NAME" --region "$AWS_REGION_NAME" \
+  --table-name "$SHARES_TABLE" --consistent-read \
+  --key "$(jq -cn --arg share "$SHARE_ID" '{shareId:{S:$share}}')" \
+  > "$WORK_DIR/share-item.json"
+PREPARED_OBJECT_KEY="$(jq -er '.Item.preparedReplay.M.objectKey.S' "$WORK_DIR/share-item.json")"
+jq -e '.Item.preparedReplay.M.objectVersionId.S | length > 0' "$WORK_DIR/share-item.json" >/dev/null
+
+curl --fail --silent --show-error --compressed --dump-header "$WORK_DIR/public-headers.txt" \
+  "$API_URL/v1/shares/$SHARE_ID" > "$WORK_DIR/public-response.json"
 jq -e --arg id "$MATCH_ID" \
   '.review.id == $id and .review.source == "trace-cloud-e2e" and .summary.durationSeconds == 1197 and .summary.localRating == 1836 and .summary.socialPreview.localPrizes == 3 and .reducerVersion == 999 and (has("deviceId") | not)' \
   "$WORK_DIR/public-response.json" >/dev/null
+
+ETAG="$(awk 'tolower($1) == "etag:" {gsub("\r", "", $2); print $2}' "$WORK_DIR/public-headers.txt")"
+test -n "$ETAG"
+REVALIDATED_STATUS="$(curl --silent --show-error --output "$WORK_DIR/revalidated-body" \
+  --write-out '%{http_code}' --header "if-none-match: $ETAG" "$API_URL/v1/shares/$SHARE_ID")"
+test "$REVALIDATED_STATUS" = "304"
+test ! -s "$WORK_DIR/revalidated-body"
+
+# Updating an already shared match must prepare new bytes before acknowledging
+# the upload, and its old validator must no longer produce a 304.
+jq '.review.turns += [{number:2,actions:[]}]' "$WORK_DIR/put-request.json" | gzip -c > "$WORK_DIR/update-request.json.gz"
+curl --fail --silent --show-error --request PUT --header 'content-type: application/json' \
+  --header 'content-encoding: gzip' --header "x-trace-device: $DEVICE_ID" \
+  --header "authorization: Bearer $TOKEN" --data-binary "@$WORK_DIR/update-request.json.gz" \
+  "$API_URL/v1/matches/$MATCH_ID" > "$WORK_DIR/update-response.json"
+UPDATED_STATUS="$(curl --silent --show-error --compressed --output "$WORK_DIR/updated-public.json" \
+  --write-out '%{http_code}' --header "if-none-match: $ETAG" "$API_URL/v1/shares/$SHARE_ID")"
+test "$UPDATED_STATUS" = "200"
+jq -e '.review.turns | length == 2' "$WORK_DIR/updated-public.json" >/dev/null
 
 curl --fail --silent --show-error "$API_URL/v1/shares/$SHARE_ID?summary=1" > "$WORK_DIR/public-summary-response.json"
 jq -e --arg id "$MATCH_ID" \
   '.summary.id == $id and .summary.socialPreview.localCardId == "sv6_130" and .summary.socialPreview.opponentCardId == "sv8-5_72" and (has("review") | not)' \
   "$WORK_DIR/public-summary-response.json" >/dev/null
 
-aws dynamodb get-item --profile "$AWS_PROFILE_NAME" --region "$AWS_REGION_NAME" \
-  --table-name "$MATCHES_TABLE" --consistent-read \
-  --key "$(jq -cn --arg device "$DEVICE_ID" --arg match "$MATCH_ID" '{deviceId:{S:$device},matchId:{S:$match}}')" \
-  > "$WORK_DIR/dynamodb-item.json"
-OBJECT_KEY="$(jq -er '.Item.objectKey.S' "$WORK_DIR/dynamodb-item.json")"
-
 aws s3api head-object --profile "$AWS_PROFILE_NAME" --region "$AWS_REGION_NAME" \
   --bucket "$PAYLOAD_BUCKET" --key "$OBJECT_KEY" > "$WORK_DIR/s3-object.json"
 jq -e '.ServerSideEncryption == "AES256" and .ContentEncoding == "gzip"' \
   "$WORK_DIR/s3-object.json" >/dev/null
 
-printf 'Trace cloud verification passed: auth, upload, list, retrieval, sharing, DynamoDB, and encrypted S3.\n'
+printf 'Trace cloud verification passed: auth, upload, retrieval, prepared sharing, conditional caching, refreshed replays, DynamoDB, and encrypted S3.\n'

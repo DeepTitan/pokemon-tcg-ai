@@ -59,10 +59,12 @@ export function storeShareLink(
 }
 
 export async function loadSharedReplay(shareId: string): Promise<SharedReplayPayload> {
-  const configured = import.meta.env.VITE_TRACE_SYNC_API_URL?.trim();
+  const configured = import.meta.env?.VITE_TRACE_SYNC_API_URL?.trim();
   const endpoint = (configured || DEFAULT_TRACE_API_URL).replace(/\/$/, '');
   const response = await fetch(`${endpoint}/v1/shares/${encodeURIComponent(shareId)}`, {
-    cache: 'no-store',
+    // Keep the compressed replay in the HTTP cache, but validate its ETag on
+    // every visit so updates and removed links are never hidden by a stale copy.
+    cache: 'no-cache',
   });
   if (response.status === 404) throw new Error('This shared match could not be found.');
   if (!response.ok) throw new Error('This shared match is temporarily unavailable.');

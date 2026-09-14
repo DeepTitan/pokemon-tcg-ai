@@ -1,0 +1,27 @@
+name: Trace cloud contracts
+
+on:
+  push:
+    paths:
+      - 'infrastructure/aws/**'
+      - 'scripts/aws/**'
+      - '.github/workflows/trace-cloud-tests.yml'
+  pull_request:
+    paths:
+      - 'infrastructure/aws/**'
+      - 'scripts/aws/**'
+      - '.github/workflows/trace-cloud-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  offline-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m unittest discover -s infrastructure/aws/tests -v
+      - run: bash -n scripts/aws/deploy-trace-cloud.sh scripts/aws/verify-trace-cloud.sh

@@ -6,6 +6,7 @@ import {
   SHARE_LINKS_STORAGE_KEY,
   sharedReplayIdFromPath,
   storeShareLink,
+  loadSharedReplay,
 } from '../share-replay.js';
 
 const id = 'Abcdefghijklmnopqrstuvwx';
@@ -36,3 +37,23 @@ values.set(SHARE_LINKS_STORAGE_KEY, '{not json');
 assert.deepEqual(readStoredShareLinks(storage), {});
 
 console.log('share replay route tests passed');
+
+const originalFetch = globalThis.fetch;
+try {
+  const payload = { review: { id: 'match-1', turns: [{ index: 0 }] }, reducerVersion: 11 };
+  globalThis.fetch = async (input, init) => {
+    assert.equal(String(input), `https://p5xbv2rfya.execute-api.us-east-1.amazonaws.com/v1/shares/${id}`);
+    assert.equal(init?.cache, 'no-cache', 'Reuse HTTP cache only after server revalidation');
+    return new Response(JSON.stringify(payload));
+  };
+  assert.deepEqual(await loadSharedReplay(id), payload);
+  globalThis.fetch = async () => new Response('{}', { status: 404 });
+  await assert.rejects(loadSharedReplay(id), /could not be found/);
+  globalThis.fetch = async () => new Response('{}', { status: 503 });
+  await assert.rejects(loadSharedReplay(id), /temporarily unavailable/);
+  globalThis.fetch = async () => new Response('{"review":{}}');
+  await assert.rejects(loadSharedReplay(id), /incomplete/);
+} finally {
+  globalThis.fetch = originalFetch;
+}
+console.log('shared replay revalidation tests passed');

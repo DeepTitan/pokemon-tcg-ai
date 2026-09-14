@@ -6,6 +6,9 @@ AWS_PROFILE_NAME="${AWS_PROFILE_NAME:-default}"
 AWS_REGION_NAME="${AWS_REGION_NAME:-us-east-1}"
 STACK_NAME="${TRACE_STACK_NAME:-trace-production}"
 
+# Fail before accessing AWS if the read/write/privacy contracts regress.
+python3 -m unittest discover -s "$REPO_ROOT/infrastructure/aws/tests" -v
+
 ACCOUNT_ID="$(aws sts get-caller-identity --profile "$AWS_PROFILE_NAME" --query Account --output text)"
 ARTIFACT_BUCKET="trace-cloudformation-${ACCOUNT_ID}-${AWS_REGION_NAME}"
 

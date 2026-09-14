@@ -41,7 +41,7 @@ def handler(event, _context):
             if not SHARE_ID.fullmatch(share_id):
                 return response(400, {"error": "invalid_share_id"})
             summary_only = str((event.get("queryStringParameters") or {}).get("summary", "")) == "1"
-            return get_shared_match(share_id, summary_only)
+            return get_shared_match(share_id, summary_only, event.get("headers"))
 
         identity = authorize(event)
         if not identity:
@@ -117,7 +117,7 @@ def put_match(device_id, match_id, event):
     compressed = gzip.compress(encoded, compresslevel=6)
     object_key = f"devices/{device_id}/matches/{hashlib.sha256(match_id.encode()).hexdigest()}.json.gz"
     now = timestamp()
-    s3.put_object(
+    stored = s3.put_object(
         Bucket=PAYLOAD_BUCKET,
         Key=object_key,
         Body=compressed,
@@ -136,6 +136,7 @@ def put_match(device_id, match_id, event):
         "deviceId": device_id,
         "matchId": match_id,
         "objectKey": object_key,
+        "objectVersionId": stored.get("VersionId"),
         "updatedAt": now,
         "payloadBytes": len(compressed),
         "reducerVersion": reducer_version,
@@ -143,6 +144,12 @@ def put_match(device_id, match_id, event):
         **summary,
     })
     matches.put_item(Item=item)
+    # Only explicitly shared matches get a public-response artifact. Refresh it
+    # during upload so viewers do not pay the serialization cost after an update.
+    if item.get("shareId"):
+        shared = shares.get_item(Key={"shareId": item["shareId"]}, ConsistentRead=True).get("Item")
+        if shared and shared.get("deviceId") == device_id and shared.get("matchId") == match_id:
+            prepare_shared_replay(item["shareId"], shared, item, review)
     return response(200, public_summary(item))
 
 
@@ -162,8 +169,7 @@ def get_match(device_id, match_id):
     ).get("Item")
     if not item:
         return response(404, {"error": "match_not_found"})
-    stored = s3.get_object(Bucket=PAYLOAD_BUCKET, Key=item["objectKey"])["Body"].read()
-    review = json.loads(gzip.decompress(stored))
+    review = stored_review(item)
     return compressed_response(200, {
         "review": review,
         "reducerVersion": int(item.get("reducerVersion", 0)),
@@ -224,12 +230,20 @@ def share_match(device_id, match_id, event):
         )
     else:
         # Repair the public lookup if a retained match outlived a replaced share table.
-        shares.put_item(Item={
-            "shareId": share_id,
-            "deviceId": device_id,
-            "matchId": match_id,
-            "createdAt": item.get("updatedAt", timestamp()),
-        })
+        shares.update_item(
+            Key={"shareId": share_id},
+            UpdateExpression="SET deviceId = :device, matchId = :match, createdAt = if_not_exists(createdAt, :created)",
+            ConditionExpression="attribute_not_exists(shareId) OR (deviceId = :device AND matchId = :match)",
+            ExpressionAttributeValues={
+                ":device": device_id, ":match": match_id,
+                ":created": item.get("updatedAt", timestamp()),
+            },
+        )
+
+    shared = shares.get_item(Key={"shareId": share_id}, ConsistentRead=True)["Item"]
+    # Do not return the link until its ready-to-send bytes are safely stored.
+    # Repeated Share clicks reuse the prepared version when nothing changed.
+    prepare_shared_replay(share_id, shared, item)
 
     return response(200, {
         "shareId": share_id,
@@ -237,7 +251,67 @@ def share_match(device_id, match_id, event):
     })
 
 
-def get_shared_match(share_id, summary_only=False):
+def stored_review(item):
+    request = {"Bucket": PAYLOAD_BUCKET, "Key": item["objectKey"]}
+    if item.get("objectVersionId"):
+        request["VersionId"] = item["objectVersionId"]
+    stored = s3.get_object(**request)["Body"].read()
+    return json.loads(gzip.decompress(stored))
+
+
+def shared_source(item):
+    # Small, deterministic fingerprint; no replay parsing is needed to check it.
+    source = {
+        "deviceId": item["deviceId"], "matchId": item["matchId"],
+        "objectKey": item["objectKey"], "objectVersionId": item.get("objectVersionId"),
+        "summary": public_summary(item),
+    }
+    return digest(json.dumps(source, sort_keys=True, separators=(",", ":"), ensure_ascii=False))
+
+
+def prepare_shared_replay(share_id, shared, item, review=None, force=False):
+    source = shared_source(item)
+    prepared = shared.get("preparedReplay")
+    if (not force and isinstance(prepared, dict) and prepared.get("format") == 1
+            and prepared.get("source") == source and prepared.get("objectKey")
+            and prepared.get("objectVersionId") and prepared.get("etag")):
+        return prepared, None
+
+    if review is None:
+        review = stored_review(item)
+    payload = {
+        "review": review, "summary": public_summary(item),
+        "reducerVersion": int(item.get("reducerVersion", 0)),
+        "updatedAt": item.get("updatedAt"),
+    }
+    encoded = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    compressed = gzip.compress(encoded, compresslevel=6, mtime=0)
+    etag = f'"{hashlib.sha256(compressed).hexdigest()}"'
+    object_key = f"devices/{item['deviceId']}/shared-replays/{digest(item['matchId'])}.json.gz"
+    stored = s3.put_object(
+        Bucket=PAYLOAD_BUCKET, Key=object_key, Body=compressed,
+        ContentType="application/json", ContentEncoding="gzip", ServerSideEncryption="AES256",
+    )
+    version_id = stored.get("VersionId")
+    if not version_id or version_id == "null":
+        raise RuntimeError("Shared replay preparation requires versioned storage")
+    prepared = {
+        "format": 1, "source": source, "objectKey": object_key,
+        "objectVersionId": version_id, "etag": etag,
+    }
+    # Pin an S3 version so concurrent updates cannot replace bytes underneath an
+    # older pointer/ETag. A stale pointer is harmless: readers check source above.
+    shares.update_item(
+        Key={"shareId": share_id}, UpdateExpression="SET preparedReplay = :prepared",
+        ConditionExpression="deviceId = :device AND matchId = :match",
+        ExpressionAttributeValues={
+            ":prepared": prepared, ":device": item["deviceId"], ":match": item["matchId"],
+        },
+    )
+    return prepared, compressed
+
+
+def get_shared_match(share_id, summary_only=False, request_headers=None):
     shared = shares.get_item(Key={"shareId": share_id}, ConsistentRead=True).get("Item")
     if not shared:
         return response(404, {"error": "share_not_found"})
@@ -249,8 +323,7 @@ def get_shared_match(share_id, summary_only=False):
         return response(404, {"error": "share_not_found"})
     if summary_only:
         if not item.get("socialPreview"):
-            stored = s3.get_object(Bucket=PAYLOAD_BUCKET, Key=item["objectKey"])["Body"].read()
-            review = json.loads(gzip.decompress(stored))
+            review = stored_review(item)
             preview = social_preview_from_review(review)
             if preview:
                 item = matches.update_item(
@@ -260,14 +333,37 @@ def get_shared_match(share_id, summary_only=False):
                     ReturnValues="ALL_NEW",
                 )["Attributes"]
         return response(200, {"summary": public_summary(item)})
-    stored = s3.get_object(Bucket=PAYLOAD_BUCKET, Key=item["objectKey"])["Body"].read()
-    review = json.loads(gzip.decompress(stored))
-    return compressed_response(200, {
-        "review": review,
-        "summary": public_summary(item),
-        "reducerVersion": int(item.get("reducerVersion", 0)),
-        "updatedAt": item.get("updatedAt"),
-    })
+    # Older links are upgraded once on demand. Normal reads just relay stored
+    # gzip bytes; private retrieval and summary-only responses stay unchanged.
+    prepared, compressed = prepare_shared_replay(share_id, shared, item)
+    headers = {str(key).lower(): value for key, value in (request_headers or {}).items()}
+    validators = str(headers.get("if-none-match", "")).split(",")
+    response_headers = {
+        "content-type": "application/json; charset=utf-8",
+        # Revalidate every visit: browser caching must not bypass a removed link
+        # or hide an updated match. Private/authenticated endpoints stay no-store.
+        "cache-control": "private, no-cache", "etag": prepared["etag"],
+        "x-content-type-options": "nosniff",
+    }
+    if any(value.strip().removeprefix("W/") in ("*", prepared["etag"]) for value in validators):
+        return {"statusCode": 304, "headers": response_headers, "body": ""}
+    if compressed is None:
+        try:
+            compressed = s3.get_object(
+                Bucket=PAYLOAD_BUCKET, Key=prepared["objectKey"], VersionId=prepared["objectVersionId"],
+            )["Body"].read()
+        except ClientError as error:
+            if error.response.get("Error", {}).get("Code") not in ("NoSuchKey", "NoSuchVersion", "404"):
+                raise
+            # S3's existing old-version lifecycle may expire a previously pinned
+            # artifact. Repair that copy without invalidating the original link.
+            prepared, compressed = prepare_shared_replay(share_id, shared, item, force=True)
+            response_headers["etag"] = prepared["etag"]
+    return {
+        "statusCode": 200, "isBase64Encoded": True,
+        "headers": {**response_headers, "content-encoding": "gzip"},
+        "body": base64.b64encode(compressed).decode("ascii"),
+    }
 
 
 def social_summary_fields(summary):
