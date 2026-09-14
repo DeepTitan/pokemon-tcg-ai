@@ -90,6 +90,14 @@ export function damageChangesForTurn(previous: TrackedTurn | undefined, current:
   capturedCounterChanges(current, priorFactIds).forEach((counterChange) => {
     if (counterChange.kind === 'transition' && counterChange.before === counterChange.after) return;
     if (counterChange.kind === 'marked' && counterChange.amount <= 0) return;
+    // A captured total may already be represented by a board update, including
+    // a newly benched copy (Risky Ruins). Never transfer it to another same-name
+    // Pokémon simply because that copy has no board delta of its own.
+    const represented = currentPokemon.filter((pokemon) =>
+      pokemon.name === counterChange.name
+      && pokemon.damage === (counterChange.kind === 'marked' ? counterChange.amount : counterChange.after)
+      && (!previousById.has(pokemon.id) || changes.has(pokemon.id)));
+    if (represented.length) return;
     const candidates = currentPokemon.filter((pokemon) => (
       pokemon.name === counterChange.name
       && !capturedTargets.has(pokemon.id)
@@ -99,7 +107,7 @@ export function damageChangesForTurn(previous: TrackedTurn | undefined, current:
       ? candidates.find((pokemon) => previousById.get(pokemon.id)?.damage === counterChange.before && pokemon.damage === counterChange.after)
         || candidates.find((pokemon) => previousById.get(pokemon.id)?.damage === counterChange.before && pokemon.damage === counterChange.before)
         || candidates.find((pokemon) => pokemon.damage === counterChange.before || pokemon.damage === counterChange.after)
-      : candidates.find((pokemon) => previousById.has(pokemon.id)) || candidates[0];
+      : candidates.length === 1 ? candidates[0] : undefined;
     if (!target) return;
     capturedTargets.add(target.id);
     const before = counterChange.kind === 'transition'
@@ -107,7 +115,7 @@ export function damageChangesForTurn(previous: TrackedTurn | undefined, current:
       : previousById.get(target.id)?.damage ?? target.damage;
     const after = counterChange.kind === 'transition'
       ? counterChange.after
-      : before + counterChange.amount;
+      : counterChange.amount;
     changes.set(target.id, {
       pokemonId: target.id,
       pokemonName: target.name,

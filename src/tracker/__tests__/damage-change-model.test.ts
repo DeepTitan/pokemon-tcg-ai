@@ -63,4 +63,17 @@ assert.deepEqual(
   'a forced-promotion frame must not apply the preceding attack frame\'s captured Poison counters a second time',
 );
 
-console.log('damage-change-model: board deltas, removed counters, direct attacks, captured counter formats, and staged promotions stay accurate');
+const beforeRuins = turn(73, board('you', null, [pokemon('your-munki', 'Munkidori', 20)]), board('them', pokemon('active-munki', 'Munkidori', 100), []));
+const afterRuins = turn(74, board('you', null, [pokemon('your-munki', 'Munkidori', 20)]), board('them', pokemon('active-munki', 'Munkidori', 100), [pokemon('new-munki', 'Munkidori', 20)]), [
+  { id: 'bench', kind: 'pokemon', text: 'benched Munkidori', turnIndex: 74, detail: false, facts: [
+    { id: 'ruins', kind: 'damage', label: 'Damage counters', value: 'Munkidori: 20 damage marked', tone: 'negative' },
+  ] },
+]);
+assert.deepEqual(damageChangesForTurn(beforeRuins, afterRuins), [], 'Risky Ruins counters on a new copy must not become 120 on the Active copy');
+const beforeTotal = turn(1, board('you', pokemon('only', 'Munkidori', 50), []), board('them', null, []));
+const afterTotal = turn(2, board('you', pokemon('only', 'Munkidori', 50), []), board('them', null, []), [{
+  id: 'total', kind: 'ability', text: 'counter change', turnIndex: 2, detail: false,
+  facts: [{ id: 'total-fact', kind: 'damage', label: 'Damage counters', value: 'Munkidori: 70 damage marked', tone: 'negative' }],
+}]);
+assert.equal(damageChangesForTurn(beforeTotal, afterTotal)[0].after, 70, 'newDC is a total, not additional damage');
+console.log('damage-change-model: board deltas, same-name Risky Ruins, absolute counter totals, and staged promotions stay accurate');
