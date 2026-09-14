@@ -1,0 +1,24 @@
+# Shared match thumbnails
+
+The thumbnail and social metadata must select the same deck centerpieces as the desktop archive. `scripts/build-share-runtime.mjs` bundles the actual `archiveMatchup`, `identifyDeck`, frequency baseline, and public-art resolver from `src/tracker`; no separately maintained classifier is used.
+
+The Vercel handlers read the existing public replay for that share link. This includes its already-shared starting inventories. They emit only the derived matchup image/description, do not add public API fields, and do not update cloud match records. A bounded five-minute cache retains only the small derived model, not the full replay. Gzip replay responses are decoded correctly. Missing starting inventories retain the app's board-based fallback.
+
+Printed card metadata is a release asset, exported from the same PTCGL card tables that the desktop resolves. It contains no player data, match logs, IDs, or credentials. Original cached Mega-era Pokémon artwork supplies images missing from the older public image provider. Asset reads use a bundled allowlist; incoming paths cannot select arbitrary files. Catalog/art assets are included in the server functions and excluded from the landing site's static output.
+
+To refresh these release assets from the installed game:
+
+```sh
+node --import tsx scripts/build-share-catalog.ts <PTCGL-config-cache> <Trace-card-art>
+```
+
+Normal deploys rebuild the classifier bundle from source without needing an installed game. `npm --prefix landing test` builds the same bundle and checks all 96 reviewed starting-deck cases against the release catalog, stale previews, a Dragapult mirror, missing decks, real Meowth artwork, cache expiry, and retry behavior. The full tracker regression suite must also pass.
+
+The September 14 selector release uses image version 6. Persistent `/trace/:shareId` links are unchanged. Existing previews already cached inside messaging clients may remain old. Re-pasting the same match URL with `?preview=6` requests a distinct page URL while retaining the same match and canonical URL; messaging-client refresh behavior remains client-controlled.
+
+Verified public cases before deployment:
+
+- `iSeI8XrGnpD4vM_-TKqaLT1K`: Dragapult ex vs. Dragapult ex, 3–0 prizes.
+- `Bqni_fMtxvQrDl6zNHRlyEhS`: Dragapult ex vs. Mega Starmie ex, 0–0 prizes (recorded values unchanged).
+
+The approved visual layout is unchanged. Only selected cards, their captions, artwork availability, and corresponding social metadata are corrected.

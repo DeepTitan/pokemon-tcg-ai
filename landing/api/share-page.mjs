@@ -1,7 +1,6 @@
 import {
-  fetchSharedReplay,
+  loadSharedSocialCard,
   requestShareId,
-  socialCardData,
 } from '../lib/share-card-data.mjs';
 
 const VIEWER_ORIGIN = process.env.TRACE_VIEWER_ORIGIN || 'https://victoryroad-lovat.vercel.app';
@@ -28,7 +27,7 @@ export function socialMeta(card, shareId, origin) {
   const title = escapeHtml(`${card.title} — Trace match replay`);
   const description = escapeHtml(card.description);
   const url = `${origin}/trace/${encodeURIComponent(shareId)}`;
-  const image = `${origin}/api/share-card?shareId=${encodeURIComponent(shareId)}&v=5`;
+  const image = `${origin}/api/share-card?shareId=${encodeURIComponent(shareId)}&v=6`;
   return [
     `<meta property="og:title" content="${title}" />`,
     `<meta property="og:description" content="${description}" />`,
@@ -52,15 +51,14 @@ export default async function handler(request, response) {
   const shareId = requestShareId(request);
   const origin = deploymentOrigin(request);
   try {
-    const [payload, shellResponse] = await Promise.all([
-      fetchSharedReplay(shareId, AbortSignal.timeout(8_000), true),
+    const [card, shellResponse] = await Promise.all([
+      loadSharedSocialCard(shareId),
       fetch(`${VIEWER_ORIGIN}/shared-replay`, {
         headers: { accept: 'text/html' },
         signal: AbortSignal.timeout(8_000),
       }),
     ]);
     if (!shellResponse.ok) throw new Error('Replay viewer is temporarily unavailable');
-    const card = socialCardData(payload);
     let html = await shellResponse.text();
     html = html
       .replace(/<title>[^<]*<\/title>/i, `<title>${escapeHtml(card.title)} — Trace match replay</title>`)

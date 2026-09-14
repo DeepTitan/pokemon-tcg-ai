@@ -1,4 +1,9 @@
 import https from 'node:https';
+import { gunzipSync } from 'node:zlib';
+import { archiveMatchup, representativePokemon as boardRepresentative, publicCardArtUrl } from './generated/share-matchup.mjs';
+import { shareCardCatalog } from './share-catalog.mjs';
+
+export { publicCardArtUrl };
 
 const TRACE_API_URL = 'https://p5xbv2rfya.execute-api.us-east-1.amazonaws.com';
 
@@ -23,86 +28,10 @@ function finalSnapshot(review) {
   return { players: {} };
 }
 
-function candidateCards(board) {
-  const value = asObject(board);
-  return [
-    ...(value.active ? [{ card: value.active, active: true, inPlay: true }] : []),
-    ...asArray(value.bench).map((card) => ({ card, active: false, inPlay: true })),
-    ...asArray(value.discardCards).map((card) => ({ card, active: false, inPlay: false })),
-  ];
-}
-
-function isPokemon(card) {
-  const value = asObject(card);
-  const name = typeof value.name === 'string' ? value.name : '';
-  return !/^unknown card$/i.test(name)
-    && !/energy$/i.test(name)
-    && (finiteNumber(value.maxHp) != null || (typeof value.cardType === 'string' && value.cardType.length > 0));
-}
-
-function isRuleBoxPokemon(name) {
-  return /(?:\bex\b|\bV(?:MAX|STAR|-UNION)?\b|\bGX\b|Radiant|BREAK)/i.test(name);
-}
-
-/** Mirrors Trace's archive-card selection without requiring the desktop catalog. */
+/** The desktop's board fallback, only for matches without a starting decklist. */
 export function representativePokemon(board) {
-  const grouped = new Map();
-  for (const entry of candidateCards(board)) {
-    const card = asObject(entry.card);
-    if (!isPokemon(card)) continue;
-    const name = String(card.name || 'Unknown deck').trim();
-    const key = name.toLocaleLowerCase();
-    const lineages = entry.inPlay ? asArray(card.evolutionStack)
-      .filter((value) => typeof value === 'string')
-      .map((value) => value.trim().toLocaleLowerCase()) : [];
-    const existing = grouped.get(key);
-    if (existing) {
-      existing.count += 1;
-      existing.highestHp = Math.max(existing.highestHp, finiteNumber(card.maxHp) || 0);
-      existing.inPlayCount += Number(entry.inPlay);
-      existing.active ||= entry.active;
-      existing.highestEnergyCount = Math.max(existing.highestEnergyCount, asArray(card.energies).length);
-      lineages.forEach((lineage) => existing.lineageNames.add(lineage));
-      if (!existing.card.cardId && card.cardId) existing.card = card;
-      continue;
-    }
-    grouped.set(key, {
-      card,
-      count: 1,
-      highestHp: finiteNumber(card.maxHp) || 0,
-      inPlayCount: Number(entry.inPlay),
-      active: entry.active,
-      highestEnergyCount: asArray(card.energies).length,
-      isRuleBox: isRuleBoxPokemon(name),
-      lineageNames: new Set(lineages),
-    });
-  }
-
-  const familyCount = (candidate) => candidate.count
-    + [...candidate.lineageNames].reduce((total, lineage) => total + (grouped.get(lineage)?.count || 0), 0);
-  const score = (candidate) => familyCount(candidate) * 300
-    + candidate.lineageNames.size * 500
-    + Number(candidate.isRuleBox) * 350
-    + candidate.highestHp * 2
-    + candidate.inPlayCount * 50
-    + candidate.highestEnergyCount * 100
-    + Number(candidate.active) * 100;
-
-  return [...grouped.values()].sort((left, right) =>
-    score(right) - score(left)
-    || familyCount(right) - familyCount(left)
-    || right.count - left.count
-    || Number(right.isRuleBox) - Number(left.isRuleBox)
-    || right.highestHp - left.highestHp)[0]?.card;
-}
-
-export function publicCardArtUrl(cardId) {
-  if (typeof cardId !== 'string') return undefined;
-  const [rawSet, rawNumber] = cardId.toLowerCase().split('_');
-  const number = rawNumber?.match(/^\d+/)?.[0];
-  if (!rawSet || !number) return undefined;
-  const set = rawSet.replace(/-(\d+)$/, 'pt$1');
-  return `https://images.pokemontcg.io/${set}/${Number(number)}.png`;
+  if (!board) return undefined;
+  return boardRepresentative({ ...board, bench: asArray(board.bench) }, shareCardCatalog());
 }
 
 function formatDate(iso) {
@@ -141,11 +70,17 @@ export function socialCardData(payload) {
   const localBoard = asObject(players[localPlayer]);
   const opponentBoard = asObject(players[opponent]);
   const preview = asObject(summary.socialPreview);
-  const localPokemon = representativePokemon(localBoard) || {
+  const decklists = asArray(review.decklists);
+  const matchup = archiveMatchup({
+    localPlayer, opponent, decklists,
+    finalSnapshot: { players: Object.fromEntries(Object.entries(players).map(([name, board]) =>
+      [name, { ...asObject(board), bench: asArray(board?.bench) }])) },
+  }, shareCardCatalog(decklists));
+  const localPokemon = matchup.localCard || {
     name: preview.localCardName,
     cardId: preview.localCardId,
   };
-  const opponentPokemon = representativePokemon(opponentBoard) || {
+  const opponentPokemon = matchup.opponentCard || {
     name: preview.opponentCardName,
     cardId: preview.opponentCardId,
   };
@@ -173,10 +108,12 @@ export function socialCardData(payload) {
     opponentRating,
     localPokemon: {
       name: localName,
+      cardId: localPokemon?.cardId,
       image: publicCardArtUrl(localPokemon?.cardId),
     },
     opponentPokemon: {
       name: opponentName,
+      cardId: opponentPokemon?.cardId,
       image: publicCardArtUrl(opponentPokemon?.cardId),
     },
     date,
@@ -216,7 +153,9 @@ export async function fetchSharedReplay(shareId, signal, summaryOnly = false) {
           return;
         }
         try {
-          finish(resolve, JSON.parse(Buffer.concat(chunks).toString('utf8')));
+          const bytes = Buffer.concat(chunks);
+          const decoded = response.headers['content-encoding']?.includes('gzip') ? gunzipSync(bytes) : bytes;
+          finish(resolve, JSON.parse(decoded.toString('utf8')));
         } catch {
           finish(reject, new Error('Shared replay returned invalid data'));
         }
@@ -239,3 +178,25 @@ export function requestShareId(request) {
     return '';
   }
 }
+
+// Reuse only the tiny derived thumbnail model, never retain full replay payloads.
+// Reads the same already-public replay as the browser; no new public data fields.
+export function createSharedCardLoader(fetchReplay = fetchSharedReplay, now = Date.now) {
+  const cache = new Map();
+  return async (shareId) => {
+    const existing = cache.get(shareId);
+    if (existing && existing.expires > now()) return existing.card;
+    const entry = { expires: now() + 300_000 };
+    entry.card = fetchReplay(shareId, AbortSignal.timeout(15_000), false).then(socialCardData);
+    cache.delete(shareId);
+    if (cache.size >= 32) cache.delete(cache.keys().next().value);
+    cache.set(shareId, entry);
+    try { return await entry.card; }
+    catch (error) {
+      if (cache.get(shareId) === entry) cache.delete(shareId);
+      throw error;
+    }
+  };
+}
+
+export const loadSharedSocialCard = createSharedCardLoader();

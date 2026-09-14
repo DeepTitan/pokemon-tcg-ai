@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Resvg } from '@resvg/resvg-js';
+import { originalCardArt } from '../lib/share-catalog.mjs';
 import {
-  fetchSharedReplay,
+  loadSharedSocialCard,
   requestShareId,
-  socialCardData,
 } from '../lib/share-card-data.mjs';
 
 const ink = '#203653';
@@ -37,7 +37,9 @@ function dataUri(bytes, contentType) {
   return `data:${contentType};base64,${Buffer.from(bytes).toString('base64')}`;
 }
 
-async function embeddedCardArt(url) {
+export async function embeddedCardArt(url, cardId) {
+  const bundled = originalCardArt(cardId);
+  if (bundled) return bundled;
   if (!url) return cardBackImage;
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(6_000) });
@@ -113,11 +115,11 @@ export function renderSocialCardPng(card) {
 export default async function handler(request, response) {
   const shareId = requestShareId(request);
   try {
-    const payload = await fetchSharedReplay(shareId, AbortSignal.timeout(8_000), true);
-    const card = socialCardData(payload);
+    const model = await loadSharedSocialCard(shareId);
+    const card = { ...model, localPokemon: { ...model.localPokemon }, opponentPokemon: { ...model.opponentPokemon } };
     const [localImage, opponentImage] = await Promise.all([
-      embeddedCardArt(card.localPokemon.image),
-      embeddedCardArt(card.opponentPokemon.image),
+      embeddedCardArt(card.localPokemon.image, card.localPokemon.cardId),
+      embeddedCardArt(card.opponentPokemon.image, card.opponentPokemon.cardId),
     ]);
     card.localPokemon.embeddedImage = localImage;
     card.opponentPokemon.embeddedImage = opponentImage;

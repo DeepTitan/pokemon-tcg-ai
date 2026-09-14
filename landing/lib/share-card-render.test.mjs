@@ -31,10 +31,10 @@ test('head-to-head thumbnail preserves the selected header and inline Elo withou
 
 test('share metadata uses the updated thumbnail without changing the persistent match URL', () => {
   const meta = socialMeta(sample(), 'existing-share-id', 'https://victoryroad.app');
-  assert.equal((meta.match(/api\/share-card\?shareId=existing-share-id&amp;v=5/g) || []).length, 3);
+  assert.equal((meta.match(/api\/share-card\?shareId=existing-share-id&amp;v=6/g) || []).length, 3);
   assert.match(meta, /property="og:url" content="https:\/\/victoryroad\.app\/trace\/existing-share-id"/);
   assert.match(meta, /rel="canonical" href="https:\/\/victoryroad\.app\/trace\/existing-share-id"/);
-  assert.doesNotMatch(meta, /v=4|ratings, duration/);
+  assert.doesNotMatch(meta, /v=[45]|ratings, duration/);
 });
 
 test('renders a valid 1200 by 630 PNG even when card artwork is unavailable', () => {

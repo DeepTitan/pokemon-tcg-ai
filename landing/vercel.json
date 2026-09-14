@@ -3,7 +3,10 @@
   "outputDirectory": "dist",
   "functions": {
     "api/share-card.mjs": {
-      "includeFiles": "{assets/fonts/**,assets/trace-mascot-og.png,assets/trace-share-background.png,assets/pokemon-card-back.jpg}"
+      "includeFiles": "{assets/fonts/**,assets/trace-mascot-og.png,assets/trace-share-background.png,assets/pokemon-card-back.jpg,assets/share-card-catalog.json.gz,assets/share-card-art/**}"
+    },
+    "api/share-page.mjs": {
+      "includeFiles": "assets/share-card-catalog.json.gz"
     }
   },
   "cleanUrls": true,

@@ -104,7 +104,7 @@ function plainCardText(raw: string): string {
     .replace(/\s+/g, ' ').trim();
 }
 
-function parseTable(bytes: Buffer, wanted?: Set<string>): LocalCardInfo[] {
+export function parseTable(bytes: Buffer, wanted?: Set<string>): LocalCardInfo[] {
   const reader = new TableReader(bytes.subarray(1));
   reader.string();
   const columnCount = reader.i32();

@@ -2,7 +2,8 @@
   "name": "trace-landing",
   "private": true,
   "scripts": {
-    "build": "npm --prefix .. ci && npm --prefix .. run tracker:build && node build.mjs",
+    "build": "npm --prefix .. ci && node ../scripts/build-share-runtime.mjs && npm --prefix .. run tracker:build && node build.mjs",
+    "pretest": "node ../scripts/build-share-runtime.mjs",
     "test": "node --test lib/*.test.mjs"
   },
   "dependencies": {

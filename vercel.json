@@ -1,9 +1,12 @@
 {
-  "buildCommand": "npm --prefix landing ci && npm run tracker:build && node landing/build.mjs",
+  "buildCommand": "npm --prefix landing ci && node scripts/build-share-runtime.mjs && npm run tracker:build && node landing/build.mjs",
   "outputDirectory": "landing/dist",
   "functions": {
     "api/share-card.mjs": {
-      "includeFiles": "{landing/assets/fonts/**,landing/assets/trace-mascot-og.png,landing/assets/trace-share-background.png,landing/assets/pokemon-card-back.jpg}"
+      "includeFiles": "{landing/assets/fonts/**,landing/assets/trace-mascot-og.png,landing/assets/trace-share-background.png,landing/assets/pokemon-card-back.jpg,landing/assets/share-card-catalog.json.gz,landing/assets/share-card-art/**}"
+    },
+    "api/share-page.mjs": {
+      "includeFiles": "landing/assets/share-card-catalog.json.gz"
     }
   },
   "cleanUrls": true,
