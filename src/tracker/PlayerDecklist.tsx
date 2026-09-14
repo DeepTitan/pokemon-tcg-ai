@@ -1,9 +1,12 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { List } from '@phosphor-icons/react/List';
-import { X } from '@phosphor-icons/react';
+import { CardsThree } from '@phosphor-icons/react/CardsThree';
+import { Check } from '@phosphor-icons/react/Check';
+import { CopySimple } from '@phosphor-icons/react/CopySimple';
+import { X } from '@phosphor-icons/react/X';
 import type { CapturedDecklist, CardInfo } from './types.js';
 import { cardArtUsesAlternate, resolvedCardArt, showCardBackOnError } from './card-art.js';
+import { exportDecklist } from './decklist-export.js';
 
 function DecklistCard({ cardId, count, card }: { cardId: string; count: number; card?: CardInfo }) {
   const [unavailable, setUnavailable] = useState(false);
@@ -11,16 +14,16 @@ function DecklistCard({ cardId, count, card }: { cardId: string; count: number; 
   const label = card?.name || cardId;
   useEffect(() => { setUnavailable(false); setLocalFailed(false); }, [cardId, card?.imageDataUrl]);
   return <figure title={`${count} × ${label} · ${cardId}`}>
+    <div className="decklist-card-art">
     {unavailable ? <div className="decklist-art-unavailable" role="img" aria-label={`${label}: artwork unavailable`}>
       <strong>{label}</strong><small>{card?.setCode || cardId.split('_')[0]} · {card?.number || cardId.split('_')[1]}</small>
       {card?.hp && <span>{card.hp} HP</span>}<small>Artwork unavailable</small>
     </div> : <img key={`${cardId}:${card?.imageDataUrl || ''}`} data-card-id={cardId}
       src={resolvedCardArt(cardId, card?.imageDataUrl)} alt={label} loading="eager"
       onError={event => { setLocalFailed(true); showCardBackOnError(event); if (event.currentTarget.src.endsWith('/tracker-assets/pokemon-card-back.jpg')) setUnavailable(true); }} />}
-    <b aria-label={`${count} copies`}>×{count}</b><figcaption>{label}
+    <b aria-label={`${count} copies`}>×{count}</b></div><figcaption>{label}</figcaption>
       {!unavailable && (!card?.imageDataUrl || localFailed) && cardArtUsesAlternate(cardId)
-        && <small title="The captured printing is preserved; artwork shows a version with the same gameplay text.">Alternate artwork</small>}
-    </figcaption>
+        && <small className="decklist-art-note" title="The captured printing is preserved; artwork shows a version with the same gameplay text.">Alternate artwork</small>}
   </figure>;
 }
 
@@ -28,6 +31,8 @@ export function PlayerDecklist({ name, deck, catalog }: {
   name: string; deck?: CapturedDecklist; catalog: ReadonlyMap<string, CardInfo>;
 }) {
   const [open, setOpen] = useState(false);
+  const [copyState, setCopyState] = useState<'idle' | 'copying' | 'copied' | 'failed'>('idle');
+  const copyAttempt = useRef(0);
   const [position, setPosition] = useState({ left: 12, top: 12 });
   const button = useRef<HTMLButtonElement>(null), panel = useRef<HTMLDivElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>();
@@ -45,7 +50,8 @@ export function PlayerDecklist({ name, deck, catalog }: {
     if (!panel.current?.contains(document.activeElement) && document.activeElement !== button.current) setOpen(false);
   }, 180); };
   useEffect(() => () => clearTimeout(timer.current), []);
-  useEffect(() => { setOpen(false); }, [name, deck]);
+  useEffect(() => { setOpen(false); setCopyState('idle'); copyAttempt.current++; }, [name, deck]);
+  useEffect(() => () => { copyAttempt.current++; }, []);
   useEffect(() => {
     if (!open) return;
     const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') { suppressFocus.current = true; button.current?.focus(); suppressFocus.current = false; setOpen(false); } };
@@ -62,19 +68,40 @@ export function PlayerDecklist({ name, deck, catalog }: {
     return (first?.category || 4) - (second?.category || 4)
       || (first?.name || a.cardId).localeCompare(second?.name || b.cardId);
   });
+  const exported = exportDecklist(deck, catalog);
+  const copy = async () => {
+    if (!exported.text || copyState === 'copying') return;
+    cancelClose();
+    const attempt = ++copyAttempt.current;
+    setCopyState('copying');
+    try {
+      await navigator.clipboard.writeText(exported.text);
+      if (attempt === copyAttempt.current) setCopyState('copied');
+    } catch {
+      if (attempt === copyAttempt.current) setCopyState('failed');
+    }
+  };
   return <>
     <button ref={button} type="button" className="player-decklist-trigger" aria-label={`${name} decklist`}
       aria-expanded={open} aria-controls={open ? id : undefined} aria-haspopup="dialog"
       onMouseEnter={show} onMouseLeave={leave} onFocus={() => { if (!suppressFocus.current) show(); }} onBlur={leave}
       onClick={show} onKeyDown={event => { if (event.key === 'ArrowDown') { event.preventDefault(); show(); setTimeout(() => panel.current?.focus(), 0); } }}>
-      <List size={17} weight="bold" />
+      <CardsThree size={18} />
     </button>
     {open && createPortal(<div ref={panel} id={id} role="dialog" aria-label={`${name} captured decklist`}
       tabIndex={-1} className="player-decklist-panel" style={position} onMouseEnter={cancelClose} onMouseLeave={leave}
       onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) leave(); }}>
-      <header><div><strong>{name}’s decklist</strong><p>{deck ? `${deck.total} cards · Captured at match start` : 'Decklist not captured'}</p></div>
-        <button type="button" aria-label="Close decklist" onClick={close}><X size={18} /></button></header>
-      {deck ? <><p className="decklist-disclaimer">Starting list, not current hand, prizes, or deck order.</p>
+      <header><div className="decklist-heading"><strong>{name}’s decklist</strong>
+        {deck && <span className="decklist-total" title="Captured starting deck">{deck.total} cards</span>}</div>
+        <div className="decklist-actions">{deck && <button type="button" className="decklist-copy"
+          disabled={!exported.text} aria-disabled={copyState === 'copying'} title={exported.error || 'Copy decklist for Pokémon TCG Live'} onClick={copy}>
+          {copyState === 'copied' ? <Check size={15} /> : <CopySimple size={15} />}
+          {copyState === 'copied' ? 'Copied' : copyState === 'copying' ? 'Copying…' : 'Copy'}
+        </button>}
+        <button type="button" aria-label="Close decklist" onClick={close}><X size={18} /></button></div></header>
+      <span className="decklist-copy-status" role="status">{copyState === 'copied' ? 'Decklist copied for Pokémon TCG Live.' : ''}</span>
+      {copyState === 'failed' && <p className="decklist-copy-error" role="alert">Couldn’t access the clipboard. Please try Copy again.</p>}
+      {deck ? <>{exported.error && <p className="decklist-copy-error">{exported.error}</p>}
         <div className="player-decklist-grid">{entries.map(entry => {
           return <DecklistCard key={entry.cardId} cardId={entry.cardId} count={entry.count} card={catalog.get(entry.cardId)} />;
         })}</div></> : <p className="decklist-empty">This match has no complete starting list saved. Cards revealed during play are not treated as a full decklist.</p>}

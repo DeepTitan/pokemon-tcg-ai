@@ -1,0 +1,13 @@
+<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><title>Decklist preview</title></head><body>
+<div id="root"></div><script type="module">
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import { PlayerDecklist } from '../PlayerDecklist.tsx';
+import fixture from './fixtures/captured-decklist.json';
+import '../tracker.css';
+const catalog = new Map(fixture.cards.map(c => [c.id, { ...c, imageDataUrl: `/api/turnlume/card-art/${c.id}.png` }]));
+createRoot(document.getElementById('root')).render(React.createElement('div', {style:{padding:24}},
+  React.createElement(PlayerDecklist, {name:fixture.deck.playerName,deck:fixture.deck,catalog}),
+  React.createElement('details', {style:{marginTop:430}}, React.createElement('summary',null,'Verify clipboard'),
+    React.createElement('textarea',{'aria-label':'Paste copied decklist',rows:20,cols:60}))));
+</script></body></html>

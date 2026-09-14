@@ -1,0 +1,254 @@
+{
+  "deck": {
+    "cards": [
+      {
+        "cardId": "me1_114",
+        "count": 3
+      },
+      {
+        "cardId": "me2-5_196",
+        "count": 1
+      },
+      {
+        "cardId": "me3_76_ph",
+        "count": 3
+      },
+      {
+        "cardId": "me4_61",
+        "count": 2
+      },
+      {
+        "cardId": "me5_46",
+        "count": 2
+      },
+      {
+        "cardId": "me5_65",
+        "count": 2
+      },
+      {
+        "cardId": "mee_8",
+        "count": 16
+      },
+      {
+        "cardId": "rsv10-5_80",
+        "count": 1
+      },
+      {
+        "cardId": "sv10_10",
+        "count": 1
+      },
+      {
+        "cardId": "sv10_164",
+        "count": 1
+      },
+      {
+        "cardId": "sv10_176",
+        "count": 4
+      },
+      {
+        "cardId": "sv10_178",
+        "count": 4
+      },
+      {
+        "cardId": "sv1_186",
+        "count": 4
+      },
+      {
+        "cardId": "sv1_194_ph",
+        "count": 1
+      },
+      {
+        "cardId": "sv5_113",
+        "count": 4
+      },
+      {
+        "cardId": "sv5_114",
+        "count": 4
+      },
+      {
+        "cardId": "sv5_144",
+        "count": 1
+      },
+      {
+        "cardId": "sv6-5_38",
+        "count": 1
+      },
+      {
+        "cardId": "sv6_153",
+        "count": 1
+      },
+      {
+        "cardId": "sv8_185",
+        "count": 1
+      },
+      {
+        "cardId": "sv9_158",
+        "count": 1
+      },
+      {
+        "cardId": "zsv10-5_67",
+        "count": 2
+      }
+    ],
+    "playerId": "fixture",
+    "playerName": "Captured opponent",
+    "source": "match-start",
+    "total": 60
+  },
+  "cards": [
+    {
+      "id": "me1_114",
+      "name": "Boss's Orders",
+      "setCode": "ME1",
+      "number": "114",
+      "category": 2
+    },
+    {
+      "id": "me2-5_196",
+      "name": "Night Stretcher",
+      "setCode": "ME2-5",
+      "number": "196",
+      "category": 2
+    },
+    {
+      "id": "me3_76_ph",
+      "name": "Judge",
+      "setCode": "ME3",
+      "number": "76",
+      "category": 2
+    },
+    {
+      "id": "me4_61",
+      "name": "Metagross",
+      "setCode": "ME4",
+      "number": "61",
+      "category": 1
+    },
+    {
+      "id": "me5_46",
+      "name": "Drilbur",
+      "setCode": "ME5",
+      "number": "46",
+      "category": 1
+    },
+    {
+      "id": "me5_65",
+      "name": "Mega Excadrill ex",
+      "setCode": "ME5",
+      "number": "65",
+      "category": 1
+    },
+    {
+      "id": "mee_8",
+      "name": "Basic {M} Energy",
+      "setCode": "MEE",
+      "number": "8",
+      "category": 3
+    },
+    {
+      "id": "rsv10-5_80",
+      "name": "Brave Bangle",
+      "setCode": "RSV10-5",
+      "number": "80",
+      "category": 2
+    },
+    {
+      "id": "sv10_10",
+      "name": "Shaymin",
+      "setCode": "SV10",
+      "number": "10",
+      "category": 1
+    },
+    {
+      "id": "sv10_164",
+      "name": "Energy Recycler",
+      "setCode": "SV10",
+      "number": "164",
+      "category": 2
+    },
+    {
+      "id": "sv10_176",
+      "name": "Team Rocket's Petrel",
+      "setCode": "SV10",
+      "number": "176",
+      "category": 2
+    },
+    {
+      "id": "sv10_178",
+      "name": "Team Rocket's Transceiver",
+      "setCode": "SV10",
+      "number": "178",
+      "category": 2
+    },
+    {
+      "id": "sv1_186",
+      "name": "Pokégear 3.0",
+      "setCode": "SV1",
+      "number": "186",
+      "category": 2
+    },
+    {
+      "id": "sv1_194_ph",
+      "name": "Switch",
+      "setCode": "SV1",
+      "number": "194",
+      "category": 2
+    },
+    {
+      "id": "sv5_113",
+      "name": "Beldum",
+      "setCode": "SV5",
+      "number": "113",
+      "category": 1
+    },
+    {
+      "id": "sv5_114",
+      "name": "Metang",
+      "setCode": "SV5",
+      "number": "114",
+      "category": 1
+    },
+    {
+      "id": "sv5_144",
+      "name": "Buddy-Buddy Poffin",
+      "setCode": "SV5",
+      "number": "144",
+      "category": 2
+    },
+    {
+      "id": "sv6-5_38",
+      "name": "Fezandipiti ex",
+      "setCode": "SV6-5",
+      "number": "38",
+      "category": 1
+    },
+    {
+      "id": "sv6_153",
+      "name": "Jamming Tower",
+      "setCode": "SV6",
+      "number": "153",
+      "category": 2
+    },
+    {
+      "id": "sv8_185",
+      "name": "Precious Trolley",
+      "setCode": "SV8",
+      "number": "185",
+      "category": 2
+    },
+    {
+      "id": "sv9_158",
+      "name": "Super Potion",
+      "setCode": "SV9",
+      "number": "158",
+      "category": 2
+    },
+    {
+      "id": "zsv10-5_67",
+      "name": "Genesect ex",
+      "setCode": "ZSV10-5",
+      "number": "67",
+      "category": 1
+    }
+  ]
+}

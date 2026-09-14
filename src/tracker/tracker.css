@@ -2759,19 +2759,27 @@ button.stadium-marker:focus-visible {
 .player-decklist-trigger:hover, .player-decklist-trigger[aria-expanded="true"] { background:#eee9df; color:#252b24; }
 .player-decklist-trigger:focus-visible { outline:2px solid #648260; outline-offset:3px; }
 .player-decklist-panel { position:fixed; z-index:10000; box-sizing:border-box; width:600px; max-width:calc(100vw - 24px); max-height:min(570px, calc(100dvh - 24px)); display:flex; flex-direction:column; padding:12px; border:1px solid #d8d2c7; border-radius:12px; background:#faf8f2; color:#292e28; box-shadow:0 16px 60px #18241940; font-family:inherit; }
-.player-decklist-panel header { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
-.player-decklist-panel header strong { font-size:14px; }
-.player-decklist-panel header p { margin:5px 0 0; font-size:12px; color:#686e63; }
-.player-decklist-panel header button { border:0; background:transparent; padding:6px; cursor:pointer; color:inherit; }
-.decklist-disclaimer { margin:5px 0 8px; font-size:10px; color:#686e63; }
-.player-decklist-grid { display:grid; grid-template-columns:repeat(8,minmax(0,1fr)); gap:5px; overflow:auto; min-height:0; padding:2px; }
+.player-decklist-panel header { display:flex; flex-shrink:0; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
+.decklist-heading { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; min-width:0; }
+.player-decklist-panel header strong { font-size:14px; overflow-wrap:anywhere; }
+.decklist-total { font-size:11px; color:#777a70; white-space:nowrap; }
+.decklist-actions { display:flex; align-items:center; gap:6px; flex-shrink:0; }
+.player-decklist-panel header button { display:inline-flex; align-items:center; justify-content:center; gap:5px; border:0; border-radius:6px; background:transparent; padding:7px; cursor:pointer; color:inherit; }
+.player-decklist-panel header .decklist-copy { background:#eceee7; padding:7px 10px; font-size:12px; font-weight:600; }
+.player-decklist-panel header button:hover { background:#e3e7dc; }
+.player-decklist-panel header button:disabled { opacity:.5; cursor:default; }
+.player-decklist-panel header button:focus-visible { outline:2px solid #648260; outline-offset:2px; }
+.decklist-copy-error { font-size:12px; line-height:1.4; color:#805234; margin:0 0 10px; }
+.player-decklist-grid { display:grid; grid-template-columns:repeat(8,minmax(0,1fr)); align-content:start; gap:8px 6px; overflow:auto; min-height:0; padding:0; }
 .player-decklist-grid figure { position:relative; margin:0; min-width:0; }
-.player-decklist-grid img { display:block; width:100%; aspect-ratio:0.716; object-fit:contain; border-radius:5px; }
-.player-decklist-grid b { position:absolute; top:2px; right:2px; padding:2px 4px; border-radius:4px; background:#253b2f; color:white; font-size:11px; box-shadow:0 1px 5px #0006; }
-.player-decklist-grid figcaption { margin:4px 0 2px; font-size:9px; line-height:1.25; overflow-wrap:anywhere; color:#454c40; }
-.player-decklist-grid figcaption small { display:block; margin-top:2px; font-size:8px; color:#74796f; }
-.decklist-art-unavailable { box-sizing:border-box; width:100%; aspect-ratio:0.716; border:1px solid #cec8b9; border-radius:5px; background:#eeeade; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:5px; padding:20px 5px 6px; text-align:center; overflow-wrap:anywhere; }
-.decklist-art-unavailable strong { font-size:10px; line-height:1.2; }
-.decklist-art-unavailable small, .decklist-art-unavailable span { font-size:8px; color:#686e63; }
+.decklist-card-art { position:relative; width:100%; aspect-ratio:63 / 88; }
+.decklist-art-note { display:block; margin-top:3px; font-size:8px; line-height:1.2; color:#74796f; }
+.player-decklist-grid img { display:block; width:100%; height:100%; object-fit:cover; border-radius:4px; }
+.player-decklist-grid b { position:absolute; bottom:3px; right:3px; padding:2px 5px; border:1px solid #ffffff50; border-radius:4px; background:#253b2ff0; color:white; font-size:10px; line-height:1.2; font-variant-numeric:tabular-nums; }
+.player-decklist-grid figcaption, .decklist-copy-status { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }
 .decklist-empty { font-size:13px; line-height:1.6; color:#686e63; }
 @media(max-width:480px) { .player-decklist-grid { grid-template-columns:repeat(6,minmax(0,1fr)); } .player-decklist-panel { padding:10px; } }
+
+.decklist-art-unavailable { box-sizing:border-box; width:100%; height:100%; border:1px solid #cec8b9; border-radius:5px; background:#eeeade; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:3px; padding:4px 3px 20px; text-align:center; overflow-wrap:anywhere; overflow:auto; }
+.decklist-art-unavailable strong { font-size:10px; line-height:1.2; }
+.decklist-art-unavailable small, .decklist-art-unavailable span { font-size:8px; color:#686e63; }
