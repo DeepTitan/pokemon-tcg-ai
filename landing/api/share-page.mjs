@@ -24,11 +24,11 @@ function deploymentOrigin(request) {
   return `${protocol}://${host}`;
 }
 
-function socialMeta(card, shareId, origin) {
+export function socialMeta(card, shareId, origin) {
   const title = escapeHtml(`${card.title} — Trace match replay`);
   const description = escapeHtml(card.description);
   const url = `${origin}/trace/${encodeURIComponent(shareId)}`;
-  const image = `${origin}/api/share-card?shareId=${encodeURIComponent(shareId)}&v=4`;
+  const image = `${origin}/api/share-card?shareId=${encodeURIComponent(shareId)}&v=5`;
   return [
     `<meta property="og:title" content="${title}" />`,
     `<meta property="og:description" content="${description}" />`,
@@ -39,7 +39,7 @@ function socialMeta(card, shareId, origin) {
     '<meta property="og:image:width" content="1200" />',
     '<meta property="og:image:height" content="630" />',
     '<meta property="og:image:type" content="image/png" />',
-    '<meta property="og:image:alt" content="Trace match summary with both featured Pokémon, result, ratings, duration, and prize score" />',
+    '<meta property="og:image:alt" content="Trace match summary with both featured Pokémon, player names, ratings, result, and prize score" />',
     '<meta name="twitter:card" content="summary_large_image" />',
     `<meta name="twitter:title" content="${title}" />`,
     `<meta name="twitter:description" content="${description}" />`,

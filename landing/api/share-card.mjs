@@ -9,8 +9,8 @@ import {
 
 const ink = '#203653';
 const muted = '#66717c';
-const gold = '#d99a05';
-const cream = '#f8f5ee';
+const cream = '#faf9f5';
+const backgroundImage = readFileSync(new URL('../assets/trace-share-background.png', import.meta.url));
 const mascotImage = readFileSync(new URL('../assets/trace-mascot-og.png', import.meta.url));
 const cardBackImage = {
   bytes: readFileSync(new URL('../assets/pokemon-card-back.jpg', import.meta.url)),
@@ -49,87 +49,65 @@ async function embeddedCardArt(url) {
   }
 }
 
-function pokemonCard(card, options) {
-  const { x, y, width, height, rotation, tone, label, rating, clipId } = options;
-  const border = tone === 'local' ? '#58a7df' : '#d17969';
-  const labelBackground = tone === 'local' ? '#2e83c9' : '#b75b4f';
-  const padding = 8;
-  const imageX = x + padding;
-  const imageY = y + padding;
-  const imageWidth = width - padding * 2;
-  const imageHeight = height - padding * 2;
-  const labelHeight = 43;
-  const labelY = y + height - labelHeight - 15;
-  const ratingCopy = rating != null ? ` · ${rating}` : '';
-  return `
-    <g transform="rotate(${rotation} ${x + width / 2} ${y + height / 2})">
-      <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="22" fill="#fff" stroke="${border}" stroke-width="4" filter="url(#cardShadow)"/>
-      <clipPath id="${clipId}"><rect x="${imageX}" y="${imageY}" width="${imageWidth}" height="${imageHeight}" rx="13"/></clipPath>
-      <image href="${dataUri(card.image.bytes, card.image.contentType)}" x="${imageX}" y="${imageY}" width="${imageWidth}" height="${imageHeight}" preserveAspectRatio="xMidYMid slice" clip-path="url(#${clipId})"/>
-      <rect x="${x + 18}" y="${labelY}" width="${width - 36}" height="${labelHeight}" rx="12" fill="${labelBackground}" filter="url(#labelShadow)"/>
-      <text x="${x + width / 2}" y="${labelY + 28}" text-anchor="middle" fill="#fff" font-size="21" font-weight="900" letter-spacing=".4">${escapeXml(label + ratingCopy)}</text>
-    </g>`;
+function textUnits(value) {
+  return [...value].reduce((total, char) => total
+    + (/[ilI1 .,:']/u.test(char) ? .32 : /[MW@%]/u.test(char) ? .95 : .64), 0);
 }
 
-function metadataBlock(x, y, width, label, value, accent = '#8b7745') {
-  return `
-    <rect x="${x}" y="${y}" width="${width}" height="86" rx="20" fill="#fffdf9" stroke="#dfd7c9" stroke-width="2"/>
-    <circle cx="${x + 26}" cy="${y + 26}" r="8" fill="${accent}"/>
-    <text x="${x + 45}" y="${y + 31}" fill="#8a796a" font-size="13" font-weight="900" letter-spacing="1.5">${escapeXml(label)}</text>
-    <text x="${x + 22}" y="${y + 65}" fill="${ink}" font-size="21" font-weight="800">${escapeXml(value)}</text>`;
+function fittedLabel(value, maxLength, maxWidth, preferred, minimum) {
+  let text = truncate(value, maxLength);
+  while (text.length > 1 && textUnits(text) * minimum > maxWidth) {
+    text = `${text.slice(0, text.endsWith('…') ? -2 : -1)}…`;
+  }
+  return { text, size: Math.max(minimum, Math.min(preferred, Math.floor(maxWidth / Math.max(1, textUnits(text))))) };
 }
 
-function socialCardSvg(card) {
-  const resultTone = card.result === 'VICTORY'
-    ? { background: '#dcefdc', color: '#287140' }
-    : card.result === 'DEFEAT'
-      ? { background: '#f8d9d4', color: '#a13f34' }
-      : { background: '#e7edf4', color: '#526277' };
-  const localCard = { ...card.localPokemon, image: card.localPokemon.embeddedImage };
-  const opponentCard = { ...card.opponentPokemon, image: card.opponentPokemon.embeddedImage };
-  const title = `vs. ${truncate(card.opponent, 20)}`;
-  const localPlayer = truncate(card.localPlayer, 20).toLocaleUpperCase();
-  const matchup = `${truncate(card.localPokemon.name, 18)}  vs.  ${truncate(card.opponentPokemon.name, 18)}`;
+function playerColumn(pokemon, player, rating, centerX) {
+  const ratingWidth = rating != null ? textUnits(String(rating)) * 29 + 14 : 0;
+  const name = fittedLabel(player, 24, 350 - ratingWidth, 42, 23);
+  const deck = fittedLabel(pokemon.name || 'Unknown deck', 28, 350, 32, 20);
+  const image = pokemon.embeddedImage || cardBackImage;
+  return `
+    <text x="${centerX - 144}" y="107" fill="${ink}" font-size="${name.size}" font-weight="900"><tspan>${escapeXml(name.text)}</tspan>${rating != null ? `<tspan dx="14" fill="${muted}" font-size="29" font-weight="800">${escapeXml(rating)}</tspan>` : ''}</text>
+    <image href="${dataUri(image.bytes, image.contentType)}" x="${centerX - 144}" y="124" width="288" height="402" preserveAspectRatio="xMidYMid meet" filter="url(#cardShadow)"/>
+    <text x="${centerX}" y="557" text-anchor="middle" fill="${ink}" font-size="${deck.size}" font-weight="900">${escapeXml(deck.text)}</text>`;
+}
+
+export function socialCardSvg(card) {
+  const resultColor = card.result === 'VICTORY' ? '#287140'
+    : card.result === 'DEFEAT' ? '#a13f34' : '#526277';
+  const winner = card.result === 'VICTORY' ? card.localPlayer : card.result === 'DEFEAT' ? card.opponent : undefined;
+  const winnerName = winner ? fittedLabel(winner, 24, 238, 38, 21) : undefined;
   return `<?xml version="1.0" encoding="UTF-8"?>
   <svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg" font-family="Nunito, sans-serif">
     <defs>
-      <filter id="cardShadow" x="-25%" y="-25%" width="150%" height="170%">
-        <feDropShadow dx="0" dy="16" stdDeviation="14" flood-color="#203653" flood-opacity=".18"/>
-      </filter>
-      <filter id="labelShadow" x="-20%" y="-30%" width="140%" height="180%">
-        <feDropShadow dx="0" dy="5" stdDeviation="6" flood-color="#203653" flood-opacity=".22"/>
-      </filter>
-      <filter id="softShadow" x="-30%" y="-30%" width="160%" height="160%">
-        <feDropShadow dx="0" dy="7" stdDeviation="8" flood-color="#203653" flood-opacity=".18"/>
+      <filter id="cardShadow" x="-15%" y="-10%" width="130%" height="125%">
+        <feDropShadow dx="0" dy="8" stdDeviation="7" flood-color="#203653" flood-opacity=".14"/>
       </filter>
     </defs>
     <rect width="1200" height="630" fill="${cream}"/>
-    <rect x="0" y="0" width="590" height="630" fill="#eef5f9"/>
-    <rect x="588" y="0" width="3" height="630" fill="#dec470"/>
-    <image href="${dataUri(mascotImage, 'image/png')}" x="43" y="30" width="51" height="56" preserveAspectRatio="xMidYMid meet"/>
-    <text x="110" y="58" fill="${ink}" font-size="28" font-weight="900" letter-spacing="-.4">TRACE</text>
-    <text x="110" y="79" fill="#5c7284" font-size="14" font-weight="800" letter-spacing="2">MATCH REPLAY</text>
-    ${pokemonCard(localCard, { x: 78, y: 139, width: 250, height: 350, rotation: -2, tone: 'local', label: 'YOU', rating: card.localRating, clipId: 'localCard' })}
-    ${pokemonCard(opponentCard, { x: 302, y: 177, width: 218, height: 305, rotation: 2, tone: 'opponent', label: 'THEM', rating: card.opponentRating, clipId: 'opponentCard' })}
-    <circle cx="294" cy="322" r="39" fill="${cream}" stroke="#fff" stroke-width="6" filter="url(#softShadow)"/>
-    <text x="294" y="331" text-anchor="middle" fill="#665f53" font-size="24" font-weight="900">VS</text>
-
-    <rect x="649" y="58" width="126" height="42" rx="21" fill="${resultTone.background}"/>
-    <text x="712" y="85" text-anchor="middle" fill="${resultTone.color}" font-size="16" font-weight="900" letter-spacing="1.4">${escapeXml(card.result)}</text>
-    <text x="793" y="84" fill="#8a796a" font-size="14" font-weight="800" letter-spacing="1.6">SHARED FROM TRACE</text>
-
-    <text x="650" y="145" fill="#8a796a" font-size="14" font-weight="900" letter-spacing="1.8">${escapeXml(localPlayer)}’S MATCH</text>
-    <text x="647" y="205" fill="${ink}" font-size="52" font-weight="900" letter-spacing="-2">${escapeXml(title)}</text>
-    <text x="650" y="258" fill="${ink}" font-size="26" font-weight="800">${escapeXml(matchup)}</text>
-    <line x1="650" y1="286" x2="1148" y2="286" stroke="#ded6c9" stroke-width="2"/>
-
-    ${metadataBlock(650, 307, 307, 'MATCH PLAYED', card.date)}
-    ${metadataBlock(975, 307, 173, 'TIME', card.duration || `${card.actionCount} actions`)}
-    ${metadataBlock(650, 411, 498, 'PRIZE SCORE', `${card.prizeScore} prizes`, gold)}
-
-    <text x="650" y="552" fill="${ink}" font-size="24" font-weight="900">Review the spot. Find the line.</text>
-    <text x="650" y="581" fill="${muted}" font-size="16" font-weight="600">Open the complete turn-by-turn match at victoryroad.app</text>
+    <image href="${dataUri(backgroundImage, 'image/png')}" x="0" y="0" width="1200" height="630" preserveAspectRatio="xMidYMid slice"/>
+    <image href="${dataUri(mascotImage, 'image/png')}" x="435" y="17" width="50" height="64" preserveAspectRatio="xMidYMid meet"/>
+    <text x="497" y="55" fill="${ink}" font-size="32" font-weight="900">TRACE</text>
+    <line x1="620" y1="30" x2="620" y2="60" stroke="#b8b8b3"/>
+    <text x="639" y="50" fill="#7b8591" font-size="16" font-weight="800" letter-spacing="1.3">MATCH REPLAY</text>
+    ${playerColumn(card.localPokemon, card.localPlayer, card.localRating, 235)}
+    ${playerColumn(card.opponentPokemon, card.opponent, card.opponentRating, 965)}
+    <text x="600" y="190" text-anchor="middle" fill="${resultColor}" font-size="42" font-weight="900" letter-spacing="4">${escapeXml(card.result)}</text>
+    <line x1="568" y1="221" x2="632" y2="221" stroke="#c8c4be" stroke-width="1.5"/>
+    <text x="600" y="355" text-anchor="middle" fill="${ink}" font-size="148" font-weight="900" letter-spacing="-2">${escapeXml(card.prizeScore)}</text>
+    <text x="600" y="394" text-anchor="middle" fill="${muted}" font-size="24" font-weight="900" letter-spacing="4">PRIZES TAKEN</text>
+    ${winnerName ? `<line x1="568" y1="434" x2="632" y2="434" stroke="#c8c4be" stroke-width="1.5"/>
+    <text x="600" y="484" text-anchor="middle" fill="${ink}" font-size="${winnerName.size}" font-weight="900"><tspan>${escapeXml(winnerName.text)}</tspan><tspan dx="10" fill="${muted}" font-weight="600">wins</tspan></text>` : ''}
   </svg>`;
+}
+
+export function renderSocialCardPng(card) {
+  return new Resvg(socialCardSvg(card), {
+    font: { fontFiles, loadSystemFonts: false, defaultFontFamily: 'Nunito', sansSerifFamily: 'Nunito' },
+    imageRendering: 0,
+    textRendering: 1,
+  }).render().asPng();
 }
 
 export default async function handler(request, response) {
@@ -143,17 +121,7 @@ export default async function handler(request, response) {
     ]);
     card.localPokemon.embeddedImage = localImage;
     card.opponentPokemon.embeddedImage = opponentImage;
-    const renderer = new Resvg(socialCardSvg(card), {
-      font: {
-        fontFiles,
-        loadSystemFonts: false,
-        defaultFontFamily: 'Nunito',
-        sansSerifFamily: 'Nunito',
-      },
-      imageRendering: 0,
-      textRendering: 1,
-    });
-    const png = renderer.render().asPng();
+    const png = renderSocialCardPng(card);
     response.statusCode = 200;
     response.setHeader('content-type', 'image/png');
     response.setHeader('content-length', String(png.length));
