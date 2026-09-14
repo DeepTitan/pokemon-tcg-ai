@@ -168,9 +168,6 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(47, 126, 203
 .type-icons svg:nth-child(2) { background: #7664ad; }
 .type-icons svg:nth-child(3) { background: #5b9d68; }
 
-.all-matches { height: 48px; flex: 0 0 auto; display: grid; grid-template-columns: 24px 1fr auto; align-items: center; gap: 7px; margin: 8px; padding: 0 12px; border: 1px solid #e0c176; border-radius: 12px; background: #fff7df; color: #825c19; text-align: left; cursor: pointer; }
-.all-matches span { font-family: Nunito, sans-serif; font-size: 12px; font-weight: 900; letter-spacing: .04em; text-transform: uppercase; }
-.all-matches:disabled { opacity: .56; cursor: default; }
 
 .empty-library { padding: 36px 20px; color: var(--muted); text-align: center; }
 .empty-library > svg { color: var(--blue); }
@@ -803,14 +800,6 @@ body,
 .session-copy small { font-size: 8.5px; }
 .session-copy em { padding: 3px 6px; font-size: 7.5px; }
 .type-icons { gap: 3px; }
-.all-matches {
-  height: 46px;
-  margin: 8px;
-  border-color: #d7c591;
-  border-radius: 10px;
-  color: #70541d;
-  background: #f8f2df;
-}
 
 .review-stage { gap: 9px; }
 .board-frame {
@@ -2783,3 +2772,15 @@ button.stadium-marker:focus-visible {
 .decklist-art-unavailable { box-sizing:border-box; width:100%; height:100%; border:1px solid #cec8b9; border-radius:5px; background:#eeeade; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:3px; padding:4px 3px 20px; text-align:center; overflow-wrap:anywhere; overflow:auto; }
 .decklist-art-unavailable strong { font-size:10px; line-height:1.2; }
 .decklist-art-unavailable small, .decklist-art-unavailable span { font-size:8px; color:#686e63; }
+
+/* The archive owns its scroll position; loading a page never scrolls the replay. */
+.sessions { overscroll-behavior-y: contain; scrollbar-gutter: stable; }
+.sessions:focus-visible { outline: 2px solid #a58644; outline-offset: -2px; }
+.archive-pagination { min-height: 52px; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; padding: 12px 6px; color: #787267; font-size: 11px; text-align: center; overflow-anchor: none; }
+.archive-pagination [role="status"] { display: inline-flex; align-items: center; gap: 7px; }
+.archive-pagination button { border: 1px solid #d7c591; border-radius: 7px; padding: 5px 9px; background: #f8f2df; color: #70541d; font: inherit; cursor: pointer; }
+.archive-pagination button:hover { background: #f0e6cb; }
+.archive-pagination button:focus-visible { outline: 2px solid #a58644; outline-offset: 2px; }
+.archive-loading-dot { width: 6px; height: 6px; border-radius: 50%; background: #a58644; animation: archive-loading-pulse 1s ease-in-out infinite alternate; }
+@keyframes archive-loading-pulse { from { opacity: .3; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .archive-loading-dot { animation: none; } }

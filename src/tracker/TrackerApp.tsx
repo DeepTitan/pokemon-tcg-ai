@@ -22,6 +22,7 @@ import type { Card, PlayerState, PokemonInPlay } from '../engine/types.js';
 import { parseBattleLog } from './battle-log-parser.js';
 import { DEMO_BATTLE_LOG } from './demo-log.js';
 import { readArchiveSearchIndex, searchArchive } from './archive-search.js';
+import { InfiniteArchiveList } from './InfiniteArchiveList.js';
 import {
   getRecentMatchOperations, getTraceVersion, getTrackerEnvironment, initializeTrackerStorage, isTauri, listMatchSummaries,
   listRawMatchIds, loadMatchOperations, loadMatchReview, onMatchOperation, persistMatchReview,
@@ -1466,16 +1467,27 @@ export default function TrackerApp() {
     }
   }, [rebuildStoredMatch, resolveCardsForPayload, selectedReview]);
 
-  const loadOlderMatches = useCallback(async () => {
-    if (!isTauri() || summaries.length >= archiveTotal) return;
-    try {
+  const archivePageRequest = useRef<Promise<boolean> | null>(null);
+  const loadOlderMatches = useCallback((): Promise<boolean> => {
+    // Also guard across archive collapse/reopen while a native request is pending.
+    if (archivePageRequest.current) return archivePageRequest.current;
+    if (!isTauri() || summaries.length >= archiveTotal) return Promise.resolve(false);
+    const request = (async () => {
       const older = await listMatchSummaries(summaries.length, 20);
+      if (!older.length) return false;
+      const newSummaries = older.filter(summary => !knownSummaryIdsRef.current.has(summary.id));
+      if (!newSummaries.length) throw new Error('Archive page made no progress. Try again.');
       older.forEach((summary) => knownSummaryIdsRef.current.add(summary.id));
-      setSummaries((current) => [...current, ...older.filter((summary) => !current.some((item) => item.id === summary.id))]);
+      setSummaries((current) => {
+        const ids = new Set(current.map(summary => summary.id));
+        return [...current, ...older.filter(summary => !ids.has(summary.id))];
+      });
       void resolveCardsForPayload(older);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
-    }
+      return older.length === 20;
+    })();
+    archivePageRequest.current = request;
+    void request.finally(() => { archivePageRequest.current = null; }).catch(() => {});
+    return request;
   }, [archiveTotal, resolveCardsForPayload, summaries.length]);
 
   const copyShareUrl = useCallback(async (url: string): Promise<boolean> => {
@@ -1531,13 +1543,12 @@ export default function TrackerApp() {
             <div className="archive-search-field"><MagnifyingGlass size={16} aria-hidden="true" /><input type="search" aria-label="Search match archive" placeholder="Search players or Pokémon" value={archiveQuery} onChange={(event) => setArchiveQuery(event.target.value)} onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Escape') setArchiveQuery(''); }} />{searchActive && <button type="button" aria-label="Clear archive search" onClick={() => setArchiveQuery('')}><X size={14} /></button>}</div>
             {searchActive && <small role="status">{searchLoading ? `Searching all games · ${visibleSummaries.length} found` : searchError ? 'Search incomplete — some older games could not load.' : `${visibleSummaries.length} ${visibleSummaries.length === 1 ? 'game' : 'games'} found`}{searchError && <button type="button" onClick={() => setSearchRetry(value => value + 1)}>Retry</button>}</small>}
           </div>
-          <div className="sessions">
+          <InfiniteArchiveList itemCount={summaries.length} hasMore={isTauri() && summaries.length < archiveTotal} searchActive={searchActive} loadMore={loadOlderMatches}>
             {visibleSummaries.map((summary) => <ArchiveRow key={summary.id} summary={summary} selected={summary.id === selectedId} catalog={cardCatalog} onSelect={() => void selectSummary(summary)} />)}
             {searchActive && !visibleSummaries.length && !searchLoading && !searchError && <div className="empty-library"><MagnifyingGlass size={28} /><strong>No matching games</strong><p>Try part of a player’s name, a Pokémon, or a different date.</p><button type="button" onClick={() => setArchiveQuery('')}>Clear search</button></div>}
             {!searchActive && !summaries.length && !restoringReview && <div className="empty-library"><BookOpenText size={38} weight="duotone" /><strong>No matches yet</strong><p>Turn on automatic capture and play normally. Your games will collect here.</p><button type="button" onClick={() => importLog(DEMO_BATTLE_LOG)}>Explore a sample</button></div>}
             {!searchActive && !summaries.length && restoringReview && <div className="empty-library archive-loading"><BookOpenText size={38} weight="duotone" /><strong>Restoring your archive…</strong><p>Loading the latest saved match.</p></div>}
-          </div>
-          {!searchActive && summaries.length < archiveTotal && <button className="all-matches" type="button" onClick={() => void loadOlderMatches()}><BookOpenText size={19} weight="duotone" /><span>Load older matches</span><CaretRight size={17} weight="bold" /></button>}
+          </InfiniteArchiveList>
         </aside>}
 
         <section className="review-stage">
