@@ -2768,6 +2768,10 @@ button.stadium-marker:focus-visible {
 .player-decklist-grid figure { position:relative; margin:0; min-width:0; }
 .player-decklist-grid img { display:block; width:100%; aspect-ratio:0.716; object-fit:contain; border-radius:5px; }
 .player-decklist-grid b { position:absolute; top:2px; right:2px; padding:2px 4px; border-radius:4px; background:#253b2f; color:white; font-size:11px; box-shadow:0 1px 5px #0006; }
-.player-decklist-grid figcaption { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }
+.player-decklist-grid figcaption { margin:4px 0 2px; font-size:9px; line-height:1.25; overflow-wrap:anywhere; color:#454c40; }
+.player-decklist-grid figcaption small { display:block; margin-top:2px; font-size:8px; color:#74796f; }
+.decklist-art-unavailable { box-sizing:border-box; width:100%; aspect-ratio:0.716; border:1px solid #cec8b9; border-radius:5px; background:#eeeade; display:flex; flex-direction:column; justify-content:center; align-items:center; gap:5px; padding:20px 5px 6px; text-align:center; overflow-wrap:anywhere; }
+.decklist-art-unavailable strong { font-size:10px; line-height:1.2; }
+.decklist-art-unavailable small, .decklist-art-unavailable span { font-size:8px; color:#686e63; }
 .decklist-empty { font-size:13px; line-height:1.6; color:#686e63; }
 @media(max-width:480px) { .player-decklist-grid { grid-template-columns:repeat(6,minmax(0,1fr)); } .player-decklist-panel { padding:10px; } }

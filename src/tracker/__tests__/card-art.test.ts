@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { CARD_BACK_ART, cardCatalogEntryNeedsRefresh, findCatalogCard, publicCardArtUrl, resolvedCardArt, showCardBackOnError } from '../card-art.js';
+import { CARD_BACK_ART, VERIFIED_CARD_ART, cardArtUsesAlternate, cardCatalogEntryNeedsRefresh, findCatalogCard, publicCardArtUrl, resolvedCardArt, showCardBackOnError } from '../card-art.js';
 
 const stadiumCatalog = new Map([
   ['me2_85', { id: 'me2_85', name: 'Battle Cage', imageDataUrl: 'asset://battle-cage.png' }],
@@ -29,3 +29,18 @@ showCardBackOnError({ currentTarget: brokenLocalImage });
 assert.equal(brokenLocalImage.src, CARD_BACK_ART, 'the card back remains the final fallback when both artwork sources fail');
 
 console.log('card art tests passed');
+
+assert.equal(Object.keys(VERIFIED_CARD_ART).length, 22);
+assert.equal(publicCardArtUrl('me3_21'), 'https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/POR/POR_021_R_EN_LG.png');
+assert.equal(publicCardArtUrl('ME2-5_214_ph'), publicCardArtUrl('me2-5_214'));
+assert.equal(cardArtUsesAlternate('svalt_155'), true);
+assert.equal(cardArtUsesAlternate('sve_17_ph'), true);
+assert.equal(cardArtUsesAlternate('me2-5_47'), false);
+assert.equal(resolvedCardArt('me3_21', 'asset://exact.png'), 'asset://exact.png');
+for (const id of Object.keys(VERIFIED_CARD_ART)) {
+  const img = {src:'asset://missing.png',dataset:{cardId:id}} as unknown as HTMLImageElement;
+  showCardBackOnError({currentTarget:img});
+  assert.equal(img.src, publicCardArtUrl(id));
+  showCardBackOnError({currentTarget:img});
+  assert.equal(img.src, CARD_BACK_ART, 'failed provider must terminate without an error loop');
+}

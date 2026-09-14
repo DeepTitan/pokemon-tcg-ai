@@ -3,7 +3,26 @@ import { createPortal } from 'react-dom';
 import { List } from '@phosphor-icons/react/List';
 import { X } from '@phosphor-icons/react';
 import type { CapturedDecklist, CardInfo } from './types.js';
-import { resolvedCardArt, showCardBackOnError } from './card-art.js';
+import { cardArtUsesAlternate, resolvedCardArt, showCardBackOnError } from './card-art.js';
+
+function DecklistCard({ cardId, count, card }: { cardId: string; count: number; card?: CardInfo }) {
+  const [unavailable, setUnavailable] = useState(false);
+  const [localFailed, setLocalFailed] = useState(false);
+  const label = card?.name || cardId;
+  useEffect(() => { setUnavailable(false); setLocalFailed(false); }, [cardId, card?.imageDataUrl]);
+  return <figure title={`${count} × ${label} · ${cardId}`}>
+    {unavailable ? <div className="decklist-art-unavailable" role="img" aria-label={`${label}: artwork unavailable`}>
+      <strong>{label}</strong><small>{card?.setCode || cardId.split('_')[0]} · {card?.number || cardId.split('_')[1]}</small>
+      {card?.hp && <span>{card.hp} HP</span>}<small>Artwork unavailable</small>
+    </div> : <img key={`${cardId}:${card?.imageDataUrl || ''}`} data-card-id={cardId}
+      src={resolvedCardArt(cardId, card?.imageDataUrl)} alt={label} loading="eager"
+      onError={event => { setLocalFailed(true); showCardBackOnError(event); if (event.currentTarget.src.endsWith('/tracker-assets/pokemon-card-back.jpg')) setUnavailable(true); }} />}
+    <b aria-label={`${count} copies`}>×{count}</b><figcaption>{label}
+      {!unavailable && (!card?.imageDataUrl || localFailed) && cardArtUsesAlternate(cardId)
+        && <small title="The captured printing is preserved; artwork shows a version with the same gameplay text.">Alternate artwork</small>}
+    </figcaption>
+  </figure>;
+}
 
 export function PlayerDecklist({ name, deck, catalog }: {
   name: string; deck?: CapturedDecklist; catalog: ReadonlyMap<string, CardInfo>;
@@ -57,11 +76,7 @@ export function PlayerDecklist({ name, deck, catalog }: {
         <button type="button" aria-label="Close decklist" onClick={close}><X size={18} /></button></header>
       {deck ? <><p className="decklist-disclaimer">Starting list, not current hand, prizes, or deck order.</p>
         <div className="player-decklist-grid">{entries.map(entry => {
-          const card = catalog.get(entry.cardId), label = card?.name || entry.cardId;
-          return <figure key={entry.cardId} title={`${entry.count} × ${label} · ${entry.cardId}`}>
-            <img key={card?.imageDataUrl || entry.cardId} data-card-id={entry.cardId} src={resolvedCardArt(entry.cardId, card?.imageDataUrl)} alt={label} loading="eager" onError={showCardBackOnError} />
-            <b aria-label={`${entry.count} copies`}>×{entry.count}</b><figcaption>{label}</figcaption>
-          </figure>;
+          return <DecklistCard key={entry.cardId} cardId={entry.cardId} count={entry.count} card={catalog.get(entry.cardId)} />;
         })}</div></> : <p className="decklist-empty">This match has no complete starting list saved. Cards revealed during play are not treated as a full decklist.</p>}
     </div>, document.body)}
   </>;
