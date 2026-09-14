@@ -1,5 +1,9 @@
 import { createContext, useContext, useEffect } from 'react';
-import { CardsThree, CheckCircle, Eye, LockKey, MagnifyingGlass, X } from '@phosphor-icons/react';
+import { CardsThree } from '@phosphor-icons/react/CardsThree';
+import { CheckCircle } from '@phosphor-icons/react/CheckCircle';
+import { LockKey } from '@phosphor-icons/react/LockKey';
+import { MagnifyingGlass } from '@phosphor-icons/react/MagnifyingGlass';
+import { X } from '@phosphor-icons/react/X';
 import {
   CardType,
   type EnergyType,
@@ -102,11 +106,24 @@ function ZoneInspector({ inspector, onInspectCard }: { inspector: Extract<Review
   const catalog = useContext(CardCatalogContext);
   const orderedCards = sortCardsForDisplay(inspector.cards, (card) => catalogCardFor(card, catalog)?.name || card.name);
   const knownCount = orderedCards.filter((card) => inspector.visibility[card.id] !== 'hidden').length;
+  const groups: { card: Card; count: number; hidden: boolean }[] = [];
+  const byPrinting = new Map<string, typeof groups[number]>();
+  for (const card of orderedCards) {
+    const hidden = inspector.visibility[card.id] === 'hidden';
+    const printing = !hidden && cardSourceIdFromReviewCard(card);
+    const existing = printing ? byPrinting.get(printing) : undefined;
+    if (existing) existing.count++;
+    else {
+      const group = { card, count: 1, hidden };
+      groups.push(group);
+      if (printing) byPrinting.set(printing, group);
+    }
+  }
   return <>
-    <div className="zone-summary"><div><Eye size={18} weight="duotone" /><span><strong>{knownCount} visible</strong><small>{orderedCards.length - knownCount} hidden</small></span></div><p>{inspector.subtitle}</p></div>
-    <div className="review-card-grid">{orderedCards.map((card, index) => {
-      const hidden = inspector.visibility[card.id] === 'hidden';
-      return <button type="button" className={hidden ? 'hidden' : ''} key={`${card.id}-${index}`} disabled={hidden} onClick={() => onInspectCard(card)}><CardImage card={card} hidden={hidden} /><span>{hidden ? 'Unknown card' : <CardName card={card} />}</span></button>;
+    <div className="zone-summary"><span>{orderedCards.length} cards{knownCount < orderedCards.length && <small> · {orderedCards.length - knownCount} hidden</small>}</span><p>{inspector.subtitle}</p></div>
+    <div className="review-card-grid">{groups.map(({ card, count, hidden }, index) => {
+      const label = hidden ? 'Unknown card' : catalogCardFor(card, catalog)?.name || card.name;
+      return <button type="button" className={hidden ? 'hidden' : ''} key={`${card.id}-${index}`} disabled={hidden} title={label} aria-label={count > 1 ? `${label}, ${count} copies` : label} onClick={() => onInspectCard(card)}><CardImage card={card} hidden={hidden} />{count > 1 && <b className="zone-card-count" aria-hidden="true">×{count}</b>}</button>;
     })}{!orderedCards.length && <div className="empty-zone"><CardsThree size={42} weight="duotone" /><strong>This zone is empty</strong><span>There were no cards here at this point in the match.</span></div>}</div>
   </>;
 }
@@ -144,5 +161,5 @@ export function ReviewOverlay({ inspector, catalog, onClose, onInspectCard }: { 
   }, [inspector, onClose]);
   if (!inspector) return null;
   const title = inspector.kind === 'card' ? inspector.title || 'Card details' : inspector.kind === 'zone' ? inspector.title : 'Search replay';
-  return <CardCatalogContext.Provider value={catalog}><div className="review-overlay-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><article className={`review-overlay review-${inspector.kind}`} role="dialog" aria-modal="true" aria-label={title}><header><div><span>{inspector.kind === 'selection' ? 'Exact captured choice' : inspector.kind === 'zone' ? 'Board zone' : 'Match card'}</span><h2>{title}</h2></div><button type="button" onClick={onClose} aria-label="Close inspector"><X size={21} weight="bold" /></button></header><div className="review-overlay-body">{inspector.kind === 'card' && <CardInspector card={inspector.card} pokemon={inspector.pokemon} effects={inspector.effects} catalog={catalog} onInspectCard={onInspectCard} />}{inspector.kind === 'zone' && <ZoneInspector inspector={inspector} onInspectCard={onInspectCard} />}{inspector.kind === 'selection' && <SelectionInspector selection={inspector.selection} sourceName={inspector.sourceName} onInspectCard={onInspectCard} />}</div></article></div></CardCatalogContext.Provider>;
+  return <CardCatalogContext.Provider value={catalog}><div className="review-overlay-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><article className={`review-overlay review-${inspector.kind}`} role="dialog" aria-modal="true" aria-label={title}><header><div>{inspector.kind !== 'zone' && <span>{inspector.kind === 'selection' ? 'Exact captured choice' : 'Match card'}</span>}<h2>{title}</h2></div><button type="button" onClick={onClose} aria-label="Close inspector"><X size={21} weight="bold" /></button></header><div className="review-overlay-body">{inspector.kind === 'card' && <CardInspector card={inspector.card} pokemon={inspector.pokemon} effects={inspector.effects} catalog={catalog} onInspectCard={onInspectCard} />}{inspector.kind === 'zone' && <ZoneInspector inspector={inspector} onInspectCard={onInspectCard} />}{inspector.kind === 'selection' && <SelectionInspector selection={inspector.selection} sourceName={inspector.sourceName} onInspectCard={onInspectCard} />}</div></article></div></CardCatalogContext.Provider>;
 }

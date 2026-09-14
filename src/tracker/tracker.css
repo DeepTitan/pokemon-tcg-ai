@@ -1835,6 +1835,24 @@ body,
 
 .review-selection { width: min(880px, calc(100vw - 64px)); }
 
+/* Zone collections fit their cards, rather than inheriting a full-height drawer. */
+.review-overlay.review-zone { width: min(760px, calc(100vw - 40px)); height: auto; max-height: calc(100dvh - 80px); grid-template-rows: auto minmax(0, 1fr); border-radius: 14px; background: #faf8f2; }
+.review-zone > header { padding: 16px 20px 12px; border: 0; background: transparent; gap: 16px; }
+.review-zone > header h2 { margin: 0; font-size: 19px; line-height: 1.3; }
+.review-zone > header button { flex-shrink: 0; width: 30px; height: 30px; border: 0; border-radius: 7px; background: transparent; color: #6d736d; }
+.review-zone > header button:hover { background: #eae6dc; color: #293b4e; }
+.review-zone > header button:focus-visible, .review-zone .review-card-grid > button:focus-visible { outline: 2px solid #648260; outline-offset: 4px; }
+.review-zone .review-overlay-body { padding: 0 20px 20px; }
+.review-zone .zone-summary { margin: 0 0 18px; padding: 0; border: 0; border-radius: 0; background: transparent; align-items: baseline; flex-wrap: wrap; gap: 6px 16px; }
+.review-zone .zone-summary > span { flex-shrink: 0; color: #5f695e; font-size: 12px; font-weight: 700; }
+.review-zone .zone-summary small { font: inherit; font-weight: 400; color: #85877f; }
+.review-zone .zone-summary p { max-width: 520px; color: #818579; font-size: 11px; text-align: left; }
+.review-zone .review-card-grid { grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 14px; }
+.review-zone .review-card-grid > button { max-width: 140px; padding: 0; border: 0; border-radius: 7px; background: transparent; gap: 0; }
+.review-zone .review-card-grid > button > img { display: block; object-fit: cover; box-shadow: 0 2px 5px #27332616; }
+.review-zone .review-card-grid > button:hover:not(:disabled) { box-shadow: none; }
+.zone-card-count { position: absolute; top: -6px; right: -5px; display: grid; place-items: center; min-width: 26px; height: 24px; padding: 0 5px; border: 2px solid #faf8f2; border-radius: 7px; background: #294237; color: #fff; font-size: 12px; font-weight: 800; box-shadow: 0 2px 4px #27332622; }
+
 @keyframes review-dialog-in {
   from { transform: translateY(8px) scale(.985); opacity: .55; }
   to { transform: translateY(0) scale(1); opacity: 1; }

@@ -50,6 +50,7 @@ import { archiveMatchup, formatMatchDuration, formatPrizeScore } from './archive
 import { formatSignedRatingChange } from './rating-model.js';
 import { handFanCardCount, opponentHandFanSlots } from './hand-layout-model.js';
 import { prizeSlotStates } from './prize-layout-model.js';
+import { derivePrizeKnowledge } from './prize-knowledge-model.js';
 import {
   FRAME_ANIMATIONS_STORAGE_KEY,
   frameAnimationsFromStoredPreference,
@@ -457,7 +458,7 @@ function ZoneStack({ label, count, tone, onOpen }: { label: string; count: numbe
   return <button type="button" className={`zone-stack ${tone}`} onClick={onOpen} title={`Open ${label}`}><span>{label}</span><span className="zone-stack-cards"><CardsThree size={36} weight="duotone" /></span><b>{count}</b></button>;
 }
 
-function PrizeFan({ count, cards, tone, onOpen }: { count: number; cards: Card[]; tone: 'coral' | 'blue'; onOpen?: () => void }) {
+function PrizeFan({ count, cards, tone, inferred = false, onOpen }: { count: number; cards: Card[]; tone: 'coral' | 'blue'; inferred?: boolean; onOpen?: () => void }) {
   const remaining = Math.max(0, Math.min(6, count));
   const slots = prizeSlotStates(remaining);
   return (
@@ -465,8 +466,8 @@ function PrizeFan({ count, cards, tone, onOpen }: { count: number; cards: Card[]
       type="button"
       className={`prize-fan ${tone}`}
       onClick={onOpen}
-      title="Open Prize cards"
-      aria-label={`${remaining} of 6 Prize cards remaining. Open Prize cards.`}
+      title={inferred ? 'View inferred Prize cards — positions unknown' : 'Open Prize cards'}
+      aria-label={`${remaining} of 6 Prize cards remaining. ${inferred ? 'View inferred Prize cards; positions unknown.' : 'Open Prize cards.'}`}
     >
       <span>Prize</span>
       <span className="prize-fan-cards" aria-hidden="true">
@@ -529,7 +530,7 @@ function OpponentHandSummary({ boardName, count, onOpen }: { boardName: string; 
   );
 }
 
-function PlayerField({ board, decklist, canonical, visibility, catalog, choiceFrames, currentReviewIndex, turnNumber, status, handoff, stadiumCard, stadiumName, stadiumOwner, localPlayerName, opponentName, defeatedIds, defeatedNames, damageChanges, positionChanges, attackerId, opponent = false, avatar, onOpenPokemon, onOpenChoice, onOpenCard, onOpenZone }: { board: TrackedPlayerBoard; decklist?: CapturedDecklist; canonical: PlayerState; visibility: Record<string, ReviewCardVisibility>; catalog: ReadonlyMap<string, CardInfo>; choiceFrames: TurnChoiceFrame[]; currentReviewIndex: number; turnNumber: number; status: PlayerTurnStatus; handoff?: TurnHandoffRole; stadiumCard: Card | null; stadiumName?: string; stadiumOwner?: string; localPlayerName: string; opponentName: string; defeatedIds: ReadonlySet<string>; defeatedNames: ReadonlySet<string>; damageChanges: ReadonlyMap<string, PokemonDamageChange>; positionChanges: ReadonlyMap<string, PokemonPositionChange>; attackerId?: string; opponent?: boolean; avatar: string; onOpenPokemon: (id: string) => void; onOpenChoice: (card: TrackedCard) => void; onOpenCard: (card: Card) => void; onOpenZone: (title: string, subtitle: string, cards: Card[], visibility: Record<string, ReviewCardVisibility>) => void }) {
+export function PlayerField({ board, decklist, canonical, visibility, catalog, choiceFrames, currentReviewIndex, turnNumber, status, handoff, stadiumCard, stadiumName, stadiumOwner, localPlayerName, opponentName, defeatedIds, defeatedNames, damageChanges, positionChanges, attackerId, opponent = false, avatar, onOpenPokemon, onOpenChoice, onOpenCard, onOpenZone }: { board: TrackedPlayerBoard; decklist?: CapturedDecklist; canonical: PlayerState; visibility: Record<string, ReviewCardVisibility>; catalog: ReadonlyMap<string, CardInfo>; choiceFrames: TurnChoiceFrame[]; currentReviewIndex: number; turnNumber: number; status: PlayerTurnStatus; handoff?: TurnHandoffRole; stadiumCard: Card | null; stadiumName?: string; stadiumOwner?: string; localPlayerName: string; opponentName: string; defeatedIds: ReadonlySet<string>; defeatedNames: ReadonlySet<string>; damageChanges: ReadonlyMap<string, PokemonDamageChange>; positionChanges: ReadonlyMap<string, PokemonPositionChange>; attackerId?: string; opponent?: boolean; avatar: string; onOpenPokemon: (id: string) => void; onOpenChoice: (card: TrackedCard) => void; onOpenCard: (card: Card) => void; onOpenZone: (title: string, subtitle: string, cards: Card[], visibility: Record<string, ReviewCardVisibility>) => void }) {
   const benches = [...board.bench, ...Array.from({ length: Math.max(0, 5 - board.bench.length) }, () => null)].slice(0, 5);
   const tone = opponent ? 'coral' : 'blue';
   const isDefeated = (pokemon: TrackedPokemon | null) => Boolean(pokemon && (defeatedIds.has(pokemon.id) || defeatedNames.has(pokemon.name)));
@@ -540,6 +541,10 @@ function PlayerField({ board, decklist, canonical, visibility, catalog, choiceFr
   const stadiumHere = Boolean(stadiumName) && (stadiumOwner ? stadiumOwner === board.name : !opponent);
   const active = <div className={`active-lane ${stadiumHere ? 'has-stadium-zone' : ''}`}><span>Active</span>{stadiumHere && <StadiumMarker card={stadiumCard} name={stadiumName} owner={stadiumOwner} catalog={catalog} localPlayer={localPlayerName} opponent={opponentName} onOpen={onOpenCard} />}<PokemonSlot key={motionKey(board.active, 'empty-active')} pokemon={board.active} catalog={catalog} active defeated={isDefeated(board.active)} attacking={board.active?.id === attackerId} damageChange={board.active ? damageChanges.get(board.active.id) : undefined} positionChange={board.active ? positionChanges.get(board.active.id) : undefined} onOpen={onOpenPokemon} /><ChoiceStage boardName={board.name} frames={choiceFrames} currentReviewIndex={currentReviewIndex} catalog={catalog} onOpen={onOpenChoice} /></div>;
   const openZone = (label: string, cards: Card[], note: string) => onOpenZone(`${board.name} · ${label}`, note, cards, visibility);
+  const prizeKnowledge = derivePrizeKnowledge({ deck: decklist, player: canonical, board, visibility, catalog,
+    local: !opponent, stadium: stadiumCard, stadiumOwner });
+  const openPrizes = () => onOpenZone(`${board.name} · Prize cards`,
+    prizeKnowledge.note, prizeKnowledge.cards, prizeKnowledge.visibility);
   const handCount = Math.max(canonical.hand.length, board.handCount);
   const openHand = () => onOpenZone(`${board.name} · Hand`, opponent
     ? 'Only publicly revealed cards are identified; every other opponent card stays masked.'
@@ -563,7 +568,7 @@ function PlayerField({ board, decklist, canonical, visibility, catalog, choiceFr
         </div>
         <div className="strip-zones"><div className="prize-summary"><span>Prize</span><b>{canonical.prizes.length || prizesRemaining(board)}</b>{Array.from({ length: canonical.prizes.length || prizesRemaining(board) }, (_, index) => <i key={index} className="remaining" />)}</div></div>
       </div>
-      <div className="field-layout"><PrizeFan count={canonical.prizes.length || prizesRemaining(board)} cards={canonical.prizes} tone={tone} onOpen={() => openZone('Prize cards', canonical.prizes, 'Prize identities stay private until the game reveals them.')} /><div className="battle-lanes">{opponent ? <>{bench}{active}</> : <>{active}{bench}</>}</div><div className="side-piles"><ZoneStack label="Deck" count={displayedDeckCount(board, canonical.deck.length)} tone={tone} onOpen={() => openZone('Deck', canonical.deck, 'The deck remains face-down outside captured search effects.')} /><ZoneCards label="Discard" cards={board.discardCards || []} catalog={catalog} onOpen={() => openZone('Discard pile', canonical.discard, 'Public discarded cards at this exact action.')} />{canonical.lostZone.length > 0 && <button type="button" className="lost-zone-button" onClick={() => openZone('Lost Zone', canonical.lostZone, 'Cards sent to the Lost Zone are public and cannot be recovered.')}><Sparkle size={13} weight="fill" />Lost Zone <b>{canonical.lostZone.length}</b></button>}</div></div>
+      <div className="field-layout"><PrizeFan count={canonical.prizes.length || prizesRemaining(board)} cards={canonical.prizes} tone={tone} inferred={prizeKnowledge.kind === 'inferred'} onOpen={openPrizes} /><div className="battle-lanes">{opponent ? <>{bench}{active}</> : <>{active}{bench}</>}</div><div className="side-piles"><ZoneStack label="Deck" count={displayedDeckCount(board, canonical.deck.length)} tone={tone} onOpen={() => openZone('Deck', canonical.deck, 'The deck remains face-down outside captured search effects.')} /><ZoneCards label="Discard" cards={board.discardCards || []} catalog={catalog} onOpen={() => openZone('Discard pile', canonical.discard, 'Public discarded cards at this exact action.')} />{canonical.lostZone.length > 0 && <button type="button" className="lost-zone-button" onClick={() => openZone('Lost Zone', canonical.lostZone, 'Cards sent to the Lost Zone are public and cannot be recovered.')}><Sparkle size={13} weight="fill" />Lost Zone <b>{canonical.lostZone.length}</b></button>}</div></div>
       {!opponent && <div className="hand-dock"><HandFan boardName={board.name} cards={canonical.hand} count={handCount} visibility={visibility} catalog={catalog} opponent={false} onOpen={openHand} /></div>}
     </section>
   );
