@@ -2755,3 +2755,19 @@ button.stadium-marker:focus-visible {
   .board-frame.frame-fallback-backward,
   .share-spinner { animation: none; }
 }
+:root .player-decklist-trigger { display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; width:30px; height:30px; padding:0; border:1px solid #d8d2c7; border-radius:8px; background:#fffdf8; color:#555348; cursor:pointer; }
+.player-decklist-trigger:hover, .player-decklist-trigger[aria-expanded="true"] { background:#eee9df; color:#252b24; }
+.player-decklist-trigger:focus-visible { outline:2px solid #648260; outline-offset:3px; }
+.player-decklist-panel { position:fixed; z-index:10000; box-sizing:border-box; width:600px; max-width:calc(100vw - 24px); max-height:min(570px, calc(100dvh - 24px)); display:flex; flex-direction:column; padding:12px; border:1px solid #d8d2c7; border-radius:12px; background:#faf8f2; color:#292e28; box-shadow:0 16px 60px #18241940; font-family:inherit; }
+.player-decklist-panel header { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+.player-decklist-panel header strong { font-size:14px; }
+.player-decklist-panel header p { margin:5px 0 0; font-size:12px; color:#686e63; }
+.player-decklist-panel header button { border:0; background:transparent; padding:6px; cursor:pointer; color:inherit; }
+.decklist-disclaimer { margin:5px 0 8px; font-size:10px; color:#686e63; }
+.player-decklist-grid { display:grid; grid-template-columns:repeat(8,minmax(0,1fr)); gap:5px; overflow:auto; min-height:0; padding:2px; }
+.player-decklist-grid figure { position:relative; margin:0; min-width:0; }
+.player-decklist-grid img { display:block; width:100%; aspect-ratio:0.716; object-fit:contain; border-radius:5px; }
+.player-decklist-grid b { position:absolute; top:2px; right:2px; padding:2px 4px; border-radius:4px; background:#253b2f; color:white; font-size:11px; box-shadow:0 1px 5px #0006; }
+.player-decklist-grid figcaption { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; }
+.decklist-empty { font-size:13px; line-height:1.6; color:#686e63; }
+@media(max-width:480px) { .player-decklist-grid { grid-template-columns:repeat(6,minmax(0,1fr)); } .player-decklist-panel { padding:10px; } }

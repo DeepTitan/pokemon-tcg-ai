@@ -53,6 +53,16 @@ const operation: CapturedOperation = {
 };
 
 const review = new LiveReviewAssembler(catalog).ingest(operation);
+const deckAssembler = new LiveReviewAssembler(catalog);
+deckAssembler.ingest({ ...operation, messageType: 9, operationId: 'start-decks', operation: { players: [
+  { playerName: 'Isaiah', playerId: 'player-1', deckSize: 60, deckInfo: { cards: { 'sv-test-1': 4, 'sv-energy': 56 } } },
+  { playerName: 'Opponent', playerId: 'player-2', deckSize: 60, deckInfo: { cards: { 'sv-test-2': 4, 'sv-energy': 56 } } },
+] } });
+const deckReview = deckAssembler.ingest(operation);
+assert.equal(deckReview?.decklists?.length, 2);
+assert.equal(deckReview?.decklists?.[1].playerName, 'Opponent');
+assert.equal(deckReview?.decklists?.[1].total, 60);
+assert.deepEqual(deckReview?.turns, review?.turns, 'Starting inventories must not change board or hidden-zone reconstruction');
 assert.ok(review);
 assert.equal(review.source, 'live-network');
 assert.equal(review.localPlayer, 'Isaiah');

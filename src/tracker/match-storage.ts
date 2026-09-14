@@ -2,7 +2,7 @@ import type { CapturedOperation, MatchReview, MatchSummary } from './types.js';
 import { GamePhase } from '../engine/types.js';
 import { ratingFieldsForReview } from './rating-model.js';
 
-export const REDUCER_VERSION = 16;
+export const REDUCER_VERSION = 17;
 
 export function matchSummaryFromReview(review: MatchReview, operationCount = 0): MatchSummary {
   return {
@@ -91,6 +91,12 @@ export function collectCardSourceIds(candidate: unknown, found = new Set<string>
   } else if (candidate && typeof candidate === 'object') {
     for (const [key, item] of Object.entries(candidate)) {
       const normalizedKey = key.toLowerCase();
+      if (normalizedKey === 'deckinfo' && item && typeof item === 'object') {
+        const cards = (item as { cards?: Record<string, unknown> }).cards;
+        if (cards && !Array.isArray(cards)) for (const id of Object.keys(cards)) {
+          if (/^[a-z0-9_-]+$/i.test(id)) found.add(id.toLowerCase());
+        }
+      }
       if (
         (normalizedKey === 'cardsourceid' || normalizedKey === 'reviewsourceid' || normalizedKey === 'cardid')
         && typeof item === 'string'

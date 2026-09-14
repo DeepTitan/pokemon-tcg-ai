@@ -1,3 +1,4 @@
+import { capturedDecklists } from './captured-decklists.js';
 import type {
   CapturedOperation,
   CardInfo,
@@ -1313,6 +1314,7 @@ function buildOperationFacts(
 }
 
 interface MatchAssembly {
+  decklists?: MatchReview['decklists'];
   entities: Map<string, Entity>;
   zoneCounts: Map<number, number>;
   exactDeckPositions: Set<number>;
@@ -1602,6 +1604,13 @@ export class LiveReviewAssembler {
     assembly.messageIds.add(messageId);
 
     const operation = record(captured.operation) || {};
+    const decks = capturedDecklists(operation);
+    if (decks.length) {
+      const retained = new Map((assembly.decklists || []).map(deck => [deck.playerId, deck]));
+      for (const deck of decks) retained.set(deck.playerId, deck);
+      assembly.decklists = [...retained.values()];
+      if (assembly.review) assembly.review.decklists = assembly.decklists;
+    }
     for (const candidate of list(operation, 'players', 'Players')) {
       const player = record(candidate);
       const playerName = text(player, 'playerName', 'userName', 'PlayerName', 'UserName');
@@ -2040,6 +2049,7 @@ export class LiveReviewAssembler {
       };
     }
     assembly.review.players = [names[1], names[2]];
+    assembly.review.decklists = assembly.decklists;
     assembly.review.localPlayer = names[localSide];
     assembly.review.opponent = names[localSide === 1 ? 2 : 1];
     assembly.review.localRating = assembly.matchRatings.get(assembly.review.localPlayer.toLocaleLowerCase());

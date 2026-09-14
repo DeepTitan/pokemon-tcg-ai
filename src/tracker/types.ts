@@ -199,6 +199,14 @@ export interface TrackedTurn {
   canonical?: CanonicalReviewState;
 }
 
+export interface CapturedDecklist {
+  playerName: string;
+  playerId: string;
+  source: 'match-start';
+  cards: { cardId: string; count: number }[];
+  total: number;
+}
+
 export interface MatchReview {
   id: string;
   importedAt: string;
@@ -206,6 +214,7 @@ export interface MatchReview {
   players: string[];
   localPlayer: string;
   opponent: string;
+  decklists?: CapturedDecklist[];
   winner?: string;
   /** Competitive Elo values captured from TCG Live's match-start payload. */
   localRating?: number;
