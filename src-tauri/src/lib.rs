@@ -242,12 +242,14 @@ async fn share_match(
 ) -> Result<cloud_sync::ShareLink, String> {
     let stored_review = review.clone();
     let storage = storage.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    let summary = tauri::async_runtime::spawn_blocking(move || {
         storage.persist_review(&stored_review, reducer_version)
     })
     .await
     .map_err(|error| error.to_string())??;
-    cloud_sync.share_review(&review, reducer_version).await
+    cloud_sync
+        .share_review(&review, reducer_version, &summary)
+        .await
 }
 
 #[tauri::command]

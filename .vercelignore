@@ -1,0 +1,11 @@
+.git
+.vercel
+node_modules
+**/node_modules
+src-tauri/target
+target
+dist
+**/dist
+coverage
+*.log
+.DS_Store

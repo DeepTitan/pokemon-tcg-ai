@@ -1,4 +1,4 @@
-use crate::storage::{MatchStorage, PendingCloudReview};
+use crate::storage::{MatchStorage, MatchSummary, PendingCloudReview};
 use flate2::{write::GzEncoder, Compression};
 use reqwest::{Client, StatusCode, Url};
 use serde::{Deserialize, Serialize};
@@ -135,8 +135,13 @@ impl CloudSync {
     }
 
     async fn put_review(&self, pending: &PendingCloudReview) -> Result<(), SyncFailure> {
-        self.put_review_value(&pending.match_id, &pending.review, pending.reducer_version)
-            .await
+        self.put_review_value(
+            &pending.match_id,
+            &pending.review,
+            pending.reducer_version,
+            pending.summary.as_ref(),
+        )
+        .await
     }
 
     async fn put_review_value(
@@ -144,6 +149,7 @@ impl CloudSync {
         match_id: &str,
         review: &Value,
         reducer_version: i64,
+        summary: Option<&MatchSummary>,
     ) -> Result<(), SyncFailure> {
         let review_id = review
             .get("id")
@@ -157,25 +163,25 @@ impl CloudSync {
         let mut retried_auth = false;
         loop {
             let (device_id, token) = self.ensure_registration().await?;
-            let mut url = self
-                .endpoint
-                .clone()
-                .ok_or_else(|| SyncFailure::global("Match sharing is unavailable in this build."))?;
+            let mut url = self.endpoint.clone().ok_or_else(|| {
+                SyncFailure::global("Match sharing is unavailable in this build.")
+            })?;
             url.path_segments_mut()
                 .map_err(|_| SyncFailure::global("Match sharing is not configured correctly."))?
                 .extend(["v1", "matches", match_id]);
             let request = serde_json::to_vec(&json!({
                 "review": review,
                 "reducerVersion": reducer_version,
+                "summary": summary,
             }))
             .map_err(|error| SyncFailure::item(format!("Replay could not be encoded: {error}")))?;
             let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-            encoder
-                .write_all(&request)
-                .map_err(|error| SyncFailure::item(format!("Replay could not be compressed: {error}")))?;
-            let compressed = encoder
-                .finish()
-                .map_err(|error| SyncFailure::item(format!("Replay could not be compressed: {error}")))?;
+            encoder.write_all(&request).map_err(|error| {
+                SyncFailure::item(format!("Replay could not be compressed: {error}"))
+            })?;
+            let compressed = encoder.finish().map_err(|error| {
+                SyncFailure::item(format!("Replay could not be compressed: {error}"))
+            })?;
 
             let response = self
                 .client
@@ -187,7 +193,9 @@ impl CloudSync {
                 .body(compressed)
                 .send()
                 .await
-                .map_err(|error| SyncFailure::global(format!("Could not publish this replay: {error}")))?;
+                .map_err(|error| {
+                    SyncFailure::global(format!("Could not publish this replay: {error}"))
+                })?;
 
             if response.status() == StatusCode::UNAUTHORIZED && !retried_auth {
                 {
@@ -218,6 +226,7 @@ impl CloudSync {
         &self,
         review: &Value,
         reducer_version: i64,
+        summary: &MatchSummary,
     ) -> Result<ShareLink, String> {
         let match_id = review
             .get("id")
@@ -228,21 +237,27 @@ impl CloudSync {
         // Most completed matches have already been uploaded by the automatic
         // sync sweep. Ask for their permanent link first so reopening Share is
         // a quick lookup instead of another full replay upload.
-        if let Some(share) = self.request_share_link(match_id).await? {
+        if let Some(share) = self.request_share_link(match_id, Some(summary)).await? {
             return Ok(share);
         }
 
         let _guard = self.sweep_lock.lock().await;
-        self.put_review_value(match_id, review, reducer_version)
+        self.put_review_value(match_id, review, reducer_version, Some(summary))
             .await
             .map_err(|failure| failure.message)?;
 
-        self.request_share_link(match_id).await?.ok_or_else(|| {
-            "Trace uploaded the match but could not create its share link.".to_string()
-        })
+        self.request_share_link(match_id, Some(summary))
+            .await?
+            .ok_or_else(|| {
+                "Trace uploaded the match but could not create its share link.".to_string()
+            })
     }
 
-    async fn request_share_link(&self, match_id: &str) -> Result<Option<ShareLink>, String> {
+    async fn request_share_link(
+        &self,
+        match_id: &str,
+        summary: Option<&MatchSummary>,
+    ) -> Result<Option<ShareLink>, String> {
         let mut retried_auth = false;
         loop {
             let (device_id, token) = self
@@ -261,6 +276,7 @@ impl CloudSync {
                 .post(url)
                 .header("x-trace-device", &device_id)
                 .bearer_auth(&token)
+                .json(&json!({ "summary": summary }))
                 .send()
                 .await
                 .map_err(|error| format!("Could not create a share link: {error}"))?;

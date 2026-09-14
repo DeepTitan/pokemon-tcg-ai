@@ -40,7 +40,8 @@ def handler(event, _context):
         if method == "GET" and path.startswith("/v1/shares/"):
             if not SHARE_ID.fullmatch(share_id):
                 return response(400, {"error": "invalid_share_id"})
-            return get_shared_match(share_id)
+            summary_only = str((event.get("queryStringParameters") or {}).get("summary", "")) == "1"
+            return get_shared_match(share_id, summary_only)
 
         identity = authorize(event)
         if not identity:
@@ -57,7 +58,7 @@ def handler(event, _context):
         if method == "GET":
             return get_match(identity, match_id)
         if method == "POST" and path.endswith("/share"):
-            return share_match(identity, match_id)
+            return share_match(identity, match_id, event)
         return response(404, {"error": "not_found"})
     except ValueError as error:
         return response(400, {"error": str(error)})
@@ -126,7 +127,7 @@ def put_match(device_id, match_id, event):
         Metadata={"trace-match-id-sha256": hashlib.sha256(match_id.encode()).hexdigest()},
     )
 
-    summary = match_summary(review)
+    summary = match_summary(review, body.get("summary"))
     existing = matches.get_item(
         Key={"deviceId": device_id, "matchId": match_id},
         ConsistentRead=True,
@@ -163,20 +164,36 @@ def get_match(device_id, match_id):
         return response(404, {"error": "match_not_found"})
     stored = s3.get_object(Bucket=PAYLOAD_BUCKET, Key=item["objectKey"])["Body"].read()
     review = json.loads(gzip.decompress(stored))
-    return response(200, {
+    return compressed_response(200, {
         "review": review,
         "reducerVersion": int(item.get("reducerVersion", 0)),
         "updatedAt": item.get("updatedAt"),
     })
 
 
-def share_match(device_id, match_id):
+def share_match(device_id, match_id, event):
     item = matches.get_item(
         Key={"deviceId": device_id, "matchId": match_id},
         ConsistentRead=True,
     ).get("Item")
     if not item:
         return response(404, {"error": "match_not_found"})
+
+    supplied_summary = social_summary_fields(read_json(event).get("summary"))
+    if supplied_summary:
+        names = {f"#field{index}": key for index, key in enumerate(supplied_summary)}
+        values = {f":value{index}": value for index, value in enumerate(supplied_summary.values())}
+        expression = ", ".join(
+            f"{name} = {value}"
+            for name, value in zip(names, values)
+        )
+        item = matches.update_item(
+            Key={"deviceId": device_id, "matchId": match_id},
+            UpdateExpression=f"SET {expression}",
+            ExpressionAttributeNames=names,
+            ExpressionAttributeValues=values,
+            ReturnValues="ALL_NEW",
+        )["Attributes"]
 
     share_id = item.get("shareId")
     if not isinstance(share_id, str) or not SHARE_ID.fullmatch(share_id):
@@ -220,7 +237,7 @@ def share_match(device_id, match_id):
     })
 
 
-def get_shared_match(share_id):
+def get_shared_match(share_id, summary_only=False):
     shared = shares.get_item(Key={"shareId": share_id}, ConsistentRead=True).get("Item")
     if not shared:
         return response(404, {"error": "share_not_found"})
@@ -230,17 +247,174 @@ def get_shared_match(share_id):
     ).get("Item")
     if not item:
         return response(404, {"error": "share_not_found"})
+    if summary_only:
+        if not item.get("socialPreview"):
+            stored = s3.get_object(Bucket=PAYLOAD_BUCKET, Key=item["objectKey"])["Body"].read()
+            review = json.loads(gzip.decompress(stored))
+            preview = social_preview_from_review(review)
+            if preview:
+                item = matches.update_item(
+                    Key={"deviceId": shared["deviceId"], "matchId": shared["matchId"]},
+                    UpdateExpression="SET socialPreview = :preview",
+                    ExpressionAttributeValues={":preview": preview},
+                    ReturnValues="ALL_NEW",
+                )["Attributes"]
+        return response(200, {"summary": public_summary(item)})
     stored = s3.get_object(Bucket=PAYLOAD_BUCKET, Key=item["objectKey"])["Body"].read()
     review = json.loads(gzip.decompress(stored))
-    return response(200, {
+    return compressed_response(200, {
         "review": review,
+        "summary": public_summary(item),
         "reducerVersion": int(item.get("reducerVersion", 0)),
         "updatedAt": item.get("updatedAt"),
     })
 
 
-def match_summary(review):
+def social_summary_fields(summary):
+    if not isinstance(summary, dict):
+        return {}
+    result = {}
+    for key in ("localRating", "opponentRating", "ratingAfter", "operationCount", "durationSeconds"):
+        value = summary.get(key)
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            result[key] = value
+    rating_change = summary.get("ratingChange")
+    if isinstance(rating_change, int) and not isinstance(rating_change, bool):
+        result["ratingChange"] = rating_change
+    preview = social_preview(summary)
+    if preview:
+        result["socialPreview"] = preview
+    return result
+
+
+def social_preview(summary):
+    snapshot = summary.get("finalSnapshot")
+    if not isinstance(snapshot, dict):
+        return {}
+    players = snapshot.get("players")
+    if not isinstance(players, dict):
+        return {}
+    local_player = summary.get("localPlayer")
+    opponent = summary.get("opponent")
+    local_board = players.get(local_player)
+    opponent_board = players.get(opponent)
+    if not isinstance(local_board, dict) or not isinstance(opponent_board, dict):
+        return {}
+    local_card = representative_pokemon(local_board)
+    opponent_card = representative_pokemon(opponent_board)
+    return clean({
+        "localCardId": local_card.get("cardId") if local_card else None,
+        "localCardName": local_card.get("name") if local_card else None,
+        "opponentCardId": opponent_card.get("cardId") if opponent_card else None,
+        "opponentCardName": opponent_card.get("name") if opponent_card else None,
+        "localPrizes": integer(local_board.get("prizesTaken")),
+        "opponentPrizes": integer(opponent_board.get("prizesTaken")),
+    })
+
+
+def social_preview_from_review(review):
+    if not isinstance(review, dict):
+        return {}
+    turns = review.get("turns")
+    if not isinstance(turns, list):
+        return {}
+    snapshot = next(
+        (turn.get("snapshot") for turn in reversed(turns)
+         if isinstance(turn, dict) and isinstance(turn.get("snapshot"), dict)),
+        None,
+    )
+    if snapshot is None:
+        return {}
+    return social_preview({
+        "localPlayer": review.get("localPlayer"),
+        "opponent": review.get("opponent"),
+        "finalSnapshot": snapshot,
+    })
+
+
+def representative_pokemon(board):
+    candidates = []
+    active = board.get("active")
+    if isinstance(active, dict):
+        candidates.append((active, True, True))
+    bench = board.get("bench")
+    if isinstance(bench, list):
+        candidates.extend((card, False, True) for card in bench if isinstance(card, dict))
+    discard = board.get("discardCards")
+    if isinstance(discard, list):
+        candidates.extend((card, False, False) for card in discard if isinstance(card, dict))
+
+    grouped = {}
+    for card, active_card, in_play in candidates:
+        name = str(card.get("name", "")).strip()
+        if not name or name.lower() == "unknown card" or name.lower().endswith("energy"):
+            continue
+        max_hp = integer(card.get("maxHp"))
+        if max_hp is None and not isinstance(card.get("cardType"), str):
+            continue
+        key = name.lower()
+        lineages = {
+            value.strip().lower()
+            for value in card.get("evolutionStack", [])
+            if isinstance(value, str) and value.strip()
+        }
+        entry = grouped.setdefault(key, {
+            "card": card,
+            "count": 0,
+            "highestHp": 0,
+            "inPlayCount": 0,
+            "active": False,
+            "highestEnergyCount": 0,
+            "isRuleBox": bool(re.search(r"(?:\bex\b|\bV(?:MAX|STAR|-UNION)?\b|\bGX\b|Radiant|BREAK)", name, re.I)),
+            "lineageNames": set(),
+        })
+        entry["count"] += 1
+        entry["highestHp"] = max(entry["highestHp"], max_hp or 0)
+        entry["inPlayCount"] += int(in_play)
+        entry["active"] = entry["active"] or active_card
+        energies = card.get("energies")
+        entry["highestEnergyCount"] = max(
+            entry["highestEnergyCount"], len(energies) if isinstance(energies, list) else 0,
+        )
+        entry["lineageNames"].update(lineages)
+        if not entry["card"].get("cardId") and card.get("cardId"):
+            entry["card"] = card
+
+    def family_count(entry):
+        return entry["count"] + sum(
+            grouped.get(lineage, {}).get("count", 0) for lineage in entry["lineageNames"]
+        )
+
+    def score(entry):
+        return (
+            family_count(entry) * 300
+            + len(entry["lineageNames"]) * 500
+            + int(entry["isRuleBox"]) * 350
+            + entry["highestHp"] * 2
+            + entry["inPlayCount"] * 50
+            + entry["highestEnergyCount"] * 100
+            + int(entry["active"]) * 100
+        )
+
+    if not grouped:
+        return None
+    return max(
+        grouped.values(),
+        key=lambda entry: (
+            score(entry), family_count(entry), entry["count"], int(entry["isRuleBox"]), entry["highestHp"],
+        ),
+    )["card"]
+
+
+def integer(value):
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def match_summary(review, supplied_summary=None):
     turns = review.get("turns") if isinstance(review.get("turns"), list) else []
+    supplied = social_summary_fields(supplied_summary)
+    local_rating = review.get("localRating")
+    opponent_rating = review.get("opponentRating")
     return clean({
         "importedAt": review.get("importedAt"),
         "source": review.get("source"),
@@ -248,10 +422,18 @@ def match_summary(review):
         "opponent": review.get("opponent"),
         "winner": review.get("winner"),
         "turnCount": len(turns),
+        "localRating": local_rating if isinstance(local_rating, int) else supplied.get("localRating"),
+        "opponentRating": opponent_rating if isinstance(opponent_rating, int) else supplied.get("opponentRating"),
+        "ratingChange": supplied.get("ratingChange"),
+        "ratingAfter": supplied.get("ratingAfter"),
+        "operationCount": supplied.get("operationCount"),
+        "durationSeconds": supplied.get("durationSeconds"),
+        "socialPreview": supplied.get("socialPreview"),
     })
 
 
 def public_summary(item):
+    preview = item.get("socialPreview")
     return clean({
         "id": item.get("matchId"),
         "importedAt": item.get("importedAt"),
@@ -260,8 +442,28 @@ def public_summary(item):
         "opponent": item.get("opponent"),
         "winner": item.get("winner"),
         "turnCount": int(item.get("turnCount", 0)),
+        "localRating": int(item["localRating"]) if "localRating" in item else None,
+        "opponentRating": int(item["opponentRating"]) if "opponentRating" in item else None,
+        "ratingChange": int(item["ratingChange"]) if "ratingChange" in item else None,
+        "ratingAfter": int(item["ratingAfter"]) if "ratingAfter" in item else None,
+        "operationCount": int(item["operationCount"]) if "operationCount" in item else None,
+        "durationSeconds": int(item["durationSeconds"]) if "durationSeconds" in item else None,
+        "socialPreview": public_social_preview(preview),
         "reducerVersion": int(item.get("reducerVersion", 0)),
         "updatedAt": item.get("updatedAt"),
+    })
+
+
+def public_social_preview(preview):
+    if not isinstance(preview, dict):
+        return None
+    return clean({
+        "localCardId": preview.get("localCardId"),
+        "localCardName": preview.get("localCardName"),
+        "opponentCardId": preview.get("opponentCardId"),
+        "opponentCardName": preview.get("opponentCardName"),
+        "localPrizes": int(preview["localPrizes"]) if "localPrizes" in preview else None,
+        "opponentPrizes": int(preview["opponentPrizes"]) if "opponentPrizes" in preview else None,
     })
 
 
@@ -298,6 +500,22 @@ def response(status, body):
             "x-content-type-options": "nosniff",
         },
         "body": json.dumps(body, separators=(",", ":"), ensure_ascii=False),
+    }
+
+
+def compressed_response(status, body):
+    encoded = json.dumps(body, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    compressed = gzip.compress(encoded, compresslevel=6)
+    return {
+        "statusCode": status,
+        "isBase64Encoded": True,
+        "headers": {
+            "content-type": "application/json; charset=utf-8",
+            "content-encoding": "gzip",
+            "cache-control": "no-store",
+            "x-content-type-options": "nosniff",
+        },
+        "body": base64.b64encode(compressed).decode("ascii"),
     }
 
 

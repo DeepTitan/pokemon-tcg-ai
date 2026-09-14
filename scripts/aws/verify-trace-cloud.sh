@@ -74,7 +74,7 @@ test "$UNAUTHORIZED_STATUS" = "401"
 
 IMPORTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 jq -cn --arg id "$MATCH_ID" --arg importedAt "$IMPORTED_AT" \
-  '{review:{id:$id,importedAt:$importedAt,source:"trace-cloud-e2e",localPlayer:"Trace Tester",opponent:"Cloud Verify",winner:"Trace Tester",turns:[{number:1,actions:[]}]},reducerVersion:999}' \
+  '{review:{id:$id,importedAt:$importedAt,source:"trace-cloud-e2e",localPlayer:"Trace Tester",opponent:"Cloud Verify",winner:"Trace Tester",localRating:1836,opponentRating:1783,turns:[{number:1,actions:[]}]},summary:{localPlayer:"Trace Tester",opponent:"Cloud Verify",localRating:1836,opponentRating:1783,ratingChange:10,ratingAfter:1846,operationCount:264,durationSeconds:1197,finalSnapshot:{players:{"Trace Tester":{active:{cardId:"sv6_130",name:"Dragapult ex",cardType:"N",maxHp:320,energies:["Psychic"]},bench:[],discardCards:[],prizesTaken:3},"Cloud Verify":{active:{cardId:"sv8-5_72",name:"Drakloak",cardType:"N",maxHp:90,energies:[]},bench:[],discardCards:[],prizesTaken:0}}}},reducerVersion:999}' \
   > "$WORK_DIR/put-request.json"
 gzip -c "$WORK_DIR/put-request.json" > "$WORK_DIR/put-request.json.gz"
 
@@ -84,15 +84,15 @@ PUT_STATUS="$(curl --silent --show-error --output "$WORK_DIR/put-response.json" 
   --header "x-trace-device: $DEVICE_ID" --header "authorization: Bearer $TOKEN" \
   --data-binary "@$WORK_DIR/put-request.json.gz" "$API_URL/v1/matches/$MATCH_ID")"
 test "$PUT_STATUS" = "200"
-jq -e --arg id "$MATCH_ID" '.id == $id and .turnCount == 1 and .reducerVersion == 999' \
+jq -e --arg id "$MATCH_ID" '.id == $id and .turnCount == 1 and .reducerVersion == 999 and .durationSeconds == 1197 and .localRating == 1836 and .socialPreview.localCardName == "Dragapult ex" and .socialPreview.opponentCardName == "Drakloak"' \
   "$WORK_DIR/put-response.json" >/dev/null
 
-curl --fail --silent --show-error --header "x-trace-device: $DEVICE_ID" \
+curl --fail --silent --show-error --compressed --header "x-trace-device: $DEVICE_ID" \
   --header "authorization: Bearer $TOKEN" "$API_URL/v1/matches" > "$WORK_DIR/list-response.json"
 jq -e --arg id "$MATCH_ID" '.matches | any(.id == $id and .turnCount == 1)' \
   "$WORK_DIR/list-response.json" >/dev/null
 
-curl --fail --silent --show-error --header "x-trace-device: $DEVICE_ID" \
+curl --fail --silent --show-error --compressed --header "x-trace-device: $DEVICE_ID" \
   --header "authorization: Bearer $TOKEN" "$API_URL/v1/matches/$MATCH_ID" > "$WORK_DIR/get-response.json"
 jq -e --arg id "$MATCH_ID" \
   '.review.id == $id and .review.source == "trace-cloud-e2e" and .reducerVersion == 999' \
@@ -104,10 +104,15 @@ SHARE_ID="$(jq -er '.shareId | select(length >= 20)' "$WORK_DIR/share-response.j
 jq -e --arg share "$SHARE_ID" '.url == ("https://victoryroad.app/trace/" + $share)' \
   "$WORK_DIR/share-response.json" >/dev/null
 
-curl --fail --silent --show-error "$API_URL/v1/shares/$SHARE_ID" > "$WORK_DIR/public-response.json"
+curl --fail --silent --show-error --compressed "$API_URL/v1/shares/$SHARE_ID" > "$WORK_DIR/public-response.json"
 jq -e --arg id "$MATCH_ID" \
-  '.review.id == $id and .review.source == "trace-cloud-e2e" and .reducerVersion == 999 and (has("deviceId") | not)' \
+  '.review.id == $id and .review.source == "trace-cloud-e2e" and .summary.durationSeconds == 1197 and .summary.localRating == 1836 and .summary.socialPreview.localPrizes == 3 and .reducerVersion == 999 and (has("deviceId") | not)' \
   "$WORK_DIR/public-response.json" >/dev/null
+
+curl --fail --silent --show-error "$API_URL/v1/shares/$SHARE_ID?summary=1" > "$WORK_DIR/public-summary-response.json"
+jq -e --arg id "$MATCH_ID" \
+  '.summary.id == $id and .summary.socialPreview.localCardId == "sv6_130" and .summary.socialPreview.opponentCardId == "sv8-5_72" and (has("review") | not)' \
+  "$WORK_DIR/public-summary-response.json" >/dev/null
 
 aws dynamodb get-item --profile "$AWS_PROFILE_NAME" --region "$AWS_REGION_NAME" \
   --table-name "$MATCHES_TABLE" --consistent-read \

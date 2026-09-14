@@ -19,6 +19,7 @@ pub struct PendingCloudReview {
     pub generation: i64,
     pub attempt_count: i64,
     pub review: Value,
+    pub summary: Option<MatchSummary>,
 }
 
 #[derive(Clone)]
@@ -541,7 +542,8 @@ impl MatchStorage {
                     cloud_sync_outbox.reducer_version,
                     cloud_sync_outbox.generation,
                     cloud_sync_outbox.attempt_count,
-                    matches.review_gzip
+                    matches.review_gzip,
+                    matches.summary_json
                  FROM cloud_sync_outbox
                  JOIN matches ON matches.id = cloud_sync_outbox.match_id
                  WHERE cloud_sync_outbox.next_attempt_at <= unixepoch()
@@ -557,12 +559,13 @@ impl MatchStorage {
                     row.get::<_, i64>(2)?,
                     row.get::<_, i64>(3)?,
                     row.get::<_, Vec<u8>>(4)?,
+                    row.get::<_, Option<String>>(5)?,
                 ))
             })
             .map_err(|error| error.to_string())?;
         let mut pending = Vec::new();
         for row in rows {
-            let (match_id, reducer_version, generation, attempt_count, compressed) =
+            let (match_id, reducer_version, generation, attempt_count, compressed, summary_json) =
                 row.map_err(|error| error.to_string())?;
             let review =
                 serde_json::from_slice(&gunzip(&compressed)?).map_err(|error| error.to_string())?;
@@ -572,6 +575,9 @@ impl MatchStorage {
                 generation,
                 attempt_count,
                 review,
+                summary: summary_json
+                    .as_deref()
+                    .and_then(|value| serde_json::from_str::<MatchSummary>(value).ok()),
             });
         }
         Ok(pending)
@@ -1045,6 +1051,7 @@ mod tests {
         let first = storage.pending_cloud_reviews(10).unwrap();
         assert_eq!(first.len(), 1);
         assert_eq!(first[0].generation, 1);
+        assert_eq!(first[0].summary.as_ref().unwrap().local_player, "Local");
 
         let mut revised = review.clone();
         revised["turns"] = json!([
@@ -1164,6 +1171,7 @@ mod tests {
         assert_eq!(queued.len(), 1);
         assert_eq!(queued[0].match_id, "archived-match");
         assert_eq!(queued[0].reducer_version, 11);
+        assert!(queued[0].summary.is_none());
         assert_eq!(storage.cloud_sync_counts().unwrap(), (1, 0));
 
         fs::remove_dir_all(directory).unwrap();

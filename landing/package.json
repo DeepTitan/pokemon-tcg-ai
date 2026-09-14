@@ -2,6 +2,10 @@
   "name": "trace-landing",
   "private": true,
   "scripts": {
-    "build": "npm --prefix .. ci && npm --prefix .. run tracker:build && node build.mjs"
+    "build": "npm --prefix .. ci && npm --prefix .. run tracker:build && node build.mjs",
+    "test": "node --test lib/*.test.mjs"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2"
   }
 }

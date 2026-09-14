@@ -1,9 +1,9 @@
 {
-  "buildCommand": "npm run build",
-  "outputDirectory": "dist",
+  "buildCommand": "npm --prefix landing ci && npm run tracker:build && node landing/build.mjs",
+  "outputDirectory": "landing/dist",
   "functions": {
     "api/share-card.mjs": {
-      "includeFiles": "{assets/fonts/**,assets/trace-mascot-og.png,assets/pokemon-card-back.jpg}"
+      "includeFiles": "{landing/assets/fonts/**,landing/assets/trace-mascot-og.png,landing/assets/pokemon-card-back.jpg}"
     }
   },
   "cleanUrls": true,
