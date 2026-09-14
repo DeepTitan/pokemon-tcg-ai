@@ -74,6 +74,6 @@ export default async function handler(request, response) {
     response.statusCode = Number(error?.status) || 500;
     response.setHeader('content-type', 'text/html; charset=utf-8');
     response.setHeader('cache-control', 'no-store');
-    response.end(`<!doctype html><html><head><meta charset="utf-8"><title>Trace shared replay</title></head><body><main><h1>This match could not be opened.</h1><p>${escapeHtml(error instanceof Error ? error.message : 'Please try again shortly.')}</p><a href="/">Return to Trace</a></main></body></html>`);
+    response.end(`<!doctype html><html><head><meta charset="utf-8"><title>Trace shared replay</title></head><body><main><h1>This match could not be opened.</h1><p>${escapeHtml(error instanceof Error ? error.message : 'Please try again shortly.')}</p><a href="/trace">Return to Trace</a></main></body></html>`);
   }
 }

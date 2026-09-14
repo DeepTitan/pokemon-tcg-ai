@@ -10,10 +10,17 @@ const trackerBuildDirectory = path.join(repositoryDirectory, 'dist', 'ui');
 fs.rmSync(outputDirectory, { recursive: true, force: true });
 fs.mkdirSync(outputDirectory, { recursive: true });
 
-for (const fileName of ['index.html', 'styles.css', 'script.js', 'og.png', 'robots.txt']) {
-  fs.copyFileSync(path.join(landingDirectory, fileName), path.join(outputDirectory, fileName));
+const landingFiles = {
+  'index.html': 'index.html',
+  'styles.css': 'trace-styles.css',
+  'script.js': 'trace-script.js',
+  'og.png': 'trace-og.png',
+  'robots.txt': 'robots.txt',
+};
+for (const [source, destination] of Object.entries(landingFiles)) {
+  fs.copyFileSync(path.join(landingDirectory, source), path.join(outputDirectory, destination));
 }
-fs.cpSync(path.join(landingDirectory, 'assets'), path.join(outputDirectory, 'assets'), { recursive: true });
+fs.cpSync(path.join(landingDirectory, 'assets'), path.join(outputDirectory, 'trace-assets'), { recursive: true });
 
 fs.copyFileSync(path.join(trackerBuildDirectory, 'tracker.html'), path.join(outputDirectory, 'shared-replay.html'));
 fs.cpSync(path.join(trackerBuildDirectory, 'assets'), path.join(outputDirectory, 'assets'), { recursive: true });
