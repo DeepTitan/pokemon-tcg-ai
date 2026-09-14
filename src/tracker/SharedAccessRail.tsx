@@ -30,9 +30,8 @@ export function SharedAccessRail({ open, onToggle }: { open: boolean; onToggle: 
       <footer className="shared-access-footer">
         <div className="shared-access-shortcuts" aria-label="Replay keyboard shortcuts">
           <span><span aria-label="Left and right arrow keys"><kbd>←</kbd><kbd>→</kbd></span>Step through the match</span>
-          <span><span aria-label="Up and down arrow keys"><kbd>↑</kbd><kbd>↓</kbd></span>Jump to key moments</span>
+          <span><span aria-label="Up and down arrow keys"><kbd>↑</kbd><kbd>↓</kbd></span>Jump to attacks</span>
         </div>
-        <a href="/trace">About Trace <ArrowUpRight size={14} aria-hidden="true" /></a>
       </footer>
     </div>
   </aside>;

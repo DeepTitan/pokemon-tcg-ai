@@ -53,7 +53,8 @@ No P0/P1/P2 regression was found in the scoped panel during this comparison.
 - Discord link uses the existing configured invite, opens externally, and has
   noopener/noreferrer. Clicking was exercised; HTTP verification follows the
   invite redirect to Discord successfully (200). No account joined or message sent.
-- Brand and About Trace links retain `/trace` as the destination.
+- Brand link retains `/trace` as the destination. The follow-up removes the
+  bottom About Trace link and labels the up/down shortcut "Jump to attacks".
 - Browser console: no captured errors on the local implementation.
 - No new animations; the panel does not introduce a reduced-motion concern.
 

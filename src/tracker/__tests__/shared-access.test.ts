@@ -22,6 +22,8 @@ const render = (open: boolean) => renderToStaticMarkup(createElement(SharedAcces
 const expanded = render(true);
 assert.match(expanded, /Want to record your games like this\?/);
 assert.match(expanded, /Join the Discord/);
+assert.match(expanded, /Jump to attacks/);
+assert.doesNotMatch(expanded, /Jump to key moments|About Trace/);
 assert.match(expanded, /ask for <strong>Trace access/);
 assert.match(expanded, /aria-expanded="true"/);
 assert.match(expanded, /aria-controls="shared-access-content"/);
