@@ -225,6 +225,8 @@ export interface MatchReview {
 }
 
 export interface MatchSummary {
+  /** Starting lists retained for stable archive deck identities. */
+  decklists?: CapturedDecklist[];
   id: string;
   importedAt: string;
   source: MatchReview['source'];

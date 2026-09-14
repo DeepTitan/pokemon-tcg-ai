@@ -12,6 +12,7 @@ export function matchSummaryFromReview(review: MatchReview, operationCount = 0):
     localPlayer: review.localPlayer,
     opponent: review.opponent,
     winner: review.winner,
+    decklists: review.decklists,
     ...ratingFieldsForReview(review),
     turnCount: review.turns.length,
     operationCount,

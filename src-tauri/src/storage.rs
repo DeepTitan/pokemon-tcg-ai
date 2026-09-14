@@ -60,6 +60,8 @@ pub struct MatchSummary {
     pub duration_seconds: Option<u64>,
     pub reducer_version: i64,
     pub final_snapshot: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decklists: Option<Vec<Value>>,
     #[serde(default)]
     pub recording: bool,
 }
@@ -467,6 +469,13 @@ impl MatchStorage {
             duration_seconds: capture_elapsed_seconds(&timing.1, &timing.2, operation_count),
             reducer_version,
             final_snapshot,
+            decklists: Some(
+                review
+                    .get("decklists")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default(),
+            ),
             recording,
         };
         let summary_json = serde_json::to_string(&summary).map_err(|error| error.to_string())?;
@@ -668,6 +677,7 @@ impl MatchStorage {
             })
             .map_err(|error| error.to_string())?;
         let mut summaries = Vec::new();
+        let mut summary_upgrades = Vec::new();
         for row in rows {
             let (
                 json,
@@ -679,7 +689,9 @@ impl MatchStorage {
                 first_received,
                 last_received,
             ) = row.map_err(|error| error.to_string())?;
-            let parsed = json.and_then(|value| serde_json::from_str::<MatchSummary>(&value).ok());
+            let parsed = json
+                .as_deref()
+                .and_then(|value| serde_json::from_str::<MatchSummary>(value).ok());
             let mut summary = parsed.unwrap_or(MatchSummary {
                 id,
                 imported_at,
@@ -696,12 +708,60 @@ impl MatchStorage {
                 duration_seconds: None,
                 reducer_version,
                 final_snapshot: None,
+                decklists: None,
                 recording: true,
             });
+            // Upgrade only the compact summary, once per old row. Keep unrelated
+            // summary fields and the original review/operations byte-for-byte.
+            if summary.decklists.is_none() {
+                if let Some(json) = json.as_deref() {
+                    let compressed = connection
+                        .query_row(
+                            "SELECT review_gzip FROM matches WHERE id=?1",
+                            [&summary.id],
+                            |row| row.get::<_, Option<Vec<u8>>>(0),
+                        )
+                        .map_err(|e| e.to_string())?;
+                    if let Some(compressed) = compressed {
+                        // Stream only the decklists field; legacy reviews can contain
+                        // thousands of frames and must not become a full in-memory Value.
+                        #[derive(Deserialize)]
+                        struct DecklistsOnly {
+                            decklists: Option<Vec<Value>>,
+                        }
+                        if let Ok(fields) = serde_json::from_reader::<_, DecklistsOnly>(
+                            std::io::BufReader::new(GzDecoder::new(&compressed[..])),
+                        ) {
+                            let decklists = fields.decklists.unwrap_or_default();
+                            let mut stored: Value =
+                                serde_json::from_str(&json).map_err(|e| e.to_string())?;
+                            stored["decklists"] = Value::Array(decklists.clone());
+                            summary_upgrades.push((
+                                summary.id.clone(),
+                                json.to_owned(),
+                                stored.to_string(),
+                            ));
+                            summary.decklists = Some(decklists);
+                        }
+                        // A corrupt old review must not hide otherwise readable archive rows.
+                    }
+                }
+            }
             summary.operation_count = operation_count;
             summary.duration_seconds =
                 capture_elapsed_seconds(&first_received, &last_received, operation_count);
             summaries.push(summary);
+        }
+        // Release the read cursor before writing. Capture can persist a newer
+        // summary while the old review is decoded; never overwrite that revision.
+        drop(statement);
+        for (id, original, upgraded) in summary_upgrades {
+            // Enrichment is already returned to the UI. A busy database can retry
+            // this cache upgrade on a later listing without blocking the archive.
+            let _ = connection.execute(
+                "UPDATE matches SET summary_json=?1 WHERE id=?2 AND summary_json=?3",
+                params![upgraded, id, original],
+            );
         }
         Ok(summaries)
     }
@@ -835,6 +895,42 @@ mod tests {
             message_index: Some(7),
             operation: json!({"operationNumber": 7}),
         }
+    }
+
+    #[test]
+    fn retains_decklists_and_backfills_legacy_summaries_once() {
+        let (directory, storage) = temporary_storage();
+        let lists = json!([{"playerName": "You", "playerId": "p1", "source": "match-start",
+            "total": 60, "cards": [{"cardId": "test_1", "count": 60}]}]);
+        let review = json!({"id": "deck-test", "importedAt": "2026-09-14", "source": "live-network",
+            "localPlayer": "You", "opponent": "Them", "turns": [], "decklists": lists});
+        let summary = storage.persist_review(&review, 17).unwrap();
+        assert_eq!(serde_json::to_value(summary.decklists).unwrap(), lists);
+        let connection = storage.connection().unwrap();
+        connection.execute("UPDATE matches SET summary_json=json_remove(summary_json, '$.decklists') WHERE id='deck-test'", []).unwrap();
+        let restored = storage.list_summaries(0, 20).unwrap();
+        assert_eq!(serde_json::to_value(&restored[0].decklists).unwrap(), lists);
+        assert_eq!(storage.load_review("deck-test").unwrap(), Some(review));
+        // A subsequent listing must not decode the review again.
+        connection
+            .execute(
+                "UPDATE matches SET review_gzip=X'00' WHERE id='deck-test'",
+                [],
+            )
+            .unwrap();
+        assert_eq!(
+            serde_json::to_value(&storage.list_summaries(0, 20).unwrap()[0].decklists).unwrap(),
+            lists
+        );
+        connection.execute("UPDATE matches SET summary_json=json_remove(summary_json, '$.decklists') WHERE id='deck-test'", []).unwrap();
+        assert!(
+            storage.list_summaries(0, 20).unwrap()[0]
+                .decklists
+                .is_none(),
+            "a corrupt legacy review must keep the archive fallback available"
+        );
+        drop(connection);
+        fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]

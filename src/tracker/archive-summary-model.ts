@@ -1,3 +1,4 @@
+import { identifyDeck } from './deck-identity.js';
 import type { CardInfo, MatchSummary, TrackedCard, TrackedPlayerBoard, TrackedPokemon } from './types.js';
 
 export interface ArchiveMatchup {
@@ -127,8 +128,10 @@ export function archiveMatchup(
   const localBoard = summary.finalSnapshot?.players[summary.localPlayer];
   const opponentBoard = summary.finalSnapshot?.players[summary.opponent];
   return {
-    localCard: representativePokemon(localBoard, catalog),
-    opponentCard: representativePokemon(opponentBoard, catalog),
+    localCard: identifyDeck(summary.decklists?.find(d => d.playerName === summary.localPlayer), catalog).card
+      || representativePokemon(localBoard, catalog),
+    opponentCard: identifyDeck(summary.decklists?.find(d => d.playerName === summary.opponent), catalog).card
+      || representativePokemon(opponentBoard, catalog),
     localPrizesTaken: localBoard?.prizesKnown === false ? undefined : localBoard?.prizesTaken,
     opponentPrizesTaken: opponentBoard?.prizesKnown === false ? undefined : opponentBoard?.prizesTaken,
   };
