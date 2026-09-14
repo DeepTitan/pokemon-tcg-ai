@@ -41,6 +41,7 @@ export function PlayerDecklist({ name, deck, catalog }: {
   const cancelClose = () => clearTimeout(timer.current);
   const close = () => { cancelClose(); setOpen(false); };
   const show = () => {
+    if (!deck) return;
     cancelClose(); const rect = button.current?.getBoundingClientRect();
     if (rect) setPosition({ left: Math.max(12, Math.min(rect.left, window.innerWidth - 612)),
       top: Math.max(12, Math.min(rect.bottom + 8, window.innerHeight - Math.min(570, window.innerHeight - 24))) });
@@ -82,13 +83,17 @@ export function PlayerDecklist({ name, deck, catalog }: {
     }
   };
   return <>
+    <span className="player-decklist-control">
     <button ref={button} type="button" className="player-decklist-trigger" aria-label={`${name} decklist`}
-      aria-expanded={open} aria-controls={open ? id : undefined} aria-haspopup="dialog"
+      aria-disabled={!deck} aria-describedby={!deck ? `${id}-unavailable` : undefined}
+      aria-expanded={deck ? open : undefined} aria-controls={deck && open ? id : undefined} aria-haspopup={deck ? 'dialog' : undefined}
       onMouseEnter={show} onMouseLeave={leave} onFocus={() => { if (!suppressFocus.current) show(); }} onBlur={leave}
-      onClick={show} onKeyDown={event => { if (event.key === 'ArrowDown') { event.preventDefault(); show(); setTimeout(() => panel.current?.focus(), 0); } }}>
+      onClick={show} onKeyDown={event => { if (event.key === 'ArrowDown') { event.preventDefault(); if (!deck) return; show(); setTimeout(() => panel.current?.focus(), 0); } }}>
       <CardsThree size={18} />
     </button>
-    {open && createPortal(<div ref={panel} id={id} role="dialog" aria-label={`${name} captured decklist`}
+    {!deck && <span id={`${id}-unavailable`} role="tooltip" className="player-decklist-unavailable">Decklist not available</span>}
+    </span>
+    {open && deck && createPortal(<div ref={panel} id={id} role="dialog" aria-label={`${name} captured decklist`}
       tabIndex={-1} className="player-decklist-panel" style={position} onMouseEnter={cancelClose} onMouseLeave={leave}
       onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) leave(); }}>
       <header><div className="decklist-heading"><strong>{name}’s decklist</strong>

@@ -8,6 +8,7 @@ import '../tracker.css';
 const catalog = new Map(fixture.cards.map(c => [c.id, { ...c, imageDataUrl: `/api/turnlume/card-art/${c.id}.png` }]));
 createRoot(document.getElementById('root')).render(React.createElement('div', {style:{padding:24}},
   React.createElement(PlayerDecklist, {name:fixture.deck.playerName,deck:fixture.deck,catalog}),
+  React.createElement('span', {style:{display:'inline-flex',marginLeft:16}}, React.createElement(PlayerDecklist, {name:'Missing capture',catalog})),
   React.createElement('details', {style:{marginTop:430}}, React.createElement('summary',null,'Verify clipboard'),
     React.createElement('textarea',{'aria-label':'Paste copied decklist',rows:20,cols:60}))));
 </script></body></html>
