@@ -204,11 +204,12 @@ async fn list_match_summaries(
 async fn load_match_review(
     storage: tauri::State<'_, storage::MatchStorage>,
     match_id: String,
-) -> Result<Option<Value>, String> {
+) -> Result<tauri::ipc::Response, String> {
     let storage = storage.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || storage.load_review(&match_id))
+    let json = tauri::async_runtime::spawn_blocking(move || storage.load_review_json(&match_id))
         .await
-        .map_err(|error| error.to_string())?
+        .map_err(|error| error.to_string())??;
+    Ok(tauri::ipc::Response::new(json.unwrap_or_else(|| "null".into())))
 }
 
 #[tauri::command]

@@ -1,6 +1,7 @@
 import { getVersion } from '@tauri-apps/api/app';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { compactStoredReview } from './review-memory.js';
 import type {
   CapturedOperation, CaptureStatus, CardInfo, MatchReview, MatchSummary, StorageStatus, TrackerEnvironment,
 } from './types.js';
@@ -112,7 +113,8 @@ export async function listMatchSummaries(offset = 0, limit = 50): Promise<MatchS
 
 export async function loadMatchReview(matchId: string): Promise<MatchReview | null> {
   if (!isTauri()) return null;
-  return invoke<MatchReview | null>('load_match_review', { matchId });
+  const review = await invoke<MatchReview | null>('load_match_review', { matchId });
+  return review ? compactStoredReview(review) : null;
 }
 
 export async function persistMatchReview(review: MatchReview, reducerVersion: number): Promise<MatchSummary> {

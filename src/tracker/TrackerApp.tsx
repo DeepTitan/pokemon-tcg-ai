@@ -597,7 +597,7 @@ function findPokemonById(canonical: CanonicalReviewState, id: string): PokemonIn
 function ArchiveFeaturedCard({ card, label, rating, tone, catalog }: { card: TrackedCard | undefined; label: string; rating?: number; tone: 'local' | 'opponent'; catalog: ReadonlyMap<string, CardInfo> }) {
   const name = card ? (resolvedCardInfo(card, catalog)?.name || card.name) : 'Unknown deck';
   return <span className={`session-featured-card ${tone}`} title={`${label}: ${name}${rating != null ? ` · ${rating} Elo` : ''}`}>
-    <img src={card ? resolvedCardImage(card, catalog) : fallbackCardArt(name)} alt={`${label} deck: ${name}`} onError={showCardBackOnError} />
+    <img loading="lazy" decoding="async" src={card ? resolvedCardImage(card, catalog) : fallbackCardArt(name)} alt={`${label} deck: ${name}`} onError={showCardBackOnError} />
     <small>{label}{rating != null && <> · {rating}</>}</small>
   </span>;
 }
@@ -1191,7 +1191,7 @@ export default function TrackerApp() {
           // The SQLite archive is ready during native setup. Show it before
           // running legacy import/status maintenance, which can be slow on a
           // machine with an old capture file or a cold antivirus scan.
-          const stored = await listMatchSummaries(0, 50);
+          const stored = await listMatchSummaries(0, 20);
           stored.forEach((summary) => knownSummaryIdsRef.current.add(summary.id));
           setSummaries(stored);
           setArchiveTotal(stored.length);
@@ -1218,12 +1218,8 @@ export default function TrackerApp() {
           runtimeReadyRef.current = true;
           queuedLiveOperationsRef.current.splice(0).forEach(ingestLive);
 
-          const pendingIds = await listRawMatchIds(true, 5_000, REDUCER_VERSION);
-          for (const matchId of pendingIds) {
-            if (!active || matchId === rawIds[0]) continue;
-            await rebuildStoredMatch(matchId);
-            await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
-          }
+          // Old replays stay on disk. Rebuild only a selected stale match,
+          // never the entire archive on the UI thread after a reducer update.
           if (active) void initializeTrackerStorage()
             .then((refreshed) => { if (active) setArchiveTotal(refreshed.archivedMatches); })
             .catch((caught) => console.warn('Legacy capture maintenance is temporarily unavailable.', caught));
@@ -1456,7 +1452,9 @@ export default function TrackerApp() {
       const stored = isTauri()
         ? await loadMatchReview(summary.id)
         : browserReviewsRef.current.find((review) => review.id === summary.id) || null;
-      const review = stored || (isTauri() ? await rebuildStoredMatch(summary.id) : null);
+      const stale = isTauri() && summary.source === 'live-network' && summary.reducerVersion !== REDUCER_VERSION;
+      const review = stale ? await rebuildStoredMatch(summary.id) || stored
+        : stored || (isTauri() ? await rebuildStoredMatch(summary.id) : null);
       if (!review || selectedIdRef.current !== summary.id) return;
       setSelectedReview(review);
       setTurnIndex(Math.max(0, review.turns.length - 1));
@@ -1471,7 +1469,7 @@ export default function TrackerApp() {
   const loadOlderMatches = useCallback(async () => {
     if (!isTauri() || summaries.length >= archiveTotal) return;
     try {
-      const older = await listMatchSummaries(summaries.length, 50);
+      const older = await listMatchSummaries(summaries.length, 20);
       older.forEach((summary) => knownSummaryIdsRef.current.add(summary.id));
       setSummaries((current) => [...current, ...older.filter((summary) => !current.some((item) => item.id === summary.id))]);
       void resolveCardsForPayload(older);

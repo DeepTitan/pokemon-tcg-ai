@@ -767,6 +767,14 @@ impl MatchStorage {
     }
 
     pub fn load_review(&self, id: &str) -> Result<Option<Value>, String> {
+        self.load_review_json(id)?
+            .map(|json| serde_json::from_str(&json).map_err(|error| error.to_string()))
+            .transpose()
+    }
+
+    // UI replay loading needs JSON, not a second native tree of every frame.
+    // Keep the Value API for callers that actually inspect or modify the data.
+    pub fn load_review_json(&self, id: &str) -> Result<Option<String>, String> {
         let connection = self.connection()?;
         let bytes = connection
             .query_row("SELECT review_gzip FROM matches WHERE id=?1", [id], |row| {
@@ -777,7 +785,13 @@ impl MatchStorage {
             .flatten();
         bytes
             .map(|compressed| {
-                serde_json::from_slice(&gunzip(&compressed)?).map_err(|error| error.to_string())
+                let json = String::from_utf8(gunzip(&compressed)?)
+                    .map_err(|error| error.to_string())?;
+                // Validate corrupt archives without allocating a serde Value
+                // for every repeated card/snapshot before the IPC transfer.
+                serde_json::from_str::<serde::de::IgnoredAny>(&json)
+                    .map_err(|error| error.to_string())?;
+                Ok(json)
             })
             .transpose()
     }
@@ -898,6 +912,22 @@ mod tests {
     }
 
     #[test]
+    fn raw_review_json_rejects_corrupt_archives() {
+        let (directory, storage) = temporary_storage();
+        let review = json!({"id": "corrupt-test", "importedAt": "2026-09-14", "source": "live-network",
+            "localPlayer": "You", "opponent": "Them", "turns": []});
+        storage.persist_review(&review, 17).unwrap();
+        let connection = storage.connection().unwrap();
+        for payload in [gzip(b"{broken").unwrap(), gzip(b"{} trailing").unwrap(),
+            gzip(&[0xff]).unwrap(), vec![0]] {
+            connection.execute("UPDATE matches SET review_gzip=?1 WHERE id='corrupt-test'", [payload]).unwrap();
+            assert!(storage.load_review_json("corrupt-test").is_err());
+        }
+        drop(connection);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
     fn retains_decklists_and_backfills_legacy_summaries_once() {
         let (directory, storage) = temporary_storage();
         let lists = json!([{"playerName": "You", "playerId": "p1", "source": "match-start",
@@ -983,7 +1013,10 @@ mod tests {
         let summaries = storage.list_summaries(0, 50).unwrap();
         assert_eq!(summaries.len(), 1);
         assert_eq!(summaries[0].duration_seconds, Some(95));
-        assert_eq!(storage.load_review("live-match-1").unwrap(), Some(review));
+        assert_eq!(storage.load_review("live-match-1").unwrap(), Some(review.clone()));
+        let raw = storage.load_review_json("live-match-1").unwrap().unwrap();
+        assert_eq!(serde_json::from_str::<Value>(&raw).unwrap(), review);
+        assert!(storage.load_review_json("missing").unwrap().is_none());
         assert_eq!(storage.status(0).unwrap().pending_matches, 0);
         assert_eq!(storage.cloud_sync_counts().unwrap(), (1, 0));
         assert!(storage.raw_match_ids(true, 1, 10).unwrap().is_empty());
