@@ -50,7 +50,10 @@ node landing/build.mjs
 
 Only card-database files and allowlisted card-image filenames are exported.
 The landing build validates all bundled card frames and copies these assets to
-the existing `/tracker-assets/` path, which the apex domain already proxies.
+`/tracker-assets/` on `victoryroad-lovat.vercel.app`. Production requests use
+that host directly (including image URLs): the apex is a separate deployment
+and does not forward the nested catalog/art paths. Local previews use relative
+paths. The original public Trace asset host supports cross-origin requests.
 
 ## Verification
 

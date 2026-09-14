@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createSharedCardResolver } from '../shared-card-sources.js';
+import { createSharedCardResolver, sharedCardAssetOrigin } from '../shared-card-sources.js';
 
 const requested: string[] = [];
 const resolve = createSharedCardResolver((async (url: string) => {
@@ -36,4 +36,19 @@ assert.equal(cacheRequests.length, 1, 'Concurrent lookups share one in-flight re
 for (let i = 1; i <= 32; i++) await bounded([`set${i}_1`]);
 await bounded(['set0_1']);
 assert.equal(cacheRequests.length, 34, 'The oldest set is evicted after 32 cached sets');
+assert.equal(sharedCardAssetOrigin('localhost'), '');
+assert.equal(sharedCardAssetOrigin('127.0.0.1'), '');
+assert.equal(sharedCardAssetOrigin('victoryroad.app'), 'https://victoryroad-lovat.vercel.app');
+const productionUrls: string[] = [];
+const production = createSharedCardResolver((async (url: string) => {
+  productionUrls.push(url);
+  return new Response(JSON.stringify([
+    { id: 'me5_39', name: 'Dhelmise', imageDataUrl: '/tracker-assets/card-art/me5_39.png' },
+    { id: 'me5_34', name: 'Banette', imageDataUrl: 'https://images.pokemontcg.io/me5/34.png' },
+  ]));
+}) as typeof fetch, sharedCardAssetOrigin('victoryroad.app'));
+const productionCards = await production(['me5_39', 'me5_34']);
+assert.deepEqual(productionUrls, ['https://victoryroad-lovat.vercel.app/tracker-assets/card-catalog/me5.json']);
+assert.equal(productionCards[0].imageDataUrl, 'https://victoryroad-lovat.vercel.app/tracker-assets/card-art/me5_39.png');
+assert.equal(productionCards[1].imageDataUrl, 'https://images.pokemontcg.io/me5/34.png');
 console.log('shared-card-sources: set batching, exact identities, bounded cache, retry and invalid input passed');
