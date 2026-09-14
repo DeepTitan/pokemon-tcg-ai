@@ -30,7 +30,8 @@ assert.equal(brokenLocalImage.src, CARD_BACK_ART, 'the card back remains the fin
 
 console.log('card art tests passed');
 
-assert.equal(Object.keys(VERIFIED_CARD_ART).length, 22);
+assert.equal(Object.keys(VERIFIED_CARD_ART).length, 23);
+assert.equal(publicCardArtUrl('svbsp_166'), 'https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/SVP/SVP_166_R_EN_LG.png');
 assert.equal(publicCardArtUrl('me3_21'), 'https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/POR/POR_021_R_EN_LG.png');
 assert.equal(publicCardArtUrl('ME2-5_214_ph'), publicCardArtUrl('me2-5_214'));
 assert.equal(cardArtUsesAlternate('svalt_155'), true);

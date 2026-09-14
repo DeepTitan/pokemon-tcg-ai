@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Resvg } from '@resvg/resvg-js';
 import { originalCardArt } from '../lib/share-catalog.mjs';
+import { framedCardArt, measureCardArt } from '../lib/share-card-art.mjs';
 import {
   loadSharedSocialCard,
   requestShareId,
@@ -39,15 +40,18 @@ function dataUri(bytes, contentType) {
 
 export async function embeddedCardArt(url, cardId) {
   const bundled = originalCardArt(cardId);
-  if (bundled) return bundled;
-  if (!url) return cardBackImage;
+  if (bundled) {
+    try { return { ...bundled, bounds: measureCardArt(bundled) }; } catch { /* Try the public artwork next. */ }
+  }
+  if (!url) return { ...cardBackImage, bounds: measureCardArt(cardBackImage) };
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(6_000) });
     const contentType = response.headers.get('content-type')?.split(';')[0];
-    if (!response.ok || !contentType?.startsWith('image/')) return cardBackImage;
-    return { bytes: await response.arrayBuffer(), contentType };
+    if (!response.ok || !['image/png', 'image/jpeg', 'image/webp'].includes(contentType)) throw new Error('Unavailable card artwork');
+    const image = { bytes: await response.arrayBuffer(), contentType };
+    return { ...image, bounds: measureCardArt(image) };
   } catch {
-    return cardBackImage;
+    return { ...cardBackImage, bounds: measureCardArt(cardBackImage) };
   }
 }
 
@@ -71,7 +75,7 @@ function playerColumn(pokemon, player, rating, centerX) {
   const image = pokemon.embeddedImage || cardBackImage;
   return `
     <text x="${centerX - 144}" y="107" fill="${ink}" font-size="${name.size}" font-weight="900"><tspan>${escapeXml(name.text)}</tspan>${rating != null ? `<tspan dx="14" fill="${muted}" font-size="29" font-weight="800">${escapeXml(rating)}</tspan>` : ''}</text>
-    <image href="${dataUri(image.bytes, image.contentType)}" x="${centerX - 144}" y="124" width="288" height="402" preserveAspectRatio="xMidYMid meet" filter="url(#cardShadow)"/>
+    <g filter="url(#cardShadow)">${framedCardArt(image, centerX)}</g>
     <text x="${centerX}" y="557" text-anchor="middle" fill="${ink}" font-size="${deck.size}" font-weight="900">${escapeXml(deck.text)}</text>`;
 }
 

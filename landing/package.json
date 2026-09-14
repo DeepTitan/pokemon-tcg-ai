@@ -4,6 +4,7 @@
   "scripts": {
     "build": "npm --prefix .. ci && node ../scripts/build-share-runtime.mjs && npm --prefix .. run tracker:build && node build.mjs",
     "pretest": "node ../scripts/build-share-runtime.mjs",
+    "audit:art": "node ../scripts/audit-share-card-art.mjs",
     "test": "node --test lib/*.test.mjs"
   },
   "dependencies": {

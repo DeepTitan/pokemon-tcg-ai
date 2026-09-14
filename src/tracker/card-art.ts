@@ -18,6 +18,7 @@ export const VERIFIED_CARD_ART: Readonly<Record<string, { printing: string; alte
   'me2-5_162': { printing: 'ASC/162' },
   mebsp_31: { printing: 'MEP/31' },
   svbsp_115: { printing: 'SVP/115' },
+  svbsp_166: { printing: 'SVP/166' },
   'sm11-5_64': { printing: 'HIF/64' },
   svbsp_203: { printing: 'SVP/203' },
   'me2-5_207': { printing: 'ASC/207' },

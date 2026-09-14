@@ -55,9 +55,12 @@ test('newer Meowth artwork comes from its original bundled image, not a missing 
   assert.ok(original);
   assert.equal(original.bytes.subarray(1, 4).toString(), 'PNG');
   const resolved = await embeddedCardArt('https://invalid.example/not-used.png', 'me3_62');
-  assert.deepEqual(resolved, original);
+  assert.deepEqual(resolved.bytes, original.bytes);
+  assert.equal(resolved.layout, 'ptcgl-square');
+  assert.deepEqual(resolved.bounds, { x: 37, y: 0, width: 182, height: 256, method: 'ptcgl-frame' });
   assert.equal(originalCardArt('../../secret'), undefined);
   assert.equal(originalCardArt(undefined), undefined);
+  assert.deepEqual(originalCardArt('me2-5_127_ph2'), originalCardArt('me2-5_127'), 'Numbered foil variants reuse the same printing');
 });
 
 test('only small derived models are cached; concurrent requests coalesce and failures retry', async () => {

@@ -21,8 +21,8 @@ export function shareCardCatalog(decklists = []) {
 
 export function originalCardArt(cardId) {
   if (typeof cardId !== 'string') return undefined;
-  const id = [cardId.toLowerCase(), cardId.toLowerCase().replace(/_ph$/, '')].find(value => originalArtIds.has(value));
+  const id = [cardId.toLowerCase(), cardId.toLowerCase().replace(/_ph\d*$/, '')].find(value => originalArtIds.has(value));
   // Only bundled manifest entries can be read; never trust an incoming path.
   if (!id) return undefined;
-  return { bytes: readFileSync(new URL(`../assets/share-card-art/${id}.png`, import.meta.url)), contentType: 'image/png' };
+  return { bytes: readFileSync(new URL(`../assets/share-card-art/${id}.png`, import.meta.url)), contentType: 'image/png', layout: 'ptcgl-square' };
 }

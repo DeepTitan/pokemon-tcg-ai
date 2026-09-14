@@ -1,11 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 
 const landingDirectory = path.dirname(fileURLToPath(import.meta.url));
 const repositoryDirectory = path.dirname(landingDirectory);
 const outputDirectory = path.join(landingDirectory, 'dist');
 const trackerBuildDirectory = path.join(repositoryDirectory, 'dist', 'ui');
+
+// A new texture format must pass framing checks before it reaches production.
+execFileSync(process.execPath, ['--test', path.join(landingDirectory, 'lib/share-card-art.test.mjs')], { stdio: 'inherit' });
 
 fs.rmSync(outputDirectory, { recursive: true, force: true });
 fs.mkdirSync(outputDirectory, { recursive: true });

@@ -31,10 +31,10 @@ test('head-to-head thumbnail preserves the selected header and inline Elo withou
 
 test('share metadata uses the updated thumbnail without changing the persistent match URL', () => {
   const meta = socialMeta(sample(), 'existing-share-id', 'https://victoryroad.app');
-  assert.equal((meta.match(/https:\/\/victoryroad-lovat\.vercel\.app\/api\/share-card\?shareId=existing-share-id&amp;v=7/g) || []).length, 3);
+  assert.equal((meta.match(/https:\/\/victoryroad-lovat\.vercel\.app\/api\/share-card\?shareId=existing-share-id&amp;v=8/g) || []).length, 3);
   assert.match(meta, /property="og:url" content="https:\/\/victoryroad\.app\/trace\/existing-share-id"/);
   assert.match(meta, /rel="canonical" href="https:\/\/victoryroad\.app\/trace\/existing-share-id"/);
-  assert.doesNotMatch(meta, /v=[456]|ratings, duration/);
+  assert.doesNotMatch(meta, /v=[4567]|ratings, duration/);
 });
 
 test('preview metadata precedes large inline styles and preserves charset, privacy and canonical URL', () => {

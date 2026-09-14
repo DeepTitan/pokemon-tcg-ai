@@ -30,7 +30,7 @@ export function socialMeta(card, shareId, origin) {
   const title = escapeHtml(`${card.title} — Trace match replay`);
   const description = escapeHtml(card.description);
   const url = `${origin}/trace/${encodeURIComponent(shareId)}`;
-  const image = `${IMAGE_ORIGIN}/api/share-card?shareId=${encodeURIComponent(shareId)}&v=7`;
+  const image = `${IMAGE_ORIGIN}/api/share-card?shareId=${encodeURIComponent(shareId)}&v=8`;
   return [
     `<meta property="og:title" content="${title}" />`,
     `<meta property="og:description" content="${description}" />`,
