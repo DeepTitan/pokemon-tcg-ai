@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { cardInfoToEngineCard, cardSourceIdFromReviewCard, hiddenReviewCard } from '../card-adapter.js';
 import { derivePrizeKnowledge } from '../prize-knowledge-model.js';
 import type { Card, PlayerState, PokemonInPlay } from '../../engine/types.js';
-import type { CapturedDecklist, ReviewCardVisibility, TrackedPlayerBoard } from '../types.js';
+import type { CapturedDecklist, ReviewCardVisibility, TrackedPlayerBoard, TrackedPokemon } from '../types.js';
 
 const makeCard = (id: string, source = 'test_a') => cardInfoToEngineCard(undefined, id, source, source);
 const deck: CapturedDecklist = { playerId: 'local', playerName: 'You', source: 'match-start', total: 60,
@@ -93,4 +94,56 @@ const allRevealed = fixture();
 allRevealed.player.prizes = Array.from({length:6},(_,i)=>makeCard(`prize-${i}`, i < 2 ? 'test_a' : 'test_b'));
 allRevealed.player.prizes.forEach(c => { allRevealed.visibility[c.id] = 'known'; });
 assert.equal(derivePrizeKnowledge({...allRevealed,deck:undefined}).kind, 'revealed', 'Keep directly observed identities independent of inference');
+
+// Regression: action 127 vs pau1ek. The stored canonical chain lost Dreepy
+// after Drakloak evolved, while the public board retained both lower stages.
+const evolved = fixture();
+const [base, middle, final] = evolved.player.deck.splice(0, 3);
+evolved.board.deckCount! -= 3;
+evolved.player.active = { card: final, attachedEnergy: [], attachedTools: [],
+  previousStage: { card: middle, attachedEnergy: [], attachedTools: [] } } as unknown as PokemonInPlay;
+delete evolved.visibility[base.id]; // Omitted canonical ancestry also omitted visibility.
+const tracked = (card: Card) => ({ id: card.id, cardId: cardSourceIdFromReviewCard(card)!, name: card.name });
+evolved.board.active = { ...tracked(final), evolutionCards: [tracked(middle), tracked(base)] } as TrackedPokemon;
+const evolvedUntouched = JSON.stringify(evolved);
+for (const frame of [input, evolved, input, evolved]) {
+  assert.deepEqual(ids(derivePrizeKnowledge(frame).cards), ids(derivePrizeKnowledge(input).cards), 'Forward/backward evolution scrubbing preserves prizes');
+}
+assert.equal(JSON.stringify(evolved), evolvedUntouched, 'Do not rewrite archived state or visibility');
+const resolving = fixture();
+const pending = resolving.player.hand.pop()!;
+resolving.board.handCount--;
+assert.equal(derivePrizeKnowledge(resolving).kind, 'unavailable');
+assert.deepEqual(ids(derivePrizeKnowledge({ ...resolving, pendingCards: [pending] }).cards), ids(derivePrizeKnowledge(input).cards), 'Count a Trainer in the pending zone while its effect resolves');
+resolving.player.discard.push(pending);
+assert.deepEqual(ids(derivePrizeKnowledge({ ...resolving, pendingCards: [] }).cards), ids(derivePrizeKnowledge(input).cards), 'Resolving Trainer moves to discard without changing prize knowledge');
+const privatePending = fixture();
+const hiddenPending = privatePending.player.hand.pop()!;
+privatePending.board.handCount--;
+privatePending.visibility[hiddenPending.id] = 'hidden';
+assert.equal(derivePrizeKnowledge({ ...privatePending, pendingCards: [hiddenPending] }).kind, 'unavailable', 'Pending does not imply revealed');
+const repaired = structuredClone(evolved);
+repaired.player.active!.previousStage!.previousStage = { card: base, attachedEnergy: [], attachedTools: [] } as unknown as PokemonInPlay;
+repaired.visibility[base.id] = 'known';
+assert.deepEqual(ids(derivePrizeKnowledge(repaired).cards), ids(derivePrizeKnowledge(input).cards), 'Complete canonical and flat stacks count each card once');
+for (const change of [
+  (x: typeof evolved) => { x.board.active!.evolutionCards![1].cardId = undefined; },
+  x => { x.board.active!.evolutionCards![0].cardId = 'test_b'; },
+  x => { x.board.active!.id = 'unrelated-pokemon'; },
+  x => { x.board.active!.cardId = 'test_b'; },
+  x => { x.player.deck[0] = hiddenReviewCard(x.player.deck[0].id); },
+  x => { x.local = false; },
+]) {
+  const invalid = structuredClone(evolved); change(invalid);
+  assert.equal(derivePrizeKnowledge(invalid).kind, 'unavailable', 'Reject incomplete, conflicting or unrelated stacks; preserve hidden-zone safeguards');
+}
 console.log('prize-knowledge: complete accounting, duplicates, attachments, evolution, stadium ownership, partial searches, prizes taken, swaps, shuffle, privacy and rewind verified');
+
+const historical = JSON.parse(readFileSync(new URL('./fixtures/prize-evolution-proof.json', import.meta.url), 'utf8'));
+for (const i of [0, 1, 2, 1, 0]) {
+  const frame = historical.frames[i];
+  const actual = derivePrizeKnowledge({ ...frame, deck: historical.deck, local: true,
+    catalog: new Map(), stadiumOwner: 'pau1ek' });
+  assert.equal(actual.kind, 'inferred', `Recorded pau1ek action ${frame.index} must retain prize knowledge`);
+  assert.deepEqual(ids(actual.cards), ['me1_131', 'sv6_129'], 'Recorded prizes remain Ultra Ball and Drakloak across the evolution');
+}

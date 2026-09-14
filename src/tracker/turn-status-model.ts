@@ -120,12 +120,21 @@ export function deriveReviewTurnStatus(
     itemLocked: false,
   }])) as Record<string, PlayerTurnStatus>;
 
+  // Using either player's Stadium does not transfer ownership. Match the
+  // physical card when available and only accept an actual placement event.
+  const stadium = canonical.state.stadium;
   const latestStadium = stadiumName
-    ? latestEvent(review, selectedIndex, (event) => stadiumEvent(event, stadiumName))
+    ? latestEvent(review, selectedIndex, (event) => {
+      if (!stadiumEvent(event, stadiumName)) return false;
+      if (event.sourceEntityId && stadium?.id && event.sourceEntityId !== stadium.id) return false;
+      if (!event.sourceEntityId && !event.text.toLowerCase().includes(stadiumName.toLowerCase())) return false;
+      if (event.facts?.some(fact => fact.label === 'Action' && /^use$/i.test(fact.value))) return false;
+      return /\b(?:played|placed|put)\b/i.test(event.text) && !/\b(?:used|activated)\b/i.test(event.text);
+    })
     : undefined;
-  const stadiumOwner = latestStadium
+  const stadiumOwner = canonical.stadiumOwner || (latestStadium
     ? actorForEvent(latestStadium.event, review.players)
-    : undefined;
+    : undefined);
 
   const latestItchyPollen = latestEvent(review, selectedIndex, (event) => /itchy pollen/i.test(event.text));
   const mappedLocks = new Set<string>();

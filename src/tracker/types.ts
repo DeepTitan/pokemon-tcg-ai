@@ -173,6 +173,10 @@ export interface ReviewAppliedEffect {
 
 export interface CanonicalReviewState {
   state: GameState;
+  /** Physical cards temporarily outside regular zones while an effect resolves. */
+  pendingCards?: [Card[], Card[]];
+  /** Owner of the actual Stadium entity, not the player activating its effect. */
+  stadiumOwner?: string;
   playerNames: [string, string];
   localPlayerIndex: 0 | 1;
   visibility: Record<string, ReviewCardVisibility>;

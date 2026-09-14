@@ -52,4 +52,23 @@ assert.equal(afterLock.players.Blair.itemLocked, false);
 const stadiumPlay = deriveReviewTurnStatus(review, 0, { ...canonical, state: { ...gameState, currentPlayer: 0 } });
 assert.equal(stadiumPlay.players.Alex.stadiumUsed, true);
 
+const sharedStadiumTurns = [
+  turn(0, 'Alex', 'Alex: played Artazon', 'stadium', 'Artazon'),
+  turn(1, 'Blair', 'Blair: used Artazon', 'stadium', 'Artazon'),
+  turn(2, 'Blair', 'Blair: played Artazon', 'stadium', 'Artazon'),
+];
+sharedStadiumTurns[2].events[0].facts = [{ id: 'use', kind: 'resolution', label: 'Action', tone: 'neutral', value: 'Use' }];
+const sharedStadiumReview = { ...review, turns: sharedStadiumTurns };
+for (const index of [0, 1, 2, 1, 0]) {
+  assert.equal(deriveReviewTurnStatus(sharedStadiumReview, index, canonical).stadiumOwner, 'Alex', 'Activation never transfers ownership, including legacy played labels and rewinds');
+}
+sharedStadiumTurns.push(turn(3, 'Blair', 'Blair: played Artazon', 'stadium', 'Artazon'));
+sharedStadiumTurns[0].events[0].sourceEntityId = 'old-stadium';
+sharedStadiumTurns[3].events[0].sourceEntityId = 'new-stadium';
+assert.equal(deriveReviewTurnStatus(sharedStadiumReview, 3, { ...canonical,
+  state: { ...gameState, stadium: { ...gameState.stadium!, id: 'new-stadium' } } }).stadiumOwner, 'Blair', 'A replacement belongs to the player who placed that physical card');
+assert.equal(deriveReviewTurnStatus(sharedStadiumReview, 2, { ...canonical,
+  state: { ...gameState, stadium: { ...gameState.stadium!, id: 'unrecorded-stadium' } } }).stadiumOwner, undefined, 'Do not reuse an owner from a different physical Stadium');
+assert.equal(deriveReviewTurnStatus(sharedStadiumReview, 2, { ...canonical, stadiumOwner: 'Blair' }).stadiumOwner, 'Blair', 'Captured ownership outranks incomplete event text');
+
 console.log('turn status model tests passed');

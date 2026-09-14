@@ -441,39 +441,49 @@ function inPlayPokemon(
   entity: Entity,
   entities: Map<string, Entity>,
   catalog: ReadonlyMap<string, CardInfo>,
-  seen = new Set<string>(),
 ): PokemonInPlay {
-  const id = entityId(entity) || '';
-  const nextSeen = new Set(seen);
-  nextSeen.add(id);
-  const card = pokemonCard(entity, catalog);
-  const damageCounters = number(entity, 'damageCounters', 'DamageCounters') || 0;
-  const energy = attachedEntityIds(entity, entities, 'attachedEnergy', 'AttachedEnergy')
-    .map((attachedId) => entities.get(attachedId))
-    .filter((candidate): candidate is Entity => Boolean(candidate))
-    .map((candidate) => reviewCard(candidate, catalog, true))
-    .filter((candidate): candidate is EnergyCard => candidate.cardType === CardType.Energy);
-  const tools = attachedEntityIds(entity, entities, 'attachedTools', 'AttachedTools')
-    .map((attachedId) => entities.get(attachedId))
-    .filter((candidate): candidate is Entity => Boolean(candidate))
-    .map((candidate) => reviewCard(candidate, catalog, true))
-    .filter((candidate): candidate is TrainerCard => candidate.cardType === CardType.Trainer);
-  const previousEntity = attachedEntityIds(entity, entities, 'attachedPokemon', 'AttachedPokemon')
-    .map((attachedId) => entities.get(attachedId))
-    .find((candidate) => candidate && !nextSeen.has(entityId(candidate) || ''));
-  return {
-    card,
-    currentHp: Math.max(0, card.hp - damageCounters * 10),
-    attachedEnergy: energy,
-    statusConditions: statusConditions(entity),
-    damageCounters,
-    attachedTools: tools,
-    isEvolved: Boolean(previousEntity),
-    turnPlayed: 0,
-    previousStage: previousEntity ? inPlayPokemon(previousEntity, entities, catalog, nextSeen) : undefined,
-    damageShields: [],
-    cannotRetreat: false,
+  // Live can attach both previous stages directly to the final evolution.
+  // Traverse every entry (and legacy nested stacks), not just the first one.
+  const stack: Entity[] = [];
+  const seen = new Set<string>();
+  const collect = (candidate: Entity): void => {
+    const id = entityId(candidate) || '';
+    if (seen.has(id)) return;
+    seen.add(id);
+    stack.push(candidate);
+    for (const attachedId of attachedEntityIds(candidate, entities, 'attachedPokemon', 'AttachedPokemon')) {
+      const attached = entities.get(attachedId);
+      if (attached) collect(attached);
+    }
   };
+  collect(entity);
+  return stack.reduceRight<PokemonInPlay | undefined>((previousStage, entity) => {
+    const card = pokemonCard(entity, catalog);
+    const damageCounters = number(entity, 'damageCounters', 'DamageCounters') || 0;
+    const energy = attachedEntityIds(entity, entities, 'attachedEnergy', 'AttachedEnergy')
+      .map((attachedId) => entities.get(attachedId))
+      .filter((candidate): candidate is Entity => Boolean(candidate))
+      .map((candidate) => reviewCard(candidate, catalog, true))
+      .filter((candidate): candidate is EnergyCard => candidate.cardType === CardType.Energy);
+    const tools = attachedEntityIds(entity, entities, 'attachedTools', 'AttachedTools')
+      .map((attachedId) => entities.get(attachedId))
+      .filter((candidate): candidate is Entity => Boolean(candidate))
+      .map((candidate) => reviewCard(candidate, catalog, true))
+      .filter((candidate): candidate is TrainerCard => candidate.cardType === CardType.Trainer);
+    return {
+      card,
+      currentHp: Math.max(0, card.hp - damageCounters * 10),
+      attachedEnergy: energy,
+      statusConditions: statusConditions(entity),
+      damageCounters,
+      attachedTools: tools,
+      isEvolved: Boolean(previousStage),
+      turnPlayed: 0,
+      previousStage,
+      damageShields: [],
+      cannotRetreat: false,
+    };
+  }, undefined)!;
 }
 
 function emptyPlayerState(): PlayerState {
@@ -682,6 +692,8 @@ function buildCanonicalState(
   const visibility: Record<string, ReviewCardVisibility> = {};
   const effectsByEntity: Record<string, ReviewAppliedEffect[]> = {};
   let stadium: TrainerCard | null = null;
+  let stadiumOwner: string | undefined;
+  const pendingCards: [Card[], Card[]] = [[], []];
 
   const addZoneCard = (side: 1 | 2, zone: keyof Pick<PlayerState, 'deck' | 'hand' | 'prizes' | 'discard' | 'lostZone'>, entity: Entity, forceHidden = false): void => {
     const card = reviewCard(entity, catalog);
@@ -700,9 +712,20 @@ function buildCanonicalState(
         ? converted as TrainerCard
         : { id: converted.id, name: converted.name, imageUrl: converted.imageUrl, cardNumber: converted.cardNumber, cardType: CardType.Trainer, trainerType: TrainerType.Stadium };
       visibility[stadium.id] = 'known';
+      const side = ownerNumber(entity, {
+        1: text(playerEntities[1], 'ownerPlayerId', 'playerId', 'accountId') || playerIds[1],
+        2: text(playerEntities[2], 'ownerPlayerId', 'playerId', 'accountId') || playerIds[2],
+      });
+      stadiumOwner = side ? names[side] : undefined;
       continue;
     }
     const side = ownerNumber(entity, playerIds);
+    if (side && /(?:VisiblePending|HiddenPending)$/.test(pos)) {
+      const card = reviewCard(entity, catalog);
+      pendingCards[side - 1].push(card);
+      visibility[card.id] = cardSourceId(entity) && (side === localSide || pos.endsWith('VisiblePending')) ? 'known' : 'hidden';
+      continue;
+    }
     const isCardZone = /(?:Deck|Hand|Prize|Discard|LostZone|Active|Bench)$/.test(pos);
     if (!side || !isCardZone) continue;
     if (pos.endsWith('Deck')) addZoneCard(side, 'deck', entity);
@@ -758,6 +781,8 @@ function buildCanonicalState(
   const clonedSelections = selections.map(cloneSelection);
   return {
     state,
+    pendingCards,
+    stadiumOwner,
     playerNames: [names[1], names[2]],
     localPlayerIndex: (localSide - 1) as 0 | 1,
     visibility,
@@ -1682,6 +1707,18 @@ export class LiveReviewAssembler {
         revealedByDeck.set(deckPosition, revealedIds);
       }
       for (const [deckPosition, revealedIds] of revealedByDeck) {
+        // Mulligans expose identities that may later be dealt face-down into
+        // prizes. A complete search is an authoritative census of the deck,
+        // so obsolete deck locations must not survive alongside that census.
+        // A restricted/top-N search is not enough evidence to remove anything.
+        const exactCount = assembly.zoneCounts.get(deckPosition);
+        if (assembly.exactDeckPositions.has(deckPosition) && exactCount === revealedIds.size) {
+          for (const [id, entity] of assembly.entities) {
+            if (number(entity, 'currentGamePos', 'currentPos') === deckPosition && !revealedIds.has(id)) {
+              assembly.entities.delete(id);
+            }
+          }
+        }
         // Some searches expose a strict subset, so never shrink a larger
         // authoritative zone count. A full-deck search, however, repairs a
         // partial capture by establishing the missing minimum cardinality.

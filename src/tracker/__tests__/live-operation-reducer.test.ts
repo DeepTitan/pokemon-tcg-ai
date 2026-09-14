@@ -81,6 +81,69 @@ assert.deepEqual(review.turns[1].canonical?.state.players[0].active?.attachedEne
 assert.equal(review.turns[1].snapshot.players.Opponent.bench[0]?.name, 'Munkidori');
 assert.match(review.turns[1].events[0].text, /placed Dragapult ex/);
 
+for (const flat of [true, false]) {
+  const stacked = new LiveReviewAssembler(catalog).ingest({ ...operation, operationId: `stack-${flat}`,
+    operation: { ...operation.operation, updatedEntities: [
+      ...(operation.operation as any).updatedEntities.filter((e: any) => !['card-active', 'attached-energy'].includes(e.entityID)),
+      { entityID: 'card-active', ownerPlayerId: 'player-1', currentGamePos: 15, mainFragmentCard: true,
+        cardSourceID: 'sv-test-1', attachedPokemon: flat ? ['stage-one', 'base', 'base'] : ['stage-one'] },
+      { entityID: 'stage-one', ownerPlayerId: 'player-1', currentGamePos: 15, currentParentEntityID: 'card-active',
+        cardSourceID: 'sv-test-2', attachedPokemon: ['base'] },
+      { entityID: 'base', ownerPlayerId: 'player-1', currentGamePos: 15,
+        currentParentEntityID: flat ? 'card-active' : 'stage-one', cardSourceID: 'sv-dreepy' },
+    ] } });
+  const state = stacked!.turns.at(-1)!.canonical!;
+  const top = state.state.players[0].active!;
+  assert.equal(top.previousStage?.card.id, 'stage-one');
+  assert.equal(top.previousStage?.previousStage?.card.id, 'base', `Preserve basic stage in ${flat ? 'flat' : 'nested'} evolution stacks`);
+  assert.equal(top.previousStage?.previousStage?.previousStage, undefined, 'Do not duplicate physical evolution cards');
+  assert.equal(state.visibility.base, 'known', 'Full public evolution ancestry stays visible');
+}
+
+const pendingReview = new LiveReviewAssembler(catalog).ingest({ ...operation, operationId: 'pending-trainer',
+  operation: { ...operation.operation, updatedEntities: [
+    ...(operation.operation as any).updatedEntities,
+    { entityID: 'resolving-trainer', ownerPlayerId: 'player-1', currentGamePos: 5, cardSourceID: 'sv-hammer' },
+    { entityID: 'private-pending', ownerPlayerId: 'player-2', currentGamePos: 22, cardSourceID: 'sv-stamp' },
+    { entityID: 'opponent-stadium', ownerPlayerId: 'player-2', currentGamePos: 2, cardSourceID: 'sv-stadium' },
+  ] } });
+const pendingState = pendingReview!.turns.at(-1)!.canonical!;
+assert.deepEqual(pendingState.pendingCards![0].map(c => c.id), ['resolving-trainer']);
+assert.equal(pendingState.visibility['resolving-trainer'], 'known');
+assert.equal(pendingState.visibility['private-pending'], 'hidden');
+assert.equal(pendingState.stadiumOwner, 'Opponent', 'Neutral Stadium zone retains captured entity ownership');
+assert.ok(!pendingState.state.players[0].hand.some(c => c.id === 'resolving-trainer'), 'Pending is not hand or discard');
+
+for (const [count, incomplete] of [[46, false], [5, false], [46, true]] as const) {
+  const searchAssembler = new LiveReviewAssembler(catalog);
+  const seed = searchAssembler.ingest({ ...operation, operationId: 'mulligan-seed', operation: {
+    matchStarted: true, operationNumber: 1, updatedEntities: [
+      { entityID: 'p1', ownerPlayerId: 'player-1', currentGamePos: 3, userName: 'Isaiah' },
+      { entityID: 'p2', ownerPlayerId: 'player-2', currentGamePos: 4, userName: 'Opponent' },
+      { entityID: 'active', ownerPlayerId: 'player-1', currentGamePos: 15, cardSourceID: 'sv-dreepy' },
+      ...Array.from({length: 7}, (_, i) => ({ entityID: `hand-${i}`, currentGamePos: 11, cardSourceID: 'sv-energy' })),
+      ...Array.from({length: 6}, (_, i) => ({ entityID: `hidden-prize-${i}`, currentGamePos: 19 })),
+      { entityID: 'old-mulligan-card', ownerPlayerId: 'player-1', currentGamePos: 7, cardSourceID: 'sv-hammer' },
+    ],
+  } });
+  const prior = JSON.stringify(seed!.turns);
+  const priorLength = seed!.turns.length;
+  const searched = searchAssembler.ingest({ ...operation, operationId: 'mulligan-search', messageIndex: 200,
+    operation: { operationNumber: 2,
+      cardEntities: Array.from({length: count}, (_, i) => ({ entityID: `searched-${i}`, currentGamePos: 7,
+        cardSourceID: incomplete && i === count - 1 ? undefined : 'sv-energy' })),
+      playerSelection: { selectionID: 'full-search', originCardEntityID: 'hand-0', variableSelection: {
+        $type: 'EntitySelection', allOptions: Array.from({length: count}, (_, i) => ({entityID: `searched-${i}`})),
+        allValidOptions: [], totalMinAmount: 0, totalMaxAmount: 1,
+      } },
+    } });
+  const player = searched!.turns.at(-1)!.canonical!.state.players[0];
+  assert.equal(player.deck.some(c => c.id === 'old-mulligan-card'), count !== 46 || incomplete, 'Only a complete, fully identified deck census can clear stale mulligan locations');
+  assert.equal(player.deck.length, 46);
+  assert.ok(player.prizes.every(c => c.name === 'Hidden card'), 'Never assign removed identities to particular prize slots');
+  assert.equal(JSON.stringify(searched!.turns.slice(0, priorLength)), prior, 'Search does not rewrite earlier frames');
+}
+
 const lateCatalogReview = new LiveReviewAssembler(new Map()).ingest({
   ...operation,
   operationId: 'late-catalog-board',
