@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import './shared-card-sources.test.js';
+import './shared-access.test.js';
 import {
   readStoredShareLinks,
   SHARE_LINKS_STORAGE_KEY,

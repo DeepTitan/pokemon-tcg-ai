@@ -16,7 +16,6 @@ import { ArrowDown } from '@phosphor-icons/react/ArrowDown';
 import { ArrowUp } from '@phosphor-icons/react/ArrowUp';
 import { Copy } from '@phosphor-icons/react/Copy';
 import { CircleNotch } from '@phosphor-icons/react/CircleNotch';
-import { LinkSimple } from '@phosphor-icons/react/LinkSimple';
 import { ShareNetwork } from '@phosphor-icons/react/ShareNetwork';
 import type { Card, PlayerState, PokemonInPlay } from '../engine/types.js';
 import { parseBattleLog } from './battle-log-parser.js';
@@ -70,6 +69,8 @@ import './tracker.css';
 import { PlayerDecklist } from './PlayerDecklist.js';
 import { BoardZoomViewport } from './BoardZoomViewport.js';
 import { replayShortcut, replayShortcutFrame } from './replay-shortcuts.js';
+import { SharedAccessRail } from './SharedAccessRail.js';
+import { readSharedAccessOpen, storeSharedAccessOpen } from './shared-access.js';
 
 // Keep the legacy key so the rebrand never strands a user's saved match archive.
 const STORAGE_KEY = 'match-lens/reviews-v1';
@@ -685,6 +686,11 @@ export default function TrackerApp() {
     catch { return true; }
   });
   const [archiveOpen, setArchiveOpen] = useState(() => !sharedMode);
+  const [sharedAccessOpen, setSharedAccessOpen] = useState(() => {
+    if (!sharedMode) return false;
+    try { return readSharedAccessOpen(localStorage, window.innerWidth); }
+    catch { return window.innerWidth >= 1180; }
+  });
   const [timelineOpen, setTimelineOpen] = useState(false);
   const [frameScrubbing, setFrameScrubbing] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -1524,10 +1530,14 @@ export default function TrackerApp() {
   return (
     <div className={`app-shell ${sharedMode ? 'shared-replay' : ''}`}>
       {!sharedMode && <div className="window-drag-region" onMouseDown={beginWindowDrag} aria-hidden="true" />}
-      {sharedMode && <header className="shared-replay-header"><a href="/trace" aria-label="Download Trace"><img src="/tracker-assets/trace-mascot.png" alt="" /><strong>Trace</strong></a><span><LinkSimple size={15} weight="bold" />Shared replay</span><a className="shared-replay-download" href="/trace">Get Trace</a></header>}
 
-      <main className={`workspace ${archiveOpen ? 'archive-open' : 'archive-collapsed'} ${timelineOpen ? 'timeline-open' : 'timeline-collapsed'} ${sharedMode ? 'shared-mode' : ''}`}>
-        {archiveOpen && <aside className="session-rail">
+      <main className={`workspace ${archiveOpen ? 'archive-open' : 'archive-collapsed'} ${timelineOpen ? 'timeline-open' : 'timeline-collapsed'} ${sharedMode ? `shared-mode ${sharedAccessOpen ? 'shared-access-open' : 'shared-access-collapsed'}` : ''}`}>
+        {sharedMode && <SharedAccessRail open={sharedAccessOpen} onToggle={() => {
+          const open = !sharedAccessOpen;
+          setSharedAccessOpen(open);
+          try { storeSharedAccessOpen(localStorage, open); } catch { /* Optional preference. */ }
+        }} />}
+        {!sharedMode && archiveOpen && <aside className="session-rail">
           <div className="archive-heading" onMouseDown={beginWindowDrag}>
             <div className="archive-brand"><span><img src="/tracker-assets/trace-mascot.png" alt="" /></span><div><span className="archive-brand-name"><strong>Trace</strong>{appVersion && <b>v{appVersion}</b>}</span><small>Every turn, in view</small></div><div className={`header-status ${captureStatus.tone}`} title={environment.capture.lastError || undefined}><i /><b>{captureStatus.label}</b></div></div>
             <div className="archive-title"><div><p>{archiveTotal} {archiveTotal === 1 ? 'match' : 'matches'} recorded</p></div><button className="panel-collapse-button" type="button" aria-label="Collapse match archive" aria-expanded="true" title="Collapse match archive" onClick={() => setArchiveOpen(false)}><CaretLeft size={17} weight="bold" /></button></div>
