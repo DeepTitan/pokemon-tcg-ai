@@ -40,7 +40,7 @@ import { cardEffectSummary } from './card-effect-model.js';
 import { attackResolutionForTurn, type AttackResolution } from './attack-resolution-model.js';
 import { damageChangesForTurn, type PokemonDamageChange } from './damage-change-model.js';
 import { positionChangesForTurn, type PokemonPositionChange } from './position-change-model.js';
-import { buildKeyMoments, stepKeyMoment } from './key-moment-navigation.js';
+import { buildKeyMoments } from './key-moment-navigation.js';
 import { turnPassForTurn } from './turn-pass-model.js';
 import { deriveReviewTurnStatus, type PlayerTurnStatus } from './turn-status-model.js';
 import { capturedAtIso, collectCardSourceIds, finalizeReviewForClientExit, matchSummaryFromReview, operationKey, recordingSummaryFromOperation, REDUCER_VERSION } from './match-storage.js';
@@ -68,6 +68,7 @@ import type {
 import './tracker.css';
 import { PlayerDecklist } from './PlayerDecklist.js';
 import { BoardZoomViewport } from './BoardZoomViewport.js';
+import { replayShortcut, replayShortcutFrame } from './replay-shortcuts.js';
 
 // Keep the legacy key so the rebrand never strands a user's saved match archive.
 const STORAGE_KEY = 'match-lens/reviews-v1';
@@ -1329,29 +1330,16 @@ export default function TrackerApp() {
     if (!selectedReview || showSetup || inspector || environment.capture.waitingForMatchEnd) return undefined;
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
       const target = event.target instanceof HTMLElement ? event.target : null;
-      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
-
-      const key = event.key.toLowerCase();
-      const firstFrame = event.shiftKey && key === 'a';
-      const latestFrame = event.shiftKey && key === 'd';
-      const previousFrame = key === 'arrowleft' || key === 'a';
-      const nextFrame = key === 'arrowright' || key === 'd';
-      const previousKeyMoment = key === 'arrowup' || key === 'w';
-      const nextKeyMoment = key === 'arrowdown' || key === 's';
-      if (!previousFrame && !nextFrame && !previousKeyMoment && !nextKeyMoment) return;
+      const replaySlider = target?.matches('.turn-scrubber input[type="range"]');
+      if (!replaySlider && target?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+      const action = replayShortcut(event);
+      if (!action) return;
 
       event.preventDefault();
       setPlaying(false);
       setInspector(null);
-      navigateToFrame((current) => {
-        if (firstFrame) return 0;
-        if (latestFrame) return selectedReview.turns.length - 1;
-        if (previousFrame) return Math.max(0, current - 1);
-        if (nextFrame) return Math.min(selectedReview.turns.length - 1, current + 1);
-        return stepKeyMoment(keyMoments, current, previousKeyMoment ? -1 : 1);
-      });
+      navigateToFrame((current) => replayShortcutFrame(action, current, selectedReview.turns.length, keyMoments));
     };
 
     window.addEventListener('keydown', onKeyDown);
@@ -1571,11 +1559,11 @@ export default function TrackerApp() {
                 {isTauri() && <button className={`share-replay-button ${selectedShareUrl ? 'has-link' : ''}`} type="button" disabled={sharing} aria-label={selectedShareUrl ? 'Copy this match link' : 'Share this match'} title={selectedShareUrl ? 'Copy the existing replay link' : 'Create a link to this replay'} onClick={() => void createShareLink()}>{sharing ? <CircleNotch className="share-spinner" size={16} weight="bold" /> : selectedShareUrl ? <Copy size={16} weight="bold" /> : <ShareNetwork size={16} weight="bold" />}<span>{sharing ? 'Creating' : selectedShareUrl ? 'Copy link' : 'Share'}</span></button>}
                 <button className={`frame-motion-button ${frameAnimations ? 'enabled' : ''}`} type="button" aria-pressed={frameAnimations} aria-label={`Replay animations ${frameAnimations ? 'on' : 'off'}`} title={`Replay animations ${frameAnimations ? 'on' : 'off'} · Click to ${frameAnimations ? 'disable' : 'enable'}`} onClick={toggleFrameAnimations}><Sparkle size={18} weight="regular" /></button>
                 <span className="transport-divider" aria-hidden="true" />
-                <button type="button" onClick={() => navigateToFrame(0)} disabled={turnIndex === 0} aria-label="First frame" aria-keyshortcuts="Shift+A" title="First frame · Shift+A"><SkipBack size={18} weight="regular" /></button>
+                <button type="button" onClick={() => navigateToFrame(0)} disabled={turnIndex === 0} aria-label="First frame" aria-keyshortcuts="Shift+A Shift+ArrowLeft" title="First frame · Shift+A or Shift+←"><SkipBack size={18} weight="regular" /></button>
                 <button type="button" onClick={() => navigateToFrame((value) => Math.max(0, value - 1))} disabled={turnIndex === 0} aria-label="Previous frame" aria-keyshortcuts="ArrowLeft A" title="Previous frame · A or ←"><CaretLeft size={18} weight="regular" /></button>
                 <button className="play-button" type="button" onClick={() => { if (!playing && turnIndex >= selectedReview.turns.length - 1) navigateToFrame(0); setPlaying((value) => !value); }} aria-label={playing ? 'Pause replay' : 'Play replay'} title={playing ? 'Pause replay' : 'Play replay'}>{playing ? <Pause size={19} weight="fill" /> : <Play className="play-glyph" size={19} weight="fill" />}</button>
                 <button type="button" onClick={() => navigateToFrame((value) => Math.min(selectedReview.turns.length - 1, value + 1))} disabled={turnIndex >= selectedReview.turns.length - 1} aria-label="Next frame" aria-keyshortcuts="ArrowRight D" title="Next frame · D or →"><CaretRight size={18} weight="regular" /></button>
-                <button type="button" onClick={() => navigateToFrame(selectedReview.turns.length - 1)} disabled={turnIndex >= selectedReview.turns.length - 1} aria-label="Latest frame" aria-keyshortcuts="Shift+D" title="Latest frame · Shift+D"><SkipForward size={18} weight="regular" /></button>
+                <button type="button" onClick={() => navigateToFrame(selectedReview.turns.length - 1)} disabled={turnIndex >= selectedReview.turns.length - 1} aria-label="Latest frame" aria-keyshortcuts="Shift+D Shift+ArrowRight" title="Latest frame · Shift+D or Shift+→"><SkipForward size={18} weight="regular" /></button>
               </div>
             </div>
           </> : sharedMode ? <div className="welcome-state shared-replay-error"><img src="/tracker-assets/trace-mascot.png" alt="" /><span>Shared replay</span><h2>This match could not be opened.</h2><p>{error || 'The link may be incomplete or no longer available.'}</p><a href="/trace">Learn about Trace</a></div> : selectedSummary?.recording ? <div className="welcome-state live-capture-state"><WifiHigh size={58} weight="duotone" /><span>Game detected</span><h2>Capturing this match.</h2><p>Trace registered the game immediately. The reconstructed board will appear as soon as the opening state arrives.</p><small>{Math.max(selectedSummary.operationCount, liveOperations.length)} exact operation{Math.max(selectedSummary.operationCount, liveOperations.length) === 1 ? '' : 's'} safely stored</small></div> : <div className="welcome-state"><img src="/tracker-assets/trace-mascot.png" alt="Trace's furry archivist reading a field guide" /><span>Ready when you are</span><h2>See the whole match.</h2><p>Trace captures exact live operations and rebuilds every turn automatically—no OCR, screenshots, or manual imports.</p><div><button className="primary" type="button" disabled={busy} onClick={() => void changeTracking()}>{tracking ? 'Automatic capture is on' : 'Start automatic capture'}</button><button type="button" onClick={() => importLog(DEMO_BATTLE_LOG)}>Explore a sample</button></div>{liveOperations.length > 0 && <small>{liveOperations.length} exact operations decoded</small>}</div>}

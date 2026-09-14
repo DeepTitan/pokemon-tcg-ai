@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { buildKeyMoments, keyMomentReasons, stepKeyMoment } from '../key-moment-navigation.js';
+import { replayShortcut, replayShortcutFrame } from '../replay-shortcuts.js';
 import type { CanonicalReviewState, MatchReview, TrackerEventKind, TrackedTurn } from '../types.js';
 
 const canonical = (currentPlayer: 0 | 1): CanonicalReviewState => ({
@@ -80,3 +81,25 @@ assert.equal(stepKeyMoment(moments, 0, -1), 0, 'up before the first moment never
 assert.equal(stepKeyMoment([], 6, 1), 6, 'matches without moments leave the current frame unchanged');
 
 console.log('key-moment-navigation: attacks, damage, knockouts, Prizes, results, and directional edges');
+
+const keyEvent = (key: string, shiftKey = false) => ({ key, shiftKey, metaKey: false, ctrlKey: false, altKey: false, isComposing: false, defaultPrevented: false });
+for (const key of ['a', 'A', 'ArrowLeft']) {
+  assert.equal(replayShortcut(keyEvent(key)), 'previous');
+  assert.equal(replayShortcut(keyEvent(key, true)), 'first');
+}
+for (const key of ['d', 'D', 'ArrowRight']) {
+  assert.equal(replayShortcut(keyEvent(key)), 'next');
+  assert.equal(replayShortcut(keyEvent(key, true)), 'latest');
+}
+for (const modifier of ['metaKey', 'ctrlKey', 'altKey', 'isComposing', 'defaultPrevented']) {
+  assert.equal(replayShortcut({ ...keyEvent('ArrowLeft', true), [modifier]: true }), null);
+}
+for (const [key, action] of [['ArrowUp', 'previous-moment'], ['w', 'previous-moment'], ['ArrowDown', 'next-moment'], ['s', 'next-moment']] as const) {
+  assert.equal(replayShortcut(keyEvent(key)), action);
+}
+assert.equal(replayShortcutFrame('first', 129, 130, moments), 0);
+assert.equal(replayShortcutFrame('latest', 0, 130, moments), 129);
+assert.equal(replayShortcutFrame('previous', 0, 130, moments), 0);
+assert.equal(replayShortcutFrame('next', 129, 130, moments), 129);
+assert.equal(replayShortcutFrame('next-moment', 3, 10, moments), 4);
+assert.equal(replayShortcutFrame('latest', 0, 0, []), 0);

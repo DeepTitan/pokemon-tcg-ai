@@ -13,8 +13,12 @@ for (const name of fs.readdirSync(databaseRoot).sort()) {
   const encoded = JSON.parse(fs.readFileSync(path.join(databaseRoot, name), 'utf8'))?.keys?.table?.contentBinary;
   if (typeof encoded !== 'string') continue;
   for (const card of parseTable(Buffer.from(encoded, 'base64'))) {
-    const { id, name, category, hp, cardType, evolvesFrom, actions } = card;
-    cards.set(id.toLowerCase(), { id, name, category, hp, cardType, evolvesFrom, actions });
+    const { id, name, category, hp, cardType, evolvesFrom, actions, setCode, number,
+      format, retreat, weaknessType, weaknessAmount, resistanceType, resistanceAmount, rulesText } = card;
+    // Browser inspectors need the same printed details as the native adapter,
+    // not only the subset used to choose the two social-preview cards.
+    cards.set(id.toLowerCase(), { id, name, category, hp, cardType, evolvesFrom, actions,
+      setCode, number, format, retreat, weaknessType, weaknessAmount, resistanceType, resistanceAmount, rulesText });
   }
 }
 const artIds: string[] = [];

@@ -2,6 +2,8 @@ import { getVersion } from '@tauri-apps/api/app';
 import { convertFileSrc, invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { compactStoredReview } from './review-memory.js';
+import { sharedReplayIdFromPath } from './share-replay.js';
+import { resolveSharedCardSources } from './shared-card-sources.js';
 import type {
   CapturedOperation, CaptureStatus, CardInfo, MatchReview, MatchSummary, StorageStatus, TrackerEnvironment,
 } from './types.js';
@@ -83,6 +85,7 @@ export async function getRecentMatchOperations(): Promise<CapturedOperation[]> {
 export async function resolveCardSources(cardIds: string[]): Promise<CardInfo[]> {
   if (cardIds.length === 0) return [];
   if (!isTauri()) {
+    if (sharedReplayIdFromPath(window.location.pathname)) return resolveSharedCardSources(cardIds);
     try {
       const response = await fetch('/api/turnlume/card-sources', {
         method: 'POST',
