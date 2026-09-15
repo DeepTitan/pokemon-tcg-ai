@@ -6,7 +6,7 @@ import { check } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { getTrackerEnvironment, isTauri, requestCapturePermission, startTracking } from './tauri.js';
 import type { CaptureStatus } from './types.js';
-import { createSetupFlow, initialSetup, setupBusy, setupLabel } from './setup-flow.js';
+import { createSetupFlow, initialSetup, setupBusy, setupLabel, type SetupState } from './setup-flow.js';
 
 const FRAMES = [
   { label: 'Draw a card', Icon: CardsThree }, { label: 'Play a Pokémon', Icon: CardsThree },
@@ -98,6 +98,10 @@ export function CaptureSetupModal({ onClose, onCapture }: { onClose: () => void;
     flow.current = controller;
     return () => controller.dispose();
   }, []);
+  return <CaptureSetupView state={state} onClose={onClose} onAction={() => void flow.current?.run()} />;
+}
+
+export function CaptureSetupView({ state, onClose, onAction }: { state: SetupState; onClose: () => void; onAction: () => void }) {
   const busy = setupBusy(state.phase);
   const dialog = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -113,10 +117,9 @@ export function CaptureSetupModal({ onClose, onCapture }: { onClose: () => void;
     if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog.current)) { event.preventDefault(); last?.focus(); }
     else if (!event.shiftKey && (document.activeElement === last || document.activeElement === dialog.current)) { event.preventDefault(); first?.focus(); }
   }}>
-    <header className="capture-onboarding-header"><img src="/tracker-assets/trace-mascot.png" alt="" /><div><span>Your Trace</span><h2 id="capture-setup-title">Set up Trace</h2></div></header>
+    <header className="capture-onboarding-header"><img src="/tracker-assets/trace-mascot.png" alt="" /><div><span>Your Trace</span><h2 id="capture-setup-title">{state.phase === 'ready' ? 'Trace is ready' : 'Set up Trace'}</h2></div></header>
     <p id="capture-setup-description" className="capture-onboarding-intro" role={state.phase === 'failed' ? 'alert' : 'status'} aria-live="polite">{state.message}</p>
-    <KeyboardGuide />
-    <p className="capture-privacy-disclosure">By connecting, Trace securely sends and stores captured match data, including player names and game actions.</p>
-    <div className="connect-actions setup-single-action"><button className="primary connect-capture-button" type="button" disabled={busy} onClick={() => state.phase === 'ready' ? onClose() : void flow.current?.run()}>{busy && <CircleNotch size={16} className="capture-connect-spinner" />}{setupLabel(state.phase)}</button></div>
+    {state.phase === 'ready' ? <><h3 className="setup-demo-heading">How to review your games</h3><KeyboardGuide /></> : <p className="capture-privacy-disclosure">By connecting, Trace securely sends and stores captured match data, including player names and game actions.</p>}
+    <div className="connect-actions setup-single-action"><button className="primary connect-capture-button" type="button" disabled={busy} onClick={state.phase === 'ready' ? onClose : onAction}>{busy && <CircleNotch size={16} className="capture-connect-spinner" />}{setupLabel(state.phase)}</button></div>
   </section></div>;
 }

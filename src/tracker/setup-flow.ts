@@ -2,7 +2,7 @@ import type { CaptureStatus, TrackerEnvironment } from './types.js';
 
 export type SetupPhase = 'initial' | 'checking' | 'update' | 'updating' | 'restart' | 'restarting' | 'close-live' | 'approval' | 'connecting' | 'failed' | 'ready';
 export interface SetupState { phase: SetupPhase; message: string; }
-export const initialSetup: SetupState = { phase: 'initial', message: 'Set up Trace to record your games.' };
+export const initialSetup: SetupState = { phase: 'initial', message: 'Connect Trace to Pokémon TCG Live to automatically record your matches.' };
 export const setupBusy = (phase: SetupPhase) => ['checking', 'updating', 'restarting', 'approval', 'connecting'].includes(phase);
 export const setupLabel = (phase: SetupPhase) => ({
   initial: 'Set up Trace', checking: 'Checking…', update: 'Update Trace', updating: 'Updating…',

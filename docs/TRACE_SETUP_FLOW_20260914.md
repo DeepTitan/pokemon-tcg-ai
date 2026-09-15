@@ -1,8 +1,8 @@
 # Single-action Trace setup
 
-Implemented in an isolated checkout based on `926ac85` to preserve unrelated workspace changes. Not deployed.
+Implemented in an isolated checkout based on `926ac85` to preserve unrelated workspace changes. Approved for release; publication must be checked against the release workflow.
 
-- Keyboard demo and capture disclosure retained.
+- Connection explanation and disclosure are grouped with the setup action. Keyboard demo appears only after successful setup, under “How to review your games”.
 - One full-width Set up Trace button; no separate update control or skip action.
 - Explicit checking, update, restart, close-Live, permission, connecting, error/retry and ready/Done states.
 - Escape only dismisses after successful setup.
@@ -14,6 +14,6 @@ Implemented in an isolated checkout based on `926ac85` to preserve unrelated wor
 
 Verification: `npm run tracker:test-setup`, full `npm run tracker:test` and `npm run tracker:build` pass. Browser preview confirms the full-width button responds and failures appear inside the modal. Repository-wide TypeScript checking has existing errors outside the changed implementation; no errors reported for the changed setup files or TrackerApp.
 
-This is not a verification of fresh-install macOS permissions or real Pokémon TCG Live capture. Those still require the interactive remote Mac/test-account environment discussed with the user. No release was triggered and no local capture permissions or upload settings were changed.
+This is not a verification of fresh-install macOS permissions or real Pokémon TCG Live capture. Those still require the interactive remote Mac/test-account environment discussed with the user. No local capture permissions or upload settings were changed.
 
-Preview: run Vite, then open `/setup-preview.html`. Browser-only setup deliberately reports that capture requires the installed app.
+Preview: run Vite, then open `/setup-preview.html`. This uses the presentation component with simulated setup/success states; it does not invoke native capture, permissions, or updates.

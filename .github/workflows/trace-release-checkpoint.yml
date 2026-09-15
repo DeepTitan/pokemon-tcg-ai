@@ -108,7 +108,9 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Run tracker regression tests
-        run: npm run tracker:test
+        run: |
+          npm run tracker:test-setup
+          npm run tracker:test
 
       - name: Apply checkpoint version
         run: node scripts/release/set-trace-version.mjs "${{ needs.checkpoint.outputs.version }}"
