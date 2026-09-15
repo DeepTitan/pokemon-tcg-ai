@@ -2863,3 +2863,21 @@ button.stadium-marker:focus-visible {
   .connect-replay-event, .capture-connect-spinner { animation: none; }
   .connect-frame-track > i, .connect-keys > kbd { transition: none; }
 }
+
+/* Match selection feedback paints before archive reconstruction begins. */
+.match-loading { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; position: relative; }
+.match-loading-label { position: absolute; z-index: 1; top: 14px; left: 50%; transform: translateX(-50%); padding: 7px 14px; border-radius: 20px; background: #fffdf7; color: #77664e; font-size: 12px; white-space: nowrap; }
+.match-loading-board { flex: 1; min-height: 0; display: grid; grid-template-rows: 1fr 1fr; border: 1px solid #d2c4ae; border-radius: 18px; overflow: hidden; background: #f8f1e2; }
+.match-loading-field { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 36px 20px 20px; min-height: 0; }
+.match-loading-field + .match-loading-field { border-top: 1px solid #d2c4ae; }
+.skeleton-block { border-radius: 8px; background: #e6ddcc; animation: match-loading-pulse 1.3s ease-in-out infinite alternate; }
+.match-loading-player { width: 28%; height: 14px; min-height: 14px; align-self: flex-start; }
+.match-loading-active { width: 64px; flex: 1; min-height: 35px; max-height: 90px; }
+.match-loading-bench { display: flex; justify-content: center; gap: 12px; width: 85%; height: 64px; flex-shrink: 1; min-height: 25px; }
+.match-loading-bench > div { width: 48px; }
+.match-loading-controls { height: 94px; flex-shrink: 0; }
+.match-loading-log { display: grid; gap: 14px; padding: 18px; }
+.match-loading-log > div { height: 72px; }
+.timeline-list[hidden] { display: none; }
+@keyframes match-loading-pulse { from { opacity: .5; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .skeleton-block { animation: none; } }

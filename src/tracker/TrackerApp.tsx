@@ -645,6 +645,20 @@ function ArchiveRow({ summary, selected, catalog, onSelect }: { summary: MatchSu
   );
 }
 
+function MatchLoadingSkeleton() {
+  return <div className="match-loading" role="status" aria-label="Loading match">
+    <span className="match-loading-label">Loading match…</span>
+    <div className="match-loading-board" aria-hidden="true">
+      {[0, 1].map((side) => <div className="match-loading-field" key={side}>
+        <div className="match-loading-player skeleton-block" />
+        <div className="match-loading-active skeleton-block" />
+        <div className="match-loading-bench">{[0, 1, 2, 3, 4].map((card) => <div className="skeleton-block" key={card} />)}</div>
+      </div>)}
+    </div>
+    <div className="match-loading-controls skeleton-block" aria-hidden="true" />
+  </div>;
+}
+
 export default function TrackerApp() {
   const sharedReplayId = useMemo(() => sharedReplayIdFromPath(window.location.pathname), []);
   const sharedMode = sharedReplayId != null;
@@ -672,6 +686,7 @@ export default function TrackerApp() {
       .finally(() => { if (!cancelled) setSearchLoading(false); });
     return () => { cancelled = true; };
   }, [searchActive, archiveTotal, sharedMode, searchRetry]);
+  const selectionRequestRef = useRef(0);
   const [restoringReview, setRestoringReview] = useState(() => isTauri() || sharedMode);
   const [tracking, setTracking] = useState(() => !isTauri() && !sharedMode);
   const [playing, setPlaying] = useState(false);
@@ -1339,7 +1354,7 @@ export default function TrackerApp() {
   }, [selectedEventKey, selectedReview?.id, timeline.entries.length]);
 
   useEffect(() => {
-    if (!selectedReview || showSetup || inspector || environment.capture.waitingForMatchEnd) return undefined;
+    if (!selectedReview || showSetup || inspector || restoringReview || environment.capture.waitingForMatchEnd) return undefined;
 
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target instanceof HTMLElement ? event.target : null;
@@ -1356,7 +1371,7 @@ export default function TrackerApp() {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [environment.capture.waitingForMatchEnd, inspector, keyMoments, navigateToFrame, selectedReview, showSetup]);
+  }, [environment.capture.waitingForMatchEnd, inspector, keyMoments, navigateToFrame, selectedReview, showSetup, restoringReview]);
 
   useEffect(() => {
     if (environment.capture.waitingForMatchEnd) setPlaying(false);
@@ -1439,31 +1454,40 @@ export default function TrackerApp() {
   }, [cardCatalog, selectedCanonical]);
 
   const selectSummary = useCallback(async (summary: MatchSummary) => {
+    const request = ++selectionRequestRef.current;
     selectedIdRef.current = summary.id;
     setSelectedId(summary.id);
     setSelectedEventKey(null);
     setPlaying(false);
     setInspector(null);
     if (selectedReview?.id === summary.id) {
+      setRestoringReview(false);
       setTurnIndex(Math.max(0, selectedReview.turns.length - 1));
       return;
     }
-    setRestoringReview(true);
+    flushSync(() => setRestoringReview(true));
     try {
+      // Give the skeleton a paint before parsing or reconstructing a cached match.
+      await new Promise<void>((resolve) => requestAnimationFrame(() => { setTimeout(resolve, 0); }));
+      if (request !== selectionRequestRef.current) return;
       const stored = isTauri()
         ? await loadMatchReview(summary.id)
         : browserReviewsRef.current.find((review) => review.id === summary.id) || null;
       const stale = isTauri() && summary.source === 'live-network' && summary.reducerVersion !== REDUCER_VERSION;
       const review = stale ? await rebuildStoredMatch(summary.id) || stored
         : stored || (isTauri() ? await rebuildStoredMatch(summary.id) : null);
-      if (!review || selectedIdRef.current !== summary.id) return;
+      if (request !== selectionRequestRef.current || selectedIdRef.current !== summary.id) return;
+      if (!review) throw new Error('This match could not be loaded. Please try again.');
       setSelectedReview(review);
       setTurnIndex(Math.max(0, review.turns.length - 1));
       void resolveCardsForPayload([summary, review]);
     } catch (caught) {
+      if (request !== selectionRequestRef.current || selectedIdRef.current !== summary.id) return;
+      selectedIdRef.current = selectedReview?.id || null;
+      setSelectedId(selectedReview?.id || null);
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
-      setRestoringReview(false);
+      if (request === selectionRequestRef.current) setRestoringReview(false);
     }
   }, [rebuildStoredMatch, resolveCardsForPayload, selectedReview]);
 
@@ -1555,8 +1579,8 @@ export default function TrackerApp() {
           </InfiniteArchiveList>
         </aside>}
 
-        <section className="review-stage">
-          {restoringReview && !selectedReview ? <div className="welcome-state loading-review"><BookOpenText size={54} weight="duotone" /><span>{sharedMode ? 'Shared replay' : 'Restoring match'}</span><h2>Loading the reconstructed board…</h2><p>{sharedMode ? 'Fetching the match and its exact sequence of actions.' : 'The archive index is ready; only this selected match is being read.'}</p></div> : selectedReview && selectedTurn && localBoard && opponentBoard && selectedCanonical && localCanonicalPlayer && opponentCanonicalPlayer && turnStatus ? <>
+        <section className="review-stage" aria-busy={restoringReview}>
+          {restoringReview ? <MatchLoadingSkeleton /> : selectedReview && selectedTurn && localBoard && opponentBoard && selectedCanonical && localCanonicalPlayer && opponentCanonicalPlayer && turnStatus ? <>
             <BoardZoomViewport><div className={`board-frame ${frameAnimations ? 'frame-motion-enabled' : ''} ${frameScrubbing ? 'frame-scrubbing' : ''}`}>
               <div className="reconstructed-chip"><CheckCircle size={18} weight="fill" />Board reconstructed</div>
               <PlayerField decklist={selectedReview.decklists?.find(deck => deck.playerName === opponentBoard.name)} board={opponentBoard} canonical={opponentCanonicalPlayer} pendingCards={selectedCanonical.pendingCards?.[selectedCanonical.localPlayerIndex === 0 ? 1 : 0]} visibility={selectedCanonical.visibility} catalog={cardCatalog} choiceFrames={turnChoiceFrames.filter((frame) => frame.actor === opponentBoard.name)} currentReviewIndex={turnIndex} turnNumber={selectedCanonical.state.turnNumber} status={turnStatus.players[opponentBoard.name]} handoff={turnPass ? turnPass.passer === opponentBoard.name ? turnPass.reason === 'timeout' ? 'timed-out' : 'passing' : 'receiving' : undefined} stadiumCard={selectedCanonical.state.stadium} stadiumName={turnStatus.stadiumName} stadiumOwner={turnStatus.stadiumOwner} localPlayerName={localBoard.name} opponentName={opponentBoard.name} defeatedIds={defeatedIds} defeatedNames={defeatedNames} damageChanges={damageChanges} positionChanges={positionChanges} attackerId={attackResolution?.sourceId} opponent avatar={TRAINER_ART[0]} onOpenPokemon={openPokemon} onOpenChoice={openChoiceCard} onOpenCard={openCard} onOpenZone={openZone} />
@@ -1588,7 +1612,8 @@ export default function TrackerApp() {
         {timelineOpen && <aside className="timeline-panel">
           <div className="timeline-heading" onMouseDown={beginWindowDrag}><div><span id="match-timeline-heading">Game log</span><small>{timeline.entries.length ? `${timeline.entries.length} events · ${selectedTurn?.label || 'Replay'}` : 'Waiting for a match'}</small></div><div className="timeline-heading-actions"><button type="button" aria-label="Jump to the selected event" title="Jump to selected event" disabled={!selectedEventKey} onClick={() => selectedTimelineEventRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })}><SkipForward size={19} weight="fill" /></button><button className="panel-collapse-button" type="button" aria-label="Collapse game log" aria-expanded="true" title="Collapse game log" onClick={() => setTimelineOpen(false)}><CaretRight size={17} weight="bold" /></button></div></div>
           {!sharedMode && <div className="timeline-tools"><Toggle on={tracking} disabled={busy} onChange={() => void changeTracking()} /><button className="icon-button" type="button" aria-label="Settings" onClick={() => setShowSetup(true)}><GearSix size={21} weight="bold" /></button></div>}
-          <div className="timeline-list" role="list" aria-labelledby="match-timeline-heading">
+          {restoringReview && <div className="match-loading-log" aria-hidden="true">{[0, 1, 2, 3, 4].map((row) => <div className="skeleton-block" key={row} />)}</div>}
+          <div className="timeline-list" hidden={restoringReview} role="list" aria-labelledby="match-timeline-heading">
             {timeline.groups.map((group) => {
               const current = group.entries.some((entry) => entry.reviewIndex === turnIndex);
               const future = group.entries.every((entry) => entry.reviewIndex > turnIndex);
