@@ -44,6 +44,7 @@
     "tracker:audit-decks": "node --import tsx scripts/audit-deck-identities.ts",
     "tracker:test-decks": "node --import tsx src/tracker/__tests__/deck-identity.test.ts",
     "tracker:build": "vite build --mode tracker",
+    "tracker:test-setup": "node --import tsx src/tracker/__tests__/setup-flow.test.ts && node --import tsx src/tracker/__tests__/update-settings.test.ts",
     "tracker:memory-test": "node --import tsx src/tracker/__tests__/archive-memory.test.ts && node --import tsx src/tracker/__tests__/review-memory.test.ts",
     "trace:audit-copy": "node --import tsx scripts/audit-trace-timeline.ts",
     "pretracker:test": "node --import tsx src/tracker/__tests__/zone-inspector.test.ts && node --import tsx src/tracker/__tests__/prize-knowledge-model.test.ts && node --import tsx src/tracker/__tests__/player-decklist.test.ts && npm run tracker:memory-test && node --import tsx src/tracker/__tests__/decklist-export.test.ts && node --import tsx src/tracker/__tests__/captured-decklists.test.ts && node --import tsx src/tracker/__tests__/update-settings.test.ts && node --import tsx src/tracker/__tests__/archive-search.test.ts && node --import tsx src/tracker/__tests__/rating-model.test.ts",

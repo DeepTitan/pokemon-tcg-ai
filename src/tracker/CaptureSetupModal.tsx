@@ -2,6 +2,11 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, CardsThree, CircleNotch, Lightning, Sword } from '@phosphor-icons/react';
 import { replayShortcut, replayShortcutFrame } from './replay-shortcuts.js';
 import type { KeyMoment } from './key-moment-navigation.js';
+import { check } from '@tauri-apps/plugin-updater';
+import { relaunch } from '@tauri-apps/plugin-process';
+import { getTrackerEnvironment, isTauri, requestCapturePermission, startTracking } from './tauri.js';
+import type { CaptureStatus } from './types.js';
+import { createSetupFlow, initialSetup, setupBusy, setupLabel } from './setup-flow.js';
 
 const FRAMES = [
   { label: 'Draw a card', Icon: CardsThree }, { label: 'Play a Pokémon', Icon: CardsThree },
@@ -71,7 +76,29 @@ function KeyboardGuide() {
   </section>;
 }
 
-export function CaptureSetupModal({ busy, ready, onClose, onConnect, updates }: { busy: boolean; ready: boolean; onClose: () => void; onConnect: () => void; updates: ReactNode }) {
+export function CaptureSetupModal({ onClose, onCapture }: { onClose: () => void; onCapture: (capture: CaptureStatus) => void }) {
+  const [state, setState] = useState(initialSetup);
+  const flow = useRef<ReturnType<typeof createSetupFlow>>();
+  const captureCallback = useRef(onCapture);
+  captureCallback.current = onCapture;
+  useEffect(() => {
+    const controller = createSetupFlow({
+      environment: getTrackerEnvironment,
+      check: async () => {
+        if (!isTauri()) throw new Error('Open the installed Trace app to set up capture.');
+        const update = await check({ timeout: 15_000 });
+        return update && {
+          download: () => update.download(undefined, { timeout: 10 * 60 * 1000 }),
+          install: () => update.install(), close: () => update.close(),
+        };
+      },
+      permission: requestCapturePermission, start: startTracking, restart: relaunch,
+      capture: capture => captureCallback.current(capture),
+    }, setState);
+    flow.current = controller;
+    return () => controller.dispose();
+  }, []);
+  const busy = setupBusy(state.phase);
   const dialog = useRef<HTMLElement>(null);
   useEffect(() => {
     const previous = document.activeElement;
@@ -79,17 +106,17 @@ export function CaptureSetupModal({ busy, ready, onClose, onConnect, updates }: 
     return () => { if (previous instanceof HTMLElement && previous.isConnected) previous.focus({ preventScroll: true }); };
   }, []);
   return <div className="modal-backdrop capture-onboarding-backdrop"><section ref={dialog} className="setup-modal capture-onboarding" role="dialog" aria-modal="true" aria-labelledby="capture-setup-title" aria-describedby="capture-setup-description" tabIndex={-1} onKeyDown={event => {
-    if (event.key === 'Escape' && !busy) { event.preventDefault(); onClose(); }
+    if (event.key === 'Escape') { event.preventDefault(); if (state.phase === 'ready') onClose(); }
     if (event.key !== 'Tab') return;
     const buttons = Array.from(dialog.current?.querySelectorAll<HTMLElement>('button:not(:disabled)') || []);
     const first = buttons[0]; const last = buttons.at(-1);
     if (event.shiftKey && (document.activeElement === first || document.activeElement === dialog.current)) { event.preventDefault(); last?.focus(); }
     else if (!event.shiftKey && (document.activeElement === last || document.activeElement === dialog.current)) { event.preventDefault(); first?.focus(); }
   }}>
-    <header className="capture-onboarding-header"><img src="/tracker-assets/trace-mascot.png" alt="" /><div><span>{ready ? 'Your Trace' : 'Welcome to Trace'}</span><h2 id="capture-setup-title">Every turn, in your hands.</h2></div></header>
-    <p id="capture-setup-description" className="capture-onboarding-intro">Connect once. Replay every decision.</p>
+    <header className="capture-onboarding-header"><img src="/tracker-assets/trace-mascot.png" alt="" /><div><span>Your Trace</span><h2 id="capture-setup-title">Set up Trace</h2></div></header>
+    <p id="capture-setup-description" className="capture-onboarding-intro" role={state.phase === 'failed' ? 'alert' : 'status'} aria-live="polite">{state.message}</p>
     <KeyboardGuide />
     <p className="capture-privacy-disclosure">By connecting, Trace securely sends and stores captured match data, including player names and game actions.</p>
-    <div className="connect-actions">{updates}<button className="primary connect-capture-button" type="button" disabled={busy} onClick={onConnect}>{busy && <CircleNotch size={16} className="capture-connect-spinner" />}{busy ? 'Connecting…' : ready ? 'Reconnect capture' : 'Connect capture'}</button></div>
+    <div className="connect-actions setup-single-action"><button className="primary connect-capture-button" type="button" disabled={busy} onClick={() => state.phase === 'ready' ? onClose() : void flow.current?.run()}>{busy && <CircleNotch size={16} className="capture-connect-spinner" />}{setupLabel(state.phase)}</button></div>
   </section></div>;
 }
