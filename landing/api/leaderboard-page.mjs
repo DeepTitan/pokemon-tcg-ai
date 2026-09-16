@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { gunzipSync } from 'node:zlib';
+import { loadLeaderboardFeed } from '../lib/leaderboard-feed.mjs';
 
 let cachedPages;
 
@@ -7,8 +8,9 @@ async function loadPages() {
   cachedPages ??= readFile(new URL('../assets/leaderboard-pages.json.gz', import.meta.url))
     .then(bytes => JSON.parse(gunzipSync(bytes).toString('utf8')))
     .then(pages => {
-      if (pages.version !== 1 || typeof pages.board?.html !== 'string' || !Array.isArray(pages.players)
-        || pages.players.some(player => typeof player?.id !== 'string' || typeof player?.name !== 'string' || typeof player?.html !== 'string')) {
+      if (pages.version !== 2 || typeof pages.shell !== 'string' || !/<title>[^<]*<\/title>/i.test(pages.shell)
+        || typeof pages.boardImage?.url !== 'string' || typeof pages.boardImage?.alt !== 'string' || !Array.isArray(pages.playerImages)
+        || pages.playerImages.some(player => typeof player?.id !== 'string' || typeof player?.url !== 'string' || typeof player?.alt !== 'string')) {
         throw new Error('Invalid leaderboard page bundle');
       }
       return pages;
@@ -20,12 +22,23 @@ async function loadPages() {
 }
 
 /** Array lookup deliberately avoids treating names such as __proto__ as object keys. */
-export function findLeaderboardPage(pages, player) {
-  if (player === undefined) return pages.board.html;
+export function findLeaderboardPlayer(snapshot, player) {
+  if (player === undefined) return undefined;
   if (typeof player !== 'string' || !player) return null;
-  const record = pages.players.find(entry => entry.name === player)
-    ?? pages.players.find(entry => entry.id === player);
-  return record?.html ?? null;
+  return snapshot.players.find(entry => entry.name === player)
+    ?? snapshot.players.find(entry => entry.id === player) ?? null;
+}
+
+/** Metadata follows the current feed; screenshots retain their reviewed URLs. */
+export function renderCurrentLeaderboardPage(pages, snapshot, player, social) {
+  const origin = 'https://victoryroad.app';
+  const metadata = player ? social.getPlayerSocialMetadata(snapshot, player.id, origin) : social.getLeaderboardSocialMetadata(snapshot, origin);
+  metadata.canonicalUrl = player ? `${origin}/trace/players/${encodeURIComponent(player.name)}` : `${origin}/trace/leaderboard`;
+  const image = player ? pages.playerImages.find(image => image.id === player.id) ?? pages.boardImage : pages.boardImage;
+  metadata.imageUrl = image.url;
+  metadata.imageAlt = image.alt;
+  // The callback preserves literal replacement characters in player names.
+  return pages.shell.replace(/<title>[^<]*<\/title>/i, () => social.renderSocialMetadata(metadata));
 }
 
 function requestedPlayer(request) {
@@ -45,21 +58,29 @@ function requestedPlayer(request) {
 function errorPage(status) {
   const missing = status === 404;
   const heading = missing ? 'Player not found' : status === 405 ? 'This request is not supported' : 'The leaderboard could not be opened';
-  const explanation = missing ? 'Check the player name or find them on the leaderboard.' : 'Please return to the leaderboard and try again.';
+  const explanation = missing ? 'Check the player name or find them on the leaderboard.' : status === 503
+    ? 'Live match updates are temporarily unavailable. Please try again in a moment.' : 'Please return to the leaderboard and try again.';
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${heading} · Trace</title><meta name="robots" content="noindex"><style>body{margin:0;padding:64px 24px;background:#f7f2e8;color:#172b49;font:18px/1.6 system-ui,sans-serif}main{max-width:720px;margin:auto}h1{font-size:32px;line-height:1.2}a{color:inherit}</style></head><body><main><h1>${heading}</h1><p>${explanation}</p><a href="/trace/leaderboard">Back to leaderboard</a></main></body></html>`;
 }
 
 function sendHtml(response, method, status, html) {
   response.statusCode = status;
   response.setHeader('Content-Type', 'text/html; charset=utf-8');
-  response.setHeader('Cache-Control', status === 200 ? 'public, max-age=0, s-maxage=300, stale-while-revalidate=86400' : 'no-store');
+  response.setHeader('Cache-Control', 'no-store');
+  response.setHeader('CDN-Cache-Control', 'no-store');
+  response.setHeader('Vercel-CDN-Cache-Control', 'no-store');
+  if (status === 503) response.setHeader('Retry-After', '15');
   response.setHeader('X-Content-Type-Options', 'nosniff');
   response.setHeader('Content-Length', Buffer.byteLength(html));
   response.end(method === 'HEAD' ? undefined : html);
 }
 
-/** A local bundle keeps crawler metadata available without runtime network requests. */
-export function createLeaderboardPageHandler(readPages = loadPages) {
+/** The feed loader coalesces requests; HTML must not cache an old player roster. */
+export function createLeaderboardPageHandler({
+  readPages = loadPages,
+  readFeed = loadLeaderboardFeed,
+  readSocial = () => import('../lib/generated/leaderboard-social-preview.mjs'),
+} = {}) {
   return async function handler(request, response) {
     const method = request.method || 'GET';
     if (method !== 'GET' && method !== 'HEAD') {
@@ -68,7 +89,14 @@ export function createLeaderboardPageHandler(readPages = loadPages) {
       return;
     }
     try {
-      const html = findLeaderboardPage(await readPages(), requestedPlayer(request));
+      const [pages, social] = await Promise.all([readPages(), readSocial()]);
+      let feed;
+      try { feed = await readFeed(); } catch {
+        sendHtml(response, method, 503, errorPage(503));
+        return;
+      }
+      const player = findLeaderboardPlayer(feed.snapshot, requestedPlayer(request));
+      const html = player === null ? null : renderCurrentLeaderboardPage(pages, feed.snapshot, player, social);
       sendHtml(response, method, html === null ? 404 : 200, html ?? errorPage(404));
     } catch {
       sendHtml(response, method, 500, errorPage(500));

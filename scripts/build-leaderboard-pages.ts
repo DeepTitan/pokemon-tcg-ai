@@ -3,6 +3,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { buildSync } from 'esbuild';
 import { projectPublicLeaderboardSnapshot } from './leaderboard-public-snapshot.js';
 import {
   getLeaderboardSocialMetadata,
@@ -16,9 +17,19 @@ const staticPath = '/trace/leaderboard-static';
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 export interface LeaderboardPages {
-  version: 1;
-  board: { html: string };
-  players: { id: string; name: string; html: string }[];
+  version: 2;
+  shell: string;
+  boardImage: { url: string; alt: string };
+  playerImages: { id: string; url: string; alt: string }[];
+}
+
+/** The browser and server use the same rating and public-data implementations. */
+export function buildLeaderboardRuntime(root = repository) {
+  buildSync({
+    entryPoints: ['leaderboard-social-preview.ts', 'leaderboard-public-snapshot.ts'].map(filename => path.join(root, 'scripts', filename)),
+    outdir: path.join(root, 'landing/lib/generated'), outExtension: { '.js': '.mjs' },
+    bundle: true, platform: 'node', format: 'esm', target: 'node24',
+  });
 }
 
 /** Callback replacement keeps player names containing $& or $` literal. */
@@ -58,24 +69,16 @@ export function buildLeaderboardPages(root = repository): LeaderboardPages {
   }
 
   const boardMetadata = getLeaderboardSocialMetadata(snapshot, origin);
-  boardMetadata.canonicalUrl = `${origin}/trace/leaderboard`;
-  boardMetadata.imageUrl = imageUrl('leaderboard.jpg', previewDirectory);
   const previewFiles = new Set(['leaderboard.jpg']);
   const pages: LeaderboardPages = {
-    version: 1,
-    board: { html: renderLeaderboardPage(shell, boardMetadata) },
-    players: snapshot.players.map(player => {
-      const metadata = getPlayerSocialMetadata(snapshot, player.id, origin);
-      metadata.canonicalUrl = `${origin}/trace/players/${encodeURIComponent(player.name)}`;
+    version: 2,
+    shell: shell.replace(/<link\b[^>]*\brel=["']icon["'][^>]*>/i, () => `<link rel="icon" href="${staticPath}/trace-mascot.png">`),
+    boardImage: { url: imageUrl('leaderboard.jpg', previewDirectory), alt: boardMetadata.imageAlt },
+    playerImages: snapshot.players.flatMap(player => {
       const filename = `${player.id}.jpg`;
-      if (fs.existsSync(path.join(previewDirectory, filename))) {
-        metadata.imageUrl = imageUrl(filename, previewDirectory);
-        previewFiles.add(filename);
-      } else {
-        metadata.imageUrl = boardMetadata.imageUrl;
-        metadata.imageAlt = boardMetadata.imageAlt;
-      }
-      return { id: player.id, name: player.name, html: renderLeaderboardPage(shell, metadata) };
+      if (!fs.existsSync(path.join(previewDirectory, filename))) return [];
+      previewFiles.add(filename);
+      return [{ id: player.id, url: imageUrl(filename, previewDirectory), alt: getPlayerSocialMetadata(snapshot, player.id, origin).imageAlt }];
     }),
   };
 
@@ -90,7 +93,7 @@ export function buildLeaderboardPages(root = repository): LeaderboardPages {
 
   fs.rmSync(output, { recursive: true, force: true });
   fs.mkdirSync(output, { recursive: true });
-  fs.writeFileSync(path.join(output, 'events.json'), JSON.stringify(snapshot));
+  // The live feed owns this URL. Never leave a static snapshot that shadows it.
   fs.cpSync(path.join(built, 'assets'), path.join(output, 'assets'), { recursive: true });
   for (const [directory, files] of [['previews', previewFiles], ['card-art', artFiles]] as const) {
     const destination = path.join(output, directory);
@@ -103,8 +106,11 @@ export function buildLeaderboardPages(root = repository): LeaderboardPages {
   const pageBundle = path.join(root, 'landing/assets/leaderboard-pages.json.gz');
   fs.mkdirSync(path.dirname(pageBundle), { recursive: true });
   fs.writeFileSync(pageBundle, gzipSync(JSON.stringify(pages), { level: 9 }));
-  console.log(`Built Trace leaderboard and ${pages.players.length} player pages with public static assets.`);
+  console.log(`Built Trace leaderboard shell and ${pages.playerImages.length} player screenshot previews. Match data comes from the live feed.`);
   return pages;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) buildLeaderboardPages();
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  buildLeaderboardRuntime();
+  if (!process.argv.includes('--runtime-only')) buildLeaderboardPages();
+}

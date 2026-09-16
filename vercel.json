@@ -10,11 +10,22 @@
     },
     "api/leaderboard-page.mjs": {
       "includeFiles": "landing/assets/leaderboard-pages.json.gz"
+    },
+    "api/leaderboard-art.mjs": {
+      "includeFiles": "{landing/assets/share-card-catalog.json.gz,landing/assets/share-card-art/**}"
     }
   },
   "cleanUrls": true,
   "trailingSlash": false,
   "rewrites": [
+    {
+      "source": "/trace/leaderboard-static/events.json",
+      "destination": "/api/leaderboard-data"
+    },
+    {
+      "source": "/trace/leaderboard-static/card-art/:cardId.png",
+      "destination": "/api/leaderboard-art?cardId=:cardId"
+    },
     {
       "source": "/trace/leaderboard",
       "destination": "/api/leaderboard-page"

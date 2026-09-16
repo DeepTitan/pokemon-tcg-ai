@@ -1,0 +1,191 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Sanitized Trace leaderboard projections and public snapshot feed
+
+Parameters:
+  MatchesTableArn:
+    Type: String
+    Description: Existing private TraceMatches table ARN
+    AllowedPattern: 'arn:[^:]+:dynamodb:[^:]+:[0-9]{12}:table/[^/]+'
+  MatchesStreamArn:
+    Type: String
+    Description: Existing TraceMatches KEYS_ONLY stream ARN
+    AllowedPattern: 'arn:[^:]+:dynamodb:[^:]+:[0-9]{12}:table/[^/]+/stream/.+'
+  PayloadBucket:
+    Type: String
+    Description: Existing private, versioned Trace payload bucket
+    AllowedPattern: '[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]'
+  ExistingApiId:
+    Type: String
+    Default: p5xbv2rfya
+    AllowedPattern: '[a-z0-9]+'
+
+Resources:
+  SourceProjections:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: sourceKey
+          AttributeType: S
+      KeySchema:
+        - AttributeName: sourceKey
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+
+  WorkerFailures:
+    Type: AWS::SQS::Queue
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      MessageRetentionPeriod: 1209600
+      SqsManagedSseEnabled: true
+
+  Worker:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: worker-dist/
+      Handler: worker.handler
+      Runtime: nodejs24.x
+      Architectures: [arm64]
+      MemorySize: 1280
+      Timeout: 300
+      Environment:
+        Variables:
+          SOURCE_TABLE: !Ref SourceProjections
+          MATCHES_TABLE: !Select [1, !Split ['/', !Ref MatchesTableArn]]
+          PAYLOAD_BUCKET: !Ref PayloadBucket
+          SNAPSHOT_KEY: leaderboard/snapshot.json.gz
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: dynamodb:GetItem
+              Resource: !Ref MatchesTableArn
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:BatchGetItem
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+                - dynamodb:DeleteItem
+                - dynamodb:Scan
+              Resource: !GetAtt SourceProjections.Arn
+            - Effect: Allow
+              Action:
+                - dynamodb:DescribeStream
+                - dynamodb:GetRecords
+                - dynamodb:GetShardIterator
+                - dynamodb:ListStreams
+              Resource: !Ref MatchesStreamArn
+            - Effect: Allow
+              Action: [s3:GetObject, s3:GetObjectVersion]
+              Resource: !Sub 'arn:${AWS::Partition}:s3:::${PayloadBucket}/devices/*'
+            - Effect: Allow
+              Action: s3:PutObject
+              Resource: !Sub 'arn:${AWS::Partition}:s3:::${PayloadBucket}/leaderboard/snapshot.json.gz'
+            - Effect: Allow
+              Action: sqs:SendMessage
+              Resource: !GetAtt WorkerFailures.Arn
+
+  MatchChanges:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !Ref MatchesStreamArn
+      FunctionName: !Ref Worker
+      StartingPosition: LATEST
+      BatchSize: 10
+      MaximumBatchingWindowInSeconds: 1
+      ParallelizationFactor: 1
+      MaximumRetryAttempts: -1
+      MaximumRecordAgeInSeconds: 86400
+      BisectBatchOnFunctionError: true
+      DestinationConfig:
+        OnFailure:
+          Destination: !GetAtt WorkerFailures.Arn
+
+  PublicFeed:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: public-feed/
+      Handler: publicfeed.handler
+      Runtime: python3.13
+      Architectures: [arm64]
+      MemorySize: 256
+      Timeout: 15
+      Environment:
+        Variables:
+          PAYLOAD_BUCKET: !Ref PayloadBucket
+          SNAPSHOT_KEY: leaderboard/snapshot.json.gz
+      Policies:
+        - Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Action: s3:GetObject
+              Resource: !Sub 'arn:${AWS::Partition}:s3:::${PayloadBucket}/leaderboard/snapshot.json.gz'
+
+  PublicFeedIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ExistingApiId
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt PublicFeed.Arn
+      PayloadFormatVersion: '2.0'
+      TimeoutInMillis: 15000
+
+  PublicFeedGet:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ExistingApiId
+      RouteKey: GET /v1/leaderboard
+      AuthorizationType: NONE
+      Target: !Join ['/', [integrations, !Ref PublicFeedIntegration]]
+
+  PublicFeedHead:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ExistingApiId
+      RouteKey: HEAD /v1/leaderboard
+      AuthorizationType: NONE
+      Target: !Join ['/', [integrations, !Ref PublicFeedIntegration]]
+
+  PublicFeedPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref PublicFeed
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${ExistingApiId}/*/*/v1/leaderboard'
+
+  WorkerLogs:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${Worker}'
+      RetentionInDays: 30
+
+  PublicFeedLogs:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${PublicFeed}'
+      RetentionInDays: 30
+
+Outputs:
+  WorkerFunction:
+    Value: !Ref Worker
+  SourceProjectionsTable:
+    Value: !Ref SourceProjections
+  WorkerFailureQueueUrl:
+    Value: !Ref WorkerFailures
+  WorkerFailureQueueArn:
+    Value: !GetAtt WorkerFailures.Arn
+  FeedUrl:
+    Value: !Sub 'https://${ExistingApiId}.execute-api.${AWS::Region}.${AWS::URLSuffix}/v1/leaderboard'

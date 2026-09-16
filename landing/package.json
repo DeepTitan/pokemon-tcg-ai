@@ -3,7 +3,7 @@
   "private": true,
   "scripts": {
     "build": "npm --prefix .. ci && node ../scripts/build-share-runtime.mjs && npm --prefix .. run tracker:build && node build.mjs",
-    "pretest": "node ../scripts/build-share-runtime.mjs",
+    "pretest": "node ../scripts/build-share-runtime.mjs && node --import tsx ../scripts/build-leaderboard-pages.ts --runtime-only",
     "audit:art": "node ../scripts/audit-share-card-art.mjs",
     "test": "node --test lib/*.test.mjs"
   },

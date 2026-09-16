@@ -11,3 +11,28 @@ coverage
 .DS_Store
 
 dist-leaderboard
+
+# The AWS publisher has its own deployment package.
+infrastructure/leaderboard
+
+# Publish only the Trace website source and its approved public assets.
+data
+training
+src-tauri
+docs
+.github
+**/.env*
+**/*.sqlite*
+**/*.pem
+src/**/__tests__
+scripts/*
+!scripts/build-share-runtime.mjs
+!scripts/build-leaderboard-pages.ts
+!scripts/leaderboard-social-preview.ts
+!scripts/leaderboard-public-snapshot.ts
+!scripts/turnlume-local-card-catalog.ts
+src/engine/*
+!src/engine/types.ts
+src/ai
+src/training
+src/train.ts

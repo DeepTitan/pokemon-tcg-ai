@@ -1,28 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Crown, Info, MagnifyingGlass } from '@phosphor-icons/react';
-import { type RatingPlayerSeed } from './rating.js';
 import { ACTIVE_ELO_OPTIONS, prepareRankedEloEvents, replayEloRatings, type EloRatingUpdate as RatingUpdate } from './elo.js';
 import RatingScore from './RatingScore.js';
 import ModelSettings from './ModelSettings.js';
 import PlayerProfile from './PlayerProfile.js';
 import { playerProfileHref, LEADERBOARD_BASE, LEADERBOARD_HREF, LEADERBOARD_DATA_HREF, LEADERBOARD_MASCOT_HREF } from './profile-route.js';
-import type { HistoryMatch } from './history.js';
-import type { LiveScaleCalibration } from './live-scale.js';
+import { startSnapshotRefresh, type LeaderboardSnapshot, type SnapshotRefreshStatus } from './snapshot-refresh.js';
 import './styles.css';
 
-type PlayerSeed = RatingPlayerSeed & {
-  latestLiveRating?: number;
-  liveRatingObservedAt?: string;
-  liveRatingTiming?: 'pre-match' | 'post-match' | 'match-snapshot';
-  liveRatingBefore?: number;
-  liveRatingChange?: number;
-  traceStatus?: 'trace-user' | 'opponent-only';
-};
-interface Snapshot {
-  schema: string; generatedAt: string; sourceLabel: string;
-  players: PlayerSeed[]; matches: HistoryMatch[];
-  liveScaleCalibrations?: LiveScaleCalibration[];
-}
 const number = (value: number) => Math.round(value).toLocaleString();
 const date = (value: string) => new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 function profileNameFromPath() {
@@ -33,8 +18,8 @@ function profileNameFromPath() {
 export default function LeaderboardApp() {
   const sharePreview = new URLSearchParams(window.location.search).get('preview') === 'share';
   const pageSize = sharePreview ? 8 : 25;
-  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
-  const [error, setError] = useState('');
+  const [snapshot, setSnapshot] = useState<LeaderboardSnapshot | null>(null);
+  const [refreshStatus, setRefreshStatus] = useState<SnapshotRefreshStatus>({ checking: false, lastCheckedAt: null, failed: false });
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('all');
   const [showUnregistered, setShowUnregistered] = useState(false);
@@ -49,15 +34,7 @@ export default function LeaderboardApp() {
     window.addEventListener('hashchange', sync);
     return () => window.removeEventListener('hashchange', sync);
   }, []);
-  useEffect(() => {
-    const controller = new AbortController();
-    fetch(LEADERBOARD_DATA_HREF, { signal: controller.signal }).then(async response => {
-      const data = await response.json();
-      if (!response.ok || !Array.isArray(data.players) || !Array.isArray(data.matches)) throw new Error('Could not load matches.');
-      setSnapshot(data);
-    }).catch(reason => { if (reason.name !== 'AbortError') setError('Could not load matches.'); });
-    return () => controller.abort();
-  }, []);
+  useEffect(() => startSnapshotRefresh({ url: LEADERBOARD_DATA_HREF, onSnapshot: setSnapshot, onStatus: setRefreshStatus }), []);
   const result = useMemo(() => snapshot ? replayEloRatings(snapshot.matches, snapshot.players, { ...ACTIVE_ELO_OPTIONS, liveScaleCalibrations: snapshot.liveScaleCalibrations }) : null, [snapshot]);
   const eligibleHistory = useMemo(() => snapshot ? prepareRankedEloEvents(snapshot.matches).accepted : [], [snapshot]);
   const profiles = useMemo(() => new Map(snapshot?.players.map(player => [player.id, player]) ?? []), [snapshot]);
@@ -82,7 +59,11 @@ export default function LeaderboardApp() {
     document.title = showMethod ? 'How ratings work · Trace' : selectedRow ? `${selectedRow.name} · Trace` : profileName !== null && result ? 'Player not found · Trace' : 'Leaderboard · Trace';
   }, [selectedRow, showMethod, result, profileName]);
   const verifiedPreMatchCount = eligibleHistory.filter(match => match.liveRatingEligibility?.timing === 'pre-match').length;
-  const loading = error ? <div className="empty" role="alert"><h2>Couldn’t load the leaderboard.</h2><p>Try refreshing the page.</p><a className="secondary" href={window.location.pathname}>Try again</a></div> : <div className="empty" role="status">Loading matches…</div>;
+  const checkedAt = refreshStatus.lastCheckedAt === null ? '' : new Date(refreshStatus.lastCheckedAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const refreshLabel = refreshStatus.checking ? 'Checking for new matches…' : refreshStatus.failed
+    ? snapshot ? 'Couldn’t refresh · showing the last update' : 'Couldn’t load matches · trying again'
+    : checkedAt ? `Checked at ${checkedAt}` : 'Waiting to check matches';
+  const loading = refreshStatus.failed ? <div className="empty" role="alert"><h2>Couldn’t load the leaderboard.</h2><p>We’ll keep trying. You can also refresh the page.</p><a className="secondary" href={window.location.pathname}>Try again</a></div> : <div className="empty" role="status">Loading matches…</div>;
 
   return <>
     <header className="site-header">
@@ -136,6 +117,6 @@ export default function LeaderboardApp() {
         </details>
       </details></section>
     </main>
-    <footer><a className="footer-brand" href={LEADERBOARD_HREF}>Trace</a><span>Every turn, in view.</span>{!LEADERBOARD_BASE && <span className="local-note">Local preview</span>}</footer>
+    <footer><a className="footer-brand" href={LEADERBOARD_HREF}>Trace</a><span>Every turn, in view.</span><span className="refresh-status" title={`Checks for new matches every 15 seconds while this tab is visible.${checkedAt ? ` Last successful check: ${checkedAt}.` : ''}`}>{refreshLabel}</span>{!LEADERBOARD_BASE && <span className="local-note">Local preview</span>}</footer>
   </>;
 }

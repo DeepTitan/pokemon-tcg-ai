@@ -223,7 +223,8 @@ footer > a:last-child { margin-left: auto; }
 .unrated-score { font-size: 22px; }
 .source-note { margin: 32px 0 26px; }
 .source-note summary { font-size: 13px; }
-footer { padding: 22px max(calc((100vw - 1320px) / 2), 32px); }
+footer { padding: 22px max(calc((100vw - 1320px) / 2), 32px); flex-wrap: wrap; }
+.refresh-status { margin-left: auto; font-variant-numeric: tabular-nums; }
 .footer-brand { text-transform: none; letter-spacing: -.5px; font-size: 17px; }
 .local-note { margin-left: auto; }
 @media (max-width:1000px) {
