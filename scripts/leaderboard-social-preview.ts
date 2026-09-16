@@ -13,10 +13,12 @@ export interface SocialPreviewMetadata {
   title: string;
   description: string;
   canonicalUrl: string;
+  shareUrl?: string;
   imageUrl: string;
   imageAlt: string;
   imageWidth: 1200;
   imageHeight: 630;
+  imageType?: 'image/jpeg' | 'image/png';
 }
 
 export class PlayerPreviewNotFoundError extends Error {
@@ -28,7 +30,7 @@ const record = (row: EloLeaderboardRow) => `${row.wins}W · ${row.losses}L${row.
 /** Safe in HTML text and quoted attributes; all names and descriptions use this boundary. */
 export const escapePreviewHtml = (value: string) => value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!);
 
-function data(snapshot: SocialPreviewSnapshot) {
+export function getLeaderboardPreviewData(snapshot: SocialPreviewSnapshot) {
   const replay = replayEloRatings(snapshot.matches, snapshot.players, {
     ...ACTIVE_ELO_OPTIONS, liveScaleCalibrations: snapshot.liveScaleCalibrations,
   });
@@ -37,8 +39,8 @@ function data(snapshot: SocialPreviewSnapshot) {
   return { ...replay, rows, registered, registeredRows: rows.filter(row => registered.has(row.playerId)) };
 }
 
-function playerData(snapshot: SocialPreviewSnapshot, playerId: string) {
-  const result = data(snapshot);
+export function getPlayerPreviewData(snapshot: SocialPreviewSnapshot, playerId: string) {
+  const result = getLeaderboardPreviewData(snapshot);
   const row = result.rows.find(player => player.playerId === playerId);
   if (!row) throw new PlayerPreviewNotFoundError();
   const isRegistered = result.registered.has(playerId);
@@ -55,7 +57,7 @@ function originUrl(origin: string) {
 
 /** Host comes from the caller. No production origin is assumed for this local prototype. */
 export function getLeaderboardSocialMetadata(snapshot: SocialPreviewSnapshot, origin: string): SocialPreviewMetadata {
-  const result = data(snapshot), base = originUrl(origin);
+  const result = getLeaderboardPreviewData(snapshot), base = originUrl(origin);
   return {
     title: 'Trace leaderboard',
     description: `One rating, built from recorded matches. Explore ${result.registeredRows.length} Trace players and ${result.ratedMatchCount} rated matches.`,
@@ -65,7 +67,7 @@ export function getLeaderboardSocialMetadata(snapshot: SocialPreviewSnapshot, or
 }
 
 export function getPlayerSocialMetadata(snapshot: SocialPreviewSnapshot, playerId: string, origin: string): SocialPreviewMetadata {
-  const { row, rank, rankLabel } = playerData(snapshot, playerId), base = originUrl(origin);
+  const { row, rank, rankLabel } = getPlayerPreviewData(snapshot, playerId), base = originUrl(origin);
   return {
     title: `${row.name} · Trace`,
     description: row.games ? `${number(row.rating)} Trace rating · ${record(row)} · ${rankLabel} #${rank}. See ${row.name}’s recorded match history.` : `${row.name}’s Trace profile. No rated matches recorded yet.`,
@@ -85,9 +87,9 @@ export function renderSocialMetadata(meta: SocialPreviewMetadata): string {
     `<meta property="og:site_name" content="Trace">`,
     `<meta property="og:title" content="${attribute(meta.title)}">`,
     `<meta property="og:description" content="${attribute(meta.description)}">`,
-    `<meta property="og:url" content="${attribute(meta.canonicalUrl)}">`,
+    `<meta property="og:url" content="${attribute(meta.shareUrl ?? meta.canonicalUrl)}">`,
     `<meta property="og:image" content="${attribute(meta.imageUrl)}">`,
-    `<meta property="og:image:type" content="image/jpeg">`,
+    `<meta property="og:image:type" content="${meta.imageType ?? 'image/jpeg'}">`,
     `<meta property="og:image:width" content="${meta.imageWidth}">`,
     `<meta property="og:image:height" content="${meta.imageHeight}">`,
     `<meta property="og:image:alt" content="${attribute(meta.imageAlt)}">`,

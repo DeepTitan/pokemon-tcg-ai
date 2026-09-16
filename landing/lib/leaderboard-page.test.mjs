@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createLeaderboardPageHandler, findLeaderboardPlayer } from '../api/leaderboard-page.mjs';
+import { leaderboardPreviewUrl } from './leaderboard-preview-version.mjs';
 import * as social from './generated/leaderboard-social-preview.mjs';
 
 const pages = {
-  version: 2,
+  version: 3,
   shell: '<!doctype html><html><head><meta charset="utf-8"><title>Trace</title><script src="/trace/leaderboard-static/assets/app.js"></script></head><body><div id="root"></div></body></html>',
-  boardImage: { url: 'https://victoryroad.app/trace/leaderboard-static/previews/leaderboard.jpg?v=board', alt: 'The reviewed leaderboard screenshot.' },
-  playerImages: [{ id: 'name-123', url: 'https://victoryroad.app/trace/leaderboard-static/previews/name-123.jpg?v=known', alt: 'The reviewed player screenshot.' }],
+
 };
 const snapshot = {
   schema: 'trace-leaderboard/v1', generatedAt: '2026-09-16T12:00:00Z', sourceLabel: 'Trace matches',
@@ -54,18 +54,19 @@ test('board metadata comes from current matches and cannot be held in a CDN cach
   assert.ok(response.body.indexOf('property="og:image"') < response.body.indexOf('</head>'));
 });
 
-test('known players keep their exact screenshot URL and alt text with current rating metadata', async () => {
+test('known players get a live PNG URL and accurate alt text with current rating metadata', async () => {
   const response = await request({ query: { player: 'name-123' } });
   const expected = social.getPlayerSocialMetadata(snapshot, 'name-123', 'https://victoryroad.app');
   assert.equal(response.statusCode, 200);
   assert.ok(response.body.includes(social.escapePreviewHtml(expected.description)), 'SSR uses the existing chronological rating implementation');
-  assert.ok(response.body.includes(pages.playerImages[0].url));
-  assert.ok(response.body.includes(pages.playerImages[0].alt));
+  assert.ok(response.body.includes(social.escapePreviewHtml(leaderboardPreviewUrl(snapshot, 'name-123'))));
+  assert.match(response.body, /og:image:type" content="image\/png"/);
+  assert.ok(response.body.includes(social.escapePreviewHtml(expected.imageAlt)));
   assert.match(response.body, /og:image:width" content="1200"/);
   assert.match(response.body, /og:image:height" content="630"/);
 });
 
-test('new incoming players work without regenerating the shell or screenshot manifest', async () => {
+test('new incoming players get their own live preview without a deployment', async () => {
   const current = structuredClone(snapshot);
   const options = { readFeed: async () => feed(current) };
   const warmHandler = createLeaderboardPageHandler({ ...dependencies, ...options });
@@ -79,11 +80,10 @@ test('new incoming players work without regenerating the shell or screenshot man
   assert.ok(response.body.includes(`https://victoryroad.app/trace/players/${encodeURIComponent(newcomer.name)}`));
   assert.ok(response.body.includes(social.escapePreviewHtml(`${newcomer.name} · Trace`)));
   assert.match(response.body, /1W · 0L/);
-  assert.ok(response.body.includes(pages.boardImage.url), 'An uncaptured player uses the board screenshot');
-  assert.ok(response.body.includes(pages.boardImage.alt), 'The fallback image is described accurately');
+  assert.ok(response.body.includes(social.escapePreviewHtml(leaderboardPreviewUrl(current, newcomer.id))), 'A new player has a dedicated current image');
+  assert.ok(response.body.includes(social.escapePreviewHtml(`${newcomer.name}’s Trace rating, match record, and recent results.`)));
   const board = await request({}, options, warmHandler);
   assert.match(board.body, /Explore 3 Trace players and 2 rated matches/);
-  assert.equal(pages.playerImages.length, 1, 'The static screenshot manifest does not grow during a request');
 });
 
 test('rewritten player/name queries and encoded URL parameters preserve special characters', async () => {
@@ -154,4 +154,16 @@ test('local asset failures return a generic 500 without internal details', async
   assert.equal(response.statusCode, 500);
   assert.equal(response.headers['cache-control'], 'no-store');
   assert.doesNotMatch(response.body, /secret|private\/path/);
+});
+
+
+test('sharing revisions vary graph identity while preserving a clean canonical page', async () => {
+  const response = await request({query:{player:'name-123', v:'mr8asdf'}});
+  const clean = `https://victoryroad.app/trace/players/${encodeURIComponent(snapshot.players[0].name)}`;
+  assert.ok(response.body.includes(`<link rel="canonical" href="${clean}">`));
+  assert.ok(response.body.includes(`<meta property="og:url" content="${clean}?v=mr8asdf">`));
+  for (const v of ['<script>', 'x'.repeat(65), ['one','two']]) {
+    const invalid = await request({query:{player:'name-123',v}});
+    assert.ok(invalid.body.includes(`<meta property="og:url" content="${clean}">`));
+  }
 });

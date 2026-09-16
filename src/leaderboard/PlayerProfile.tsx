@@ -4,7 +4,7 @@ import type { EloLeaderboardRow, EloRatingUpdate } from './elo.js';
 import type { HistoryMatch } from './history.js';
 import PlayerHistory from './PlayerHistory.js';
 import RatingScore from './RatingScore.js';
-import { playerProfileHref, LEADERBOARD_HREF } from './profile-route.js';
+import { playerProfileShareHref, LEADERBOARD_HREF } from './profile-route.js';
 import './player-profile.css';
 
 export interface PlayerProfileProps {
@@ -20,30 +20,35 @@ export interface PlayerProfileProps {
   liveRatingTiming?: 'pre-match' | 'post-match' | 'match-snapshot';
   liveRatingBefore?: number;
   liveRatingChange?: number;
+  generatedAt?: string;
 }
 
 const date = (value: string) => new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 
 export default function PlayerProfile({ row, registered, rank, rankScope = 'registered', matches, updates, names,
-  latestLiveRating, liveRatingObservedAt, liveRatingTiming, liveRatingBefore, liveRatingChange }: PlayerProfileProps) {
+  latestLiveRating, liveRatingObservedAt, liveRatingTiming, liveRatingBefore, liveRatingChange, generatedAt }: PlayerProfileProps) {
   const [ratingActive, setRatingActive] = useState(false);
   const [shareMessage, setShareMessage] = useState('');
+  const [showShareLink, setShowShareLink] = useState(false);
   const ranked = row.games > 0 && typeof rank === 'number' && Number.isInteger(rank) && rank > 0;
   const winRate = row.games ? Math.round(row.wins / row.games * 100) : undefined;
+  const shareLink = new URL(playerProfileShareHref(row.name, generatedAt), window.location.origin).href;
 
   async function copyProfileLink() {
     try {
-      await navigator.clipboard.writeText(new URL(playerProfileHref(row.name), window.location.origin).href);
+      await navigator.clipboard.writeText(shareLink);
       setShareMessage('Profile link copied.');
+      setShowShareLink(false);
     } catch {
-      setShareMessage('Copy this page’s address from your browser to share it.');
+      setShareMessage('Select and copy this link to share.');
+      setShowShareLink(true);
     }
   }
 
   return <section className="player-profile" aria-labelledby="player-profile-title">
     <div className="profile-navigation">
       <a className="profile-back" href={LEADERBOARD_HREF}><ArrowLeft size={16} aria-hidden="true"/> Leaderboard</a>
-      <div className="profile-share"><button type="button" onClick={() => void copyProfileLink()}>Copy profile link</button><span role="status">{shareMessage}</span></div>
+      <div className="profile-share"><button type="button" onClick={() => void copyProfileLink()}>Copy profile link</button><span role="status">{shareMessage}</span>{showShareLink && <input className="share-link-fallback" aria-label="Profile share link" readOnly value={shareLink} onFocus={event => event.currentTarget.select()}/>}</div>
     </div>
 
     <header className="profile-header">

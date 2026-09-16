@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { gunzipSync } from 'node:zlib';
 import { loadLeaderboardFeed } from '../lib/leaderboard-feed.mjs';
+import { leaderboardPreviewUrl } from '../lib/leaderboard-preview-version.mjs';
 
 let cachedPages;
 
@@ -8,9 +9,7 @@ async function loadPages() {
   cachedPages ??= readFile(new URL('../assets/leaderboard-pages.json.gz', import.meta.url))
     .then(bytes => JSON.parse(gunzipSync(bytes).toString('utf8')))
     .then(pages => {
-      if (pages.version !== 2 || typeof pages.shell !== 'string' || !/<title>[^<]*<\/title>/i.test(pages.shell)
-        || typeof pages.boardImage?.url !== 'string' || typeof pages.boardImage?.alt !== 'string' || !Array.isArray(pages.playerImages)
-        || pages.playerImages.some(player => typeof player?.id !== 'string' || typeof player?.url !== 'string' || typeof player?.alt !== 'string')) {
+      if (pages.version !== 3 || typeof pages.shell !== 'string' || !/<title>[^<]*<\/title>/i.test(pages.shell)) {
         throw new Error('Invalid leaderboard page bundle');
       }
       return pages;
@@ -29,14 +28,16 @@ export function findLeaderboardPlayer(snapshot, player) {
     ?? snapshot.players.find(entry => entry.id === player) ?? null;
 }
 
-/** Metadata follows the current feed; screenshots retain their reviewed URLs. */
-export function renderCurrentLeaderboardPage(pages, snapshot, player, social) {
+/** Both metadata and the preview image follow the current public feed. */
+export function renderCurrentLeaderboardPage(pages, snapshot, player, social, shareVersion) {
   const origin = 'https://victoryroad.app';
   const metadata = player ? social.getPlayerSocialMetadata(snapshot, player.id, origin) : social.getLeaderboardSocialMetadata(snapshot, origin);
   metadata.canonicalUrl = player ? `${origin}/trace/players/${encodeURIComponent(player.name)}` : `${origin}/trace/leaderboard`;
-  const image = player ? pages.playerImages.find(image => image.id === player.id) ?? pages.boardImage : pages.boardImage;
-  metadata.imageUrl = image.url;
-  metadata.imageAlt = image.alt;
+  metadata.imageUrl = leaderboardPreviewUrl(snapshot, player?.id);
+  metadata.imageType = 'image/png';
+  if (typeof shareVersion === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(shareVersion)) {
+    metadata.shareUrl = `${metadata.canonicalUrl}?v=${shareVersion}`;
+  }
   // The callback preserves literal replacement characters in player names.
   return pages.shell.replace(/<title>[^<]*<\/title>/i, () => social.renderSocialMetadata(metadata));
 }
@@ -96,7 +97,8 @@ export function createLeaderboardPageHandler({
         return;
       }
       const player = findLeaderboardPlayer(feed.snapshot, requestedPlayer(request));
-      const html = player === null ? null : renderCurrentLeaderboardPage(pages, feed.snapshot, player, social);
+      const shareVersion = request.query?.v ?? new URL(request.url || '/', 'https://victoryroad.app').searchParams.get('v');
+      const html = player === null ? null : renderCurrentLeaderboardPage(pages, feed.snapshot, player, social, shareVersion);
       sendHtml(response, method, html === null ? 404 : 200, html ?? errorPage(404));
     } catch {
       sendHtml(response, method, 500, errorPage(500));

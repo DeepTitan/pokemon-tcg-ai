@@ -24,6 +24,12 @@ main { max-width: 1440px; padding: 0 60px; margin: auto; }
 h1 { font-size: 52px; line-height: 1.1; font-weight: 800; letter-spacing: -2px; margin: 0 0 5px; }
 .intro p { color: var(--muted); font-size: 21px; line-height: 1.5; margin: 0; }
 .updated { padding-top: 6px; font-size: 14px; color: var(--muted); white-space: nowrap; }
+.board-share { display: flex; flex-direction: column; align-items: flex-end; gap: 7px; max-width: 260px; text-align: right; }
+.board-share button { padding: 9px 13px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: var(--accent); font-size: 13px; font-weight: 600; }
+.board-share button:hover:not(:disabled) { background: #fff2c9; border-color: #d3b66a; }
+.board-share [role="status"] { font-size: 11px; line-height: 1.5; color: var(--muted); }
+.board-share [role="status"]:empty { display: none; }
+.share-link-fallback { width: 100%; min-width: 0; padding: 7px 9px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface); color: var(--accent); font-size: 12px; }
 h2 { font-size: 27px; font-weight: 750; line-height: 1.25; letter-spacing: -.8px; margin: 6px 0 0; }
 h3 { font-size: 17px; font-weight: 700; line-height: 1.4; margin: 0 0 8px; }
 .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 1.4px; color: var(--muted); }
@@ -252,6 +258,10 @@ footer { padding: 22px max(calc((100vw - 1320px) / 2), 32px); flex-wrap: wrap; }
   h1 { font-size: 36px; letter-spacing: -1.4px; }
   .intro p { font-size: 16px; }
   .updated { display: block; font-size: 11px; margin-top: 9px; }
+  .board-share { flex-direction: row; flex-wrap: wrap; justify-content: space-between; align-items: center; max-width: none; margin-top: 12px; text-align: left; }
+  .board-share .updated { margin-top: 0; padding-top: 0; }
+  .board-share button { font-size: 11px; padding: 9px 11px; }
+  .board-share [role="status"] { flex-basis: 100%; }
   .controls { grid-template-columns: minmax(135px, 1fr) auto; gap: 10px; margin-bottom: 14px; }
   .search { grid-column: 1 / -1; }
   .status-filter { min-width: 135px; }

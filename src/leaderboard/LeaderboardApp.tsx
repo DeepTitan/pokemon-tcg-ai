@@ -4,7 +4,7 @@ import { ACTIVE_ELO_OPTIONS, prepareRankedEloEvents, replayEloRatings, type EloR
 import RatingScore from './RatingScore.js';
 import ModelSettings from './ModelSettings.js';
 import PlayerProfile from './PlayerProfile.js';
-import { playerProfileHref, LEADERBOARD_BASE, LEADERBOARD_HREF, LEADERBOARD_DATA_HREF, LEADERBOARD_MASCOT_HREF } from './profile-route.js';
+import { playerProfileHref, leaderboardShareHref, LEADERBOARD_BASE, LEADERBOARD_HREF, LEADERBOARD_DATA_HREF, LEADERBOARD_MASCOT_HREF } from './profile-route.js';
 import { startSnapshotRefresh, type LeaderboardSnapshot, type SnapshotRefreshStatus } from './snapshot-refresh.js';
 import './styles.css';
 
@@ -26,8 +26,22 @@ export default function LeaderboardApp() {
   const [activeRating, setActiveRating] = useState<string | null>(null);
   const [page, setPage] = useState(0);
   const [coverageOpen, setCoverageOpen] = useState(false);
+  const [shareMessage, setShareMessage] = useState('');
+  const [showShareLink, setShowShareLink] = useState(false);
   const [showMethod, setShowMethod] = useState(window.location.hash === '#method');
   const profileName = profileNameFromPath();
+  const shareLink = new URL(leaderboardShareHref(snapshot?.generatedAt), window.location.origin).href;
+  async function copyLeaderboardLink() {
+    if (!snapshot) return;
+    try {
+      await navigator.clipboard.writeText(shareLink);
+      setShareMessage('Leaderboard link copied.');
+      setShowShareLink(false);
+    } catch {
+      setShareMessage('Select and copy this link to share.');
+      setShowShareLink(true);
+    }
+  }
   useEffect(() => { document.body.classList.toggle('share-preview', sharePreview); return () => document.body.classList.remove('share-preview'); }, [sharePreview]);
   useEffect(() => {
     const sync = () => { setShowMethod(window.location.hash === '#method'); setActiveRating(null); };
@@ -78,8 +92,9 @@ export default function LeaderboardApp() {
         updates={ratingUpdates.get(selectedRow.playerId) ?? []} names={names}
         latestLiveRating={selectedSeed?.latestLiveRating} liveRatingObservedAt={selectedSeed?.liveRatingObservedAt}
         liveRatingTiming={selectedSeed?.liveRatingTiming} liveRatingBefore={selectedSeed?.liveRatingBefore} liveRatingChange={selectedSeed?.liveRatingChange}
+        generatedAt={snapshot?.generatedAt}
       /> : <section className="empty profile-not-found"><h1>Player not found</h1><p>This player isn’t in the current Trace archive.</p><a className="secondary" href={LEADERBOARD_HREF}>Find a player</a></section> : <>
-        <section className="intro" aria-labelledby="leaderboard-heading"><div><h1 id="leaderboard-heading">Leaderboard</h1><p>Pokémon TCG Live · All-time</p></div><span className="updated">{snapshot ? `Updated ${date(snapshot.generatedAt)}` : ''}</span></section>
+        <section className="intro" aria-labelledby="leaderboard-heading"><div><h1 id="leaderboard-heading">Leaderboard</h1><p>Pokémon TCG Live · All-time</p></div><div className="board-share"><span className="updated">{snapshot ? `Updated ${date(snapshot.generatedAt)}` : ''}</span>{!sharePreview && <><button type="button" disabled={!snapshot} onClick={() => void copyLeaderboardLink()}>Copy leaderboard link</button><span role="status">{shareMessage}</span>{showShareLink && <input className="share-link-fallback" aria-label="Leaderboard share link" readOnly value={shareLink} onFocus={event => event.currentTarget.select()}/>}</>}</div></section>
         <section className="board" id="leaderboard" aria-label="Leaderboard">
           <div className="controls">
             <label className="search"><MagnifyingGlass size={21} aria-hidden="true"/><span className="sr-only">Search players</span><input type="search" placeholder="Search players…" value={query} onChange={event => setQuery(event.target.value)}/></label>

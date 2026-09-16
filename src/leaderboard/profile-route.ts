@@ -11,3 +11,22 @@ export const LEADERBOARD_CARD_BACK_HREF = LEADERBOARD_BASE ? `${LEADERBOARD_BASE
 export function playerProfileHref(name: string): string {
   return `${LEADERBOARD_BASE}/players/${encodeURIComponent(name)}`;
 }
+
+/** Stable while this snapshot is displayed; a newer feed gets a fresh share URL. */
+export function snapshotShareToken(generatedAt?: string): string | undefined {
+  const timestamp = generatedAt ? Date.parse(generatedAt) : NaN;
+  return Number.isFinite(timestamp) ? timestamp.toString(36) : undefined;
+}
+
+function versionedShareHref(href: string, generatedAt?: string): string {
+  const token = snapshotShareToken(generatedAt);
+  return token ? `${href}?v=${token}` : href;
+}
+
+export function playerProfileShareHref(name: string, generatedAt?: string): string {
+  return versionedShareHref(playerProfileHref(name), generatedAt);
+}
+
+export function leaderboardShareHref(generatedAt?: string): string {
+  return versionedShareHref(LEADERBOARD_HREF, generatedAt);
+}

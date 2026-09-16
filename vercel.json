@@ -13,11 +13,19 @@
     },
     "api/leaderboard-art.mjs": {
       "includeFiles": "{landing/assets/share-card-catalog.json.gz,landing/assets/share-card-art/**}"
+    },
+    "api/leaderboard-preview.mjs": {
+      "includeFiles": "{landing/assets/fonts/**,landing/assets/trace-mascot.png,landing/assets/pokemon-card-back.jpg,landing/assets/share-card-catalog.json.gz,landing/assets/share-card-art/**,landing/leaderboard/card-art/**}",
+      "maxDuration": 30
     }
   },
   "cleanUrls": true,
   "trailingSlash": false,
   "rewrites": [
+    {
+      "source": "/trace/leaderboard-preview.png",
+      "destination": "/api/leaderboard-preview"
+    },
     {
       "source": "/trace/leaderboard-static/events.json",
       "destination": "/api/leaderboard-data"

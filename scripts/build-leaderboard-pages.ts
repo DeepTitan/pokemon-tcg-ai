@@ -1,26 +1,20 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildSync } from 'esbuild';
 import { projectPublicLeaderboardSnapshot } from './leaderboard-public-snapshot.js';
 import {
-  getLeaderboardSocialMetadata,
-  getPlayerSocialMetadata,
   renderSocialMetadata,
   type SocialPreviewMetadata,
 } from './leaderboard-social-preview.js';
 
-const origin = 'https://victoryroad.app';
 const staticPath = '/trace/leaderboard-static';
 const repository = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 export interface LeaderboardPages {
-  version: 2;
+  version: 3;
   shell: string;
-  boardImage: { url: string; alt: string };
-  playerImages: { id: string; url: string; alt: string }[];
 }
 
 /** The browser and server use the same rating and public-data implementations. */
@@ -38,11 +32,6 @@ export function renderLeaderboardPage(shell: string, metadata: SocialPreviewMeta
   return shell
     .replace(/<title>[^<]*<\/title>/i, () => renderSocialMetadata(metadata))
     .replace(/<link\b[^>]*\brel=["']icon["'][^>]*>/i, () => `<link rel="icon" href="${staticPath}/trace-mascot.png">`);
-}
-
-function imageUrl(filename: string, previewDirectory: string): string {
-  const hash = createHash('sha256').update(fs.readFileSync(path.join(previewDirectory, filename))).digest('hex').slice(0, 12);
-  return `${origin}${staticPath}/previews/${encodeURIComponent(filename)}?v=${hash}`;
 }
 
 /** Prepare local deployment artifacts only; this function makes no network requests.
@@ -68,18 +57,12 @@ export function buildLeaderboardPages(root = repository): LeaderboardPages {
     names.add(player.name);
   }
 
-  const boardMetadata = getLeaderboardSocialMetadata(snapshot, origin);
-  const previewFiles = new Set(['leaderboard.jpg']);
+  // Keep old image URLs available for messages already shared. New metadata
+  // points to the live renderer and does not depend on these screenshots.
+  const previewFiles = new Set(fs.readdirSync(previewDirectory).filter(filename => /^[a-zA-Z0-9_-]+\.jpg$/.test(filename)));
   const pages: LeaderboardPages = {
-    version: 2,
+    version: 3,
     shell: shell.replace(/<link\b[^>]*\brel=["']icon["'][^>]*>/i, () => `<link rel="icon" href="${staticPath}/trace-mascot.png">`),
-    boardImage: { url: imageUrl('leaderboard.jpg', previewDirectory), alt: boardMetadata.imageAlt },
-    playerImages: snapshot.players.flatMap(player => {
-      const filename = `${player.id}.jpg`;
-      if (!fs.existsSync(path.join(previewDirectory, filename))) return [];
-      previewFiles.add(filename);
-      return [{ id: player.id, url: imageUrl(filename, previewDirectory), alt: getPlayerSocialMetadata(snapshot, player.id, origin).imageAlt }];
-    }),
   };
 
   const artFiles = new Set<string>();
@@ -106,7 +89,7 @@ export function buildLeaderboardPages(root = repository): LeaderboardPages {
   const pageBundle = path.join(root, 'landing/assets/leaderboard-pages.json.gz');
   fs.mkdirSync(path.dirname(pageBundle), { recursive: true });
   fs.writeFileSync(pageBundle, gzipSync(JSON.stringify(pages), { level: 9 }));
-  console.log(`Built Trace leaderboard shell and ${pages.playerImages.length} player screenshot previews. Match data comes from the live feed.`);
+  console.log('Built Trace leaderboard shell. Match data and social previews use the live feed.');
   return pages;
 }
 
