@@ -1,4 +1,11 @@
-# Compact player match history — design QA
+# Trace leaderboard — design QA
+
+## Text cleanup
+
+2026-09-16: preserved the approved cream/navy/gold styling and compact tables while reducing repeated labels. Removed Few matches and No rating yet row subtitles, redundant navigation hints, duplicate history headings/counts, and the repeated profile footnote. Shortened share buttons, kept feedback and errors, and replaced changing refresh chatter with one quiet automatic-update note. Moved perspective/rounding explanations into existing details. Preserved Not registered, empty-record states, opponent Live ratings, timing caveats, full formula/settings, result badges, and sticky player identity.
+
+CUA evidence: desktop leaderboard/profile/rating popover and 390 × 844 board/profile/method captures inspected. No mobile page overflow; mobile opponent Live ratings and dates remain visible. Unregistered toggle still shows explicit labels. Preview renderer v4 removes redundant instructions; copied links use p5. Strict TypeScript, production build, 25 metadata/preview/renderer tests and 3 sharing-route tests pass. Production verified at https://victoryroad-iit2qo1mw-deeptitan-6729s-projects.vercel.app through the existing victoryroad.app routes. Final JS, copy labels, opponent header and no page overflow confirmed in the browser. Both current 1200×630 PNGs were visually reviewed; Facebook-crawler metadata and image GET/HEAD/304 checks passed. Final copy review retained a visible Opponent Live header and accessible button names containing Copy link.
+
 
 ## OP.GG-inspired visual refinement
 

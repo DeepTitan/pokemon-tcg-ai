@@ -17,7 +17,7 @@ export function snapshotShareToken(generatedAt?: string): string | undefined {
   const timestamp = generatedAt ? Date.parse(generatedAt) : NaN;
   // Bump the presentation version when share copy changes, so new copies do
   // not reuse a social preview cached before the website update.
-  return Number.isFinite(timestamp) ? `p4-${timestamp.toString(36)}` : undefined;
+  return Number.isFinite(timestamp) ? `p5-${timestamp.toString(36)}` : undefined;
 }
 
 function versionedShareHref(href: string, generatedAt?: string): string {

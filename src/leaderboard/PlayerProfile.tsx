@@ -23,8 +23,6 @@ export interface PlayerProfileProps {
   generatedAt?: string;
 }
 
-const date = (value: string) => new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-
 export default function PlayerProfile({ row, registered, rank, rankScope = 'registered', matches, updates, names,
   latestLiveRating, liveRatingObservedAt, liveRatingTiming, liveRatingBefore, liveRatingChange, generatedAt }: PlayerProfileProps) {
   const [ratingActive, setRatingActive] = useState(false);
@@ -48,14 +46,14 @@ export default function PlayerProfile({ row, registered, rank, rankScope = 'regi
   return <section className="player-profile" aria-labelledby="player-profile-title">
     <div className="profile-navigation">
       <a className="profile-back" href={LEADERBOARD_HREF}><ArrowLeft size={16} aria-hidden="true"/> Leaderboard</a>
-      <div className="profile-share"><button type="button" onClick={() => void copyProfileLink()}>Copy profile link</button><span role="status">{shareMessage}</span>{showShareLink && <input className="share-link-fallback" aria-label="Profile share link" readOnly value={shareLink} onFocus={event => event.currentTarget.select()}/>}</div>
+      <div className="profile-share"><button type="button" onClick={() => void copyProfileLink()} aria-label="Copy link to profile">Copy link</button><span role="status">{shareMessage}</span>{showShareLink && <input className="share-link-fallback" aria-label="Profile share link" readOnly value={shareLink} onFocus={event => event.currentTarget.select()}/>}</div>
     </div>
 
     <header className="profile-header">
       <div className="profile-identity">
         <div className="profile-rankline"><span className="profile-rank">{ranked ? `#${rank.toLocaleString()}` : 'Unranked'}</span><span>{rankScope === 'all' ? 'All players' : 'Trace players'}</span></div>
         <h1 id="player-profile-title">{row.name}</h1>
-        {registered === false && <p className="profile-registration"><span>Not registered</span> Appears in other players’ Trace matches.</p>}
+        {registered === false && <p className="profile-registration" title="Appears in other players’ Trace matches."><span>Not registered</span></p>}
       </div>
       <dl className="profile-stats">
         <div><dt>Record</dt><dd className="profile-record" aria-label={`${row.wins} wins, ${row.losses} losses${row.draws ? `, ${row.draws} draws` : ''}`}><span>{row.wins}W</span><i>–</i><span>{row.losses}L</span>{row.draws > 0 && <><i>–</i><span>{row.draws}D</span></>}</dd></div>
@@ -72,6 +70,5 @@ export default function PlayerProfile({ row, registered, rank, rankScope = 'regi
 
     {row.games === 0 && <p className="profile-empty-note">No matches counted yet. A ranked match needs a result and both players’ Live ratings recorded to count.</p>}
     <PlayerHistory key={row.playerId} mode="page" player={row} matches={matches} updates={updates} names={names}/>
-    <p className="profile-footnote">Based on ranked matches recorded by Trace. {row.lastPlayedAt && <>Latest match <time dateTime={row.lastPlayedAt}>{date(row.lastPlayedAt)}</time>. </>}<a href={`${LEADERBOARD_HREF}#method`}>How ratings work</a></p>
   </section>;
 }

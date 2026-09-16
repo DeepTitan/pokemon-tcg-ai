@@ -52,9 +52,9 @@ export default function PlayerHistory({ player, matches, updates, names, onClose
   }, [mode]);
   const content = <>
     {mode === 'page'
-      ? <div className="history-heading"><h2 id={headingId}>{player.name}’s matches</h2><span className="history-page-count">{history.length} ranked · newest first</span></div>
+      ? <div className="history-heading"><h2 id={headingId}>{player.name}’s matches</h2></div>
       : <div className="history-heading"><div><span className="eyebrow">Match history</span><h2 id={headingId}>{player.name}</h2><p><span className="history-record" aria-label={`${wins} ${wins === 1 ? 'win' : 'wins'}, ${losses} ${losses === 1 ? 'loss' : 'losses'}${draws ? `, ${draws} ${draws === 1 ? 'draw' : 'draws'}` : ''}`}>{wins}W · {losses}L{draws > 0 && <> · {draws}D</>}</span><span> · {history.length} ranked {history.length === 1 ? 'match' : 'matches'}</span></p></div><button type="button" className="secondary" aria-label="Close match history" onClick={onClose} autoFocus>Close</button></div>}
-    <div className="history-scroll"><div className="history-table-wrap" tabIndex={0} role="region" aria-label="Match table, scroll for more columns"><table className="history-table" aria-label={`${player.name} match history`}><thead><tr><th scope="col">Result</th><th scope="col">Trace points</th><th scope="col">Opponent</th><th scope="col">Live rating<small>Opponent</small></th><th scope="col">Pokémon<small>Player vs. opponent</small></th><th scope="col">Prizes taken</th><th scope="col">Played<small>Newest first</small></th></tr></thead><tbody>
+    <div className="history-scroll"><div className="history-table-wrap" tabIndex={0} role="region" aria-label="Match table, scroll for more columns"><table className="history-table" aria-label={`${player.name} match history, newest first. Pokémon and prizes show ${player.name} first, then the opponent.`}><thead><tr><th scope="col">Result</th><th scope="col">Trace points</th><th scope="col">Opponent</th><th scope="col" aria-label="Opponent Live rating">Opponent Live</th><th scope="col" title={`${player.name} vs. opponent`}>Pokémon</th><th scope="col" title={`${player.name} vs. opponent`}>Prizes taken</th><th scope="col" aria-sort="descending">Played</th></tr></thead><tbody>
       {history.slice(0, shown).map(match => {
         const opponentId = match.playerIds.find(id => id !== player.playerId)!;
         const opponent = names.get(opponentId) ?? 'Unknown player';
@@ -78,8 +78,8 @@ export default function PlayerHistory({ player, matches, updates, names, onClose
       })}
     </tbody></table></div>{!history.length && <p className="empty">No matches counted toward this rating yet.</p>}
     {shown < history.length && <button type="button" className="secondary history-more" onClick={() => setShown(value => value + 12)}>Show more matches · {history.length - shown} left</button>}
-    <p className="history-note">Points, Pokémon and prizes are shown from {player.name}’s side. Their Pokémon and prizes appear first.</p>
     <details className="history-details"><summary>About this history</summary>
+      <p>Points are from {player.name}’s side. Their Pokémon and prizes appear first, followed by the opponent’s.</p>
       <p>This history shows matches that count toward the Trace rating. Each needs a result and both players’ Live ratings. Points are rounded to one decimal.</p>
       <p>Pokémon are the main ones seen in the recorded deck or match. A dash means that detail wasn’t recorded.</p>
       <p>The Live rating is the opponent’s in-game rating recorded with that match. For some older matches, we do not know exactly when the rating was captured. Some dates show when a match was imported.</p>

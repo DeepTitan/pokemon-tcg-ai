@@ -74,9 +74,9 @@ export default function LeaderboardApp() {
   }, [selectedRow, showMethod, result, profileName]);
   const verifiedPreMatchCount = eligibleHistory.filter(match => match.liveRatingEligibility?.timing === 'pre-match').length;
   const checkedAt = refreshStatus.lastCheckedAt === null ? '' : new Date(refreshStatus.lastCheckedAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-  const refreshLabel = refreshStatus.checking ? 'Checking for new matches…' : refreshStatus.failed
+  const refreshLabel = refreshStatus.failed
     ? snapshot ? 'Couldn’t refresh · showing the last update' : 'Couldn’t load matches · trying again'
-    : checkedAt ? `Checked at ${checkedAt}` : 'Waiting to check matches';
+    : null;
   const loading = refreshStatus.failed ? <div className="empty" role="alert"><h2>Couldn’t load the leaderboard.</h2><p>We’ll keep trying. You can also refresh the page.</p><a className="secondary" href={window.location.pathname}>Try again</a></div> : <div className="empty" role="status">Loading matches…</div>;
 
   return <>
@@ -94,7 +94,7 @@ export default function LeaderboardApp() {
         liveRatingTiming={selectedSeed?.liveRatingTiming} liveRatingBefore={selectedSeed?.liveRatingBefore} liveRatingChange={selectedSeed?.liveRatingChange}
         generatedAt={snapshot?.generatedAt}
       /> : <section className="empty profile-not-found"><h1>Player not found</h1><p>This player isn’t in the current Trace archive.</p><a className="secondary" href={LEADERBOARD_HREF}>Find a player</a></section> : <>
-        <section className="intro" aria-labelledby="leaderboard-heading"><div><h1 id="leaderboard-heading">Leaderboard</h1><p>Pokémon TCG Live · All-time</p></div><div className="board-share"><span className="updated">{snapshot ? `Updated ${date(snapshot.generatedAt)}` : ''}</span>{!sharePreview && <><button type="button" disabled={!snapshot} onClick={() => void copyLeaderboardLink()}>Copy leaderboard link</button><span role="status">{shareMessage}</span>{showShareLink && <input className="share-link-fallback" aria-label="Leaderboard share link" readOnly value={shareLink} onFocus={event => event.currentTarget.select()}/>}</>}</div></section>
+        <section className="intro" aria-labelledby="leaderboard-heading"><div><h1 id="leaderboard-heading">Leaderboard</h1><p>Pokémon TCG Live · All-time</p></div><div className="board-share"><span className="updated">{snapshot ? `Updated ${date(snapshot.generatedAt)}` : ''}</span>{!sharePreview && <><button type="button" disabled={!snapshot} onClick={() => void copyLeaderboardLink()} aria-label="Copy link to leaderboard">Copy link</button><span role="status">{shareMessage}</span>{showShareLink && <input className="share-link-fallback" aria-label="Leaderboard share link" readOnly value={shareLink} onFocus={event => event.currentTarget.select()}/>}</>}</div></section>
         <section className="board" id="leaderboard" aria-label="Leaderboard">
           <div className="controls">
             <label className="search"><MagnifyingGlass size={21} aria-hidden="true"/><span className="sr-only">Search players</span><input type="search" placeholder="Search players…" value={query} onChange={event => setQuery(event.target.value)}/></label>
@@ -109,7 +109,7 @@ export default function LeaderboardApp() {
                 const unregistered = seed?.traceStatus !== 'trace-user';
                 return <tr key={row.playerId} className={[rank && rank <= 3 ? `place-${rank}` : '', unregistered ? 'unregistered' : ''].filter(Boolean).join(' ')}>
                   <td className="rank"><span>{rank ?? '—'}</span>{rank === 1 && <Crown size={26} weight="regular" aria-label="First place"/>}</td>
-                  <td><a className="player-name" href={playerProfileHref(row.name)}>{row.name}</a>{unregistered ? <small className="registration-badge">Not registered</small> : row.games === 0 ? <small>No rating yet</small> : row.provisional ? <small title={`${row.games} ${row.games === 1 ? 'match' : 'matches'} counted · fewer than 10`}>Few matches</small> : null}</td>
+                  <td><a className="player-name" href={playerProfileHref(row.name)}>{row.name}</a>{unregistered ? <small className="registration-badge">Not registered</small> : null}</td>
                   <td className="rating"><RatingScore active={activeRating === row.playerId} onOpen={() => setActiveRating(row.playerId)} row={row} updates={ratingUpdates.get(row.playerId) ?? []} names={names} latestLiveRating={seed?.latestLiveRating} liveRatingObservedAt={seed?.liveRatingObservedAt} liveRatingTiming={seed?.liveRatingTiming} liveRatingBefore={seed?.liveRatingBefore} liveRatingChange={seed?.liveRatingChange}/></td>
                   <td className="record">{row.games ? <div className="record-summary"><span className="record-counts" aria-label={`${row.wins} wins, ${row.losses} losses${row.draws ? `, ${row.draws} draws` : ''}`}><span className="record-wins">{row.wins}W</span><span className="record-losses">{row.losses}L</span>{row.draws > 0 && <span>{row.draws}D</span>}</span><span className="record-bar" aria-hidden="true"><span className="record-bar-wins" style={{ width: `${row.wins / row.games * 100}%` }}/><span className="record-bar-losses" style={{ width: `${row.losses / row.games * 100}%` }}/>{row.draws > 0 && <span className="record-bar-draws" style={{ width: `${row.draws / row.games * 100}%` }}/>}</span></div> : <span className="unrated-record">No matches counted</span>}</td>
                   <td className="win-rate">{row.games ? `${Math.round(row.wins / row.games * 100)}%` : '—'}</td>
@@ -117,14 +117,14 @@ export default function LeaderboardApp() {
               })}</tbody>
             </table></div>
             {filtered.length === 0 && <div className="empty"><h2>No players found</h2><p>Try a different name or reset the filters.</p><button className="secondary" onClick={() => { setQuery(''); setStatus('all'); }}>Clear filters</button></div>}
-            <div className="pagination"><span aria-live="polite">{filtered.length > pageSize ? `${page * pageSize + 1}–${Math.min(filtered.length, (page + 1) * pageSize)} of ${filtered.length} players` : `${filtered.length} ${showUnregistered ? '' : 'Trace '}${filtered.length === 1 ? 'player' : 'players'}`}</span>{filtered.length > pageSize && !sharePreview ? <div><button className="secondary" disabled={page === 0} onClick={() => { setPage(page - 1); setActiveRating(null); }}>Previous</button><button className="secondary" disabled={(page + 1) * pageSize >= filtered.length} onClick={() => { setPage(page + 1); setActiveRating(null); }}>Next</button></div> : <span>Select a player to view match history.</span>}</div>
+            <div className="pagination"><span aria-live="polite">{filtered.length > pageSize ? `${page * pageSize + 1}–${Math.min(filtered.length, (page + 1) * pageSize)} of ${filtered.length} players` : `${filtered.length} ${showUnregistered ? '' : 'Trace '}${filtered.length === 1 ? 'player' : 'players'}`}</span>{filtered.length > pageSize && !sharePreview ? <div><button className="secondary" disabled={page === 0} onClick={() => { setPage(page - 1); setActiveRating(null); }}>Previous</button><button className="secondary" disabled={(page + 1) * pageSize >= filtered.length} onClick={() => { setPage(page + 1); setActiveRating(null); }}>Next</button></div> : null}</div>
           </>}
           {showUnregistered && <p className="registration-note">Players marked “Not registered” appear in other players’ matches. They use the same rating rules.</p>}
         </section>
       </>}
       <section className="source-note" id="coverage"><details open={coverageOpen} onToggle={event => setCoverageOpen(event.currentTarget.open)}><summary>{showMethod ? 'About the match data' : 'Which matches count?'}</summary>
         {!showMethod && <p>A ranked match counts when Trace has the result and both players’ Live ratings. A Live rating is the in-game rating in Pokémon TCG Live. Missing ratings, conflicting ratings or an unclear result mean the match is left out.</p>}
-        <p>{result ? `${number(result.ratedMatchCount)} matches counted · ${number(result.rejectedMatches.length)} left out of this leaderboard.` : 'Loading match totals…'} Trace can only count recorded matches.{!showMethod && ' “Few matches” means fewer than 10 have counted so far.'}</p>
+        <p>{result ? `${number(result.ratedMatchCount)} matches counted · ${number(result.rejectedMatches.length)} left out of this leaderboard.` : 'Loading match totals…'} Trace can only count recorded matches.</p>
         <details className="source-data-details"><summary>Notes about this data</summary>
           <p>Players are matched by their exact names. Changing a name can split a player’s match history.</p>
           <p>For {number(verifiedPreMatchCount)} matches, we know the Live ratings were recorded before play. For the rest, the exact timing is unknown. Ratings marked “after the match” are shown for reference only. Some dates show when a match was imported.</p>
@@ -132,6 +132,6 @@ export default function LeaderboardApp() {
         </details>
       </details></section>
     </main>
-    <footer><a className="footer-brand" href={LEADERBOARD_HREF}>Trace</a><span>Every turn, in view.</span><span className="refresh-status" title={`Checks for new matches every 15 seconds while this tab is visible.${checkedAt ? ` Last successful check: ${checkedAt}.` : ''}`}>{refreshLabel}</span>{!LEADERBOARD_BASE && <span className="local-note">Local preview</span>}</footer>
+    <footer><a className="footer-brand" href={LEADERBOARD_HREF}>Trace</a><span className="footer-updates" title={`Checks for new matches every 15 seconds while this tab is visible.${checkedAt ? ` Last successful check: ${checkedAt}.` : ''}`}>Updates automatically</span>{refreshLabel && <span role="status" className="refresh-status" title={`Checks for new matches every 15 seconds while this tab is visible.${checkedAt ? ` Last successful check: ${checkedAt}.` : ''}`}>{refreshLabel}</span>}{!LEADERBOARD_BASE && <span className="local-note">Local preview</span>}</footer>
   </>;
 }

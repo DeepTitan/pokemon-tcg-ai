@@ -38,7 +38,7 @@
 .history-page .history-page-count { color: #657285; font-size: 11px; white-space: nowrap; }
 .history-page .history-scroll { max-height: none; overflow-y: visible; }
 .history-page .history-table { min-width: 820px; table-layout: fixed; }
-.history-page .history-table th { padding: 8px; background: #172b49; color: #fffdfa; border-bottom-color: #172b49; font-size: 10px; letter-spacing: 0; }
+.history-page .history-table th { padding: 8px; background: #172b49; color: #fffdfa; border-bottom-color: #172b49; font-size: 11px; letter-spacing: 0; }
 .history-page .history-table th small { color: #c9d1dc; font-size: 9px; margin-top: 2px; }
 .history-page .history-table th:nth-child(1) { width: 9%; }
 .history-page .history-table th:nth-child(2) { width: 9%; }
@@ -100,7 +100,7 @@
   .history-page .history-heading h2 { font-size: 14px; }
   .history-page .history-page-count { font-size: 9px; white-space: normal; text-align: right; }
   .history-page .history-table { min-width: 0; width: 100%; }
-  .history-page .history-table th { padding: 7px 4px; font-size: 9px; white-space: normal; }
+  .history-page .history-table th { padding: 7px 4px; font-size: 10px; white-space: normal; }
   .history-page .history-table th small { font-size: 8px; }
   .history-page .history-table th:nth-child(1) { width: 17%; }
   .history-page .history-table th:nth-child(2) { width: 15%; }

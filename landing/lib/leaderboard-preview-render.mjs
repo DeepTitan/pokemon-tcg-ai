@@ -122,8 +122,7 @@ function board(snapshot) {
         ${text(percent(row), 1054, top + 25, 19, 700)}${rule(top + rowHeight)}`;
     }).join('')}
     ${!rows.length ? text('No Trace players yet.', 58, 221, 20, 600, muted) : ''}
-    ${text(`${registeredRows.length} Trace players`, 38, Math.min(592, start + Math.max(rows.length, 1) * rowHeight + 29), 15, 600, muted)}
-    ${text('Select a player to see their match history.', 1162, Math.min(592, start + Math.max(rows.length, 1) * rowHeight + 29), 15, 600, muted, 'text-anchor="end"')}`;
+    ${text(`${registeredRows.length} Trace players`, 38, Math.min(592, start + Math.max(rows.length, 1) * rowHeight + 29), 15, 600, muted)}`;
 }
 
 function profile(snapshot, playerId) {
@@ -147,7 +146,6 @@ function profile(snapshot, playerId) {
     ${text(`${number(row.games)} ranked matches`, 502, 174, 18, 600, muted)}
     ${rule(189)}
     ${text('Match history', 38, 214, 20, 800)}
-    ${text('Most recent ranked matches', 1162, 213, 13, 600, muted, 'text-anchor="end"')}
     <rect x="38" y="224" width="1124" height="${30 + Math.max(1, history.length) * 59}" fill="${surface}" stroke="${line}"/>
     <rect x="39" y="225" width="1122" height="29" fill="${ink}"/>
     ${text('Result', 54, 244, 13, 500, '#ffffff')}${text('Trace points', 156, 244, 13, 500, '#ffffff')}

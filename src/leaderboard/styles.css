@@ -237,7 +237,7 @@ td { border-bottom: 1px solid var(--line); }
 main:has(.method-page) > .source-note { max-width: 1040px; margin-left: auto; margin-right: auto; }
 footer { border-top: 1px solid var(--line); padding: 22px max(5vw,24px); display: flex; gap: 20px; align-items: center; color: #58708a; font-size: 11px; }
 .footer-brand { font-weight: 800; letter-spacing: 2px; font-size: 13px; color: #172b49; text-decoration: none; }
-footer > a:last-child { margin-left: auto; }
+.footer-updates { margin-left: auto; }
 .rating-trigger { border-bottom-color: transparent; }
 .rating-trigger:hover { border-bottom-color: currentColor; }
 .unrated-score { font-size: 22px; }
@@ -303,7 +303,6 @@ footer { padding: 18px max(calc((100vw - 1272px) / 2), 24px); flex-wrap: wrap; }
   .rank > svg { display: none; }
   .rating-column-title { gap: 5px; }
   .pagination { align-items: flex-start; font-size: 11px; gap: 20px; }
-  .pagination > span:last-child { text-align: right; max-width: 165px; }
   .model-intro h1 { font-size: 29px; letter-spacing: -.5px; }
   .model-intro p { font-size: 16px; }
   .model-principles { grid-template-columns: 1fr; gap: 20px; margin-top: 25px; }

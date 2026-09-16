@@ -139,14 +139,13 @@ export default function RatingScore({ active, onOpen, row, updates, names, lates
         </dl>
         {latest && <div className="rating-latest">
           <strong>{latest.score === 1 ? 'Win' : latest.score === 0 ? 'Loss' : 'Draw'} vs. {names.get(latest.opponentId) ?? latest.opponentId}</strong>
-          <span>Latest match counted · {date(latest.playedAt)}</span>
+          <span>Latest match · {date(latest.playedAt)}</span>
           <p className="rating-equation">{decimal(latest.before.rating)} {signed(latest.adjustment)} ≈ {decimal(latest.after.rating)}</p>
         </div>}
       </> : <p className="rating-confidence">No matches count yet. A finished ranked match needs both players’ Live ratings recorded to count.</p>}
       <div className="rating-live"><div><strong>Latest Live rating</strong><b>{latestLiveRating === undefined ? 'Not recorded' : Math.round(latestLiveRating).toLocaleString()}</b></div>
-        <p>The in-game rating in Pokémon TCG Live.</p>
         {latestLiveRating !== undefined && liveRatingObservedAt && <span>Recorded {date(liveRatingObservedAt)} · {liveRatingTiming === 'post-match' ? 'after the match' : liveRatingTiming === 'pre-match' ? 'before the match' : 'before or after match unknown'}</span>}
-        {latestLiveRating !== undefined && <p>{liveRatingTiming === 'post-match' ? 'This after-match rating did not set that match’s points.' : 'Each match uses the Live ratings recorded for that match.'}</p>}
+        {latestLiveRating !== undefined && liveRatingTiming === 'post-match' && <p>This after-match rating did not set that match’s points.</p>}
       </div>
       {row.games > 0 && <details className="rating-details" onToggle={event => setDetailsOpen(event.currentTarget.open)}><summary>View calculation</summary>
         {latest?.matchEvidence && <div className="rating-calculation">
@@ -181,10 +180,10 @@ export default function RatingScore({ active, onOpen, row, updates, names, lates
         </div>}
         <p>Across all matches: {signed(gains)} gained, {signed(losses)} lost. Matches count once, oldest first.</p>
         {liveRatingTiming === 'post-match' && liveRatingBefore !== undefined && latestLiveRating !== undefined && <p>Latest Live rating change: {Math.round(liveRatingBefore).toLocaleString()} → {Math.round(latestLiveRating).toLocaleString()}{liveRatingChange !== undefined ? ` (${signed(liveRatingChange)})` : ''}. This after-match change is not used to set Trace points.</p>}
-        <p>{row.provisional ? 'Few matches' : `${ELO_OPTIONS.provisionalGames}+ matches`}: {row.games} {row.games === 1 ? 'match counts' : 'matches count'}{row.provisional ? `, fewer than ${ELO_OPTIONS.provisionalGames}` : ''}. This label shows how much history Trace has, not how accurate the rating is.</p>
+        {row.provisional && <p>Fewer than {ELO_OPTIONS.provisionalGames} matches counted. More matches will give Trace more history to work with.</p>}
+        <p>Figures rounded for display.</p>
         <a href={`${LEADERBOARD_HREF}#method`} onClick={() => dismiss()}>How ratings work →</a>
       </details>}
-      <small className="rating-rounding">{row.games > 0 && 'Rounded for display. '}{pinned ? 'Esc to close.' : 'Click or press Enter to keep open.'}</small>
     </div>, document.body)}
   </>;
 }

@@ -29,6 +29,8 @@ test('leaderboard follows current shared ratings, registered population and scre
   const rated = getLeaderboardPreviewData(data).registeredRows.find(row => row.playerId === 'a');
   for (const label of ['Trace', 'Leaderboard', 'Trace rating', 'isaiahw', 'NewPlayer', '2 Trace players', '1W  1L', '50%', Math.round(rated.rating).toLocaleString('en-US')]) assert.ok(svg.includes(label), label);
   assert.doesNotMatch(svg, /Spysimon|Provisional|>1500<|>1,500</);
+  assert.doesNotMatch(svg, /Few matches|No rating yet|Select a player/);
+  assert.match(svg, /No rated matches/, 'The record still explains why an unrated player has no score');
   assert.match(svg, /width="3" height="36" fill="#c79b36"/);
   assert.doesNotMatch(svg, /#bac4d0/, 'An unrated player does not receive a medal');
   assert.doesNotMatch(svg, /#f5cf68|#d3d6d8|#dbb995/, 'Medal colors stay in small rank accents');
@@ -54,6 +56,7 @@ test('new ranked result updates both PNGs and player history without a deploymen
 test('player table preserves perspective, real Pokémon, prizes and replay-approved deltas', () => {
   const data = snapshot(), svg = markup(leaderboardPreviewSvg(data, 'b'));
   assert.match(svg, /All-player rank #\d+ · Not registered/);
+  assert.doesNotMatch(svg, /Most recent ranked matches/);
   assert.match(svg, /N&apos;s Zoroark ex/); assert.match(svg, /Dragapult ex/);
   assert.match(svg, />2 – 6</);
   assert.match(svg, />1,880</);

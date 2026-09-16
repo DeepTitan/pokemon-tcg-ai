@@ -27,7 +27,7 @@ export default function ModelSettings() {
       <li>
         <span className="model-principle-number" aria-hidden="true">02</span>
         <h2>Wins add points</h2>
-        <p>Wins add points. Losses take points away. Each match changes your score by up to {elo.k}, based on both players’ ratings.</p>
+        <p>Losses take points away. Each match changes your score by up to {elo.k}, based on both players’ ratings.</p>
       </li>
       <li>
         <span className="model-principle-number" aria-hidden="true">03</span>
@@ -50,7 +50,7 @@ export default function ModelSettings() {
     </div>
 
     <details className="model-details">
-      <summary>See a match example</summary>
+      <summary>Match example</summary>
       <div className="model-example">
         <h2>Two players with high Live ratings</h2>
         <p>It is the first recorded match for both players. Both start at {elo.initialRating.toLocaleString()} in Trace and have a Live rating of {exampleLive.toLocaleString()}.</p>
@@ -61,7 +61,7 @@ export default function ModelSettings() {
     </details>
 
     <details className="model-details">
-      <summary>See the settings and why we use them</summary>
+      <summary>Settings and why we use them</summary>
       <p>These settings control how much scores change and how quickly Live ratings matter less. They are current choices, not values proven to be best for Pokémon.</p>
       <div className="table-scroll" tabIndex={0}>
         <table className="settings-table">
@@ -91,7 +91,7 @@ export default function ModelSettings() {
     </details>
 
     <details className="model-details">
-      <summary>See the full calculation</summary>
+      <summary>Full calculation</summary>
       <p>Trace processes matches from oldest to newest. Each update uses both players’ Trace ratings and match counts from before the match, plus the Live ratings recorded with it.</p>
       <div className="model-formula">
         a = {initialOwnLiveWeight} × {historyScale} / ({historyScale} + your prior matches)<br/>
@@ -110,7 +110,7 @@ export default function ModelSettings() {
       <summary>What else should I know?</summary>
       <ul className="model-list">
         <li><strong>Trace cannot count matches it does not see.</strong> Missing games, time away and repeatedly facing the same small group can make the rating less accurate. A large match count does not prove the history is complete or the rating is accurate.</li>
-        <li><strong>“Few matches” means 1–{elo.provisionalGames - 1} counted matches.</strong> It is a heads-up about the amount of history, not a different formula. Being registered with Trace does not change match points either.</li>
+        <li><strong>The same rules apply to every player.</strong> Being registered with Trace does not change match points.</li>
         <li><strong>Live weight does not come back after a break.</strong> Early rating errors can last as Live’s effect gets smaller.</li>
         <li><strong>Missing or conflicting Live ratings exclude a match.</strong> Profile ratings and ratings marked as after-match are not used. Some older match records do not tell us exactly when the Live rating was captured.</li>
         <li><strong>A season reset can still affect future points.</strong> A known season correction can adjust the Live rating used when evidence was available at the time. It cannot recover the skill differences erased by a reset.</li>
