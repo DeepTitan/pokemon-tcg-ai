@@ -45,7 +45,7 @@ test('board metadata comes from current matches and cannot be held in a CDN cach
   const response = await request();
   assert.equal(response.statusCode, 200);
   assert.match(response.body, /<title>Trace leaderboard<\/title>/);
-  assert.match(response.body, /Explore 2 Trace players and 1 rated matches/);
+  assert.ok(response.body.includes(social.escapePreviewHtml('See who’s climbing. Check the Trace leaderboard and explore each player’s match history.')));
   assert.match(response.body, /https:\/\/victoryroad\.app\/trace\/leaderboard"/);
   assert.equal(response.headers['content-type'], 'text/html; charset=utf-8');
   for (const header of ['cache-control', 'cdn-cache-control', 'vercel-cdn-cache-control']) assert.equal(response.headers[header], 'no-store');
@@ -83,7 +83,7 @@ test('new incoming players get their own live preview without a deployment', asy
   assert.ok(response.body.includes(social.escapePreviewHtml(leaderboardPreviewUrl(current, newcomer.id))), 'A new player has a dedicated current image');
   assert.ok(response.body.includes(social.escapePreviewHtml(`${newcomer.name}’s Trace rating, match record, and recent results.`)));
   const board = await request({}, options, warmHandler);
-  assert.match(board.body, /Explore 3 Trace players and 2 rated matches/);
+  assert.ok(board.body.includes(social.escapePreviewHtml(leaderboardPreviewUrl(current))));
 });
 
 test('rewritten player/name queries and encoded URL parameters preserve special characters', async () => {

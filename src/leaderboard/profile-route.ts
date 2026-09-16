@@ -15,7 +15,9 @@ export function playerProfileHref(name: string): string {
 /** Stable while this snapshot is displayed; a newer feed gets a fresh share URL. */
 export function snapshotShareToken(generatedAt?: string): string | undefined {
   const timestamp = generatedAt ? Date.parse(generatedAt) : NaN;
-  return Number.isFinite(timestamp) ? timestamp.toString(36) : undefined;
+  // Bump the presentation version when share copy changes, so new copies do
+  // not reuse a social preview cached before the website update.
+  return Number.isFinite(timestamp) ? `p2-${timestamp.toString(36)}` : undefined;
 }
 
 function versionedShareHref(href: string, generatedAt?: string): string {

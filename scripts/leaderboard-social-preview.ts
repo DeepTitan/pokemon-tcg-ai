@@ -57,10 +57,10 @@ function originUrl(origin: string) {
 
 /** Host comes from the caller. No production origin is assumed for this local prototype. */
 export function getLeaderboardSocialMetadata(snapshot: SocialPreviewSnapshot, origin: string): SocialPreviewMetadata {
-  const result = getLeaderboardPreviewData(snapshot), base = originUrl(origin);
+  const base = originUrl(origin);
   return {
     title: 'Trace leaderboard',
-    description: `One rating, built from recorded matches. Explore ${result.registeredRows.length} Trace players and ${result.ratedMatchCount} rated matches.`,
+    description: 'See who’s climbing. Check the Trace leaderboard and explore each player’s match history.',
     canonicalUrl: `${base}/leaderboard.html`, imageUrl: `${base}/api/leaderboard/preview.jpg`,
     imageAlt: 'Trace leaderboard with the leading registered players and their Trace ratings.', imageWidth: 1200, imageHeight: 630,
   };
