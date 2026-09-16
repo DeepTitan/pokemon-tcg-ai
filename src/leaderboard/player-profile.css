@@ -1,64 +1,124 @@
-.player-profile { color: #172b49; padding: 24px 0 40px; }
-.player-profile .profile-navigation { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 28px; }
-.player-profile .profile-back { display: inline-flex; align-items: center; gap: 9px; padding: 10px 0; font-size: 13px; font-weight: 650; text-decoration: none; }
+.player-profile { color: #172b49; padding: 12px 0 28px; }
+.player-profile .profile-navigation { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 6px; }
+.player-profile .profile-back { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; font-size: 12px; font-weight: 650; text-decoration: none; }
 .player-profile .profile-back:hover { text-decoration: underline; }
-.player-profile .profile-share { display: flex; flex-direction: column; align-items: flex-end; gap: 7px; max-width: 260px; text-align: right; }
-.player-profile .profile-share button { padding: 9px 13px; border: 1px solid #d9d0c1; border-radius: 5px; background: #fffdf8; color: #172b49; font-size: 13px; font-weight: 600; }
+.player-profile .profile-share { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; max-width: 260px; text-align: right; }
+.player-profile .profile-share button { min-height: 34px; padding: 6px 11px; border: 1px solid #d9d0c1; border-radius: 5px; background: #fffdf8; color: #172b49; font-size: 12px; font-weight: 600; }
 .player-profile .profile-share button:hover { background: #fff2c9; border-color: #d3b66a; }
-.player-profile .profile-share [role="status"] { font-size: 11px; line-height: 1.5; color: #58708a; }
-.player-profile .profile-header { display: flex; justify-content: space-between; align-items: center; gap: 32px; padding: 0 0 28px; }
+.player-profile .profile-share [role="status"] { font-size: 11px; line-height: 1.4; color: #58708a; }
+.player-profile .profile-share [role="status"]:empty { display: none; }
+/* A screenshot keeps its owner, rating and record even deeper in the history. */
+.player-profile .profile-header { position: sticky; top: 0; z-index: 30; display: grid; grid-template-columns: minmax(180px, 1fr) auto auto; align-items: center; gap: 24px; padding: 12px 0; margin-bottom: 12px; border-bottom: 1px solid #d9d0c1; background: #f7f2e8; }
 .player-profile .profile-identity { min-width: 0; }
-.player-profile .profile-rankline { display: flex; align-items: center; gap: 10px; color: #627084; font-size: 11px; }
-.player-profile .profile-rank { font-size: 13px; font-weight: 800; color: #172b49; padding: 4px 8px; border-radius: 4px; background: #f3d47f; font-variant-numeric: tabular-nums; }
-.player-profile h1 { margin: 12px 0 8px; max-width: none; color: #172b49; font-size: clamp(27px, 3.5vw, 42px); letter-spacing: -1.3px; overflow-wrap: anywhere; }
-.player-profile .profile-last-played { margin: 9px 0 0; color: #657285; font-size: 13px; }
-.player-profile .profile-registration { margin: 10px 0 0; color: #6e7580; font-size: 12px; line-height: 1.6; }
-.player-profile .profile-registration span { display: inline-block; margin-right: 7px; padding: 2px 7px; border: 1px solid #d9dad8; border-radius: 3px; background: #edeeeb; color: #646a71; font-size: 10px; }
-.player-profile .profile-rating { flex: 0 0 auto; min-width: 168px; padding-left: 30px; border-left: 1px solid #d9d0c1; text-align: right; }
-.player-profile .profile-label { display: block; font-size: 13px; font-weight: 600; color: #657285; }
-.player-profile .profile-score { font-size: 43px; font-weight: 800; line-height: 1.2; letter-spacing: -1.5px; color: #172b49; margin-top: 5px; }
-.player-profile .profile-score .rating-trigger { border-bottom-color: #c9b16d; }
+.player-profile .profile-rankline { display: flex; align-items: center; gap: 7px; color: #627084; font-size: 11px; }
+.player-profile .profile-rank { font-size: 11px; font-weight: 800; color: #172b49; padding: 3px 6px; border-radius: 3px; background: #f3d47f; font-variant-numeric: tabular-nums; }
+.player-profile .profile-header h1 { margin: 4px 0 0; max-width: none; color: #172b49; font-size: 32px; line-height: 1.15; letter-spacing: -.9px; overflow-wrap: anywhere; }
+.player-profile .profile-registration { margin: 4px 0 0; color: #6e7580; font-size: 11px; line-height: 1.4; }
+.player-profile .profile-registration span { display: inline-block; margin-right: 6px; color: #646a71; font-weight: 700; }
+.player-profile .profile-rating { min-width: 100px; padding-left: 22px; border-left: 1px solid #d9d0c1; text-align: right; }
+.player-profile .profile-label { display: block; font-size: 11px; font-weight: 600; color: #657285; }
+.player-profile .profile-header .profile-score { font-size: 31px; font-weight: 800; line-height: 1.2; letter-spacing: -.8px; color: #172b49; margin-top: 3px; }
+.player-profile .profile-score .rating-trigger { padding: 0; border-bottom-color: #c9b16d; }
 .player-profile .profile-score .rating-trigger:hover { color: #385b83; }
-.player-profile .profile-rating-hint { display: block; margin-top: 8px; font-size: 13px; color: #657285; }
-.player-profile .profile-stats { display: flex; flex-wrap: wrap; margin: 0 0 28px; padding: 20px 0; border-top: 1px solid #d9d0c1; border-bottom: 1px solid #d9d0c1; gap: 24px 40px; }
-.player-profile .profile-stats > div { min-width: 110px; }
-.player-profile .profile-stats dt { font-size: 13px; font-weight: 650; color: #657285; margin-bottom: 7px; }
-.player-profile .profile-stats dd { margin: 0; font-size: 23px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; letter-spacing: -.5px; }
-.player-profile .profile-record { display: flex; gap: 7px; }
+.player-profile .profile-stats { display: flex; flex-wrap: wrap; margin: 0; padding: 0; border: 0; gap: 18px; }
+.player-profile .profile-stats > div { min-width: 60px; }
+.player-profile .profile-stats dt { font-size: 11px; font-weight: 600; color: #657285; margin-bottom: 5px; }
+.player-profile .profile-stats dd { margin: 0; font-size: 20px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; letter-spacing: -.3px; }
+.player-profile .profile-record { display: flex; gap: 5px; }
 .player-profile .profile-record i { color: #a5a6a3; font-style: normal; font-weight: 400; }
-.player-profile .profile-record span:first-child { color: #456b53; }
-.player-profile .profile-empty-note { font-size: 12px; color: #657285; margin: -4px 0 25px; line-height: 1.7; }
-.player-profile .profile-footnote { color: #657285; font-size: 13px; line-height: 1.7; margin: 18px 0 0; }
-.player-profile .profile-footnote a { margin-left: 5px; color: #385b83; }
-.history-page { background: #fffdf8; border: 1px solid #d9d0c1; border-radius: 8px; overflow: hidden; color: #172b49; }
-.history-page .history-heading { padding: 20px 22px; border-bottom-color: #e1d9cc; }
-.history-page .history-heading h2 { color: #172b49; margin: 0; font-size: 20px; letter-spacing: -.5px; }
-.history-page .history-page-count { color: #657285; font-size: 13px; white-space: nowrap; }
+.player-profile .profile-record span:first-child { color: #287247; }
+.player-profile .profile-record span:nth-of-type(2) { color: #a8443b; }
+.player-profile .profile-empty-note { font-size: 12px; color: #657285; margin: 8px 0 16px; line-height: 1.7; }
+.player-profile .profile-footnote { color: #657285; font-size: 12px; line-height: 1.7; margin: 14px 0 0; }
+.player-profile .profile-footnote a { color: #385b83; }
+.history-mobile-meta { display: none; }
+.history-page { background: #fffdf8; border: 1px solid #d9d0c1; border-radius: 6px; overflow: hidden; color: #172b49; }
+.history-page .history-heading { padding: 10px 14px; border-bottom-color: #e1d9cc; }
+.history-page .history-heading h2 { color: #172b49; margin: 0; font-size: 16px; font-weight: 750; letter-spacing: -.3px; }
+.history-page .history-page-count { color: #657285; font-size: 11px; white-space: nowrap; }
 .history-page .history-scroll { max-height: none; overflow-y: visible; }
-.history-page .history-table th { background: #f5f1e8; color: #657285; border-bottom-color: #e1d9cc; }
-.history-page .history-table th small { color: #657285; font-size: 11px; }
-.history-page .history-table td { border-bottom-color: #e9e3d8; }
-.history-page .history-table tbody tr:hover { background: #faf6eb; }
+.history-page .history-table { min-width: 820px; table-layout: fixed; }
+.history-page .history-table th { padding: 8px; background: #f5f1e8; color: #657285; border-bottom-color: #e1d9cc; font-size: 10px; letter-spacing: 0; }
+.history-page .history-table th small { color: #657285; font-size: 9px; margin-top: 2px; }
+.history-page .history-table th:nth-child(1) { width: 9%; }
+.history-page .history-table th:nth-child(2) { width: 9%; }
+.history-page .history-table th:nth-child(3) { width: 17%; }
+.history-page .history-table th:nth-child(4) { width: 10%; }
+.history-page .history-table th:nth-child(5) { width: 31%; }
+.history-page .history-table th:nth-child(6) { width: 9%; }
+.history-page .history-table th:nth-child(7) { width: 15%; }
+.history-page .history-table td { height: 58px; padding: 7px 8px; font-size: 13px; border-bottom-color: #e9e3d8; }
+.history-page .history-table th:first-child, .history-page .history-table td:first-child { padding-left: 14px; }
+.history-page .history-table th:last-child, .history-page .history-table td:last-child { padding-right: 14px; }
+.history-page .history-row-win { background: #f4f8f1; }
+.history-page .history-row-loss { background: #fff6f2; }
+.history-page .history-row-draw { background: #f1f3f5; }
+.history-page .history-row-win > td:first-child { box-shadow: inset 3px 0 #287247; }
+.history-page .history-row-loss > td:first-child { box-shadow: inset 3px 0 #a8443b; }
+.history-page .history-row-draw > td:first-child { box-shadow: inset 3px 0 #526277; }
+.history-page .history-table tbody tr:hover { background: #f1eadc; }
+.history-page .history-result { min-width: 60px; padding: 7px 9px; text-align: center; border-radius: 4px; font-size: 12px; font-weight: 800; letter-spacing: .5px; line-height: 1.2; text-transform: uppercase; }
+.history-page .history-result.win { background: #287247; color: #fff; }
+.history-page .history-result.loss { background: #a8443b; color: #fff; }
+.history-page .history-result.draw { background: #526277; color: #fff; }
+.history-page .history-trace-change { font-size: 15px; font-weight: 750; }
+.history-page .history-trace-change.is-positive { color: #287247; }
+.history-page .history-trace-change.is-negative { color: #a8443b; }
+.history-page .history-opponent { max-width: none; font-size: 13px; font-weight: 650; }
 .history-page .history-opponent a { color: #172b49; text-decoration: none; }
 .history-page .history-opponent a:hover { text-decoration: underline; }
-.history-page .history-elo { color: #526b7b; }
-.history-page .history-date, .history-page .history-note, .history-page .history-details { color: #657285; }
+.history-page .history-elo { color: #526b7b; font-size: 13px; }
+.history-page .history-matchup { gap: 6px; min-width: 0; }
+.history-page .history-pokemon { flex-direction: row; align-items: center; gap: 6px; max-width: none; }
+.history-page .history-pokemon img { width: 30px; height: 42px; object-fit: contain; border-radius: 2px; background: transparent; }
+.history-page .history-pokemon > span { font-size: 12px; line-height: 1.25; max-width: none; }
+.history-page .history-versus { font-size: 10px; }
+.history-page .history-prizes b { font-size: 15px; }
+.history-page .history-prizes i { padding: 0 1px; }
+.history-page .history-date { min-width: 0; font-size: 11px; line-height: 1.4; color: #657285; }
+.history-page .history-date small { margin-top: 2px; font-size: 10px; }
+.history-page .history-note, .history-page .history-details { color: #657285; font-size: 12px; margin-left: 14px; margin-right: 14px; }
 .history-page .history-details summary { color: #385b83; }
-.history-page .history-more { color: #172b49; background: #fff5d5; border-color: #d9c486; }
+.history-page .history-more { color: #172b49; background: #fff5d5; border-color: #d9c486; margin: 14px auto; }
 .history-page .history-more:hover { background: #ffedb4; }
-@media (max-width: 650px) {
-  .player-profile { padding-top: 17px; }
-  .player-profile .profile-navigation { gap: 14px; margin-bottom: 23px; }
-  .player-profile .profile-share { max-width: 190px; }
-  .player-profile .profile-share button { font-size: 11px; padding: 9px 11px; }
-  .player-profile .profile-header { align-items: flex-start; gap: 16px; flex-wrap: wrap; padding-bottom: 23px; }
-  .player-profile .profile-identity { flex: 1 1 220px; }
-  .player-profile .profile-rating { padding-left: 0; border-left: 0; min-width: 0; text-align: left; }
-  .player-profile .profile-score { font-size: 36px; }
-  .player-profile .profile-stats { gap: 22px; padding: 18px 0; }
-  .player-profile .profile-stats > div { min-width: 76px; }
-  .player-profile .profile-stats dd { font-size: 20px; }
-  .history-page .history-heading { padding: 17px 16px; gap: 12px; }
-  .history-page .history-heading h2 { font-size: 18px; }
-  .history-page .history-page-count { font-size: 10px; }
+@media (max-width: 760px) {
+  .player-profile { padding-top: 8px; }
+  .player-profile .profile-navigation { gap: 10px; margin-bottom: 4px; }
+  .player-profile .profile-share { max-width: 185px; }
+  .player-profile .profile-share button { font-size: 11px; }
+  .player-profile .profile-header { grid-template-columns: minmax(0, 1fr) auto; gap: 10px 14px; padding: 10px 0; margin-bottom: 8px; }
+  .player-profile .profile-header h1 { font-size: 25px; letter-spacing: -.6px; }
+  .player-profile .profile-rating { grid-column: 2; grid-row: 1; padding-left: 12px; min-width: 86px; }
+  .player-profile .profile-header .profile-score { font-size: 28px; }
+  .player-profile .profile-stats { grid-column: 1 / -1; gap: 20px; }
+  .player-profile .profile-stats > div { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+  .player-profile .profile-stats dt { font-size: 10px; margin: 0; }
+  .player-profile .profile-stats dd { font-size: 14px; }
+  .player-profile .profile-record { gap: 3px; }
+  .player-profile .profile-registration { font-size: 10px; }
+  .history-page .history-heading { padding: 9px 10px; gap: 8px; }
+  .history-page .history-heading h2 { font-size: 14px; }
+  .history-page .history-page-count { font-size: 9px; white-space: normal; text-align: right; }
+  .history-page .history-table { min-width: 0; width: 100%; }
+  .history-page .history-table th { padding: 7px 4px; font-size: 9px; white-space: normal; }
+  .history-page .history-table th small { font-size: 8px; }
+  .history-page .history-table th:nth-child(1) { width: 17%; }
+  .history-page .history-table th:nth-child(2) { width: 15%; }
+  .history-page .history-table th:nth-child(3) { width: 30%; }
+  .history-page .history-table th:nth-child(5) { width: 23%; }
+  .history-page .history-table th:nth-child(6) { width: 15%; }
+  .history-page .history-table th:nth-child(4), .history-page .history-table th:nth-child(7), .history-page .history-elo, .history-page .history-date { display: none; }
+  .history-page .history-table td { padding: 6px 4px; height: 59px; }
+  .history-page .history-table th:first-child, .history-page .history-table td:first-child { padding-left: 7px; }
+  .history-page .history-table th:last-child, .history-page .history-table td:last-child { padding-right: 4px; }
+  .history-page .history-result { min-width: 0; width: 100%; max-width: 51px; padding: 7px 3px; font-size: 10px; letter-spacing: .2px; }
+  .history-page .history-trace-change { font-size: 12px; }
+  .history-page .history-opponent { font-size: 12px; line-height: 1.2; }
+  .history-page .history-mobile-meta { display: flex; flex-wrap: wrap; gap: 1px 7px; margin-top: 4px; font-size: 9px; font-weight: 400; color: #657285; }
+  .history-page .history-matchup { gap: 3px; justify-content: space-between; }
+  .history-page .history-pokemon { flex: 0 1 auto; }
+  .history-page .history-pokemon img { width: 25px; height: 35px; }
+  .history-page .history-pokemon > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .history-page .history-versus { font-size: 8px; }
+  .history-page .history-prizes b { font-size: 12px; }
 }

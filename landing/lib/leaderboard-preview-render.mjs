@@ -88,11 +88,11 @@ function pokemonCell(side, x, top) {
   const words = name.split(/\s+/), lines = [''];
   for (const word of words) {
     const previous = lines.at(-1), next = previous ? `${previous} ${word}` : word;
-    if (units(next) * 16 > 113 && previous && lines.length < 2) lines.push(word);
+    if (units(next) * 15 > 130 && previous && lines.length < 2) lines.push(word);
     else lines[lines.length - 1] = next;
   }
-  return `${framedCardArt(cardArt(pokemon), x + 24, top + 12, 64)}
-    ${lines.map((label, i) => text(fit(label, 113, 16), x + 57, top + (lines.length > 1 ? 38 : 47) + i * 21, 16, 600)).join('')}`;
+  return `${framedCardArt(cardArt(pokemon), x + 17, top + 7, 46)}
+    ${lines.map((label, i) => text(fit(label, 130, 15), x + 44, top + (lines.length > 1 ? 25 : 36) + i * 19, 15, 600)).join('')}`;
 }
 
 function board(snapshot) {
@@ -131,45 +131,43 @@ function profile(snapshot, playerId) {
   const history = snapshot.matches.filter(match => {
     if (!playerUpdates.has(match.id) || seen.has(match.id)) return false;
     seen.add(match.id); return true;
-  }).sort((a, b) => b.playedAt.localeCompare(a.playedAt) || a.id.localeCompare(b.id)).slice(0, 3);
+  }).sort((a, b) => b.playedAt.localeCompare(a.playedAt) || a.id.localeCompare(b.id)).slice(0, 6);
   return `${header()}
-    <path d="M49 81l-6 5 6 5m-6-5h13" stroke="${muted}" stroke-width="1.5" fill="none"/>
-    ${text('Leaderboard', 63, 92, 14, 600, muted)}
-    ${text(rank ? `${rankLabel} #${rank}${isRegistered ? '' : ' · Not registered'}` : isRegistered ? 'No ranked matches yet' : 'Not registered', 38, 126, 17, 800, isRegistered ? ink : muted)}
-    ${text(fit(row.name, 770, 43), 38, 173, 43, 900, isRegistered ? ink : muted)}
-    ${text('Trace rating', 1162, 126, 17, 600, muted, 'text-anchor="end"')}
-    ${text(row.games ? number(row.rating) : '—', 1162, 178, 51, 900, ink, 'text-anchor="end"')}
-    ${rule(196)}
-    ${text('Record', 38, 220, 15, 600, muted)}${text(record(row), 38, 251, 26, 800)}
-    ${text('Win rate', 347, 220, 15, 600, muted)}${text(percent(row), 347, 251, 26, 800)}
-    ${text('Ranked matches', 547, 220, 15, 600, muted)}${text(number(row.games), 547, 251, 26, 800)}
-    ${rule(268)}
-    ${text('Match history', 38, 301, 23, 800)}
-    ${text('Most recent ranked matches', 1162, 299, 14, 600, muted, 'text-anchor="end"')}
-    <rect x="38" y="315" width="1124" height="${36 + Math.max(1, history.length) * 86}" fill="#fffdf9" stroke="${line}"/>
-    <rect x="39" y="316" width="1122" height="35" fill="#f2efe8"/>
-    ${text('Result', 54, 339, 14, 800)}${text('Trace points', 156, 339, 14, 800)}
-    ${text('Opponent', 287, 339, 14, 800)}${text('Live rating', 484, 339, 14, 800)}
-    ${text('Pokémon · player vs. opponent', 590, 339, 14, 800)}${text('Prizes taken', 1067, 339, 14, 800)}
+    ${text(fit(row.name, 820, 43), 38, 113, 43, 900, isRegistered ? ink : muted)}
+    ${text(rank ? `${rankLabel} #${rank}${isRegistered ? '' : ' · Not registered'}` : isRegistered ? 'No ranked matches yet' : 'Not registered', 38, 140, 16, 800, isRegistered ? ink : muted)}
+    ${text('Trace rating', 1162, 87, 16, 600, muted, 'text-anchor="end"')}
+    ${text(row.games ? number(row.rating) : '—', 1162, 139, 51, 900, ink, 'text-anchor="end"')}
+    ${text(record(row), 38, 174, 22, 800)}
+    ${text(`${percent(row)} win rate`, 310, 174, 18, 600, muted)}
+    ${text(`${number(row.games)} ranked matches`, 502, 174, 18, 600, muted)}
+    ${rule(189)}
+    ${text('Match history', 38, 214, 20, 800)}
+    ${text('Most recent ranked matches', 1162, 213, 13, 600, muted, 'text-anchor="end"')}
+    <rect x="38" y="224" width="1124" height="${30 + Math.max(1, history.length) * 59}" fill="#fffdf9" stroke="${line}"/>
+    <rect x="39" y="225" width="1122" height="29" fill="#f2efe8"/>
+    ${text('Result', 54, 244, 13, 800)}${text('Trace points', 156, 244, 13, 800)}
+    ${text('Opponent', 287, 244, 13, 800)}${text('Live rating', 484, 244, 13, 800)}
+    ${text('Pokémon · player vs. opponent', 590, 244, 13, 800)}${text('Prizes taken', 1067, 244, 13, 800)}
     ${history.map((match, i) => {
-      const update = playerUpdates.get(match.id), top = 351 + i * 86;
+      const update = playerUpdates.get(match.id), top = 254 + i * 59;
       const opponent = names.get(update.opponentId) ?? 'Unknown player';
       const won = update.score === 1, lost = update.score === 0;
-      const result = won ? 'Win' : lost ? 'Loss' : 'Draw', color = won ? '#376c47' : lost ? '#a06043' : muted;
+      const result = won ? 'WIN' : lost ? 'LOSS' : 'DRAW', color = won ? '#287247' : lost ? '#a8443b' : muted;
       const own = match.history?.players[playerId], other = match.history?.players[update.opponentId];
       const played = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' }).format(new Date(match.playedAt));
       const live = match.liveRatings?.[update.opponentId];
-      return `<rect x="39" y="${top}" width="1122" height="86" fill="${i % 2 ? '#f8f5ee' : '#fffdf9'}"/>
-        <rect x="54" y="${top + 27}" width="64" height="31" rx="5" fill="${won ? '#e1eddd' : lost ? '#f3e5da' : '#e8e8e5'}"/>
-        ${text(result, 86, top + 49, 18, 800, color, 'text-anchor="middle"')}
-        ${text(delta(update.adjustment), 156, top + 50, 24, 800, update.adjustment > 0 ? '#376c47' : update.adjustment < 0 ? '#a06043' : ink)}
-        ${text(fit(opponent, 182, 19), 287, top + 37, 19, 800)}
-        ${text(played, 287, top + 61, 13, 600, muted)}
-        ${text(Number.isFinite(live) ? number(live) : '—', 484, top + 50, 22, 800)}
-        ${pokemonCell(own, 590, top)}${text('vs.', 781, top + 49, 15, 600, muted)}${pokemonCell(other, 820, top)}
-        ${text(`${own?.prizesTaken ?? '—'} – ${other?.prizesTaken ?? '—'}`, 1115, top + 50, 24, 800, ink, 'text-anchor="middle"')}${rule(top + 86)}`;
+      return `<rect x="39" y="${top}" width="1122" height="59" fill="${won ? '#f3f8f0' : lost ? '#fcf2ee' : '#f8f5ee'}"/>
+        <rect x="39" y="${top}" width="4" height="59" fill="${color}"/>
+        <rect x="54" y="${top + 13}" width="78" height="34" rx="4" fill="${color}"/>
+        ${text(result, 93, top + 37, 20, 900, '#ffffff', 'text-anchor="middle"')}
+        ${text(delta(update.adjustment), 156, top + 37, 23, 800, update.adjustment > 0 ? '#287247' : update.adjustment < 0 ? '#a8443b' : ink)}
+        ${text(fit(opponent, 182, 18), 287, top + 26, 18, 800)}
+        ${text(played, 287, top + 46, 12, 600, muted)}
+        ${text(Number.isFinite(live) ? number(live) : '—', 484, top + 37, 21, 800)}
+        ${pokemonCell(own, 590, top)}${text('vs.', 781, top + 36, 14, 600, muted)}${pokemonCell(other, 820, top)}
+        ${text(`${own?.prizesTaken ?? '—'} – ${other?.prizesTaken ?? '—'}`, 1115, top + 37, 23, 800, ink, 'text-anchor="middle"')}${rule(top + 59)}`;
     }).join('')}
-    ${!history.length ? text('No matches counted toward this rating yet.', 58, 400, 21, 600, muted) : ''}`;
+    ${!history.length ? text('No matches counted toward this rating yet.', 58, 292, 21, 600, muted) : ''}`;
 }
 
 /** A screenshot-like view built only from the current public feed and shared Elo replay. */

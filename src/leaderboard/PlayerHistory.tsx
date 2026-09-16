@@ -6,6 +6,7 @@ import { formatMatchDuration } from '../tracker/archive-summary-model.js';
 import { playerProfileHref, LEADERBOARD_BASE, LEADERBOARD_ART_HREF, LEADERBOARD_CARD_BACK_HREF } from './profile-route.js';
 
 const date = (value: string) => new Date(value).toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+const compactDate = (value: string) => new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 const back = LEADERBOARD_CARD_BACK_HREF;
 const rating = (value: number) => value.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const ratingChange = (value: number) => `${value > 0 ? '+' : value < 0 ? '−' : ''}${rating(Math.abs(value))}`;
@@ -14,7 +15,7 @@ function FeaturedPokemon({ side }: { side?: HistorySide }) {
   const artId = side?.pokemon?.artCardId ?? side?.pokemon?.cardId;
   const name = side?.pokemon?.name?.trim();
   const isAssetId = name === side?.pokemon?.cardId || name === side?.pokemon?.artCardId || /^[a-z0-9]+_\d+(?:_[a-z0-9]+)?$/i.test(name ?? '');
-  return <span className="history-pokemon">
+  return <span className="history-pokemon" title={name && !isAssetId ? name : 'Pokémon not recorded'}>
     <img loading="lazy" decoding="async" src={artId ? `${LEADERBOARD_ART_HREF}/${encodeURIComponent(artId)}.png` : back}
       alt="" data-card-id={artId} onError={event => {
         if (!LEADERBOARD_BASE) return showCardBackOnError(event);
@@ -51,7 +52,7 @@ export default function PlayerHistory({ player, matches, updates, names, onClose
   }, [mode]);
   const content = <>
     {mode === 'page'
-      ? <div className="history-heading"><h2 id={headingId}>Match history</h2><span className="history-page-count">{history.length} ranked {history.length === 1 ? 'match' : 'matches'}</span></div>
+      ? <div className="history-heading"><h2 id={headingId}>{player.name}’s matches</h2><span className="history-page-count">{history.length} ranked · newest first</span></div>
       : <div className="history-heading"><div><span className="eyebrow">Match history</span><h2 id={headingId}>{player.name}</h2><p><span className="history-record" aria-label={`${wins} ${wins === 1 ? 'win' : 'wins'}, ${losses} ${losses === 1 ? 'loss' : 'losses'}${draws ? `, ${draws} ${draws === 1 ? 'draw' : 'draws'}` : ''}`}>{wins}W · {losses}L{draws > 0 && <> · {draws}D</>}</span><span> · {history.length} ranked {history.length === 1 ? 'match' : 'matches'}</span></p></div><button type="button" className="secondary" aria-label="Close match history" onClick={onClose} autoFocus>Close</button></div>}
     <div className="history-scroll"><div className="history-table-wrap" tabIndex={0} role="region" aria-label="Match table, scroll for more columns"><table className="history-table" aria-label={`${player.name} match history`}><thead><tr><th scope="col">Result</th><th scope="col">Trace points</th><th scope="col">Opponent</th><th scope="col">Live rating<small>Opponent</small></th><th scope="col">Pokémon<small>Player vs. opponent</small></th><th scope="col">Prizes taken</th><th scope="col">Played<small>Newest first</small></th></tr></thead><tbody>
       {history.slice(0, shown).map(match => {
@@ -62,13 +63,13 @@ export default function PlayerHistory({ player, matches, updates, names, onClose
         const own = match.history?.players[player.playerId], other = match.history?.players[opponentId];
         const result = match.outcome.type === 'draw' ? 'Draw' : match.outcome.winnerId === player.playerId ? 'Win' : 'Loss';
         const update = updatesByMatch.get(match.id);
-        return <tr key={match.id} aria-label={`${result} against ${opponent}`}>
+        return <tr key={match.id} className={`history-row-${result.toLowerCase()}`} aria-label={`${result} against ${opponent}`}>
           <td><span className={`history-result ${result.toLowerCase()}`}>{result}</span></td>
           <td className={`history-trace-change${update ? update.adjustment > 0 ? ' is-positive' : update.adjustment < 0 ? ' is-negative' : '' : ''}`}
             title={update ? `${player.name}’s Trace rating: ${rating(update.before.rating)} → ${rating(update.after.rating)}` : 'Trace rating change unavailable'}>
             {update ? ratingChange(update.adjustment) : '—'}
           </td>
-          <td className="history-opponent">{opponentId ? <a href={playerProfileHref(names.get(opponentId) ?? opponentId)}>{opponent}</a> : opponent}</td>
+          <td className="history-opponent">{opponentId ? <a href={playerProfileHref(names.get(opponentId) ?? opponentId)}>{opponent}</a> : opponent}<small className="history-mobile-meta">Live {hasLiveElo ? Math.round(liveElo).toLocaleString() : '—'}<time dateTime={match.playedAt} title={date(match.playedAt)}>{compactDate(match.playedAt)}</time></small></td>
           <td className="history-elo" title={!hasLiveElo ? 'Live rating not recorded' : match.liveRatingEligibility?.timing === 'pre-match' ? 'Opponent’s Live rating before this match' : 'Opponent’s recorded Live rating; exact timing unknown'}>{hasLiveElo ? Math.round(liveElo).toLocaleString() : '—'}</td>
           <td><div className="history-matchup"><FeaturedPokemon side={own}/><span className="history-versus">vs.</span><FeaturedPokemon side={other}/></div></td>
           <td className="history-prizes"><b>{own?.prizesTaken ?? '—'} <i>–</i> {other?.prizesTaken ?? '—'}</b></td>

@@ -1,64 +1,33 @@
-# Shared replay access panel QA
+# Compact player match history — design QA
 
-final result: passed
+Status: passed locally and in production, 2026-09-16.
 
-## Scope and reference
+## Reference and intent
 
-Replace the shared replay's top header with a collapsible left invitation to record
-games with Trace, join the existing Discord, and ask for access. This is an
-intentional layout change, not a pixel-for-pixel clone of the old header. Native
-archive, replay engine, card rendering, and match-loading pipeline are unchanged.
+The user supplied a Discord screenshot containing seven tall match rows without the player's name. They asked for a compact screenshot that keeps the player identifiable, then emphasized making victory/loss prominent. Existing Trace cream, navy, Eevee branding, fonts and card art remain the visual reference.
 
-Reference: https://victoryroad.app/trace/uZEUk2bui30licgLu7or7Ngm before deployment.
-Implementation: the same match served from the production build at localhost:4186.
-Both comparison captures use frame 129, timeline collapsed, board zoom 100%, and
-a 1600 × 960 CSS-pixel viewport (1600 × 960 screenshot output).
+Reference image: `/var/folders/sf/pzrlm0hd5rz9kbcp4k_dz9sc0000gn/T/codex-clipboard-1e30c13c-43da-4870-a646-a53615c82616.png`.
 
-- Source: `/private/tmp/trace-share-panel-before.png`
-- Implementation: `/private/tmp/trace-share-panel-after.png`
-- Collapsed: `/private/tmp/trace-share-panel-collapsed.png`
-- Compact desktop, both panels open: `/private/tmp/trace-share-panel-compact.png`
+## Rendered evidence
 
-## Visual comparison
+- CUA before/after screenshots compared together at 1440 × 900: production profile before, local profile after. Before showed four complete rows; after showed ten complete rows with name, rating and record above the table.
+- CUA mobile screenshot at 390 × 844: nine complete rows; no page-wide horizontal overflow. Opponent Live rating and date appear below the opponent's name. Pokémon names remain accessible and available as title text while the compact table shows card art.
+- CUA scrolled mobile screenshot: player identity, rating and record stay pinned above the matches.
+- Dynamic share preview: `/tmp/trace-compact-player-preview.png`, 1200 × 630, visually reviewed. Six recent games, large player identity and solid WIN/LOSS labels fit without clipping.
+- Local route: `http://127.0.0.1:5181/trace/players/isaiahw`; production reference: `https://victoryroad.app/trace/players/isaiahw`.
 
-The source and implementation screenshots were supplied together in one paired
-comparison. The intended change is the 300px left rail and reclaimed header height.
-No P0/P1/P2 regression was found in the scoped panel during this comparison.
+## Checks and fixes
 
-- Typography: existing Nunito/Nunito Sans, strong but compact invitation, readable
-  line breaks, subordinate help text. No new font assets or placeholder wordmark.
-- Layout and spacing: separate grid column, never an overlay. At 1600px, the open
-  panel is 300px; closing it leaves a 48px mascot control and expands the board.
-  At 1180 × 800, a 256px panel, replay, and 290px game log all fit; invitation and
-  footer remain fully visible. Existing replay layout has a 1180px minimum width;
-  phone-sized replay redesign is outside this change. New visitors below that
-  width default to the collapsed rail (covered by unit tests).
-- Colors and surfaces: existing cream, navy, and Trace yellow; quiet border and
-  existing rounded surface vocabulary, with one primary yellow Discord link.
-- Assets and icons: actual Trace mascot, correct aspect ratio and transparent
-  background; existing Phosphor chevrons, external-link arrow and Discord logo.
-  Real match card artwork is unchanged. No generated art or custom icon substitutes.
-- Copy: a single recording invitation, the tricky-spot/friends purpose, and an
-  explicit instruction to ask for Trace access after joining Discord.
+- Hierarchy: compact name/rank, record and rating header; result first in each row, followed by rating change and opponent.
+- Contrast: white bold WIN/LOSS text on green/red badges; subtle row tint and a colored edge reinforce the result. Explicit text avoids relying on color alone. Badge contrast tests pass at 4.5:1 or better.
+- Density: desktop rows approximately 58 px, mobile rows approximately 59 px. Desktop card art remains labeled; narrow screens use art with accessible names.
+- Spacing: removed the oversized separate stats block and moved freshness detail to the footnote. The table heading also identifies the player.
+- Behavior: Show more expands from 12 to 24 matches; sticky-header rating breakdown opens and closes with Escape; recorded results, rating deltas and opponent Live ratings remain unchanged.
+- Responsive: no overlap or horizontal page overflow at the verified desktop/mobile sizes. Long opponent names wrap inside their column.
+- Build and strict TypeScript checks pass. Existing renderer, metadata/API and profile-link tests pass. Share image and copied-link versions were advanced to refresh the design on new shares.
 
-## Interactions and accessibility
+No rating formula, game capture or game client changes are included.
 
-- Collapse/expand keeps frame 129 selected and keyboard focus on the same button.
-- Reload remembers the collapsed preference; blocked storage is tested safely.
-- Hidden invitation links are removed from the accessibility/focus tree.
-- Toggle exposes a descriptive name, aria-expanded and aria-controls; visible
-  focus ring was checked. Link focus styling follows the existing product.
-- Shift+Left and Shift+Right still navigate to frames 0 and 129 after toggling.
-- Game log opens alongside the rail at 1600px and 1180px without panel overlap.
-- Discord link uses the existing configured invite, opens externally, and has
-  noopener/noreferrer. Clicking was exercised; HTTP verification follows the
-  invite redirect to Discord successfully (200). No account joined or message sent.
-- Brand link retains `/trace` as the destination. The follow-up removes the
-  bottom About Trace link and labels the up/down shortcut "Jump to attacks".
-- Browser console: no captured errors on the local implementation.
-- No new animations; the panel does not introduce a reduced-motion concern.
+## Production verification
 
-## Automated verification
-
-Passed: shared-access unit/render tests, full tracker:test, release:test,
-tracker:build, landing/build.mjs artwork validation, and git diff --check.
+Deployed to `https://victoryroad-3kv2vb09z-deeptitan-6729s-projects.vercel.app`, aliased through the existing `victoryroad.app` Trace routes. The live profile shows ten complete rows at 1440 × 900, sticky identity, and the expected solid loss badge. Facebook crawler requests return current versioned PNG metadata, valid 1200 × 630 images, no-store responses, successful HEAD requests and conditional 304 responses. The downloaded production player image `/tmp/trace-production-player-preview.png` was visually reviewed and contains six compact rows with prominent results. New match uploads continued arriving in the public feed during verification.

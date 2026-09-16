@@ -8,7 +8,7 @@ const newer = '2026-09-16T12:00:00.001Z';
 test('share versions stay stable for a snapshot and change when new matches arrive', () => {
   const token = snapshotShareToken(generatedAt)!;
   assert.match(token, /^[A-Za-z0-9_-]{1,64}$/);
-  assert.equal(token, `p2-${Date.parse(generatedAt).toString(36)}`);
+  assert.equal(token, `p3-${Date.parse(generatedAt).toString(36)}`);
   assert.equal(snapshotShareToken(generatedAt), token);
   assert.equal(snapshotShareToken('2026-09-16T07:00:00.000-05:00'), token, 'Equivalent timestamps share one identity');
   assert.notEqual(snapshotShareToken(newer), token);
@@ -34,5 +34,5 @@ test('missing or invalid generation times use clean links instead of invalid ver
     assert.equal(leaderboardShareHref(time), LEADERBOARD_HREF);
     assert.equal(playerProfileShareHref('isaiahw', time), playerProfileHref('isaiahw'));
   }
-  assert.equal(snapshotShareToken('1970-01-01T00:00:00Z'), 'p2-0');
+  assert.equal(snapshotShareToken('1970-01-01T00:00:00Z'), 'p3-0');
 });

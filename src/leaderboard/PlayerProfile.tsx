@@ -56,25 +56,22 @@ export default function PlayerProfile({ row, registered, rank, rankScope = 'regi
         <div className="profile-rankline"><span className="profile-rank">{ranked ? `#${rank.toLocaleString()}` : 'Unranked'}</span><span>{rankScope === 'all' ? 'All players' : 'Trace players'}</span></div>
         <h1 id="player-profile-title">{row.name}</h1>
         {registered === false && <p className="profile-registration"><span>Not registered</span> Appears in other players’ Trace matches.</p>}
-        {row.lastPlayedAt && <p className="profile-last-played">Latest match counted <time dateTime={row.lastPlayedAt}>{date(row.lastPlayedAt)}</time></p>}
       </div>
+      <dl className="profile-stats">
+        <div><dt>Record</dt><dd className="profile-record" aria-label={`${row.wins} wins, ${row.losses} losses${row.draws ? `, ${row.draws} draws` : ''}`}><span>{row.wins}W</span><i>–</i><span>{row.losses}L</span>{row.draws > 0 && <><i>–</i><span>{row.draws}D</span></>}</dd></div>
+        <div><dt>Win rate</dt><dd>{winRate === undefined ? '—' : `${winRate}%`}</dd></div>
+        <div><dt>Matches</dt><dd>{row.games.toLocaleString()}</dd></div>
+      </dl>
       <div className="profile-rating">
         <span className="profile-label">Trace rating</span>
         <div className="profile-score"><RatingScore key={row.playerId} active={ratingActive} onOpen={() => setRatingActive(true)} row={row} updates={updates} names={names}
           latestLiveRating={latestLiveRating} liveRatingObservedAt={liveRatingObservedAt} liveRatingTiming={liveRatingTiming}
           liveRatingBefore={liveRatingBefore} liveRatingChange={liveRatingChange}/></div>
-        <span className="profile-rating-hint">Select to see how it adds up</span>
       </div>
     </header>
 
-    <dl className="profile-stats">
-      <div><dt>Record</dt><dd className="profile-record" aria-label={`${row.wins} wins, ${row.losses} losses${row.draws ? `, ${row.draws} draws` : ''}`}><span>{row.wins}W</span><i>–</i><span>{row.losses}L</span>{row.draws > 0 && <><i>–</i><span>{row.draws}D</span></>}</dd></div>
-      <div><dt>Win rate</dt><dd>{winRate === undefined ? '—' : `${winRate}%`}</dd></div>
-      <div><dt>Matches counted</dt><dd>{row.games.toLocaleString()}</dd></div>
-    </dl>
-
     {row.games === 0 && <p className="profile-empty-note">No matches counted yet. A ranked match needs a result and both players’ Live ratings recorded to count.</p>}
     <PlayerHistory key={row.playerId} mode="page" player={row} matches={matches} updates={updates} names={names}/>
-    <p className="profile-footnote">Based on ranked matches recorded by Trace. <a href={`${LEADERBOARD_HREF}#method`}>How ratings work</a></p>
+    <p className="profile-footnote">Based on ranked matches recorded by Trace. {row.lastPlayedAt && <>Latest match <time dateTime={row.lastPlayedAt}>{date(row.lastPlayedAt)}</time>. </>}<a href={`${LEADERBOARD_HREF}#method`}>How ratings work</a></p>
   </section>;
 }
