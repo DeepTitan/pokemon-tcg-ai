@@ -34,10 +34,10 @@
         <p>Enter the password to continue.</p>
         <label for="access-password">Password</label>
         <div class="access-controls">
-          <input id="access-password" name="password" type="password" autocomplete="current-password" required />
-          <button type="submit">Unlock Trace</button>
+          <input id="access-password" name="code" type="password" autocomplete="off" spellcheck="false" maxlength="80" required />
+          <button type="submit" id="access-submit" disabled>Checking…</button>
         </div>
-        <p class="access-error" id="access-error" role="alert" hidden>That password isn’t right.</p>
+        <p class="access-error" id="access-error" role="alert" hidden></p>
       </form>
     </section>
 
@@ -55,11 +55,11 @@
           <p>Trace logs every turn, so you can bring the exact board state to friends, compare possible lines, and learn from the decisions that matter.</p>
 
           <div class="downloads" aria-label="Download Trace">
-            <a class="download-button mac" data-download="mac" href="https://github.com/DeepTitan/pokemon-tcg-ai/releases/latest/download/Trace_aarch64.dmg">
+            <a class="download-button mac" data-download="mac" href="/trace/access?action=download&amp;platform=mac">
               <img src="/trace-assets/apple.svg" alt="" aria-hidden="true" />
               <span><small>Download for</small><strong>macOS</strong></span>
             </a>
-            <a class="download-button windows" data-download="windows" href="https://github.com/DeepTitan/pokemon-tcg-ai/releases/latest/download/Trace_x64-setup.exe">
+            <a class="download-button windows" data-download="windows" href="/trace/access?action=download&amp;platform=windows">
               <img src="/trace-assets/windows.svg" alt="" aria-hidden="true" />
               <span><small>Download for</small><strong>Windows</strong></span>
             </a>
@@ -68,18 +68,13 @@
           <p class="compatibility">Free beta · macOS Apple silicon · Windows 64-bit</p>
 
           <aside class="community-callout" aria-label="Victory Road community">
-            <span class="discord-mark" aria-hidden="true">VR</span>
-            <div>
-              <strong>Build Victory Road with us.</strong>
-              <p>Report a bug, ask for help, or share the feature you want next.</p>
-            </div>
             <a href="/discord" rel="noreferrer">Join the Discord <span aria-hidden="true">↗</span></a>
           </aside>
         </div>
 
         <footer>
           <p>Unofficial companion for Pokémon TCG Live.<br />Not affiliated with or endorsed by The Pokémon Company International.</p>
-          <span><a href="/discord">Community &amp; support</a> · © <span id="year">2026</span> Victory Road</span>
+          <span><a href="/trace/leaderboard">Leaderboard</a> · <a href="/discord">Community &amp; support</a> · © <span id="year">2026</span> Victory Road</span>
         </footer>
       </section>
 

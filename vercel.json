@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npm --prefix landing ci && node scripts/build-share-runtime.mjs && npm run tracker:build && node landing/build.mjs",
+  "buildCommand": "npm --prefix landing ci && node scripts/build-share-runtime.mjs && npm run tracker:build && npm run leaderboard:build && node landing/build.mjs && node --import tsx scripts/build-leaderboard-pages.ts",
   "outputDirectory": "landing/dist",
   "functions": {
     "api/share-card.mjs": {
@@ -7,11 +7,26 @@
     },
     "api/share-page.mjs": {
       "includeFiles": "landing/assets/share-card-catalog.json.gz"
+    },
+    "api/leaderboard-page.mjs": {
+      "includeFiles": "landing/assets/leaderboard-pages.json.gz"
     }
   },
   "cleanUrls": true,
   "trailingSlash": false,
   "rewrites": [
+    {
+      "source": "/trace/leaderboard",
+      "destination": "/api/leaderboard-page"
+    },
+    {
+      "source": "/trace/players/:player",
+      "destination": "/api/leaderboard-page?player=:player"
+    },
+    {
+      "source": "/trace/access",
+      "destination": "/api/download-access"
+    },
     {
       "source": "/trace/:shareId",
       "destination": "/api/share-page"
@@ -28,21 +43,36 @@
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
-        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" }
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=()"
+        }
       ]
     },
     {
       "source": "/assets/(.*)",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
       ]
     },
     {
       "source": "/trace-assets/(.*)",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
       ]
     }
   ]

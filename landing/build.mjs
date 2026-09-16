@@ -28,7 +28,7 @@ for (const [source, destination] of Object.entries(landingFiles)) {
 }
 fs.cpSync(path.join(landingDirectory, 'assets'), path.join(outputDirectory, 'trace-assets'), {
   recursive: true,
-  filter: (source) => !['share-card-catalog.json.gz', 'share-card-art', 'replay-card-art', 'replay-art-manifest.json'].includes(path.basename(source)),
+  filter: (source) => !['share-card-catalog.json.gz', 'leaderboard-pages.json.gz', 'share-card-art', 'replay-card-art', 'replay-art-manifest.json'].includes(path.basename(source)),
 });
 
 fs.copyFileSync(path.join(trackerBuildDirectory, 'tracker.html'), path.join(outputDirectory, 'shared-replay.html'));

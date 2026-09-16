@@ -3,7 +3,9 @@ const accessForm = document.getElementById('access-form');
 const accessPassword = document.getElementById('access-password');
 const accessError = document.getElementById('access-error');
 const page = document.querySelector('main');
-const accessHash = 'efb3c41ec1b113f5fecf08e303f6674293f34f2ae607eb8be0b0d268e4f7d458';
+const accessSubmit = document.getElementById('access-submit');
+const endpoint = '/trace/access';
+let submitting = false;
 
 const unlockPage = () => {
   accessGate.hidden = true;
@@ -11,31 +13,43 @@ const unlockPage = () => {
   document.documentElement.classList.remove('is-locked');
 };
 
-const hashPassword = async (value) => {
-  const bytes = new TextEncoder().encode(value);
-  const digest = await crypto.subtle.digest('SHA-256', bytes);
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
-};
-
-if (sessionStorage.getItem('trace-access') === accessHash) {
-  unlockPage();
-} else {
-  accessPassword.focus();
-}
+// The server checks a signed HttpOnly cookie. No password hashes or access
+// grants live in JavaScript/sessionStorage, and download links are gated too.
+const sessionReady = fetch(endpoint, { credentials: 'same-origin', cache: 'no-store' })
+  .then(async (response) => {
+    if (!response.ok) throw new Error('Download access is temporarily unavailable. Please refresh to retry.');
+    const status = await response.json();
+    if (status.unlocked) unlockPage(); else accessPassword.focus();
+  })
+  .catch((error) => { accessError.textContent = error.message || 'Please refresh and try again.'; accessError.hidden = false; })
+  .finally(() => { accessSubmit.disabled = false; accessSubmit.textContent = 'Unlock Trace'; });
 
 accessForm.addEventListener('submit', async (event) => {
   event.preventDefault();
-  const submittedHash = await hashPassword(accessPassword.value);
-
-  if (submittedHash === accessHash) {
-    sessionStorage.setItem('trace-access', accessHash);
+  if (submitting) return;
+  submitting = true;
+  accessSubmit.disabled = true;
+  accessSubmit.textContent = 'Unlocking…';
+  accessForm.setAttribute('aria-busy', 'true');
+  accessError.hidden = true;
+  try {
+    await sessionReady;
+    const response = await fetch(endpoint, { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ code: accessPassword.value.trim() }) });
+    const result = await response.json();
+    if (!response.ok || !result.unlocked) throw new Error(result.error || 'Please try again.');
+    accessPassword.value = '';
     unlockPage();
-    return;
+    document.querySelector('.download-button.detected, .download-button')?.focus();
+  } catch (error) {
+    accessError.textContent = error.message || 'Download access is temporarily unavailable. Please retry.';
+    accessError.hidden = false;
+    accessPassword.focus();
+  } finally {
+    submitting = false;
+    accessSubmit.disabled = false;
+    accessSubmit.textContent = 'Unlock Trace';
+    accessForm.removeAttribute('aria-busy');
   }
-
-  accessError.hidden = false;
-  accessPassword.value = '';
-  accessPassword.focus();
 });
 
 const platform = navigator.userAgentData?.platform || navigator.platform || '';

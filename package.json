@@ -52,7 +52,8 @@
     "release:test": "node scripts/release/trace-release-checkpoint.test.mjs && node scripts/release/trace-zoom.test.mjs && node --import tsx src/tracker/__tests__/board-zoom.test.ts",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "leaderboard:build": "VITE_TRACE_LEADERBOARD_BASE=/trace vite build --config vite.leaderboard.production.config.ts"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",

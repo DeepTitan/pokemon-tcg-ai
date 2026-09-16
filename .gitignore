@@ -39,3 +39,8 @@ yarn-error.log*
 # *.h5
 # *.json
 # checkpoints/
+
+# Local website build artifacts
+.vercel/
+dist-leaderboard/
+landing/assets/leaderboard-pages.json.gz
