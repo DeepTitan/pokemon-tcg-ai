@@ -1,0 +1,16 @@
+Roboto v3.015 — unmodified static web fonts
+
+Source release:
+https://github.com/googlefonts/roboto-3-classic/releases/download/v3.015/Roboto_v3.015.zip
+
+Official Google Fonts metadata:
+https://github.com/google/fonts/blob/main/ofl/roboto/METADATA.pb
+
+Files extracted from the release archive:
+web/static/Roboto-Regular.ttf -> roboto-400.ttf
+web/static/Roboto-Medium.ttf -> roboto-500.ttf
+web/static/Roboto-Bold.ttf -> roboto-700.ttf
+
+License: SIL Open Font License 1.1; see roboto-OFL.txt.
+Copyright 2011 The Roboto Project Authors
+(https://github.com/googlefonts/roboto-classic)

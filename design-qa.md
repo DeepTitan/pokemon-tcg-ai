@@ -1,5 +1,17 @@
 # Compact player match history — design QA
 
+## OP.GG-inspired visual refinement
+
+2026-09-16: user asked to keep Trace's identity but make the entire leaderboard feel less soft and bubbly, closer to OP.GG. Reference inspected in the in-app browser: `https://op.gg/lol/leaderboards/tier`, including its compact rankings table, restrained sans-serif type, small labels, clear rules and record bars. Existing Trace screens and Eevee assets remain the product reference.
+
+Implemented a bundled neutral Roboto UI family, 2–3 px corners, compact controls, navy table headers with legible light labels, right-aligned rating/win-rate columns, narrow W/L record bars, and restrained top-three rank accents. Kept cream/navy/gold, Eevee, the familiar Trace wordmark, prominent WIN/LOSS badges and the sticky player identity. The same treatment reaches rating details, method text and both dynamic share images. No rating or capture behavior changed.
+
+Evidence: CUA captures of the board at 1280 × 900 and 390 × 844, profile at 390 × 844, and ratings method at 390 × 844. Both mobile tables fit without horizontal scrolling. Public player/rating values agree with the source feed. New visual PNGs `/tmp/trace-sharp-leaderboard-preview.png` and `/tmp/trace-sharp-player-preview.png` were reviewed alongside the prior images. Outcome hierarchy remains visible while typography and borders are sharper. A before/after profile comparison was also rendered together; viewport sizes differed, so it was used only to assess type/color treatment rather than pixel geometry.
+
+Interaction checks: search filters correctly; Show unregistered includes grey rows with explicit labels; one-game and zero-game rows remain clear. Desktop rating-help link remains available. Review caught and fixed leaked mobile typography overrides and restored 16 px mobile search text. Strict TypeScript, production build, 25 metadata/preview/renderer tests and 3 sharing-route tests pass. Renderer revision is v3 and copied sharing links use p4.
+
+Visual QA passed at 1280 × 900, 709 × 994 and 390 × 844. The first production pass confirmed fonts, navy headers and record bars, then caught the intermediate-width table minimum and crown collision. The compact breakpoint now begins at 760 px and the decorative crown hides below 1000 px. A fresh 709 px capture confirms every column fits with no table overflow. Facebook crawler metadata, both 1200 × 630 PNGs, HEAD and conditional 304 responses passed. Final production deployment `https://victoryroad-8pzsuazf8-deeptitan-6729s-projects.vercel.app` is live through victoryroad.app; its loaded font, final stylesheet and zero table overflow were verified at 709 px. Final result: passed.
+
 Status: passed locally and in production, 2026-09-16.
 
 ## Reference and intent

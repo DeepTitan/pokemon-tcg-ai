@@ -29,8 +29,10 @@ test('leaderboard follows current shared ratings, registered population and scre
   const rated = getLeaderboardPreviewData(data).registeredRows.find(row => row.playerId === 'a');
   for (const label of ['Trace', 'Leaderboard', 'Trace rating', 'isaiahw', 'NewPlayer', '2 Trace players', '1W  1L', '50%', Math.round(rated.rating).toLocaleString('en-US')]) assert.ok(svg.includes(label), label);
   assert.doesNotMatch(svg, /Spysimon|Provisional|>1500<|>1,500</);
-  assert.match(svg, /#f5cf68/);
-  assert.doesNotMatch(svg, /#d3d6d8/, 'An unrated player does not receive a medal row');
+  assert.match(svg, /width="3" height="36" fill="#c79b36"/);
+  assert.doesNotMatch(svg, /#bac4d0/, 'An unrated player does not receive a medal');
+  assert.doesNotMatch(svg, /#f5cf68|#d3d6d8|#dbb995/, 'Medal colors stay in small rank accents');
+  assert.match(svg, /font-family="Roboto, sans-serif"/);
   assert.deepEqual(data, before);
   const png = await renderLeaderboardPreview(data);
   assert.equal(png.subarray(1, 4).toString(), 'PNG');
@@ -103,9 +105,9 @@ test('compact profile keeps the latest six games and makes each outcome explicit
   assert.equal((svg.match(/>(WIN|LOSS|DRAW)<\/text>/g) ?? []).length, 6);
   for (const day of [3, 4, 5, 6, 7, 8]) assert.ok(svg.includes(`Sep ${day}, 7:00 AM`));
   assert.doesNotMatch(svg, /Sep [12], 7:00 AM/);
-  for (const label of ['WIN', 'LOSS', 'DRAW']) assert.match(svg, new RegExp(`font-weight="900" fill="#ffffff"[^>]*>${label}<`));
+  for (const label of ['WIN', 'LOSS', 'DRAW']) assert.match(svg, new RegExp(`font-weight="700" fill="#ffffff"[^>]*>${label}<`));
   // White outcome text exceeds normal-text AA contrast, even at thumbnail scale.
-  for (const color of ['#287247', '#a8443b', '#627084']) {
+  for (const color of ['#287247', '#a8443b', '#5c6b7d']) {
     const channels = color.slice(1).match(/../g).map(value => parseInt(value, 16) / 255)
       .map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4);
     const luminance = channels[0] * .2126 + channels[1] * .7152 + channels[2] * .0722;
@@ -113,4 +115,14 @@ test('compact profile keeps the latest six games and makes each outcome explicit
   }
   const png = await renderLeaderboardPreview(data, 'a');
   assert.equal(png.readUInt32BE(16), 1200); assert.equal(png.readUInt32BE(20), 630);
+});
+
+test('record bars use actual wins and losses with neutral space for draws', () => {
+  const data = snapshot();
+  data.matches.push(match('draw', 16, 'a', { outcome: { type: 'draw' } }));
+  const svg = markup(leaderboardPreviewSvg(data));
+  assert.match(svg, /width="46\.67" height="4" fill="#287247"/);
+  assert.match(svg, /width="46\.67" height="4" fill="#a8443b"/);
+  assert.match(svg, /width="140" height="4" fill="#9aa5b2"/);
+  assert.match(svg, />1W  1L  1D</);
 });

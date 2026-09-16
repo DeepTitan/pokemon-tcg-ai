@@ -1,28 +1,28 @@
 .player-profile { color: #172b49; padding: 12px 0 28px; }
 .player-profile .profile-navigation { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 6px; }
-.player-profile .profile-back { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; font-size: 12px; font-weight: 650; text-decoration: none; }
+.player-profile .profile-back { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; font-size: 12px; font-weight: 500; text-decoration: none; }
 .player-profile .profile-back:hover { text-decoration: underline; }
 .player-profile .profile-share { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; max-width: 260px; text-align: right; }
-.player-profile .profile-share button { min-height: 34px; padding: 6px 11px; border: 1px solid #d9d0c1; border-radius: 5px; background: #fffdf8; color: #172b49; font-size: 12px; font-weight: 600; }
+.player-profile .profile-share button { min-height: 34px; padding: 6px 11px; border: 1px solid #d9d0c1; border-radius: 2px; background: #fffdfa; color: #172b49; font-size: 12px; font-weight: 500; }
 .player-profile .profile-share button:hover { background: #fff2c9; border-color: #d3b66a; }
 .player-profile .profile-share [role="status"] { font-size: 11px; line-height: 1.4; color: #58708a; }
 .player-profile .profile-share [role="status"]:empty { display: none; }
 /* A screenshot keeps its owner, rating and record even deeper in the history. */
-.player-profile .profile-header { position: sticky; top: 0; z-index: 30; display: grid; grid-template-columns: minmax(180px, 1fr) auto auto; align-items: center; gap: 24px; padding: 12px 0; margin-bottom: 12px; border-bottom: 1px solid #d9d0c1; background: #f7f2e8; }
+.player-profile .profile-header { position: sticky; top: 0; z-index: 30; display: grid; grid-template-columns: minmax(180px, 1fr) auto auto; align-items: center; gap: 24px; padding: 12px 0; margin-bottom: 12px; border-bottom: 1px solid #d9d0c1; background: #f4f2ec; }
 .player-profile .profile-identity { min-width: 0; }
 .player-profile .profile-rankline { display: flex; align-items: center; gap: 7px; color: #627084; font-size: 11px; }
-.player-profile .profile-rank { font-size: 11px; font-weight: 800; color: #172b49; padding: 3px 6px; border-radius: 3px; background: #f3d47f; font-variant-numeric: tabular-nums; }
-.player-profile .profile-header h1 { margin: 4px 0 0; max-width: none; color: #172b49; font-size: 32px; line-height: 1.15; letter-spacing: -.9px; overflow-wrap: anywhere; }
+.player-profile .profile-rank { font-size: 11px; font-weight: 700; color: #172b49; padding: 3px 6px; border-radius: 2px; background: #c79b36; font-variant-numeric: tabular-nums; }
+.player-profile .profile-header h1 { margin: 4px 0 0; max-width: none; color: #172b49; font-size: 30px; line-height: 1.15; letter-spacing: -.5px; overflow-wrap: anywhere; }
 .player-profile .profile-registration { margin: 4px 0 0; color: #6e7580; font-size: 11px; line-height: 1.4; }
 .player-profile .profile-registration span { display: inline-block; margin-right: 6px; color: #646a71; font-weight: 700; }
 .player-profile .profile-rating { min-width: 100px; padding-left: 22px; border-left: 1px solid #d9d0c1; text-align: right; }
-.player-profile .profile-label { display: block; font-size: 11px; font-weight: 600; color: #657285; }
-.player-profile .profile-header .profile-score { font-size: 31px; font-weight: 800; line-height: 1.2; letter-spacing: -.8px; color: #172b49; margin-top: 3px; }
+.player-profile .profile-label { display: block; font-size: 11px; font-weight: 500; color: #657285; }
+.player-profile .profile-header .profile-score { font-size: 31px; font-weight: 700; line-height: 1.2; letter-spacing: -.4px; color: #172b49; margin-top: 3px; }
 .player-profile .profile-score .rating-trigger { padding: 0; border-bottom-color: #c9b16d; }
 .player-profile .profile-score .rating-trigger:hover { color: #385b83; }
 .player-profile .profile-stats { display: flex; flex-wrap: wrap; margin: 0; padding: 0; border: 0; gap: 18px; }
 .player-profile .profile-stats > div { min-width: 60px; }
-.player-profile .profile-stats dt { font-size: 11px; font-weight: 600; color: #657285; margin-bottom: 5px; }
+.player-profile .profile-stats dt { font-size: 11px; font-weight: 500; color: #657285; margin-bottom: 5px; }
 .player-profile .profile-stats dd { margin: 0; font-size: 20px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; letter-spacing: -.3px; }
 .player-profile .profile-record { display: flex; gap: 5px; }
 .player-profile .profile-record i { color: #a5a6a3; font-style: normal; font-weight: 400; }
@@ -32,14 +32,14 @@
 .player-profile .profile-footnote { color: #657285; font-size: 12px; line-height: 1.7; margin: 14px 0 0; }
 .player-profile .profile-footnote a { color: #385b83; }
 .history-mobile-meta { display: none; }
-.history-page { background: #fffdf8; border: 1px solid #d9d0c1; border-radius: 6px; overflow: hidden; color: #172b49; }
+.history-page { background: #fffdfa; border: 1px solid #d9d0c1; border-radius: 2px; overflow: hidden; color: #172b49; }
 .history-page .history-heading { padding: 10px 14px; border-bottom-color: #e1d9cc; }
-.history-page .history-heading h2 { color: #172b49; margin: 0; font-size: 16px; font-weight: 750; letter-spacing: -.3px; }
+.history-page .history-heading h2 { color: #172b49; margin: 0; font-size: 15px; font-weight: 700; letter-spacing: 0; }
 .history-page .history-page-count { color: #657285; font-size: 11px; white-space: nowrap; }
 .history-page .history-scroll { max-height: none; overflow-y: visible; }
 .history-page .history-table { min-width: 820px; table-layout: fixed; }
-.history-page .history-table th { padding: 8px; background: #f5f1e8; color: #657285; border-bottom-color: #e1d9cc; font-size: 10px; letter-spacing: 0; }
-.history-page .history-table th small { color: #657285; font-size: 9px; margin-top: 2px; }
+.history-page .history-table th { padding: 8px; background: #172b49; color: #fffdfa; border-bottom-color: #172b49; font-size: 10px; letter-spacing: 0; }
+.history-page .history-table th small { color: #c9d1dc; font-size: 9px; margin-top: 2px; }
 .history-page .history-table th:nth-child(1) { width: 9%; }
 .history-page .history-table th:nth-child(2) { width: 9%; }
 .history-page .history-table th:nth-child(3) { width: 17%; }
@@ -57,14 +57,14 @@
 .history-page .history-row-loss > td:first-child { box-shadow: inset 3px 0 #a8443b; }
 .history-page .history-row-draw > td:first-child { box-shadow: inset 3px 0 #526277; }
 .history-page .history-table tbody tr:hover { background: #f1eadc; }
-.history-page .history-result { min-width: 60px; padding: 7px 9px; text-align: center; border-radius: 4px; font-size: 12px; font-weight: 800; letter-spacing: .5px; line-height: 1.2; text-transform: uppercase; }
+.history-page .history-result { min-width: 60px; padding: 7px 9px; text-align: center; border-radius: 2px; font-size: 12px; font-weight: 700; letter-spacing: .5px; line-height: 1.2; text-transform: uppercase; }
 .history-page .history-result.win { background: #287247; color: #fff; }
 .history-page .history-result.loss { background: #a8443b; color: #fff; }
 .history-page .history-result.draw { background: #526277; color: #fff; }
-.history-page .history-trace-change { font-size: 15px; font-weight: 750; }
+.history-page .history-trace-change { font-size: 15px; font-weight: 700; }
 .history-page .history-trace-change.is-positive { color: #287247; }
 .history-page .history-trace-change.is-negative { color: #a8443b; }
-.history-page .history-opponent { max-width: none; font-size: 13px; font-weight: 650; }
+.history-page .history-opponent { max-width: none; font-size: 13px; font-weight: 500; }
 .history-page .history-opponent a { color: #172b49; text-decoration: none; }
 .history-page .history-opponent a:hover { text-decoration: underline; }
 .history-page .history-elo { color: #526b7b; font-size: 13px; }
