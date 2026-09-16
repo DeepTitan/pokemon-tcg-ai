@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
 
 import { projectHistoryPreview, mergeHistoryPreviews } from './leaderboard-history-preview.js';
+import { buildLeaderboardCardCatalog } from './leaderboard-card-catalog.js';
 import type { CardInfo } from '../src/tracker/types.js';
 import type { MatchHistoryPreview } from '../src/leaderboard/history.js';
 
@@ -339,7 +340,11 @@ export function readSqliteReviews(databasePath: string, catalog: Map<string, Car
     const cardDatabase = database as unknown as { prepare(sql: string): { iterate(): Iterable<{ payload_json: string }> } };
     for (const row of cardDatabase.prepare('SELECT payload_json FROM cards ORDER BY id').iterate()) {
       const card = JSON.parse(row.payload_json) as CardInfo;
-      catalog.set(card.id, card); catalog.set(card.id.toLowerCase(), card);
+      // A preloaded printed catalog supplies complete mechanics; SQLite adds local art.
+      const printed = catalog.get(card.id) ?? catalog.get(card.id.toLowerCase());
+      const resolved = printed ? { ...card, ...printed, id: card.id,
+        ...(card.imagePath ? { imagePath: card.imagePath } : {}) } : card;
+      catalog.set(card.id, resolved); catalog.set(card.id.toLowerCase(), resolved);
     }
     const result: LeaderboardSourceReview[] = [];
     for (const row of database.prepare('SELECT imported_at, summary_json, review_gzip FROM matches ORDER BY imported_at, id').iterate()) {
@@ -383,6 +388,8 @@ export function exportTraceLeaderboard(argv: string[]): void {
     ? freshSnapshot : 'data/source/trace-cloud-20260909T210230Z';
   let output = 'data/leaderboard/events.json';
   let auditPath = 'data/leaderboard/live-rating-eligibility.json';
+  let catalogPath = fs.existsSync('landing/assets/share-card-catalog.json.gz')
+    ? 'landing/assets/share-card-catalog.json.gz' : 'data/leaderboard/card-catalog.json.gz';
   for (let index = 0; index < argv.length; index++) {
     if (argv[index] === '--no-cloud') { snapshot = undefined; continue; }
     const value = argv[++index];
@@ -392,10 +399,14 @@ export function exportTraceLeaderboard(argv: string[]): void {
       case '--snapshot': snapshot = value; break;
       case '--out': output = value; break;
       case '--rating-audit': auditPath = value; break;
+      case '--card-catalog': catalogPath = value; break;
       default: throw new Error(`Unknown option: ${argv[index - 1]}`);
     }
   }
-  const catalog = new Map<string, CardInfo>();
+  if (!fs.existsSync(catalogPath)) throw new Error('A complete printed card catalog is required; supply --card-catalog.');
+  const printed = record(JSON.parse(gunzipSync(fs.readFileSync(catalogPath)).toString('utf8')));
+  if (!Array.isArray(printed.cards)) throw new Error('Invalid printed card catalog.');
+  const catalog = buildLeaderboardCardCatalog(printed.cards as CardInfo[], []);
   const inputs = readSqliteReviews(sqlite, catalog);
   if (snapshot) inputs.push(...readCloudSnapshot(snapshot, catalog));
   const audit = fs.existsSync(auditPath) ? JSON.parse(fs.readFileSync(auditPath, 'utf8')) as LiveRatingAudit : undefined;

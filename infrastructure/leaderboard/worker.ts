@@ -4,6 +4,7 @@ import { gzipSync, gunzipSync } from 'node:zlib';
 import { buildPublicSnapshot, projectCloudReview, sourceKeyFor, type HistoricalEnrichment, type SourceProjection } from './projector.js';
 import type { CardInfo } from '../../src/tracker/types.js';
 import type { LiveRatingAudit } from '../../scripts/export-trace-leaderboard.js';
+import { buildLeaderboardCardCatalog } from '../../scripts/leaderboard-card-catalog.js';
 
 export interface SourceKey { deviceId: string; matchId: string }
 export interface IndexedMatch {
@@ -112,13 +113,13 @@ async function readAsset(name: string): Promise<unknown> {
   return JSON.parse(gunzipSync(await readFile(new URL(`./assets/${name}.json.gz`, import.meta.url))).toString('utf8'));
 }
 export async function loadAssets(): Promise<WorkerAssets> {
-  const [cards, audit, enrichments] = await Promise.all([readAsset('catalog'), readAsset('historical-audit'), readAsset('historical-enrichment')]);
-  if (!Array.isArray(cards) || !Array.isArray(enrichments)) throw new TypeError('Invalid leaderboard worker assets');
-  const catalog = new Map<string, CardInfo>();
-  for (const card of cards as CardInfo[]) {
-    if (!card || typeof card.id !== 'string' || typeof card.name !== 'string') throw new TypeError('Invalid leaderboard card catalog');
-    catalog.set(card.id, card); catalog.set(card.id.toLowerCase(), card);
+  const [cards, printed, audit, enrichments] = await Promise.all([
+    readAsset('catalog'), readAsset('printed-catalog'), readAsset('historical-audit'), readAsset('historical-enrichment'),
+  ]);
+  if (!Array.isArray(cards) || !Array.isArray(object(printed).cards) || !Array.isArray(enrichments)) {
+    throw new TypeError('Invalid leaderboard worker assets');
   }
+  const catalog = buildLeaderboardCardCatalog(object(printed).cards as CardInfo[], cards as CardInfo[]);
   return { catalog, historicalAudit: audit as LiveRatingAudit, enrichments: enrichments as HistoricalEnrichment[] };
 }
 

@@ -11,3 +11,7 @@ await build({
   external: ['@aws-sdk/*'],
 });
 await cp(new URL('./assets/', import.meta.url), new URL('./assets/', output), { recursive: true });
+// This is Trace's complete public printed-card catalog, not the small set of
+// cards previously encountered in the leaderboard's historical migration.
+await cp(new URL('../../landing/assets/share-card-catalog.json.gz', import.meta.url),
+  new URL('./assets/printed-catalog.json.gz', output));

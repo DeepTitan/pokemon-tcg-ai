@@ -26,7 +26,9 @@ Ranked eligibility and rating parameters are unchanged. Late games and correctio
 
 ## Build and migration
 
-Build with `node infrastructure/leaderboard/build.mjs`. The three small gzip assets contain public card metadata and guarded historical enrichment, never private captures. `prepare-assets.ts` documents the one-time migration and asserts full prior replay, player metadata and match-history parity. Do not regenerate the migration assets from an arbitrary new archive: they preserve the historical September 16 launch baseline, while incoming corrections remain authoritative.
+Build with `node infrastructure/leaderboard/build.mjs`. The build packages the complete public printed-card catalog already used by Trace's share pages, plus the three historical gzip assets. The complete catalog supplies exact printing mechanics for deck identification; the historical card catalog supplies known art and any records absent from the printed catalog. Known foil finishes resolve to their base printing's mechanics. Neither catalog contains private captures, and the public feed still exposes only the selected Pokémon, not the decklist.
+
+`prepare-assets.ts` documents the one-time migration and asserts full prior replay, player metadata and match-history parity. Do not regenerate the migration assets from an arbitrary new archive: they preserve the historical September 16 launch baseline, while incoming corrections remain authoritative. When updating printed-card metadata, reprocess affected sources through the private backfill action; a rebuild alone reuses their already-selected Pokémon. Verify `node --import tsx infrastructure/leaderboard/catalog.test.ts` before packaging.
 
 Package `template.yml` with `aws cloudformation package`. Enable the existing match table stream using its deployed CloudFormation template (preserving the production function's exact CodeUri), then deploy this isolated stack. Wait for its event source mapping to become Enabled before taking a fresh complete scan of current deviceId/matchId keys for backfill. Invoke batches of twenty via the private Lambda action. Reprocessing a source never creates or starts a Pokémon game.
 
