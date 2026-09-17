@@ -148,6 +148,47 @@ fn capture_mode() -> &'static str {
 }
 
 #[tauri::command]
+async fn open_leaderboard() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            const LEADERBOARD_URL: &str = "https://victoryroad.app/trace/leaderboard";
+            #[cfg(target_os = "macos")]
+            let output = Command::new("/usr/bin/open").arg(LEADERBOARD_URL).output();
+            #[cfg(target_os = "windows")]
+            let output = hidden_windows_command("rundll32.exe")
+                .args(["url.dll,FileProtocolHandler", LEADERBOARD_URL])
+                .output();
+            let output = output.map_err(|error| {
+                format!("Could not launch your default browser for Leaderboards: {error}")
+            })?;
+            if output.status.success() {
+                return Ok(());
+            }
+            let details = String::from_utf8_lossy(&output.stderr);
+            let details = details.trim();
+            if details.is_empty() {
+                Err(format!(
+                    "Could not open Leaderboards in your default browser ({})",
+                    output.status
+                ))
+            } else {
+                Err(format!(
+                    "Could not open Leaderboards in your default browser ({}): {details}",
+                    output.status
+                ))
+            }
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
+            Err("Opening Leaderboards is not supported on this platform".to_owned())
+        }
+    })
+    .await
+    .map_err(|error| format!("Could not finish opening Leaderboards: {error}"))?
+}
+
+#[tauri::command]
 fn tracker_environment(app: tauri::AppHandle) -> TrackerEnvironment {
     let pid = pokemon_client_pid();
     TrackerEnvironment {
@@ -398,6 +439,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            open_leaderboard,
             tracker_environment,
             capture_status,
             recent_match_operations,

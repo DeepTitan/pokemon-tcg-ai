@@ -18,6 +18,12 @@ export function isTauri(): boolean {
   return Boolean(window.__TAURI_INTERNALS__);
 }
 
+export const LEADERBOARD_URL = 'https://victoryroad.app/trace/leaderboard';
+
+export async function openLeaderboard(): Promise<void> {
+  await invoke<void>('open_leaderboard');
+}
+
 export async function getTraceVersion(): Promise<string | null> {
   if (!isTauri()) return null;
   return getVersion();

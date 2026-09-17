@@ -26,7 +26,7 @@ import { CaptureSetupModal } from './CaptureSetupModal.js';
 import {
   getRecentMatchOperations, getTraceVersion, getTrackerEnvironment, initializeTrackerStorage, isTauri, listMatchSummaries,
   listRawMatchIds, loadMatchOperations, loadMatchReview, onMatchOperation, persistMatchReview,
-  resolveCardSources, shareMatch, startTracking, stopTracking,
+  resolveCardSources, shareMatch, startTracking, stopTracking, LEADERBOARD_URL, openLeaderboard,
 } from './tauri.js';
 import { LiveReviewAssembler } from './live-operation-reducer.js';
 import { ReviewOverlay, type ReviewInspector } from './ReviewInteractions.js';
@@ -1549,7 +1549,17 @@ export default function TrackerApp() {
         {!sharedMode && archiveOpen && <aside className="session-rail">
           <div className="archive-heading" onMouseDown={beginWindowDrag}>
             <div className="archive-brand"><span><img src="/tracker-assets/trace-mascot.png" alt="" /></span><div><span className="archive-brand-name"><strong>Trace</strong>{appVersion && <b>v{appVersion}</b>}</span><small>Every turn, in view</small></div><div className={`header-status ${captureStatus.tone}`} title={environment.capture.lastError || undefined}><i /><b>{captureStatus.label}</b></div></div>
-            <div className="archive-title"><div><p>{archiveTotal} {archiveTotal === 1 ? 'match' : 'matches'} recorded</p></div><button className="panel-collapse-button" type="button" aria-label="Collapse match archive" aria-expanded="true" title="Collapse match archive" onClick={() => setArchiveOpen(false)}><CaretLeft size={17} weight="bold" /></button></div>
+            <div className="archive-title">
+              <div><p>{archiveTotal} {archiveTotal === 1 ? 'match' : 'matches'} recorded</p></div>
+              <div className="archive-title-actions">
+                <a className="archive-leaderboard-link" href={LEADERBOARD_URL} target="_blank" rel="noopener noreferrer" title="Open leaderboards in your browser" onClick={(event) => {
+                  if (!isTauri()) return;
+                  event.preventDefault();
+                  void openLeaderboard().catch(() => setError('Could not open your browser. Visit victoryroad.app/trace/leaderboard.'));
+                }}><Trophy size={14} weight="regular" aria-hidden="true" /><span>Leaderboards</span></a>
+                <button className="panel-collapse-button" type="button" aria-label="Collapse match archive" aria-expanded="true" title="Collapse match archive" onClick={() => setArchiveOpen(false)}><CaretLeft size={17} weight="bold" /></button>
+              </div>
+            </div>
           </div>
           <div className="archive-search">
             <div className="archive-search-field"><MagnifyingGlass size={16} aria-hidden="true" /><input type="search" aria-label="Search match archive" placeholder="Search players or Pokémon" value={archiveQuery} onChange={(event) => setArchiveQuery(event.target.value)} onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Escape') setArchiveQuery(''); }} />{searchActive && <button type="button" aria-label="Clear archive search" onClick={() => setArchiveQuery('')}><X size={14} /></button>}</div>
