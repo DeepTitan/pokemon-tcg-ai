@@ -9,7 +9,9 @@ export const VERIFIED_CARD_ART: Readonly<Record<string, { printing: string; alte
   me3_21: { printing: 'POR/21' },
   'me2-5_275': { printing: 'ASC/275' },
   'me2-5_193': { printing: 'ASC/193' },
+  'me2-5_46': { printing: 'ASC/46' },
   'me2-5_47': { printing: 'ASC/47' },
+  'me2-5_227': { printing: 'ASC/227' },
   'me2-5_214': { printing: 'ASC/214' },
   'me2-5_272': { printing: 'ASC/272' },
   'me2-5_293': { printing: 'ASC/293' },
@@ -22,7 +24,10 @@ export const VERIFIED_CARD_ART: Readonly<Record<string, { printing: string; alte
   'sm11-5_64': { printing: 'HIF/64' },
   svbsp_203: { printing: 'SVP/203' },
   'me2-5_207': { printing: 'ASC/207' },
+  'xy9-5r_7': { printing: 'GEN/RC7' },
   // Same gameplay text, not a claim of identical cosmetic artwork.
+  // svalt_103 and sv4_37 share Snorunt's complete printed mechanics (PAR/37).
+  svalt_103: { printing: 'PAR/37', alternate: true },
   svalt_155: { printing: 'TWM/95', alternate: true },
   svalt_166: { printing: 'JTG/116', alternate: true },
   mealt_3: { printing: 'MEG/1', alternate: true },
@@ -31,8 +36,27 @@ export const VERIFIED_CARD_ART: Readonly<Record<string, { printing: string; alte
   sve_17: { printing: 'SVE/1', alternate: true },
 };
 
+// Only known finish families inherit an explicitly verified printing alias.
+const verifiedArtId = (cardId: string) => cardId.toLowerCase().replace(/_(?:ph|sph|mph)\d*$/, '');
+
+// These regular sets preserve collector numbers in the public catalog. Keep
+// internal alternate-art namespaces (svalt, mealt, etc.) in the per-card map.
+const VERIFIED_ART_SETS: Readonly<Record<string, string>> = {
+  'me2-5': 'ASC',
+  me3: 'POR',
+  me4: 'CRI',
+  mee: 'MEE',
+  'rsv10-5': 'WHT',
+  'zsv10-5': 'BLK',
+};
+
+function printingArtUrl(set: string, number: string): string {
+  if (set === 'SVE') return `https://images.pokemontcg.io/sve/${number}.png`;
+  return `https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/${set}/${set}_${number.padStart(3, '0')}_R_EN_LG.png`;
+}
+
 export function cardArtUsesAlternate(cardId: string): boolean {
-  return VERIFIED_CARD_ART[cardId.toLowerCase().replace(/_ph$/, '')]?.alternate === true;
+  return VERIFIED_CARD_ART[verifiedArtId(cardId)]?.alternate === true;
 }
 
 export function findCatalogCard(
@@ -57,12 +81,14 @@ export function cardCatalogEntryNeedsRefresh(cardId: string, catalog: ReadonlyMa
 
 export function publicCardArtUrl(cardId: string | undefined): string | undefined {
   if (!cardId) return undefined;
-  const verified = VERIFIED_CARD_ART[cardId.toLowerCase().replace(/_ph$/, '')];
+  const verified = VERIFIED_CARD_ART[verifiedArtId(cardId)];
   if (verified) {
     const [set, number] = verified.printing.split('/');
-    if (set === 'SVE') return `https://images.pokemontcg.io/sve/${number}.png`;
-    return `https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/${set}/${set}_${number.padStart(3, '0')}_R_EN_LG.png`;
+    return printingArtUrl(set, number);
   }
+  const printing = verifiedArtId(cardId).match(/^([a-z0-9-]+)_([1-9]\d*)$/);
+  const providerSet = printing && VERIFIED_ART_SETS[printing[1]];
+  if (providerSet) return printingArtUrl(providerSet, printing[2]);
   const [rawSet, rawNumber] = cardId.toLowerCase().split('_');
   const number = rawNumber?.match(/^\d+/)?.[0];
   if (!rawSet || !number) return undefined;
