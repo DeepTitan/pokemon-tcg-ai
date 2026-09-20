@@ -104,7 +104,7 @@ export interface TrackedCard {
   cardType?: string;
 }
 
-export type TrackedChoiceRole = 'action' | 'chosen' | 'discarded' | 'promoted';
+export type TrackedChoiceRole = 'action' | 'chosen' | 'unchosen' | 'discarded' | 'promoted';
 
 export interface TrackedChoiceCard extends TrackedCard {
   choiceRole: TrackedChoiceRole;

@@ -135,6 +135,38 @@ function actionName(turn: TrackedTurn): string | undefined {
   return used ? humanizeGameTerms(used) : undefined;
 }
 
+function isReconDirective(turn: TrackedTurn): boolean {
+  return primaryEvent(turn)?.kind === 'ability' && actionName(turn)?.toLowerCase() === 'recon directive';
+}
+
+/** Only use alternatives captured for this completed choice, never inferred deck cards. */
+function unselectedCards(selection: ReviewSelection | undefined): ReviewSelection['optionCards'] {
+  if (!selection?.completed || selection.kind !== 'entity'
+    || selection.candidateVisibility !== 'captured') return [];
+
+  const candidates = new Set(selection.allOptionIds);
+  const selected = new Set(selection.selectedOptionIds);
+  if (!selection.selectedOptionIds.some((id) => candidates.has(id))) return [];
+
+  return selection.optionCards
+    .filter((card) => candidates.has(card.id) && !selected.has(card.id))
+    .filter((card) => {
+      const name = humanizeGameTerms(card.name || '');
+      return name && !/^(?:hidden|unknown) card$/i.test(name);
+    });
+}
+
+export function unselectedCardsForTurn(turn: TrackedTurn): ReviewSelection['optionCards'] {
+  if (!isReconDirective(turn)) return [];
+  return turn.events.flatMap((event) => unselectedCards(selectionForEvent(turn, event)));
+}
+
+export function unselectedChoiceCopy(turn: TrackedTurn, event: TrackerEvent): string | null {
+  if (!isReconDirective(turn)) return null;
+  const names = unselectedCards(selectionForEvent(turn, event)).map((card) => humanizeGameTerms(card.name));
+  return names.length ? `Not chosen: ${naturalList(names)}` : null;
+}
+
 function sourceName(event: TrackerEvent): string | undefined {
   return factValue(event, 'Source');
 }
@@ -234,6 +266,7 @@ function selectionCopy(turn: TrackedTurn, event: TrackerEvent): string | null {
 
   if (zones.has('deck') && chosen.length) {
     const exact = exactDeckToHand.length ? exactDeckToHand : exactDeckToBench.length ? exactDeckToBench : chosen;
+    if (isReconDirective(turn)) return `${prefix}chose ${naturalList(exact)} with ${source}`;
     return `${prefix}searched their deck for ${naturalList(exact)} with ${source}`;
   }
 

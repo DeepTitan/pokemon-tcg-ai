@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { humanizeGameTerms, playerFacingFacts, presentTurnEvents } from '../game-log-copy.js';
+import { humanizeGameTerms, playerFacingFacts, presentTurnEvents, unselectedChoiceCopy } from '../game-log-copy.js';
 import type { ReviewEventFact, ReviewSelection, TrackedTurn, TrackerEvent, TrackerEventKind } from '../types.js';
 
 const emptySnapshot = { players: {}, stadium: null };
@@ -78,6 +78,76 @@ const trade = presentTurnEvents(turn([
   ]),
 ], [tradeSelection]));
 assert.equal(trade[1].text, "Isaiah: discarded Boss's Orders with Trade");
+
+const reconPrimary = event('recon:primary', 'Isaiah: Drakloak used Recon Directive', 'ability', 'Isaiah', [['Source', 'Drakloak']]);
+const reconEvent = event('recon:selection:recon-choice', 'Isaiah: chose Ultra Ball with Drakloak', 'system', 'Isaiah', [
+  ['Source', 'Drakloak'], ['Card moved', "Ultra Ball: Isaiah's Deck → Isaiah's Hand"],
+]);
+const reconSelection: ReviewSelection = {
+  ...selection('recon-choice', 'entity', 8),
+  allOptionIds: ['chosen-instance', 'other-instance'],
+  eligibleOptionIds: ['chosen-instance', 'other-instance'],
+  selectedOptionIds: ['chosen-instance'],
+  optionCards: [
+    { id: 'chosen-instance', name: 'Ultra Ball' } as never,
+    { id: 'other-instance', name: 'Iono' } as never,
+  ],
+  minimum: 1,
+  maximum: 1,
+};
+function reconTurn(overrides: Partial<ReviewSelection> = {}, primary = reconPrimary): TrackedTurn {
+  return turn([primary, reconEvent], [{ ...reconSelection, ...overrides }]);
+}
+
+assert.deepEqual(presentTurnEvents(reconTurn()).map((entry) => entry.text), [
+  'Isaiah: Drakloak used Recon Directive',
+  'Isaiah: chose Ultra Ball with Recon Directive',
+], 'Recon Directive should describe a top-card choice rather than a deck search');
+assert.equal(unselectedChoiceCopy(reconTurn(), reconEvent), 'Not chosen: Iono');
+assert.equal(unselectedChoiceCopy(reconTurn(), reconPrimary), null, 'only the matching selection event gets the unchosen note');
+assert.equal(unselectedChoiceCopy(turn([reconPrimary, reconEvent]), reconEvent), null, 'missing captured selection must not invent another card');
+assert.equal(unselectedChoiceCopy(reconTurn({ id: 'other-choice' }), reconEvent), null, 'another selection in the same turn must not supply its options');
+
+for (const [label, overrides] of [
+  ['pending decision', { completed: false }],
+  ['private candidates', { candidateVisibility: 'private' }],
+  ['uncaptured legacy candidates', { candidateVisibility: undefined }],
+  ['text decision', { kind: 'text' }],
+  ['damage placement', { kind: 'damage' }],
+  ['attachment decision', { kind: 'reparent' }],
+  ['no chosen result', { selectedOptionIds: [] }],
+  ['stale chosen result', { selectedOptionIds: ['missing-instance'] }],
+  ['missing candidate IDs', { allOptionIds: [] }],
+] satisfies Array<[string, Partial<ReviewSelection>]>) {
+  assert.equal(unselectedChoiceCopy(reconTurn(overrides), reconEvent), null, label);
+}
+
+const otherAbility = event('recon:primary', 'Isaiah: Drakloak used Another Ability', 'ability');
+assert.equal(unselectedChoiceCopy(reconTurn({}, otherAbility), reconEvent), null, 'unrelated abilities keep their existing display');
+assert.equal(unselectedChoiceCopy(reconTurn({}, { ...reconPrimary, kind: 'attack' }), reconEvent), null, 'the name alone must not turn an attack into Recon Directive');
+assert.equal(unselectedChoiceCopy(reconTurn({
+  allOptionIds: ['chosen-instance'],
+  optionCards: reconSelection.optionCards.slice(0, 1),
+}), reconEvent), null, 'a one-card deck has no unselected card');
+
+for (const name of ['Hidden card', 'Unknown card', '', '   ']) {
+  assert.equal(unselectedChoiceCopy(reconTurn({
+    optionCards: [reconSelection.optionCards[0], { id: 'other-instance', name } as never],
+  }), reconEvent), null, `do not expose an unresolved option: ${JSON.stringify(name)}`);
+}
+
+assert.equal(unselectedChoiceCopy(reconTurn({
+  allOptionIds: [...reconSelection.allOptionIds].reverse(),
+}), reconEvent), 'Not chosen: Iono', 'selection membership uses physical IDs rather than array positions');
+assert.equal(unselectedChoiceCopy(reconTurn({
+  optionCards: [...reconSelection.optionCards, { id: 'unrelated-instance', name: 'Rare Candy' } as never],
+}), reconEvent), 'Not chosen: Iono', 'cards outside the captured candidate list must not appear');
+assert.equal(unselectedChoiceCopy(reconTurn({
+  optionCards: [reconSelection.optionCards[0], { id: 'other-instance', name: 'Ultra Ball' } as never],
+}), reconEvent), 'Not chosen: Ultra Ball', 'two copies of the same card remain distinct physical choices');
+assert.equal(unselectedChoiceCopy(reconTurn({
+  optionCards: [reconSelection.optionCards[0], { id: 'other-instance', name: 'Basic {P} Energy' } as never],
+}), reconEvent), 'Not chosen: Basic Psychic Energy', 'unchosen names use the same readable energy labels as the log');
 
 const poffinSelection = selection('poffin', 'entity', 0);
 const poffin = presentTurnEvents(turn([
@@ -168,4 +238,4 @@ assert.deepEqual(visibleFacts.map(({ label, value }) => [label, value]), [
   ['Attack', 'Powerful Hand'],
 ]);
 
-console.log('game-log-copy: player language, selection outcomes, metadata filtering, and energy names');
+console.log('game-log-copy: player language, Recon Directive candidates, selection outcomes, metadata filtering, and energy names');

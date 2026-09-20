@@ -1365,6 +1365,7 @@ body,
 
 .choice-stage-cards { min-width: 0; min-height: 0; display: flex; align-items: center; padding: 1px 3px; overflow: visible; }
 .choice-stage-cards:empty { display: none; }
+.choice-stage-cards.has-unchosen { padding-bottom: 7px; }
 .choice-stage-cards button {
   position: relative;
   width: 38px;
@@ -1406,6 +1407,20 @@ body,
 .choice-stage-cards button.role-chosen:hover { transform: translateY(-12px) scale(1.06); }
 .choice-stage-cards button.role-discarded:hover { transform: translateY(6px) scale(1.06); }
 .choice-stage-cards img { width: 100%; height: 100%; display: block; border-radius: 4px; object-fit: cover; }
+.choice-stage-cards button.role-unchosen {
+  width: 26px;
+  height: 36px;
+  margin-left: 9px;
+  border: 1px solid #b9bfc3;
+  box-shadow: none;
+  transform: translateY(4px);
+}
+.choice-stage-cards button.role-unchosen img { opacity: .5; filter: saturate(.35); }
+.choice-stage-cards button.role-unchosen:hover,
+.choice-stage-cards button.role-unchosen:focus-visible { transform: translateY(1px) scale(1.06); }
+.choice-stage-cards button.role-unchosen:hover img,
+.choice-stage-cards button.role-unchosen:focus-visible img { opacity: .85; }
+.choice-card-label { position: absolute; top: calc(100% + 3px); left: 50%; transform: translateX(-50%); color: #69737c; font-size: 6px; font-weight: 750; line-height: 1.2; white-space: nowrap; }
 .choice-stage.show-turn .choice-stage-cards { overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; scrollbar-color: #cabd9c transparent; }
 .choice-stage.show-turn .choice-stage-cards button.current.role-action { width: 48px; height: 67px; }
 
@@ -1421,6 +1436,7 @@ body,
   .choice-stage-cards button.role-promoted { width: 28px; height: 39px; margin-left: -5px; }
   .choice-stage-cards button.role-chosen { transform: translateY(-7px); }
   .choice-stage-cards button.role-discarded { transform: translateY(7px); }
+  .choice-stage-cards button.role-unchosen { width: 24px; height: 33px; margin-left: 9px; }
 }
 
 /* Attack resolution is drawn against the cards in their real board slots.
@@ -1731,6 +1747,7 @@ body,
 .event-meta small { overflow: hidden; color: #6f7981; font-size: 7px; font-weight: 900; letter-spacing: .06em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
 .event-meta > span { flex: 0 0 auto; color: #92999d; font-size: 6.5px; font-weight: 800; }
 .event-copy strong { color: #374758; font-size: 9px; line-height: 1.35; -webkit-line-clamp: 3; }
+.event-copy .event-unchosen { color: #69737c; font-size: 8px; font-weight: 500; line-height: 1.4; overflow-wrap: anywhere; }
 .timeline-event-wrap.selected .event-copy strong { color: #243b55; }
 .event-trailing { min-width: 18px; display: grid; place-items: center; color: #8c969c; }
 .event-trailing > b { padding: 3px 5px; border-radius: 999px; color: #845c0c; background: #f7df9e; font-size: 6px; letter-spacing: .04em; text-transform: uppercase; }

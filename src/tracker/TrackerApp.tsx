@@ -35,8 +35,9 @@ import { cardInfoToEngineCard, cardSourceIdFromReviewCard } from './card-adapter
 import { sortCardsForDisplay } from './card-order-model.js';
 import { findEnergyType } from './EnergyBadge.js';
 import { buildTimeline, eventKeyForReviewIndex } from './timeline-model.js';
-import { presentTurnEvents, selectionForEvent } from './game-log-copy.js';
+import { presentTurnEvents, selectionForEvent, unselectedChoiceCopy } from './game-log-copy.js';
 import { cardEffectSummary } from './card-effect-model.js';
+import { actionCardsForTurn } from './action-card-model.js';
 import { attackResolutionForTurn, type AttackResolution } from './attack-resolution-model.js';
 import { damageChangesForTurn, type PokemonDamageChange } from './damage-change-model.js';
 import { positionChangesForTurn, type PokemonPositionChange } from './position-change-model.js';
@@ -350,33 +351,6 @@ function withoutActorPrefix(text: string, actor: string): string {
   return text.replace(new RegExp(`^${actor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:\\s*`, 'i'), '');
 }
 
-function actionCardsForTurn(turn: TrackedTurn, catalog: ReadonlyMap<string, CardInfo>): TrackedChoiceCard[] {
-  const cards = [...(turn.choiceCards || [])];
-  const promotionOnly = cards.some((card) => card.choiceRole === 'promoted')
-    && !cards.some((card) => card.choiceRole === 'action');
-  if (promotionOnly) return cards;
-  const actionCardIds = new Set(cards
-    .filter((card) => card.choiceRole === 'action' && card.cardId)
-    .map((card) => card.cardId!.toLowerCase()));
-
-  turn.events.forEach((event) => {
-    if (!event.cardId || actionCardIds.has(event.cardId.toLowerCase())) return;
-    const info = catalog.get(event.cardId) || catalog.get(event.cardId.toLowerCase());
-    if (!info) return;
-    cards.unshift({
-      id: `${turn.index}:action:${info.id}`,
-      cardId: info.id,
-      name: info.name,
-      imageDataUrl: info.imageDataUrl,
-      cardType: info.cardType,
-      choiceRole: 'action',
-    });
-    actionCardIds.add(event.cardId.toLowerCase());
-  });
-
-  return cards;
-}
-
 function actionEventsForTurn(turn: TrackedTurn): TurnChoiceFrame['events'] {
   const actor = turn.player || '';
   const grouped = new Map<string, { id: string; kind: TrackerEventKind; text: string; count: number; targetIds: Set<string> }>();
@@ -426,13 +400,13 @@ function ChoiceStage({ boardName, frames, currentReviewIndex, catalog, onOpen }:
       {primaryEvent && <span className="primary"><EventIcon kind={primaryEvent.kind} size={14} text={primaryEvent.text} /><strong>{primaryEvent.text}</strong></span>}
       {supportingCopy && <span className="supporting-summary"><strong>{supportingCopy}</strong></span>}
     </div>
-    <div className="choice-stage-cards">
+    <div className={`choice-stage-cards ${choices.some(({ card }) => card.choiceRole === 'unchosen') ? 'has-unchosen' : ''}`}>
       {choices.map(({ card, frame }, index) => {
         const info = resolvedCardInfo(card, catalog);
         const name = info?.name || card.name;
         const current = frame.reviewIndex === currentReviewIndex;
-        const roleCopy = card.choiceRole === 'discarded' ? 'Discarded card' : card.choiceRole === 'chosen' ? 'Chosen card' : card.choiceRole === 'promoted' ? 'Promoted to Active' : 'Action card';
-        return <button type="button" className={`choice-card role-${card.choiceRole} ${current ? 'current' : ''}`} aria-current={current ? 'step' : undefined} aria-label={`${roleCopy}: ${name}`} title={`${frame.label} · ${roleCopy}: ${name}`} onClick={() => onOpen(card)} key={`${frame.reviewIndex}-${card.id}-${index}`}><img src={resolvedCardImage(card, catalog)} data-card-id={card.cardId} alt={name} onError={showCardBackOnError} /></button>;
+        const roleCopy = card.choiceRole === 'unchosen' ? 'Not chosen' : card.choiceRole === 'discarded' ? 'Discarded card' : card.choiceRole === 'chosen' ? 'Chosen card' : card.choiceRole === 'promoted' ? 'Promoted to Active' : 'Action card';
+        return <button type="button" className={`choice-card role-${card.choiceRole} ${current ? 'current' : ''}`} aria-current={current ? 'step' : undefined} aria-label={`${roleCopy}: ${name}`} title={`${frame.label} · ${roleCopy}: ${name}`} onClick={() => onOpen(card)} key={`${frame.reviewIndex}-${card.id}-${index}`}><img src={resolvedCardImage(card, catalog)} data-card-id={card.cardId} alt={name} onError={showCardBackOnError} />{card.choiceRole === 'unchosen' && <span className="choice-card-label">Not chosen</span>}</button>;
       })}
     </div>
   </aside>;
@@ -1620,6 +1594,7 @@ export default function TrackerApp() {
                     const selected = entry.key === selectedEventKey;
                     const selection = selectionForEvent(turn, event);
                     const eventSelectedChoiceNames = selectedCardNames(selection);
+                    const unselectedChoice = unselectedChoiceCopy(turn, event);
                     const visibleFacts = event.facts || [];
                     const displayLabel = eventDisplayLabel(event);
                     const eventCondition = event.kind === 'condition' ? conditionFromEventText(event.text) : null;
@@ -1628,9 +1603,9 @@ export default function TrackerApp() {
                       : undefined;
                     const effect = cardEffectSummary(event, eventCard);
                     return <article className={`timeline-event-wrap kind-${event.kind} ${event.coinResult ? `coin-${event.coinResult}` : ''} ${selected ? 'selected' : ''}`} key={entry.key} role="listitem" aria-setsize={timeline.entries.length} aria-posinset={entry.position}>
-                      <button ref={selected ? selectedTimelineEventRef : undefined} className="timeline-event" type="button" aria-current={selected ? 'step' : undefined} aria-label={`Event ${entry.position} of ${timeline.entries.length}. ${displayLabel}. ${event.text}`} onClick={() => { setSelectedEventKey(entry.key); navigateToFrame(Math.min(entry.reviewIndex, (selectedReview?.turns.length || 1) - 1)); setPlaying(false); setInspector(null); }}>
+                      <button ref={selected ? selectedTimelineEventRef : undefined} className="timeline-event" type="button" aria-current={selected ? 'step' : undefined} aria-label={`Event ${entry.position} of ${timeline.entries.length}. ${displayLabel}. ${event.text}${unselectedChoice ? `. ${unselectedChoice}` : ''}`} onClick={() => { setSelectedEventKey(entry.key); navigateToFrame(Math.min(entry.reviewIndex, (selectedReview?.turns.length || 1) - 1)); setPlaying(false); setInspector(null); }}>
                         <span className={`event-icon ${eventCondition ? `condition-${eventCondition.toLowerCase()}` : ''}`}><EventIcon kind={event.kind} text={event.text} /></span>
-                        <span className="event-copy"><span className="event-meta"><small>{displayLabel}</small><span>Event {entry.position}</span></span><strong>{event.text}</strong></span>
+                        <span className="event-copy"><span className="event-meta"><small>{displayLabel}</small><span>Event {entry.position}</span></span><strong>{event.text}</strong>{unselectedChoice && <span className="event-unchosen">{unselectedChoice}</span>}</span>
                         <span className="event-trailing">{event.coinResult ? <b className={`coin-outcome ${event.coinResult}`}><Coin size={10} weight="fill" />{event.coinResult === 'heads' ? 'Heads' : event.coinResult === 'tails' ? 'Tails' : 'Mixed'}</b> : selected ? <b>Viewing</b> : event.id.includes(':selection:') ? <MagnifyingGlass size={14} weight="bold" /> : <CaretRight size={14} weight="bold" />}</span>
                       </button>
                       {selected && effect && eventCard && <button className="event-effect-detail" type="button" onClick={() => openChoiceCard({ id: `${event.id}:card`, cardId: eventCard.id, name: eventCard.name })} aria-label={`${effect.label}: ${effect.title}. ${effect.text}. Open card details`}>
@@ -1644,7 +1619,7 @@ export default function TrackerApp() {
                           {visibleFacts.map((fact) => <div className={`fact-${fact.kind} tone-${fact.tone || 'neutral'}`} key={fact.id}><dt><i />{fact.label}</dt><dd>{fact.value}</dd></div>)}
                         </dl>
                       </details>}
-                      {selected && selection && (eventSelectedChoiceNames.length > 0 || selection.allOptionIds.length > 0) && <div className="timeline-event-detail"><span>{selection.candidateVisibility === 'private' ? <><b>{eventSelectedChoiceNames.length ? eventSelectedChoiceNames.join(' + ') : 'Hidden choice'}</b><small>{eventSelectedChoiceNames.length ? 'Only the chosen card was revealed' : 'The available cards stayed hidden'}</small></> : <><b>{eventSelectedChoiceNames.length ? eventSelectedChoiceNames.join(' + ') : 'Cards viewed'}</b><small>{selection.allOptionIds.length} card{selection.allOptionIds.length === 1 ? '' : 's'} viewed · {eventSelectedChoiceNames.length} chosen</small></>}</span><button type="button" onClick={() => openSelection(selection)}>{eventSelectedChoiceNames.length ? 'View chosen cards' : 'Review cards'}</button></div>}
+                      {selected && selection && (eventSelectedChoiceNames.length > 0 || selection.allOptionIds.length > 0) && <div className="timeline-event-detail"><span>{selection.candidateVisibility === 'private' ? <><b>{eventSelectedChoiceNames.length ? eventSelectedChoiceNames.join(' + ') : 'Hidden choice'}</b><small>{eventSelectedChoiceNames.length ? 'Only the chosen card was revealed' : 'The available cards stayed hidden'}</small></> : <><b>{eventSelectedChoiceNames.length ? eventSelectedChoiceNames.join(' + ') : 'Cards viewed'}</b><small>{selection.allOptionIds.length} card{selection.allOptionIds.length === 1 ? '' : 's'} viewed · {eventSelectedChoiceNames.length} chosen</small></>}</span><button type="button" onClick={() => openSelection(selection)}>{unselectedChoice ? 'View choices' : eventSelectedChoiceNames.length ? 'View chosen cards' : 'Review cards'}</button></div>}
                     </article>;
                   })}
                 </div>
