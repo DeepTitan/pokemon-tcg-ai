@@ -37,3 +37,7 @@ src/engine/*
 src/ai
 src/training
 src/train.ts
+
+# Public dashboard UI only; the root training code/data remain excluded.
+!landing/training
+!landing/training/**

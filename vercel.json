@@ -23,6 +23,14 @@
   "trailingSlash": false,
   "rewrites": [
     {
+      "source": "/trace/leaderboard-static/training/status.json",
+      "destination": "/api/training-data"
+    },
+    {
+      "source": "/trace/training",
+      "destination": "/trace/leaderboard-static/training"
+    },
+    {
       "source": "/trace/leaderboard-preview.png",
       "destination": "/api/leaderboard-preview"
     },

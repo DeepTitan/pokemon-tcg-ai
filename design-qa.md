@@ -50,3 +50,40 @@ No rating formula, game capture or game client changes are included.
 ## Production verification
 
 Deployed to `https://victoryroad-3kv2vb09z-deeptitan-6729s-projects.vercel.app`, aliased through the existing `victoryroad.app` Trace routes. The live profile shows ten complete rows at 1440 × 900, sticky identity, and the expected solid loss badge. Facebook crawler requests return current versioned PNG metadata, valid 1200 × 630 images, no-store responses, successful HEAD requests and conditional 304 responses. The downloaded production player image `/tmp/trace-production-player-preview.png` was visually reviewed and contains six compact rows with prominent results. New match uploads continued arriving in the public feed during verification.
+
+## Training page and shared navigation — September 21, 2026
+
+Source: `/Users/theisaiahw/.codex/generated_images/01a0c10c-a5a2-73d3-96ec-69e349e4bc04/exec-994a4b97-8e85-41d7-a548-ed8a7e5e2f5e.png`.
+Implementation: `http://127.0.0.1:4011/trace/training`.
+Evidence: `/tmp/trace-training-release-desktop.jpg`, `/tmp/trace-release-mobile-profile.jpg`.
+Source and implementation compared together in the same browser-tool input at
+1487×1058 CSS pixels / image pixels, DPR1. The user's requested speed/ETA and
+consistent third tab are intentional additions. Live values naturally differ.
+
+- Typography: same locally bundled Nunito Sans for training and shared navigation;
+  existing readable Roboto leaderboard body preserved.
+- Layout: selected horizontal hero and three-column compact records preserved.
+  Shared header on training, leaderboard, profiles and method; at390×844 the brand
+  row sits above three always-visible tabs. No horizontal page overflow.
+- Color: cream/navy/blue/gold preserved; active tab shown consistently.
+- Assets: approved Trace mascot and generated Victory Road logo; all images load.
+- Content: unchanged verified records, live sanitized AWS metrics, no invented results.
+- Interactions: Training→Leaderboard→How ratings work and profile→Training passed;
+  correct active tab, live data, existing profile records and artwork confirmed.
+- Console errors: none. Local public feed returned all15 verified checkpoints.
+- Existing site/API suite:66 passed;3 projection/feed tests,3 share-route tests,
+  projection/social metadata checks, strict scoped TypeScript and both Vite builds passed.
+- Focused header and mobile screenshot inspection found no P0/P1/P2 issues.
+  Earlier dashboard chart/record-density fixes remain intact. No new QA fixes required.
+
+final result: passed
+
+Production addendum: Vercel staging exposed a clean-URL rewrite mismatch; corrected
+its target to the extensionless training directory before promotion. The corrected
+staged page, API, fonts, logo and player page returned 200. After promotion, the
+public apex dashboard rendered live metrics and all three tabs worked, including
+the full ratings explanation. Production screenshot confirmed the selected design
+with loaded data and branding. The public feed automatically refreshed at20:55 UTC.
+No new browser errors or broken images on the production pages.
+
+final result: passed

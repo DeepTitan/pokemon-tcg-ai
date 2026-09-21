@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#f6f4ef">
+  <title>Dragapult training · Trace</title>
+  <link rel="icon" href="/trace/leaderboard-static/training/assets/trace-mascot.png">
+  <link rel="stylesheet" href="/trace/leaderboard-static/training/dashboard.css">
+  <script src="/trace/leaderboard-static/training/dashboard.js" defer></script>
+  <link rel="stylesheet" href="/trace/leaderboard-static/training/header.css">
+  <link rel="canonical" href="https://victoryroad.app/trace/training">
+  <meta name="description" content="Follow Dragapult self-play training, checkpoint match results, and live training progress.">
+</head>
+<body>
+  <header class="trace-topbar"><div class="trace-topbar-inner">
+    <a class="trace-logo" href="/trace/leaderboard" aria-label="Trace leaderboard"><img src="/trace/leaderboard-static/training/assets/trace-mascot.png" alt=""><span>Trace</span></a>
+    <nav class="trace-tabs" aria-label="Main navigation"><a href="/trace/leaderboard">Leaderboard</a><a href="/trace/training" aria-current="page">Training</a><a href="/trace/leaderboard#method">How ratings work</a></nav>
+    <a class="trace-victory" href="https://victoryroad.app" aria-label="Victory Road"><img src="/trace/leaderboard-static/training/assets/victory-road.png" alt="Victory Road"></a>
+  </div></header>
+  <main>
+    <header class="page-heading"><h1>Dragapult training</h1><button id="refresh"><img src="/trace/leaderboard-static/training/assets/refresh.svg" alt=""><span>Refresh</span></button></header>
+    <div class="runline">
+      <div class="status" id="status">Loading training status…</div>
+      <div class="pace" aria-label="Training speed and next checkpoint"><span id="speed">— steps/s</span><span class="eta" id="eta">Estimating next checkpoint…</span></div>
+    </div>
+    <div id="error" role="status"></div>
+    <section class="panel" aria-labelledby="benchmarkHeading">
+      <div class="summary"><h2 id="benchmarkHeading">Win rate vs 100M</h2><div class="value" id="latest">—</div><div class="caption" id="latestCaption">Latest evaluated checkpoint</div><p class="verdict" id="verdict"></p></div>
+      <div class="plot"><svg id="chart" viewBox="0 0 850 300" role="img" aria-label="Current deck checkpoint win rate against the fixed 100M model"></svg><p class="chartnote">Higher is better. 50% means an even match.</p></div>
+    </section>
+    <section class="records" aria-labelledby="recordsHeading">
+      <h2 id="recordsHeading">Checkpoint results</h2>
+      <div class="table-wrap"><table><thead><tr><th scope="col">Training steps</th><th scope="col">vs 100M</th><th scope="col">vs previous model</th></tr></thead><tbody id="records"></tbody></table></div>
+      <p id="pending">Next checkpoint is tested automatically.</p>
+    </section>
+    <details id="more">
+      <summary>More details<img src="/trace/leaderboard-static/training/assets/caret-down.svg" alt=""></summary>
+      <div class="detail-content">
+        <p>The main graph compares checkpoints from the current deck against the same frozen 100M model. Simulated games are cumulative completed training games across the original exact-list run and this continuation (256 games per round). They exclude evaluation games, human logs, and earlier training campaigns. Checkpoint labels omit the initial 3.7M offset and batch overshoot; exact totals are shown below. Each match set balances player positions. Hover or focus a point for its 95% uncertainty interval.</p>
+        <p id="paceMethod"></p><p id="deck"></p>
+        <div class="detailhead"><label for="checkpoint">Checkpoint</label><select id="checkpoint"></select></div>
+        <p id="metadata"></p>
+        <div class="scroll"><table id="detailsTable"><thead><tr><th scope="col">Opponent / matchup</th><th scope="col">Record (W–L–D)</th><th scope="col">Win rate</th><th scope="col">95% interval</th></tr></thead><tbody></tbody></table></div>
+        <p id="session"></p>
+      </div>
+    </details>
+    <footer id="freshness">Updates every five minutes.</footer>
+  </main>
+</body>
+</html>

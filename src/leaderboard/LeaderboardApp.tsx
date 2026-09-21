@@ -3,6 +3,7 @@ import { Crown, Info, MagnifyingGlass } from '@phosphor-icons/react';
 import { ACTIVE_ELO_OPTIONS, prepareRankedEloEvents, replayEloRatings, type EloRatingUpdate as RatingUpdate } from './elo.js';
 import RatingScore from './RatingScore.js';
 import ModelSettings from './ModelSettings.js';
+import TraceHeader from './TraceHeader.js';
 import PlayerProfile from './PlayerProfile.js';
 import { playerProfileHref, leaderboardShareHref, LEADERBOARD_BASE, LEADERBOARD_HREF, LEADERBOARD_DATA_HREF, LEADERBOARD_MASCOT_HREF } from './profile-route.js';
 import { startSnapshotRefresh, type LeaderboardSnapshot, type SnapshotRefreshStatus } from './snapshot-refresh.js';
@@ -80,10 +81,7 @@ export default function LeaderboardApp() {
   const loading = refreshStatus.failed ? <div className="empty" role="alert"><h2>Couldn’t load the leaderboard.</h2><p>We’ll keep trying. You can also refresh the page.</p><a className="secondary" href={window.location.pathname}>Try again</a></div> : <div className="empty" role="status">Loading matches…</div>;
 
   return <>
-    <header className="site-header">
-      <a className="brand" href={LEADERBOARD_HREF} aria-label="Trace leaderboard"><img src={LEADERBOARD_MASCOT_HREF} alt=""/><span>Trace</span></a>
-      <nav aria-label="Main navigation"><a className={!showMethod ? 'active' : ''} href={LEADERBOARD_HREF} aria-current={!showMethod && profileName === null ? 'page' : undefined}>Leaderboard</a><a className={showMethod ? 'active' : ''} href={`${LEADERBOARD_HREF}#method`} aria-current={showMethod ? 'page' : undefined}>How ratings work</a></nav>
-    </header>
+    <TraceHeader method={showMethod}/>
     <main>
       {showMethod ? <div className="method-page"><a className="back-link" href={LEADERBOARD_HREF}>Back to leaderboard</a><ModelSettings/></div> : profileName !== null ? !result ? loading : selectedRow ? <PlayerProfile
         key={selectedRow.playerId} row={selectedRow} registered={selectedRegistered}

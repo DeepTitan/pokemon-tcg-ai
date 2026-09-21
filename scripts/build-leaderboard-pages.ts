@@ -86,6 +86,7 @@ export function buildLeaderboardPages(root = repository): LeaderboardPages {
   for (const filename of ['trace-mascot.png', 'pokemon-card-back.jpg']) {
     fs.copyFileSync(path.join(root, 'public/tracker-assets', filename), path.join(output, filename));
   }
+  fs.cpSync(path.join(root, 'landing/training'), path.join(output, 'training'), { recursive: true });
   const pageBundle = path.join(root, 'landing/assets/leaderboard-pages.json.gz');
   fs.mkdirSync(path.dirname(pageBundle), { recursive: true });
   fs.writeFileSync(pageBundle, gzipSync(JSON.stringify(pages), { level: 9 }));
