@@ -2367,10 +2367,23 @@ button.stadium-marker:focus-visible {
   .panel-collapse-button { transition: none; }
 }
 
-.settings-updates { margin: 18px 0; padding: 16px 0; border-block: 1px solid #ded5c5; }
-.settings-updates p { color: var(--muted); font-size: 12px; line-height: 1.5; }
-.settings-updates button { padding: 9px 12px; margin: 4px 6px 4px 0; border: 1px solid #c9bc9e; border-radius: 9px; background: #fff9e9; color: #263b59; cursor: pointer; }
+.update-settings-modal { width: min(400px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 24px; border: 1px solid #d5c7b2; border-radius: 16px; background: #fffdf7; color: var(--ink, #233450); box-shadow: 0 28px 80px rgba(59, 42, 24, .3); }
+.update-settings-modal::backdrop { background: rgba(47, 43, 35, .45); backdrop-filter: blur(6px); }
+.update-settings-heading { display: flex; align-items: center; gap: 12px; }
+.update-settings-heading > img { width: 35px; height: 44px; object-fit: contain; }
+.update-settings-heading > div { flex: 1; }
+.update-settings-heading h2 { margin: 0; font: 900 22px/1.2 Nunito, sans-serif; }
+.update-settings-heading p { margin: 4px 0 0; font-size: 12px; color: var(--muted); }
+.update-settings-heading > button { display: grid; place-items: center; align-self: flex-start; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 7px; color: inherit; background: #f3eee4; cursor: pointer; }
+.update-settings-heading > button:hover { background: #e9e1d3; }
+.update-settings-modal button:focus-visible { outline: 3px solid #4277a6; outline-offset: 3px; }
+.settings-updates { margin-top: 20px; }
+.settings-updates p { margin: 0 0 18px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.settings-updates button { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 12px; margin-top: 10px; border: 1px solid #c9bc9e; border-radius: 8px; background: #fff9e9; color: #263b59; font-size: 13px; font-weight: 800; cursor: pointer; }
+.settings-updates button.settings-update-primary { background: #ffda64; border-color: #d4a52b; }
+.settings-updates button:not(:disabled):hover { filter: brightness(.97); }
 .settings-updates button:disabled { opacity: .6; cursor: default; }
+.settings-updates p.settings-update-hint { margin: 14px 0 0; font-size: 12px; }
 .setup-modal { max-height: 90vh; overflow-y: auto; }
 .update-notice {
   position: fixed;

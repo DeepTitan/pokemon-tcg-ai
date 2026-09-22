@@ -61,6 +61,7 @@ import {
   type FrameNavigationRequest,
 } from './frame-animation-model.js';
 import { UpdateNotice } from './UpdateNotice.js';
+import { UpdateSettingsModal } from './UpdateSettingsModal.js';
 import { loadSharedReplay, readStoredShareLinks, sharedReplayIdFromPath, storeShareLink } from './share-replay.js';
 import { CARD_BACK_ART, cardCatalogEntryNeedsRefresh, findCatalogCard, publicCardArtUrl, resolvedCardArt, showCardBackOnError } from './card-art.js';
 import type {
@@ -670,6 +671,7 @@ export default function TrackerApp() {
     capture: { permissionReady: false, enabled: false, observerRunning: false, routeActive: false, clientAttached: false, waitingForMatchEnd: false, matchInProgress: false, frameCount: 0, operationCount: 0, lastError: null, observerPort: 8899 },
   });
   const [safetyDismissed, setSafetyDismissed] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [showSetup, setShowSetup] = useState(() => {
     if (!isTauri()) return false;
     try { return localStorage.getItem(CAPTURE_DISCLOSURE_KEY) !== 'acknowledged'; }
@@ -1328,7 +1330,7 @@ export default function TrackerApp() {
   }, [selectedEventKey, selectedReview?.id, timeline.entries.length]);
 
   useEffect(() => {
-    if (!selectedReview || showSetup || inspector || restoringReview || environment.capture.waitingForMatchEnd) return undefined;
+    if (!selectedReview || showSetup || showSettings || inspector || restoringReview || environment.capture.waitingForMatchEnd) return undefined;
 
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target instanceof HTMLElement ? event.target : null;
@@ -1345,7 +1347,7 @@ export default function TrackerApp() {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [environment.capture.waitingForMatchEnd, inspector, keyMoments, navigateToFrame, selectedReview, showSetup, restoringReview]);
+  }, [environment.capture.waitingForMatchEnd, inspector, keyMoments, navigateToFrame, selectedReview, showSetup, showSettings, restoringReview]);
 
   useEffect(() => {
     if (environment.capture.waitingForMatchEnd) setPlaying(false);
@@ -1382,6 +1384,12 @@ export default function TrackerApp() {
     try { localStorage.setItem(CAPTURE_DISCLOSURE_KEY, 'acknowledged'); }
     catch { /* Disclosure persistence is best-effort. */ }
     setShowSetup(false);
+  }, []);
+
+  const openSettings = useCallback(() => {
+    setPlaying(false);
+    setSafetyDismissed(true);
+    setShowSettings(true);
   }, []);
 
   const openCard = useCallback((card: Card, pokemon?: PokemonInPlay) => {
@@ -1579,7 +1587,7 @@ export default function TrackerApp() {
 
         {timelineOpen && <aside className="timeline-panel">
           <div className="timeline-heading" onMouseDown={beginWindowDrag}><div><span id="match-timeline-heading">Game log</span><small>{timeline.entries.length ? `${timeline.entries.length} events · ${selectedTurn?.label || 'Replay'}` : 'Waiting for a match'}</small></div><div className="timeline-heading-actions"><button type="button" aria-label="Jump to the selected event" title="Jump to selected event" disabled={!selectedEventKey} onClick={() => selectedTimelineEventRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })}><SkipForward size={19} weight="fill" /></button><button className="panel-collapse-button" type="button" aria-label="Collapse game log" aria-expanded="true" title="Collapse game log" onClick={() => setTimelineOpen(false)}><CaretRight size={17} weight="bold" /></button></div></div>
-          {!sharedMode && <div className="timeline-tools"><Toggle on={tracking} disabled={busy} onChange={() => void changeTracking()} /><button className="icon-button" type="button" aria-label="Settings" onClick={() => setShowSetup(true)}><GearSix size={21} weight="bold" /></button></div>}
+          {!sharedMode && <div className="timeline-tools"><Toggle on={tracking} disabled={busy} onChange={() => void changeTracking()} /><button className="icon-button" type="button" aria-label="Settings" aria-haspopup="dialog" onClick={openSettings}><GearSix size={21} weight="bold" /></button></div>}
           {restoringReview && <div className="match-loading-log" aria-hidden="true">{[0, 1, 2, 3, 4].map((row) => <div className="skeleton-block" key={row} />)}</div>}
           <div className="timeline-list" hidden={restoringReview} role="list" aria-labelledby="match-timeline-heading">
             {timeline.groups.map((group) => {
@@ -1634,11 +1642,12 @@ export default function TrackerApp() {
       {!sharedMode && !archiveOpen && <button className="panel-restore-button archive-restore-button" type="button" aria-label="Open match archive" aria-expanded="false" title="Open match archive" onClick={() => setArchiveOpen(true)}><CardsThree size={22} weight="duotone" /></button>}
       {!timelineOpen && <button className="panel-restore-button timeline-restore-button" type="button" aria-label="Open game log" aria-expanded="false" title="Open game log" onClick={() => setTimelineOpen(true)}><List size={22} weight="bold" /></button>}
 
-      {!sharedMode && environment.capture.waitingForMatchEnd && !safetyDismissed && !showSetup && <div className="capture-safety-backdrop"><section className="capture-safety-dialog" role="alertdialog" aria-modal="true" aria-labelledby="capture-safety-title" aria-describedby="capture-safety-description"><div className="capture-safety-icon" aria-hidden="true"><ShieldCheck size={33} weight="fill" /><i /></div><span>Safe connection</span><h2 id="capture-safety-title">TCG Live is already connected</h2><p id="capture-safety-description">Trace can’t safely tell whether a match is active. It won’t interrupt your connection or install an update.</p><div className="capture-safety-waiting"><i aria-hidden="true" /><span><strong>In a match? Finish playing first.</strong><small>Already on Home? Quit TCG Live, leave Trace open until it says Ready, then reopen TCG Live.</small></span></div><div className="modal-actions"><button type="button" onClick={() => setSafetyDismissed(true)}>Continue reviewing</button><button type="button" onClick={() => setShowSetup(true)}>Open Settings</button></div></section></div>}
+      {!sharedMode && environment.capture.waitingForMatchEnd && !safetyDismissed && !showSetup && !showSettings && <div className="capture-safety-backdrop"><section className="capture-safety-dialog" role="alertdialog" aria-modal="true" aria-labelledby="capture-safety-title" aria-describedby="capture-safety-description"><div className="capture-safety-icon" aria-hidden="true"><ShieldCheck size={33} weight="fill" /><i /></div><span>Safe connection</span><h2 id="capture-safety-title">TCG Live is already connected</h2><p id="capture-safety-description">Trace can’t safely tell whether a match is active. It won’t interrupt your connection or install an update.</p><div className="capture-safety-waiting"><i aria-hidden="true" /><span><strong>In a match? Finish playing first.</strong><small>Already on Home? Quit TCG Live, leave Trace open until it says Ready, then reopen TCG Live.</small></span></div><div className="modal-actions"><button type="button" onClick={() => setSafetyDismissed(true)}>Continue reviewing</button><button type="button" onClick={openSettings}>Open Settings</button></div></section></div>}
       {!sharedMode && showSetup && <CaptureSetupModal onClose={closeSetup} onCapture={capture => setEnvironment(current => ({ ...current, capture }))} />}
+      {!sharedMode && showSettings && <UpdateSettingsModal onClose={() => setShowSettings(false)} version={appVersion} />}
       {shareUrl && <div className="modal-backdrop share-modal-backdrop"><div className="share-modal" role="dialog" aria-modal="true" aria-labelledby="share-match-title"><div className="modal-title"><div><span>Ready to send</span><h2 id="share-match-title">Share this match</h2></div><button type="button" onClick={() => setShareUrl(null)} aria-label="Close share dialog"><X size={21} weight="bold" /></button></div><p>Anyone with this link can click through the replay in their browser.</p><div className="share-link-row"><input value={shareUrl} readOnly aria-label="Share link" onFocus={(event) => event.currentTarget.select()} /><button className="primary" type="button" onClick={() => void copyShareUrl(shareUrl)}><Copy size={16} weight="bold" />Copy link</button></div></div></div>}
       <ReviewOverlay inspector={inspector} catalog={cardCatalog} onClose={() => setInspector(null)} onInspectCard={openCard} />
-      {!sharedMode && !showSetup && <UpdateNotice matchInProgress={environment.clientRunning} />}
+      {!sharedMode && !showSetup && <UpdateNotice matchInProgress={environment.clientRunning} settingsOpen={showSettings} />}
       {(notice || error || captureError) && <div className={`toast ${error || captureError ? 'error' : ''}`}><span>{error || captureError ? <X size={18} weight="bold" /> : <CheckCircle size={18} weight="fill" />}</span><p>{error || captureError || notice}</p><button type="button" onClick={() => { setError(null); setCaptureError(null); setNotice(null); }} aria-label="Dismiss notification"><X size={16} weight="bold" /></button></div>}
     </div>
   );
