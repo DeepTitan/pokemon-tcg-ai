@@ -5,7 +5,9 @@ use std::{
     ffi::OsStr,
     fs,
     io::{self, BufRead, BufReader, Write},
-    net::{Ipv4Addr, Shutdown, SocketAddr, TcpListener, TcpStream as StdTcpStream},
+    net::{
+        IpAddr, Ipv4Addr, Ipv6Addr, Shutdown, SocketAddr, TcpListener, TcpStream as StdTcpStream,
+    },
     os::unix::{
         fs::PermissionsExt,
         net::{UnixListener, UnixStream},
@@ -23,7 +25,7 @@ use std::{
 const HELPER_ARGUMENT: &str = "--match-lens-capture-helper";
 // Increment this only when the privileged routing protocol or helper behavior
 // changes. App-only releases must continue reusing an already-approved helper.
-const HELPER_VERSION: &str = "0.1.11";
+const HELPER_VERSION: &str = "0.1.12";
 const HELPER_LABEL: &str = "com.isaiahw.matchlens.capture-helper";
 const LEGACY_HELPER_PATH: &str =
     "/Library/PrivilegedHelperTools/com.isaiahw.matchlens.capture-helper";
@@ -324,7 +326,11 @@ pub fn enable_route(app_pid: u32, pokemon_pid: u32) -> Result<(HelperReply, Rout
 }
 
 fn route_owner_pid(app_pid: u32, pokemon_pid: u32) -> u32 {
-    if pokemon_pid == 0 { app_pid } else { pokemon_pid }
+    if pokemon_pid == 0 {
+        app_pid
+    } else {
+        pokemon_pid
+    }
 }
 
 pub fn disable_route(stream: &mut RouteHandle) {
@@ -379,7 +385,7 @@ fn process_uid(pid: u32) -> Option<u32> {
         .ok()
 }
 
-fn established_ipv4_destinations(pid: u32) -> Result<Vec<Ipv4Addr>, String> {
+fn established_game_destinations(pid: u32) -> Result<Vec<IpAddr>, String> {
     let output = Command::new("/usr/sbin/lsof")
         .args([
             "-nP",
@@ -400,25 +406,33 @@ fn established_ipv4_destinations(pid: u32) -> Result<Vec<Ipv4Addr>, String> {
         else {
             continue;
         };
-        let Some(host) = remote.1.rsplit_once(':').map(|value| value.0) else {
+        let Some(host) = remote
+            .1
+            .rsplit_once(':')
+            .map(|value| value.0.trim_matches(['[', ']']))
+        else {
             continue;
         };
-        if let Ok(ip) = host.parse::<Ipv4Addr>() {
+        if let Ok(ip) = host.parse::<IpAddr>() {
             ips.push(ip);
         }
     }
     Ok(ips)
 }
 
-fn resolved_game_server_ips() -> Result<Vec<Ipv4Addr>, String> {
-    let resolved = Command::new("/usr/bin/dig")
-        .args(["+short", GAME_HOST, "A"])
-        .output()
-        .map_err(|error| error.to_string())?;
-    let ips = String::from_utf8_lossy(&resolved.stdout)
-        .lines()
-        .filter_map(|line| line.trim().parse::<Ipv4Addr>().ok())
-        .collect::<Vec<_>>();
+fn resolved_game_server_ips() -> Result<Vec<IpAddr>, String> {
+    let mut ips = Vec::new();
+    for record_type in ["A", "AAAA"] {
+        let resolved = Command::new("/usr/bin/dig")
+            .args(["+short", GAME_HOST, record_type])
+            .output()
+            .map_err(|error| error.to_string())?;
+        ips.extend(
+            String::from_utf8_lossy(&resolved.stdout)
+                .lines()
+                .filter_map(|line| line.trim().parse::<IpAddr>().ok()),
+        );
+    }
     if ips.is_empty() {
         Err("Pokémon TCG Live's game server could not be resolved.".to_owned())
     } else {
@@ -426,7 +440,7 @@ fn resolved_game_server_ips() -> Result<Vec<Ipv4Addr>, String> {
     }
 }
 
-fn pokemon_server_ips() -> Result<Vec<Ipv4Addr>, String> {
+fn pokemon_server_ips() -> Result<Vec<IpAddr>, String> {
     // The game API publishes more than one address and TCG Live may choose a
     // different one when it opens a fresh socket for a match. Routing only the
     // address used by the lobby lets that match socket bypass Trace entirely.
@@ -439,7 +453,7 @@ fn pokemon_server_ips() -> Result<Vec<Ipv4Addr>, String> {
 }
 
 pub fn game_server_connection_count(pid: u32) -> usize {
-    let Ok(active) = established_ipv4_destinations(pid) else {
+    let Ok(active) = established_game_destinations(pid) else {
         return 0;
     };
     let Ok(resolved) = resolved_game_server_ips() else {
@@ -516,55 +530,74 @@ fn relay_connection(client: StdTcpStream) -> io::Result<()> {
 
 struct RelayHandle {
     stop: Arc<AtomicBool>,
-    thread: Option<JoinHandle<()>>,
+    threads: Vec<JoinHandle<()>>,
 }
 
 impl RelayHandle {
     fn stop(mut self) {
         self.stop.store(true, Ordering::Relaxed);
-        if let Some(thread) = self.thread.take() {
+        for thread in self.threads.drain(..) {
             let _ = thread.join();
         }
     }
 }
 
 fn start_relay() -> Result<RelayHandle, String> {
-    let socket = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))
-        .map_err(|error| format!("Could not create the local relay: {error}"))?;
-    socket
-        .set_reuse_address(true)
-        .map_err(|error| format!("Could not configure the local relay: {error}"))?;
-    socket
-        .bind(&SocketAddr::from(([127, 0, 0, 1], RELAY_PORT)).into())
-        .map_err(|error| format!("Could not reserve local port 443: {error}"))?;
-    socket
-        .listen(128)
-        .map_err(|error| format!("Could not listen on local port 443: {error}"))?;
-    socket
-        .set_nonblocking(true)
-        .map_err(|error| format!("Could not configure the local relay listener: {error}"))?;
-    let listener: TcpListener = socket.into();
-    let stop = Arc::new(AtomicBool::new(false));
-    let relay_stop = stop.clone();
-    let thread = thread::spawn(move || {
-        while !relay_stop.load(Ordering::Relaxed) {
-            match listener.accept() {
-                Ok((client, _)) => {
-                    thread::spawn(move || {
-                        let _ = relay_connection(client);
-                    });
-                }
-                Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
-                    thread::sleep(Duration::from_millis(25));
-                }
-                Err(_) => break,
-            }
+    let mut listeners = Vec::new();
+    for (domain, address) in [
+        (
+            Domain::IPV4,
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), RELAY_PORT),
+        ),
+        (
+            Domain::IPV6,
+            SocketAddr::new(IpAddr::V6(Ipv6Addr::LOCALHOST), RELAY_PORT),
+        ),
+    ] {
+        let socket = Socket::new(domain, Type::STREAM, Some(Protocol::TCP))
+            .map_err(|error| format!("Could not create the local relay: {error}"))?;
+        socket
+            .set_reuse_address(true)
+            .map_err(|error| format!("Could not configure the local relay: {error}"))?;
+        if domain == Domain::IPV6 {
+            socket
+                .set_only_v6(true)
+                .map_err(|error| format!("Could not configure the IPv6 relay: {error}"))?;
         }
-    });
-    Ok(RelayHandle {
-        stop,
-        thread: Some(thread),
-    })
+        socket
+            .bind(&address.into())
+            .map_err(|error| format!("Could not reserve local port 443 on {address}: {error}"))?;
+        socket
+            .listen(128)
+            .map_err(|error| format!("Could not listen on local port 443: {error}"))?;
+        socket
+            .set_nonblocking(true)
+            .map_err(|error| format!("Could not configure the local relay listener: {error}"))?;
+        listeners.push(TcpListener::from(socket));
+    }
+    let stop = Arc::new(AtomicBool::new(false));
+    let threads = listeners
+        .into_iter()
+        .map(|listener| {
+            let relay_stop = stop.clone();
+            thread::spawn(move || {
+                while !relay_stop.load(Ordering::Relaxed) {
+                    match listener.accept() {
+                        Ok((client, _)) => {
+                            thread::spawn(move || {
+                                let _ = relay_connection(client);
+                            });
+                        }
+                        Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                            thread::sleep(Duration::from_millis(25));
+                        }
+                        Err(_) => break,
+                    }
+                }
+            })
+        })
+        .collect();
+    Ok(RelayHandle { stop, threads })
 }
 
 fn default_interface() -> Result<String, String> {
@@ -625,46 +658,57 @@ fn disable_pf(token: &mut Option<String>) {
     }
 }
 
-fn pf_rules(interface: &str, ips: &[Ipv4Addr]) -> String {
+fn pf_rules(interface: &str, ips: &[IpAddr]) -> String {
     let mut rules = String::new();
     for ip in ips {
+        let (family, loopback) = match ip {
+            IpAddr::V4(_) => ("inet", "127.0.0.1"),
+            IpAddr::V6(_) => ("inet6", "::1"),
+        };
         rules.push_str(&format!(
-            "rdr pass on lo0 inet proto tcp from any to {ip} port 443 -> 127.0.0.1 port {RELAY_PORT}\n"
+            "rdr pass on lo0 {family} proto tcp from any to {ip} port 443 -> {loopback} port {RELAY_PORT}\n"
         ));
     }
     for ip in ips {
+        let family = if ip.is_ipv4() { "inet" } else { "inet6" };
         rules.push_str(&format!(
-            "pass out quick on {interface} inet proto tcp from any port {UPSTREAM_PORT_START}:{UPSTREAM_PORT_END} to {ip} port 443\n"
+            "pass out quick on {interface} {family} proto tcp from any port {UPSTREAM_PORT_START}:{UPSTREAM_PORT_END} to {ip} port 443\n"
         ));
     }
     for ip in ips {
+        let (family, loopback) = if ip.is_ipv4() {
+            ("inet", "127.0.0.1")
+        } else {
+            ("inet6", "::1")
+        };
         rules.push_str(&format!(
-            "pass out quick on {interface} route-to (lo0 127.0.0.1) inet proto tcp from any to {ip} port 443\n"
+            "pass out quick on {interface} route-to (lo0 {loopback}) {family} proto tcp from any to {ip} port 443\n"
         ));
     }
     rules
 }
 
-fn reconnect_rules(interface: &str, ips: &[Ipv4Addr]) -> String {
+fn reconnect_rules(interface: &str, ips: &[IpAddr]) -> String {
     ips.iter()
         .map(|ip| {
             format!(
-                "block return-rst out quick on {interface} inet proto tcp from any to {ip} port 443\n"
+                "block return-rst out quick on {interface} {} proto tcp from any to {ip} port 443\n",
+                if ip.is_ipv4() { "inet" } else { "inet6" }
             )
         })
         .collect()
 }
 
-fn pf_state_kill_args(ip: Ipv4Addr) -> [String; 4] {
+fn pf_state_kill_args(ip: IpAddr) -> [String; 4] {
     [
         "-k".to_owned(),
-        "0.0.0.0/0".to_owned(),
+        if ip.is_ipv4() { "0.0.0.0/0" } else { "::/0" }.to_owned(),
         "-k".to_owned(),
         ip.to_string(),
     ]
 }
 
-fn kill_existing_pf_states(ips: &[Ipv4Addr]) -> Result<(), String> {
+fn kill_existing_pf_states(ips: &[IpAddr]) -> Result<(), String> {
     for ip in ips {
         let args = pf_state_kill_args(*ip);
         let args = args.iter().map(String::as_str).collect::<Vec<_>>();
@@ -673,7 +717,7 @@ fn kill_existing_pf_states(ips: &[Ipv4Addr]) -> Result<(), String> {
     Ok(())
 }
 
-fn enable_pf(pid: u32, ips: &[Ipv4Addr]) -> Result<String, String> {
+fn enable_pf(pid: u32, ips: &[IpAddr]) -> Result<String, String> {
     let interface = default_interface()?;
     let enabled = pfctl(&["-E"], None)?;
     let token = enabled
@@ -698,7 +742,7 @@ fn enable_pf(pid: u32, ips: &[Ipv4Addr]) -> Result<String, String> {
         return Err(error);
     }
     for _ in 0..40 {
-        let stale_connection_active = established_ipv4_destinations(pid)
+        let stale_connection_active = established_game_destinations(pid)
             .map(|active| active.iter().any(|ip| ips.contains(ip)))
             .unwrap_or(false);
         if !stale_connection_active {
@@ -728,7 +772,7 @@ fn handle_client(mut stream: UnixStream, owner_uid: u32) {
         return;
     };
     let mut reader = BufReader::new(reader_stream);
-    let mut active_ips = Vec::<Ipv4Addr>::new();
+    let mut active_ips = Vec::<IpAddr>::new();
     let mut relay = None;
     let mut pf_token = None;
     loop {
@@ -843,7 +887,10 @@ mod tests {
         enclosing_app_bundle, helper_install_command, helper_plist, pf_rules, pf_state_kill_args,
         reconnect_rules, HelperInstallSource, HELPER_BUNDLE_EXECUTABLE_PATH,
     };
-    use std::{net::Ipv4Addr, path::Path};
+    use std::{
+        net::{IpAddr, Ipv4Addr},
+        path::Path,
+    };
 
     #[test]
     fn capture_can_arm_before_the_game_launches() {
@@ -886,8 +933,9 @@ mod tests {
         let rules = pf_rules(
             "en0",
             &[
-                Ipv4Addr::new(52, 2, 12, 119),
-                Ipv4Addr::new(3, 86, 122, 250),
+                IpAddr::V4(Ipv4Addr::new(52, 2, 12, 119)),
+                IpAddr::V4(Ipv4Addr::new(3, 86, 122, 250)),
+                IpAddr::V6("2600:1f18:24e6:b901::1".parse().unwrap()),
             ],
         );
         let last_redirect = rules.rfind("rdr pass").expect("redirect rule");
@@ -897,7 +945,7 @@ mod tests {
 
     #[test]
     fn stale_state_cleanup_is_scoped_to_the_game_server_destination() {
-        let game_ip = Ipv4Addr::new(3, 86, 122, 250);
+        let game_ip = IpAddr::V4(Ipv4Addr::new(3, 86, 122, 250));
         assert_eq!(
             pf_state_kill_args(game_ip),
             ["-k", "0.0.0.0/0", "-k", "3.86.122.250"].map(str::to_owned)
@@ -905,11 +953,31 @@ mod tests {
     }
 
     #[test]
-    fn stale_connections_receive_a_scoped_tcp_reset() {
-        let rules = reconnect_rules("en0", &[Ipv4Addr::new(3, 86, 122, 250)]);
+    fn ipv6_game_servers_are_routed_through_ipv6_loopback() {
+        let game_ip = "2600:1f18:24e6:b901::1".parse().unwrap();
+        let rules = pf_rules("en0", &[game_ip]);
         assert_eq!(
             rules,
-            "block return-rst out quick on en0 inet proto tcp from any to 3.86.122.250 port 443\n"
+            "rdr pass on lo0 inet6 proto tcp from any to 2600:1f18:24e6:b901::1 port 443 -> ::1 port 443\npass out quick on en0 inet6 proto tcp from any port 49000:49099 to 2600:1f18:24e6:b901::1 port 443\npass out quick on en0 route-to (lo0 ::1) inet6 proto tcp from any to 2600:1f18:24e6:b901::1 port 443\n"
+        );
+        assert_eq!(
+            pf_state_kill_args(game_ip),
+            ["-k", "::/0", "-k", "2600:1f18:24e6:b901::1"].map(str::to_owned)
+        );
+    }
+
+    #[test]
+    fn stale_connections_receive_a_scoped_tcp_reset() {
+        let rules = reconnect_rules(
+            "en0",
+            &[
+                IpAddr::V4(Ipv4Addr::new(3, 86, 122, 250)),
+                IpAddr::V6("2600:1f18:24e6:b901::1".parse().unwrap()),
+            ],
+        );
+        assert_eq!(
+            rules,
+            "block return-rst out quick on en0 inet proto tcp from any to 3.86.122.250 port 443\nblock return-rst out quick on en0 inet6 proto tcp from any to 2600:1f18:24e6:b901::1 port 443\n"
         );
     }
 }
