@@ -13,6 +13,46 @@
   "trailingSlash": false,
   "rewrites": [
     {
+      "source": "/trace/api/:action*",
+      "destination": "/api/membership?action=:action*"
+    },
+    {
+      "source": "/trace/access",
+      "destination": "/api/download-access"
+    },
+    {
+      "source": "/trace",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/trace/account",
+      "destination": "/trace-account.html"
+    },
+    {
+      "source": "/trace/login",
+      "destination": "/trace-account.html"
+    },
+    {
+      "source": "/trace/signup",
+      "destination": "/trace-account.html"
+    },
+    {
+      "source": "/trace/confirm",
+      "destination": "/trace-account.html"
+    },
+    {
+      "source": "/trace/recover",
+      "destination": "/trace-account.html"
+    },
+    {
+      "source": "/trace/reset",
+      "destination": "/trace-account.html"
+    },
+    {
+      "source": "/trace/connect",
+      "destination": "/trace-account.html"
+    },
+    {
       "source": "/trace/:shareId",
       "destination": "/api/share-page"
     }
@@ -28,21 +68,57 @@
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
-        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" }
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=()"
+        }
       ]
     },
     {
       "source": "/assets/(.*)",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
       ]
     },
     {
       "source": "/trace-assets/(.*)",
       "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/trace/(account|login|signup|confirm|recover|reset|connect)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "private, no-store"
+        },
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "no-referrer"
+        },
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+        }
       ]
     }
   ]

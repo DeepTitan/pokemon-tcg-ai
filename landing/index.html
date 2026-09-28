@@ -1,90 +1,61 @@
 <!doctype html>
-<html lang="en" class="is-locked">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#f7f2e8" />
-    <meta name="robots" content="noindex, nofollow" />
-    <meta name="description" content="Trace logs every turn so you can revisit tricky Pokémon TCG Live board states, compare lines with friends, and improve your play." />
-    <meta property="og:title" content="Trace — Review the spot. Find the line." />
-    <meta property="og:description" content="Bring tricky spots to your friends, compare your options, and improve your play." />
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://victoryroad.app/trace" />
-    <meta property="og:image" content="https://victoryroad.app/trace-og.png?v=2" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
-    <meta property="og:image:type" content="image/png" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Trace — Review the spot. Find the line." />
-    <meta name="twitter:description" content="Bring tricky spots to your friends, compare your options, and improve your play." />
-    <meta name="twitter:image" content="https://victoryroad.app/trace-og.png?v=2" />
-    <link rel="canonical" href="https://victoryroad.app/trace" />
-    <link rel="icon" href="/trace-assets/trace-mascot.png" />
-    <link rel="stylesheet" href="/trace-styles.css" />
-    <title>Trace — Review the spot. Find the line.</title>
-  </head>
-  <body>
-    <section class="access-gate" id="access-gate" aria-labelledby="access-title">
-      <form class="access-card" id="access-form">
-        <div class="access-brand" aria-hidden="true">
-          <img src="/trace-assets/trace-mascot.png" alt="" />
-          <strong>Trace</strong>
-        </div>
-        <h1 id="access-title">Private preview</h1>
-        <p>Enter the password to continue.</p>
-        <label for="access-password">Password</label>
-        <div class="access-controls">
-          <input id="access-password" name="code" type="password" autocomplete="off" spellcheck="false" maxlength="80" required />
-          <button type="submit" id="access-submit" disabled>Checking…</button>
-        </div>
-        <p class="access-error" id="access-error" role="alert" hidden></p>
-      </form>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#f7f2e8" />
+  <meta name="description" content="Review your Pokémon TCG Live matches with Trace. Join for $14.99/month, or get post-match opponent decklists with Supporters Club for $39.99/month." />
+  <meta property="og:title" content="Trace — Review the spot. Find the line." />
+  <meta property="og:description" content="Your matches, ready to review. Trace from $14.99/month." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://victoryroad.app/trace" />
+  <meta property="og:image" content="https://victoryroad.app/trace-og.png?v=2" />
+  <meta property="og:image:width" content="1200" /><meta property="og:image:height" content="630" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="canonical" href="https://victoryroad.app/trace" />
+  <link rel="icon" href="/trace-assets/trace-mascot.png" />
+  <link rel="stylesheet" href="/trace-styles.css" />
+  <title>Trace — Review the spot. Find the line.</title>
+</head>
+<body>
+  <header class="site-header">
+    <a class="brand" href="/trace" aria-label="Trace home"><img src="/trace-assets/trace-mascot.png" alt="" /><strong>Trace</strong></a>
+    <nav aria-label="Main"><a href="/trace/leaderboard">Leaderboard</a><a href="#plans">Plans</a><a class="nav-account" href="/trace/account">My account <span aria-hidden="true">↗</span></a></nav>
+  </header>
+  <main>
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-copy"><p class="eyebrow">For Pokémon TCG Live</p>
+        <h1 id="hero-title">Review the spot.<br /><span>Find the line.</span></h1>
+        <p class="hero-description">Replay your matches, revisit the tricky turns, and see where the game changed.</p>
+        <a class="button primary" href="#plans">Get Trace <span aria-hidden="true">→</span></a>
+        <p class="compatibility">macOS Apple silicon · Windows 64-bit</p>
+      </div>
+      <div class="replay-frame"><img src="/trace-assets/trace-match-dragapult-alakazam.png" alt="Trace match review showing the board, match history, and turn controls" width="1800" height="1125" /></div>
     </section>
-
-    <main class="hero" id="top" inert>
-      <section class="copy-panel" aria-labelledby="hero-title">
-        <header class="site-header">
-          <a class="brand" href="#top" aria-label="Trace home">
-            <img src="/trace-assets/trace-mascot.png" alt="" aria-hidden="true" />
-            <strong>Trace</strong>
-          </a>
-        </header>
-
-        <div class="hero-copy">
-          <h1 id="hero-title">Review the spot.<br /><span>Find the line.</span></h1>
-          <p>Trace logs every turn, so you can bring the exact board state to friends, compare possible lines, and learn from the decisions that matter.</p>
-
-          <div class="downloads" aria-label="Download Trace">
-            <a class="download-button mac" data-download="mac" href="/trace/access?action=download&amp;platform=mac">
-              <img src="/trace-assets/apple.svg" alt="" aria-hidden="true" />
-              <span><small>Download for</small><strong>macOS</strong></span>
-            </a>
-            <a class="download-button windows" data-download="windows" href="/trace/access?action=download&amp;platform=windows">
-              <img src="/trace-assets/windows.svg" alt="" aria-hidden="true" />
-              <span><small>Download for</small><strong>Windows</strong></span>
-            </a>
-          </div>
-
-          <p class="compatibility">Free beta · macOS Apple silicon · Windows 64-bit</p>
-
-          <aside class="community-callout" aria-label="Victory Road community">
-            <a href="/discord" rel="noreferrer">Join the Discord <span aria-hidden="true">↗</span></a>
-          </aside>
-        </div>
-
-        <footer>
-          <p>Unofficial companion for Pokémon TCG Live.<br />Not affiliated with or endorsed by The Pokémon Company International.</p>
-          <span><a href="/trace/leaderboard">Leaderboard</a> · <a href="/discord">Community &amp; support</a> · © <span id="year">2026</span> Victory Road</span>
-        </footer>
-      </section>
-
-      <section class="replay-panel" aria-label="Trace replay of a Dragapult versus Alakazam match">
-        <div class="replay-frame">
-          <img src="/trace-assets/trace-match-dragapult-alakazam.png" alt="Trace showing a Dragapult ex versus Alakazam match with the match archive visible and the timeline collapsed" />
-        </div>
-      </section>
-    </main>
-
-    <script src="/trace-script.js"></script>
-  </body>
+    <section class="plans-section" id="plans" aria-labelledby="plans-title">
+      <div class="section-heading"><div><p class="eyebrow">Your next game starts here</p><h2 id="plans-title">Pick your plan.</h2></div><p>Monthly billing. Cancel anytime.<br />Prices in USD.</p></div>
+      <div class="plans">
+        <article class="plan"><div class="plan-heading"><h3>Trace</h3><p>Go back. See the play.</p></div>
+          <p class="price">$14.99<span>/ month</span></p>
+          <ul class="benefits"><li>Access to the Trace desktop app</li><li>Record and review your matches</li><li>Step through the game, turn by turn</li></ul>
+          <a class="button secondary" href="/trace/signup?plan=trace">Get Trace <span aria-hidden="true">→</span></a>
+        </article>
+        <article class="plan supporter"><div class="plan-heading"><h3>Supporters Club</h3><p>See the other side of the match.</p></div>
+          <p class="price">$39.99<span>/ month</span></p>
+          <ul class="benefits"><li>Everything in Trace</li><li>Opponent decklists after the match ends</li></ul>
+          <p class="plan-note">Decklists unlock only when Trace records the end of a match. Never during play.</p>
+          <a class="button primary" href="/trace/signup?plan=supporter">Join Supporters Club <span aria-hidden="true">→</span></a>
+        </article>
+      </div>
+      <p class="existing-account">Already a member? <a href="/trace/login">Sign in to download Trace or manage your plan.</a></p>
+    </section>
+    <section class="faq-section" aria-labelledby="faq-title"><h2 id="faq-title">Good to know.</h2><div class="faq-list">
+      <details><summary>When can I see my opponent’s decklist?</summary><p>Supporters Club members can view it after Trace has recorded that the match ended. It stays locked while a match is in progress, even if you close the game.</p></details>
+      <details><summary>How do I connect my membership to Trace?</summary><p>Create your account, choose a plan, then download Trace. In the app, select Link account. Sign in on Victory Road and confirm the code shown in Trace.</p></details>
+      <details><summary>How do I change or cancel my plan?</summary><p>Open My account and choose Manage billing. You can change your plan or cancel there. After canceling, your access continues until the end of your paid period.</p></details>
+    </div></section>
+  </main>
+  <footer class="site-footer"><p>Unofficial companion for Pokémon TCG Live. Not affiliated with or endorsed by The Pokémon Company International.</p><div><a href="/discord">Community &amp; support</a><span>© <span id="year">2026</span> Victory Road</span></div></footer>
+  <script src="/trace-script.js" defer></script>
+</body>
 </html>

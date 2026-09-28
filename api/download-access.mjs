@@ -1,2 +1,2 @@
-import { createDownloadHandler } from '../landing/lib/download-access.mjs';
-export default createDownloadHandler();
+import { createMemberDownloadHandler } from '../landing/lib/membership.mjs';
+export default createMemberDownloadHandler();

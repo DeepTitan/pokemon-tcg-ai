@@ -20,6 +20,8 @@ const landingFiles = {
   'index.html': 'index.html',
   'styles.css': 'trace-styles.css',
   'script.js': 'trace-script.js',
+  'account.html': 'trace-account.html',
+  'member.js': 'trace-member.js',
   'og.png': 'trace-og.png',
   'robots.txt': 'robots.txt',
 };
