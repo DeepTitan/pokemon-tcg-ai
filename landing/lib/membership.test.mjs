@@ -62,6 +62,24 @@ test('missing, malformed and unknown permissions fail closed', () => {
   assert.deepEqual(publicAccount({ ...account, status: 'admin', admin: true, expiresAt: null }), { ...account, status: 'admin', admin: true, expiresAt: null });
 });
 
+test('recognized billing problems preserve Free downloads without granting paid features', async () => {
+  for (const status of ['payment_pending', 'subscription_conflict', 'invalid_subscription']) {
+    const supplied = { ...account, status, plan: status === 'payment_pending' ? 'supporter' : 'none' };
+    const normalized = publicAccount(supplied);
+    assert.equal(normalized.traceAccess, false);
+    assert.equal(normalized.opponentDecklists, false);
+    assert.equal(normalized.admin, false);
+    assert.deepEqual(normalized.capabilities, freeCapabilities);
+    for (const platform of ['mac', 'windows']) {
+      const result = response();
+      await createMemberDownloadHandler({ service: { configured: true, call: async () => ({ status: 200, body: supplied }) } })({ method: 'GET', url: `/trace/access?action=download&platform=${platform}`, headers: { cookie: cookies } }, result);
+      assert.equal(result.statusCode, 303);
+      assert.equal(result.headers.location, DOWNLOADS[platform]);
+    }
+  }
+  assert.equal(publicAccount({ ...account, status: 'unexpected_billing_state' }).capabilities.recordMatches, false);
+});
+
 test('expired session refreshes with HttpOnly refresh token then retries, never browser-supplied token', async () => {
   const calls = [];
   const service = { configured: true, call: async (action, input) => {

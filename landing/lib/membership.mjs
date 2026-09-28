@@ -79,7 +79,7 @@ export function publicAccount(value) {
   const admin = value.admin === true && value.status === 'admin' && value.plan === 'supporter';
   const traceAccess = (paid || admin) && value.traceAccess === true;
   const supplied = object(value.capabilities) ? value.capabilities : {};
-  const knownStatus = ['none', 'active', 'trialing', 'past_due', 'unpaid', 'paused', 'incomplete', 'incomplete_expired', 'canceled'].includes(value.status) || admin;
+  const knownStatus = ['none', 'active', 'trialing', 'past_due', 'unpaid', 'paused', 'incomplete', 'incomplete_expired', 'canceled', 'payment_pending', 'subscription_conflict', 'invalid_subscription'].includes(value.status) || admin;
   const recordMatches = knownStatus && supplied.recordMatches === true;
   const supporter = traceAccess && value.plan === 'supporter';
   return {

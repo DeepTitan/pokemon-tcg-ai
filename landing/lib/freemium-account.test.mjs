@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
+import { publicAccount } from './membership.mjs';
 
 const free = { email: 'player@example.test', plan: 'none', status: 'none', admin: false, traceAccess: false, opponentDecklists: false, expiresAt: null, cancelAtPeriodEnd: false, capabilities: { recordMatches: true, leaderboard: true, recentReplayDays: 7, fullHistory: false, expandedSharing: false, opponentDecklists: false, freeSharesPerWindow: 1, shareWindowDays: 7 } };
 const pro = { ...free, plan: 'trace', status: 'active', traceAccess: true, expiresAt: '2099-10-01T00:00:00Z', capabilities: { ...free.capabilities, fullHistory: true, expandedSharing: true } };
@@ -52,6 +53,19 @@ test('overdue members retain free downloads and get billing recovery rather than
   assert.match(view.html(), /id="manage-billing"/);
   assert.match(view.html(), /Your paid features are inactive/);
   assert.doesNotMatch(view.html(), /data-checkout=/);
+});
+
+test('backend billing-problem states retain the Free account UI and billing recovery', () => {
+  for (const status of ['payment_pending', 'subscription_conflict', 'invalid_subscription']) {
+    const view = browser();
+    const plan = status === 'payment_pending' ? 'trace' : 'none';
+    view.context.renderAccount(publicAccount({ ...pro, status, plan }));
+    assert.match(view.html(), /<h2>Free<\/h2>/);
+    assert.match(view.html(), /Download for macOS/);
+    assert.match(view.html(), /id="manage-billing"/);
+    assert.match(view.html(), /Your paid features are inactive/);
+    assert.doesNotMatch(view.html(), /data-checkout=|Access unavailable/);
+  }
 });
 
 test('missing access does not display downloads or falsely label account Free', () => {

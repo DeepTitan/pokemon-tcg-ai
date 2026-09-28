@@ -168,7 +168,8 @@ function renderAccount(account, purchase = { state: 'none', plan: 'none' }) {
   const unfinishedUpgrade = !active && ['none', 'canceled', 'incomplete_expired'].includes(account.status) && ['open', 'expired'].includes(purchase.state) && Boolean(planNames[purchase.plan]);
   const memberName = admin ? 'Owner access' : active ? planNames[account.plan] : canUseTrace ? 'Free' : 'Trace account';
   const until = dateLabel(account.expiresAt);
-  const paidInactive = !active && account.plan !== 'none';
+  const hasBilling = account.plan !== 'none' || ['payment_pending', 'subscription_conflict', 'invalid_subscription'].includes(account.status);
+  const paidInactive = !active && hasBilling;
   const status = admin ? 'Enabled' : active && account.cancelAtPeriodEnd ? 'Won’t renew' : canUseTrace ? 'Active' : 'Unavailable';
   const canceled = new URLSearchParams(location.search).get('checkout') === 'cancel';
   const success = new URLSearchParams(location.search).get('checkout') === 'success';
@@ -180,7 +181,7 @@ function renderAccount(account, purchase = { state: 'none', plan: 'none' }) {
       <section class="account-membership" aria-label="Your plan"><p class="account-section-label">Your plan</p><div class="membership-title"><h2>${memberName}</h2><span class="status-label ${!canUseTrace || account.cancelAtPeriodEnd ? 'paused' : ''}">${esc(status)}</span></div>${!admin && active ? `<p class="membership-price">${account.plan === 'supporter' ? '$39.99' : '$14.99'}<span>USD / month</span></p>` : ''}<p class="membership-detail">${esc(billingText)}</p>${features.length ? `<ul class="membership-features">${features.map((feature) => `<li>${esc(feature)}</li>`).join('')}</ul>` : ''}
       ${paidInactive ? '<p class="billing-attention">Your paid features are inactive. Check your billing to restore them.</p>' : ''}
       ${!canUseTrace ? '<p class="billing-attention">Access unavailable</p>' : ''}
-      ${(!admin && account.plan !== 'none') || !active ? `<div class="membership-actions">${!admin && account.plan !== 'none' ? '<button type="button" class="text-button manage-billing" id="manage-billing">Manage billing</button>' : ''}${!active ? '<button class="text-button" id="refresh-account" type="button">Refresh account</button>' : ''}</div>` : ''}
+      ${(!admin && hasBilling) || !active ? `<div class="membership-actions">${!admin && hasBilling ? '<button type="button" class="text-button manage-billing" id="manage-billing">Manage billing</button>' : ''}${!active ? '<button class="text-button" id="refresh-account" type="button">Refresh account</button>' : ''}</div>` : ''}
       </section>
     </div>
     ${unfinishedUpgrade ? `<section class="account-pending"><div><h2>Finish your upgrade</h2><p>Your ${planNames[purchase.plan]} checkout is ${purchase.state === 'expired' ? 'expired' : 'unfinished'}. ${canUseTrace ? 'You can keep using Free.' : ''}</p></div><button class="button secondary" type="button" id="resume-upgrade">Continue to Stripe</button></section>` : ''}
