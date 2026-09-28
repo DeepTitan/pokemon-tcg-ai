@@ -17,9 +17,18 @@ This release spans the public Trace website, a new membership API, capture servi
 - The exact native `/trace/link?code=...` handoff now reaches the account approval form with its code retained.
 - Discord is an optional community link. It is not required for signup, payment, downloads or device linking. The earlier activation implementation was removed following the owner's clarification.
 - Updated website suite: **113 passing tests**, exact Vercel build passed. Updated membership suite: **70 passing tests**. The unchanged capture suite passed **65 tests**. Native/tracker suites and targeted expiry, migration and stale-credential regressions passed. Existing build warnings concern asset/chunk sizes.
-- The first protected deployment exposed a real Vercel routing issue: `cleanUrls` rewrites targeting `.html` returned 404 despite a successful build. Static rewrite destinations now use `/` and `/trace-account`; account security headers also cover the direct static path. The next protected deployment must confirm these routes over HTTP.
+- The first protected deployment exposed a real Vercel routing issue: `cleanUrls` rewrites targeting `.html` returned 404 despite a successful build. Static rewrite destinations now use `/` and `/trace-account`; account security headers also cover the direct static path. The corrected protected deployment confirms pricing, signup, native linking, and account JavaScript return HTTP 200. Signup and linking return private/no-store, noindex, no-referrer and the strict account CSP.
+- After Discord removal, the synthetic Free account browser check reaches downloads directly and completes code-confirmed app linking. No provider or real device is involved.
 
 The unit suites exercise mocked providers. Their passing results are not proof of a working Stripe, Cognito, or production email connection.
+
+## Protected deployment
+
+- Source commit: `874a8c6` in the website checkout.
+- Preview: https://victoryroad-6wqa66sww-deeptitan-6729s-projects.vercel.app/trace
+- Deployment: `dpl_FypKfULrZ5YDpbxrDMAP9CtnFVRh`.
+- Verified through authenticated Vercel CLI requests; production aliases and apex routing remain unchanged.
+- The account API correctly returns HTTP 503 with a non-cacheable unavailable response because membership provider configuration is not installed. This is an incomplete provider setup, not a successful end-to-end launch.
 
 ## Current production observations
 
