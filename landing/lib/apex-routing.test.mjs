@@ -7,7 +7,7 @@ function staged() {
   snapshot.routes.splice(-1, 0, ...additions.map(({ route }, index) => ({ ...structuredClone(route), id: `new-${index}`, staged: true, routeType: 'rewrite' })));
   return snapshot;
 }
-test('route review accepts the observed live baseline and only the planned three additions', () => {
+test('route review accepts the observed live baseline and only the planned two additions', () => {
   assert.equal(verifyCurrent(baseline, versions), true);
   assert.equal(verifyStaged(staged()), true);
 });

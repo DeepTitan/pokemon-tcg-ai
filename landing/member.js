@@ -12,8 +12,7 @@ function context() {
   const userCode = /^[A-Z2-7]{10}$/.test(code) ? code : null;
   const download = ['mac', 'windows'].includes(params.get('download')) ? params.get('download') : null;
   const setup = params.get('setup') === 'payment' ? 'payment' : null;
-  const discord = ['verified', 'signin', 'join', 'pending', 'retry', 'canceled', 'linked', 'unavailable'].includes(params.get('discord')) ? params.get('discord') : null;
-  return { plan, userCode, download, setup, discord };
+  return { plan, userCode, download, setup };
 }
 function route(name, extra = {}) {
   const params = new URLSearchParams();
@@ -138,26 +137,6 @@ function dateLabel(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? '' : new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(date);
 }
-function activationRequired(account) { return account.activation?.required === true && account.activation.verified !== true; }
-function activationPanel() {
-  const { userCode, download } = context();
-  return `<section class="account-panel"><h2>Join the Trace Discord</h2><p>Join our community, then verify your Discord account to download and link Trace.</p><div class="account-actions"><a class="button secondary" href="https://discord.gg/bxKJGB9dSY" target="_blank" rel="noopener noreferrer">Join Discord</a><form method="post" action="/trace/discord/callback">${userCode ? `<input type="hidden" name="userCode" value="${esc(userCode)}" />` : ''}${download ? `<input type="hidden" name="download" value="${esc(download)}" />` : ''}<button class="button primary" type="submit">Verify Discord</button></form></div></section>`;
-}
-function discordNotice(account) {
-  const requested = context().discord;
-  const status = requested === 'verified' && account?.activation?.verified !== true ? 'retry' : requested;
-  const copy = {
-    verified: 'Discord verified. You’re ready to download and link Trace.',
-    signin: 'Sign in, then select Verify Discord again.',
-    join: 'Join the Trace Discord first, then select Verify Discord again.',
-    pending: 'Finish the welcome steps in Discord, then select Verify Discord again.',
-    retry: 'That Discord check expired. Select Verify Discord to try again.',
-    canceled: 'Discord verification was canceled. You can try again when you’re ready.',
-    linked: 'That Discord account is already linked. Use your linked account or contact support.',
-    unavailable: 'We couldn’t verify Discord right now. Please try again shortly.',
-  };
-  if (copy[status]) notice(copy[status], status !== 'verified' && status !== 'canceled');
-}
 async function billing(action, button, data = {}) {
   if (button.disabled) return;
   const previous = button.textContent; button.disabled = true; button.textContent = 'Opening secure billing…'; notice('');
@@ -185,7 +164,6 @@ async function billing(action, button, data = {}) {
 function renderAccount(account, purchase = { state: 'none', plan: 'none' }) {
   const active = account.traceAccess === true;
   const canUseTrace = active || account.capabilities?.recordMatches === true;
-  const needsActivation = activationRequired(account);
   const admin = account.admin === true;
   const unfinishedUpgrade = !active && ['none', 'canceled', 'incomplete_expired'].includes(account.status) && ['open', 'expired'].includes(purchase.state) && Boolean(planNames[purchase.plan]);
   const memberName = admin ? 'Owner access' : active ? planNames[account.plan] : canUseTrace ? 'Free' : 'Trace account';
@@ -199,7 +177,7 @@ function renderAccount(account, purchase = { state: 'none', plan: 'none' }) {
       ${active && account.opponentDecklists ? '<p class="supporter-lock">Post-match deck study is included.</p>' : ''}
       ${!admin && account.plan !== 'none' ? '<button type="button" class="button" id="manage-billing">Manage billing</button>' : ''}
     </section>
-    ${needsActivation ? activationPanel() : canUseTrace ? `<section class="account-panel"><h2>Get Trace</h2><p>Download the app, then select Link account in Trace.</p><div class="account-actions"><a class="button secondary" href="/trace/access?action=download&amp;platform=mac"><img src="/trace-assets/apple.svg" alt="" />Download for macOS</a><a class="button secondary" href="/trace/access?action=download&amp;platform=windows"><img src="/trace-assets/windows.svg" alt="" />Download for Windows</a></div><p class="small-note">macOS Apple silicon · Windows 64-bit</p><a class="back-link" data-route href="${esc(route('connect'))}">${context().userCode ? 'Continue linking your app' : 'Have a code from Trace? Link the app'}</a></section>` : ''}
+    ${canUseTrace ? `<section class="account-panel"><h2>Get Trace</h2><p>Download the app, then select Link account in Trace.</p><div class="account-actions"><a class="button secondary" href="/trace/access?action=download&amp;platform=mac"><img src="/trace-assets/apple.svg" alt="" />Download for macOS</a><a class="button secondary" href="/trace/access?action=download&amp;platform=windows"><img src="/trace-assets/windows.svg" alt="" />Download for Windows</a></div><p class="small-note">macOS Apple silicon · Windows 64-bit</p><a class="back-link" data-route href="${esc(route('connect'))}">${context().userCode ? 'Continue linking your app' : 'Have a code from Trace? Link the app'}</a></section>` : ''}
     ${unfinishedUpgrade ? `<section class="account-panel"><h2>Finish your upgrade</h2><p>Your ${planNames[purchase.plan]} checkout is ${purchase.state === 'expired' ? 'expired' : 'unfinished'}. ${canUseTrace ? 'You can keep using Free.' : ''}</p><button class="button secondary" type="button" id="resume-upgrade">Continue to Stripe</button></section>` : ''}
     ${!active && ['none', 'canceled', 'incomplete_expired'].includes(account.status) ? `<div class="plans">${planCard('trace')}${planCard('supporter')}</div><p class="existing-account">USD · Monthly · Cancel anytime</p>` : ''}
     ${!active ? '<button class="text-button refresh-button" id="refresh-account" type="button">Refresh account</button>' : ''}
@@ -213,9 +191,8 @@ function renderAccount(account, purchase = { state: 'none', plan: 'none' }) {
   document.getElementById('resume-upgrade')?.addEventListener('click', (event) => void billing('checkout/guest', event.currentTarget, { plan: purchase.plan }));
   document.getElementById('manage-billing')?.addEventListener('click', (event) => void billing('portal', event.currentTarget));
   document.getElementById('refresh-account')?.addEventListener('click', () => void render());
-  discordNotice(account);
   if (canceled) notice('Checkout canceled. Your plan has not changed.');
-  if (success && active) notice(needsActivation ? 'Your membership is ready. Verify Discord to finish setup.' : 'Your membership is ready. Download Trace and link your account.');
+  if (success && active) notice('Your membership is ready. Download Trace and link your account.');
   if (success && !active) {
     notice('Confirming your payment. This can take a moment. If you’ve paid, wait here before starting another checkout.');
     document.querySelectorAll('[data-checkout]').forEach((button) => { button.disabled = true; });
@@ -223,7 +200,6 @@ function renderAccount(account, purchase = { state: 'none', plan: 'none' }) {
   }
 }
 function renderConnect(account) {
-  if (activationRequired(account)) { renderAccount(account); return; }
   const code = context().userCode;
   mount(`<section class="auth-card"><h1>Link your Trace app.</h1><p class="intro">Connect the app to <strong>${esc(account.email)}</strong>.</p>${messageSlot()}
     <form id="link-form"><label class="form-field">Code shown in Trace<input class="device-code-input" type="text" name="userCode" value="${esc(code ? code.slice(0, 5) + '-' + code.slice(5) : '')}" autocomplete="off" autocapitalize="characters" spellcheck="false" pattern="[A-Za-z2-7\\s\\-]{10,13}" maxlength="13" required /></label>
@@ -312,7 +288,7 @@ async function render() {
         renderPurchase(account, purchase); return;
       }
     }
-    if (!account) { history.replaceState({}, '', route('login')); renderAuth('login'); discordNotice(); return; }
+    if (!account) { history.replaceState({}, '', route('login')); renderAuth('login'); return; }
     email = account.email;
     if (name === 'connect') renderConnect(account); else renderAccount(account, purchase);
   } catch (error) {

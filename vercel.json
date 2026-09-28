@@ -23,10 +23,6 @@
   "trailingSlash": false,
   "rewrites": [
     {
-      "source": "/trace/discord/callback",
-      "destination": "/api/discord-callback"
-    },
-    {
       "source": "/trace/api/:action*",
       "destination": "/api/membership?action=:action*"
     },
@@ -36,39 +32,39 @@
     },
     {
       "source": "/trace",
-      "destination": "/index.html"
+      "destination": "/"
     },
     {
       "source": "/trace/account",
-      "destination": "/trace-account.html"
+      "destination": "/trace-account"
     },
     {
       "source": "/trace/login",
-      "destination": "/trace-account.html"
+      "destination": "/trace-account"
     },
     {
       "source": "/trace/signup",
-      "destination": "/trace-account.html"
+      "destination": "/trace-account"
     },
     {
       "source": "/trace/confirm",
-      "destination": "/trace-account.html"
+      "destination": "/trace-account"
     },
     {
       "source": "/trace/recover",
-      "destination": "/trace-account.html"
+      "destination": "/trace-account"
     },
     {
       "source": "/trace/reset",
-      "destination": "/trace-account.html"
+      "destination": "/trace-account"
     },
     {
       "source": "/trace/connect",
-      "destination": "/trace-account.html"
+      "destination": "/trace-account"
     },
     {
       "source": "/trace/link",
-      "destination": "/trace-account.html"
+      "destination": "/trace-account"
     },
     {
       "source": "/trace/leaderboard-static/training/status.json",
@@ -163,7 +159,28 @@
         },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self' https://discord.com"
+          "value": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+        }
+      ]
+    },
+    {
+      "source": "/trace-account(.html)?",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "private, no-store"
+        },
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "no-referrer"
+        },
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
         }
       ]
     }

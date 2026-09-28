@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const directory = new URL('../docs/apex-routing/', import.meta.url);
 const read = (path) => JSON.parse(readFileSync(path, 'utf8'));
 export const baseline = read(new URL('live-baseline.json', directory));
-export const additions = ['add-membership-api.json', 'add-member-script.json', 'add-discord-callback.json'].map((name) => read(new URL(name, directory)));
+export const additions = ['add-membership-api.json', 'add-member-script.json'].map((name) => read(new URL(name, directory)));
 const originalIds = new Set(baseline.routes.map(({ id }) => id));
 const stable = ({ id, name, description, enabled, route, srcSyntax, routeType }) => ({ id, name, description, enabled, route, srcSyntax, routeType });
 export function verifyCurrent(snapshot, versions) {
@@ -18,7 +18,7 @@ export function verifyCurrent(snapshot, versions) {
   return true;
 }
 export function verifyStaged(snapshot) {
-  assert.equal(snapshot.routes?.length, baseline.routes.length + additions.length, 'Expected exactly three new routes.');
+  assert.equal(snapshot.routes?.length, baseline.routes.length + additions.length, 'Expected exactly two new routes.');
   assert.equal(new Set(snapshot.routes.map(({ id }) => id)).size, snapshot.routes.length, 'Route IDs must remain unique.');
   const old = snapshot.routes.filter(({ id }) => originalIds.has(id));
   assert.deepEqual(old.map(stable), baseline.routes.map(stable), 'Existing routes must be unchanged and retain their order.');

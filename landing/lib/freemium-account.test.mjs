@@ -82,21 +82,6 @@ test('unfinished upgrades do not block free downloads and can resume on the same
   assert.equal(view.context.needsPurchaseSetup(free, { state: 'none', plan: 'none' }, true), true);
 });
 
-test('required Discord activation replaces download links and app approval with explicit verification', () => {
-  const view = browser('?userCode=ABCDE23456');
-  const pending = { ...free, activation: { required: true, verified: false } };
-  view.context.renderAccount(pending);
-  assert.match(view.html(), /Join the Trace Discord/);
-  assert.match(view.html(), /method="post" action="\/trace\/discord\/callback"/);
-  assert.match(view.html(), /name="userCode" value="ABCDE23456"/);
-  assert.doesNotMatch(view.html(), /Download for macOS|platform=windows/);
-  view.context.renderConnect(pending);
-  assert.doesNotMatch(view.html(), /id="link-form"/);
-  view.context.renderAccount({ ...pending, activation: { required: true, verified: true } });
-  assert.match(view.html(), /Continue linking your app/);
-  assert.match(view.html(), /Download for macOS/);
-});
-
 test('native link alias opens the same explicit device confirmation flow', () => {
   const view = browser('?code=ABCDE23456');
   view.context.location.pathname = '/trace/link';
@@ -106,11 +91,14 @@ test('native link alias opens the same explicit device confirmation flow', () =>
   assert.match(view.html(), /ABCDE-23456/);
 });
 
-test('paid users awaiting Discord retain billing and sign-out recovery without contradictory download instructions', () => {
-  const view = browser('?checkout=success');
-  view.context.renderAccount({ ...pro, activation: { required: true, verified: false } });
-  assert.match(view.html(), /id="manage-billing"/);
-  assert.match(view.html(), /id="sign-out"/);
-  assert.doesNotMatch(view.html(), /Download for macOS/);
-  assert.equal(view.element('message').textContent, 'Your membership is ready. Verify Discord to finish setup.');
+test('account and app-link screens need no Discord activation, even with legacy metadata', () => {
+  const view = browser('?userCode=ABCDE23456&discord=retry');
+  const account = { ...free, activation: { required: true, verified: false } };
+  view.context.renderAccount(account);
+  assert.match(view.html(), /Download for macOS/);
+  assert.match(view.html(), /Continue linking your app/);
+  assert.doesNotMatch(view.html(), /Verify Discord|Join the Trace Discord|discord\/callback/);
+  assert.equal(view.context.context().discord, undefined);
+  view.context.renderConnect(account);
+  assert.match(view.html(), /I opened Trace and this is my code/);
 });

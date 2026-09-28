@@ -165,6 +165,15 @@ test('verified free accounts download without checkout and never gain paid capab
   }
 });
 
+test('old activation metadata cannot require Discord or block a verified Free download', async () => {
+  const legacyAccount = { ...freeAccount, activation: { required: true, verified: false } };
+  assert.equal(Object.hasOwn(publicAccount(legacyAccount), 'activation'), false);
+  const result = response();
+  await createMemberDownloadHandler({ service: { configured: true, call: async (action) => { assert.equal(action, 'account'); return { status: 200, body: legacyAccount }; } } })({ method: 'GET', url: '/trace/access?action=download&platform=mac', headers: { cookie: cookies } }, result);
+  assert.equal(result.headers.location, DOWNLOADS.mac);
+  for (const action of ['discord/start', 'discord/complete']) assert.equal((await invoke(action)).statusCode, 404);
+});
+
 test('canceled and overdue subscriptions keep confirmed free capabilities without premium access', () => {
   for (const status of ['canceled', 'past_due', 'unpaid', 'incomplete', 'paused']) {
     const result = publicAccount({ ...account, status });
@@ -215,6 +224,37 @@ test('routing preserves public share/leaderboard before catch-all, and legacy ac
   assert.match(html, /\$14\.99/); assert.match(html, /\$39\.99/);
   const client = readFileSync(new URL('../member.js', import.meta.url), 'utf8');
   assert.doesNotMatch(client, /localStorage|sessionStorage|accessToken|refreshToken/);
+});
+
+test('native link aliases remain protected without any OAuth callback or external form destination', () => {
+  for (const filename of ['../../vercel.json', '../vercel.json']) {
+    const config = JSON.parse(readFileSync(new URL(filename, import.meta.url)));
+    const index = config.rewrites.findIndex((rule) => rule.source === '/trace/link');
+    assert(index >= 0 && index < config.rewrites.findIndex((rule) => rule.source === '/trace/:shareId'));
+    assert(!config.rewrites.some((rule) => /discord/.test(rule.source)));
+    const headers = config.headers.find((rule) => rule.source.includes('|link)'));
+    assert(headers);
+    const policy = headers.headers.find(({ key }) => key === 'Content-Security-Policy').value;
+    assert.equal(policy, "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
+  }
+});
+
+test('clean URL rewrites reach static files and direct account artifacts retain security headers', () => {
+  const accountRoutes = ['account', 'login', 'signup', 'confirm', 'recover', 'reset', 'connect', 'link'];
+  for (const filename of ['../../vercel.json', '../vercel.json']) {
+    const config = JSON.parse(readFileSync(new URL(filename, import.meta.url)));
+    assert.equal(config.cleanUrls, true);
+    assert.equal(config.rewrites.find(({ source }) => source === '/trace').destination, '/');
+    for (const page of accountRoutes) assert.equal(config.rewrites.find(({ source }) => source === `/trace/${page}`).destination, '/trace-account');
+    const aliases = config.headers.find(({ source }) => source.includes('|link)'));
+    const direct = config.headers.find(({ source }) => source === '/trace-account(.html)?');
+    assert(direct);
+    assert.deepEqual(direct.headers, aliases.headers);
+    const values = Object.fromEntries(direct.headers.map(({ key, value }) => [key, value]));
+    assert.equal(values['Cache-Control'], 'private, no-store');
+    assert.equal(values['X-Robots-Tag'], 'noindex, nofollow');
+    assert.equal(values['Referrer-Policy'], 'no-referrer');
+  }
 });
 
 test('logout revokes refresh-only sessions without restoring browser cookies', async () => {
