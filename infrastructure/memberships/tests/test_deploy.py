@@ -67,17 +67,12 @@ class DeployTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             deploy.validate(self.config)
 
-    def test_discord_production_activation_cannot_be_silently_disabled(self):
+    def test_production_free_service_needs_no_external_community_or_billing_config(self):
         self.params.update(Environment='production', SesIdentity='example.test',
                            SesFromEmail='trace@example.test', SesRegion='us-east-1')
-        with self.assertRaisesRegex(ValueError, 'Discord activation'):
-            deploy.validate(self.config)
-        self.params['DiscordRequired'] = 'true'
-        with self.assertRaisesRegex(ValueError, 'Discord needs'):
-            deploy.validate(self.config)
-        self.params.update(DiscordClientId='123456789012345678', DiscordGuildId='234567890123456789',
-                           StripeSecretArn='arn:aws:secretsmanager:us-east-1:123456789012:secret:fixture')
-        deploy.validate(self.config)
+        valid = deploy.validate(self.config)
+        self.assertEqual(valid['BillingEnabled'], 'false')
+        self.assertEqual(valid['StripeSecretArn'], '')
 
     def test_preview_origin_is_staging_only_and_cannot_be_a_request_url(self):
         self.params['WebOrigin'] = 'https://trace-staging.vercel.app'

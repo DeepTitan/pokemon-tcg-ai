@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parent
 PARAMETERS = {'Environment', 'CaptureDevicesTableName', 'BillingEnabled', 'StripeMode', 'StripeSecretArn',
               'TracePriceId', 'SupporterPriceId', 'StripePortalConfigId', 'OwnerSubject',
               'ReservedConcurrency', 'SesIdentity', 'SesFromEmail', 'SesRegion',
-              'WebOrigin', 'DiscordRequired', 'DiscordClientId', 'DiscordGuildId'}
+              'WebOrigin'}
 
 
 def validate_email(params):
@@ -59,15 +59,6 @@ def validate(config, allow_live=False):
         raise ValueError('WebOrigin must be the canonical site or one fixed HTTPS Vercel origin, without path/query.')
     if (params['Environment'] == 'production' or params['StripeMode'] == 'live') and params['WebOrigin'] != 'https://victoryroad.app':
         raise ValueError('Production/live billing must use the canonical victoryroad.app WebOrigin.')
-    if params['DiscordRequired'] not in ('false', 'true'):
-        raise ValueError('DiscordRequired must be true or false.')
-    for field in ('DiscordClientId', 'DiscordGuildId'):
-        if params[field] and not re.fullmatch(r'[0-9]{17,20}', params[field]):
-            raise ValueError(f'{field} must be a Discord snowflake ID, not a name/invite/secret.')
-    if params['Environment'] == 'production' and params['DiscordRequired'] != 'true':
-        raise ValueError('Production needs one-time Discord activation enabled for new accounts.')
-    if params['DiscordRequired'] == 'true' and not all(params[field] for field in ('DiscordClientId', 'DiscordGuildId', 'StripeSecretArn')):
-        raise ValueError('Discord needs its application ID, guild ID and the service secret ARN.')
     for key, pattern in {
         'StripeSecretArn': r'arn:aws:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+',
         'TracePriceId': r'price_[A-Za-z0-9]+', 'SupporterPriceId': r'price_[A-Za-z0-9]+',

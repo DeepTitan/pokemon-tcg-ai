@@ -43,39 +43,10 @@ class Store:
     def account(self, subject):
         return self.get('ACCOUNT#' + subject)
 
-    def remember_account(self, subject, email, discord_required=False):
-        # Only genuinely new rows receive the activation requirement. Legacy
-        # accounts are exempt, even when this rollout switch is later enabled.
-        if not self.account(subject):
-            try:
-                self.table.put_item(Item={'pk': 'ACCOUNT#' + subject, 'email': email, 'emailVerified': True,
-                                          'discordActivationRequired': discord_required},
-                                    ConditionExpression='attribute_not_exists(pk)')
-            except ClientError as error:
-                if not conditional_error(error):
-                    raise
+    def remember_account(self, subject, email):
         self.table.update_item(Key={'pk': 'ACCOUNT#' + subject},
                                UpdateExpression='SET email = :email, emailVerified = :yes',
                                ExpressionAttributeValues={':email': email, ':yes': True})
-
-    def create_discord_state(self, proof, subject, guild, expires):
-        self.table.put_item(Item={'pk': 'DISCORD#' + proof, 'subject': subject, 'guildId': guild, 'ttl': expires},
-                            ConditionExpression='attribute_not_exists(pk)')
-
-    def discord_state(self, proof):
-        return self.get('DISCORD#' + proof)
-
-    def complete_discord(self, proof, subject, discord_user, guild, lease, now):
-        state_update = {'Update': {
-            'TableName': self.table.name, 'Key': self.serialized({'pk': 'DISCORD#' + proof}),
-            'UpdateExpression': 'SET usedAt = :now, discordUserId = :user',
-            'ConditionExpression': '#subject = :subject AND guildId = :guild AND #ttl > :now AND attribute_not_exists(usedAt)',
-            'ExpressionAttributeNames': {'#subject': 'subject', '#ttl': 'ttl'},
-            'ExpressionAttributeValues': self.serialized({':now': now, ':user': discord_user, ':subject': subject, ':guild': guild}),
-        }}
-        self.transact([self.lock_check(subject, lease, now), state_update,
-                       self.account_update(subject, {'discordUserId': discord_user, 'discordGuildId': guild,
-                                                     'discordVerifiedAt': now})])
 
     def owner_enabled(self, subject):
         item = self.owners.get_item(Key={'ownerSubject': subject}, ConsistentRead=True).get('Item')
@@ -325,68 +296,6 @@ class Cognito:
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, hdrs, newurl):
         raise urllib.error.HTTPError(req.full_url, code, 'Redirect rejected', hdrs, fp)
-
-
-class Discord:
-    """One-time guild verification. OAuth tokens are used in memory then discarded."""
-    def __init__(self, secret_arn, web_origin='https://victoryroad.app'):
-        self.secret_arn = secret_arn
-        self.callback_url = trusted_web_origin(web_origin) + '/trace/discord/callback'
-        self.secrets_client = boto3.client('secretsmanager', config=AWS_CONFIG)
-        self.opener = urllib.request.build_opener(NoRedirect())
-
-    def request(self, path, *, token=None, fields=None):
-        import re
-        if path not in ('/oauth2/token', '/users/@me') and not re.fullmatch(r'/users/@me/guilds/[0-9]{17,20}/member', path):
-            raise ApiError(503, 'discord_unavailable')
-        headers = {'User-Agent': 'Trace (https://victoryroad.app, 1.0)', 'Accept': 'application/json'}
-        if token:
-            headers['Authorization'] = 'Bearer ' + token
-        encoded = urllib.parse.urlencode(fields).encode() if fields is not None else None
-        if encoded is not None:
-            headers['Content-Type'] = 'application/x-www-form-urlencoded'
-        request = urllib.request.Request('https://discord.com/api/v10' + path, data=encoded, headers=headers)
-        try:
-            with self.opener.open(request, timeout=5) as response:
-                raw = response.read(131073)
-            value = json.loads(raw) if len(raw) <= 131072 else None
-            if not isinstance(value, dict):
-                raise ValueError('invalid response')
-            return value
-        except urllib.error.HTTPError as error:
-            status = error.code
-            error.close()
-            if path.endswith('/member') and status == 404:
-                raise ApiError(403, 'discord_not_joined')
-            if path == '/oauth2/token' and status in (400, 401):
-                raise ApiError(400, 'discord_state_invalid')
-            raise ApiError(503, 'discord_unavailable')
-        except (OSError, ValueError, urllib.error.URLError):
-            raise ApiError(503, 'discord_unavailable')
-
-    def verify_member(self, code, client_id, guild_id):
-        import re
-        if not self.secret_arn:
-            raise ApiError(503, 'discord_unavailable')
-        value = self.secrets_client.get_secret_value(SecretId=self.secret_arn)
-        secret = json.loads(value['SecretString']).get('discordClientSecret')
-        if not isinstance(secret, str) or not 16 <= len(secret) <= 512 or re.search(r'\s', secret):
-            raise ApiError(503, 'discord_unavailable')
-        granted = self.request('/oauth2/token', fields={'client_id': client_id, 'client_secret': secret,
-                               'grant_type': 'authorization_code', 'code': code, 'redirect_uri': self.callback_url})
-        token = granted.get('access_token')
-        if (not isinstance(token, str) or not 1 <= len(token) <= 4096 or re.search(r'\s', token)
-                or str(granted.get('token_type', '')).lower() != 'bearer'
-                or not {'identify', 'guilds.members.read'} <= set(str(granted.get('scope', '')).split())):
-            raise ApiError(503, 'discord_unavailable')
-        user = self.request('/users/@me', token=token)
-        member = self.request('/users/@me/guilds/' + guild_id + '/member', token=token)
-        identifier = user.get('id')
-        if not isinstance(identifier, str) or not re.fullmatch(r'[0-9]{17,20}', identifier) or (member.get('user') or {}).get('id') != identifier:
-            raise ApiError(503, 'discord_unavailable')
-        if member.get('pending') is True:
-            raise ApiError(403, 'discord_pending')
-        return identifier
 
 
 class Stripe:

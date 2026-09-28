@@ -117,51 +117,6 @@ class AdapterTests(unittest.TestCase):
         with self.assertRaises(ApiError):
             adapters.Stripe('secret-arn', 'bpc_fixture', True, origin)
 
-    def test_discord_checks_identity_membership_and_completed_screening(self):
-        discord = adapters.Discord('secret-arn')
-        discord.secrets_client.get_secret_value.return_value = {'SecretString': json.dumps({'discordClientSecret': 'synthetic-server-secret'})}
-        token = {'access_token': 'synthetic-oauth-token', 'token_type': 'Bearer', 'scope': 'identify guilds.members.read'}
-        user = {'id': '123456789012345678'}
-        discord.request = Mock(side_effect=[token, user, {'user': user, 'pending': False}])
-        self.assertEqual(discord.verify_member('one-time-code', '234567890123456789', '345678901234567890'), user['id'])
-        fields = discord.request.call_args_list[0].kwargs['fields']
-        self.assertEqual(fields['redirect_uri'], 'https://victoryroad.app/trace/discord/callback')
-        self.assertEqual(fields['client_secret'], 'synthetic-server-secret')
-        self.assertEqual(discord.request.call_args_list[-1].args[0], '/users/@me/guilds/345678901234567890/member')
-        discord.request = Mock(side_effect=[token, user, {'user': user, 'pending': True}])
-        with self.assertRaises(ApiError) as caught:
-            discord.verify_member('code', '234567890123456789', '345678901234567890')
-        self.assertEqual(caught.exception.code, 'discord_pending')
-        discord.request = Mock(side_effect=[token, user, {'user': {'id': '999999999999999999'}}])
-        with self.assertRaises(ApiError):
-            discord.verify_member('code', '234567890123456789', '345678901234567890')
-
-    def test_discord_transport_does_not_allow_arbitrary_token_destinations(self):
-        discord = adapters.Discord('secret-arn')
-        with self.assertRaises(ApiError):
-            discord.request('//attacker.test', token='synthetic')
-        discord.opener = MagicMock()
-        discord.opener.open.return_value.__enter__.return_value = io.BytesIO(b'{"id":"123456789012345678"}')
-        discord.request('/users/@me', token='synthetic')
-        request = discord.opener.open.call_args.args[0]
-        self.assertEqual(request.full_url, 'https://discord.com/api/v10/users/@me')
-        self.assertEqual(request.get_header('Authorization'), 'Bearer synthetic')
-        discord.opener.open.side_effect = urllib.error.HTTPError('https://discord.com/api/v10/users/@me/guilds/345678901234567890/member', 404, '', {}, None)
-        with self.assertRaises(ApiError) as caught:
-            discord.request('/users/@me/guilds/345678901234567890/member', token='synthetic')
-        self.assertEqual(caught.exception.code, 'discord_not_joined')
-
-    def test_discord_activation_commit_checks_nonce_subject_guild_expiry_and_account_lease(self):
-        store = adapters.Store('members', 'devices', 'owner-switch')
-        store.table.name = 'members'
-        store.complete_discord('proof', 'subject', '123456789012345678', '234567890123456789', 'lease', 1234)
-        items = store.client.transact_write_items.call_args.kwargs['TransactItems']
-        self.assertEqual(items[0]['ConditionCheck']['Key'], {'pk': {'S': 'LOCK#subject'}})
-        condition = items[1]['Update']['ConditionExpression']
-        for check in ('#subject = :subject', 'guildId = :guild', '#ttl > :now', 'attribute_not_exists(usedAt)'):
-            self.assertIn(check, condition)
-        self.assertEqual(items[2]['Update']['Key'], {'pk': {'S': 'ACCOUNT#subject'}})
-
     def test_persistence_write_requires_current_lease_and_uses_lowlevel_serialization(self):
         store = adapters.Store('members', 'devices', 'owner-switch')
         store.table.name = 'members'

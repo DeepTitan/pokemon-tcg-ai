@@ -71,32 +71,12 @@ class FakeStore:
         self.owners, self.locks = {}, {}
         self.fail_save = False
         self.fail_receipt = False
-        self.discord_states = {}
-        self.fail_discord_response = False
 
     def account(self, subject):
         return deepcopy(self.accounts.get(subject))
 
-    def remember_account(self, subject, email, discord_required=False):
-        self.accounts.setdefault(subject, {'discordActivationRequired': discord_required}).update(email=email, emailVerified=True)
-
-    def create_discord_state(self, proof, subject, guild, expires):
-        self.discord_states[proof] = {'subject': subject, 'guildId': guild, 'ttl': expires}
-
-    def discord_state(self, proof):
-        return deepcopy(self.discord_states.get(proof))
-
-    def complete_discord(self, proof, subject, user, guild, lease, now):
-        if self.fail_save:
-            raise RuntimeError('synthetic persistence failure')
-        if self.locks.get(subject) is not lease:
-            raise ApiError(409, 'billing_busy')
-        state = self.discord_states[proof]
-        assert state['subject'] == subject and state['guildId'] == guild and state['ttl'] > now and not state.get('usedAt')
-        self.accounts[subject].update(discordUserId=user, discordGuildId=guild, discordVerifiedAt=now)
-        state.update(usedAt=now, discordUserId=user)
-        if self.fail_discord_response:
-            raise RuntimeError('synthetic lost successful response')
+    def remember_account(self, subject, email):
+        self.accounts.setdefault(subject, {}).update(email=email, emailVerified=True)
 
     def owner_enabled(self, subject):
         return self.owners.get(subject) is True
@@ -261,6 +241,23 @@ class MembershipTests(unittest.TestCase):
                 account = self.service.handle(request('account'))
                 self.assertEqual(account['capabilities'], expected)
                 self.assertFalse(account['traceAccess'])
+
+    def test_new_verified_free_account_can_link_without_billing_setup(self):
+        self.service.config = replace(CFG, billing_enabled=False)
+        self.store.accounts.pop(USER)
+        account = self.service.handle(request('account'))
+        self.assertEqual(set(account), {'email', 'plan', 'traceAccess', 'opponentDecklists',
+                                      'admin', 'status', 'expiresAt', 'cancelAtPeriodEnd', 'capabilities'})
+        self.assertTrue(account['capabilities']['recordMatches'])
+        self.assertFalse(account['capabilities']['fullHistory'])
+        started = self.service.handle(request('devices/link/start', 'POST', device=True))
+        approved = self.service.handle(request('devices/link/approve', 'POST', {'userCode': started['userCode']}))
+        self.assertEqual(approved, {'linked': True})
+        linked = self.service.handle(request('devices/status', device=True))
+        self.assertTrue(linked['linked'])
+        self.assertEqual(linked['capabilities'], account['capabilities'])
+        self.assertFalse(linked['traceAccess'])
+        self.assertEqual(self.stripe.calls, [])
 
     def test_paid_and_owner_capabilities_preserve_free_baseline(self):
         for plan in ('trace', 'supporter'):

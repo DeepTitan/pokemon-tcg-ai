@@ -4,7 +4,7 @@ Free: continuous recording, leaderboard/results, the latest seven days of full r
 
 Existing local SQLite records, pre-upgrade JSONL captures, and a one-time browser archive migration remain readable without payment. New captures use native stored timestamps to enforce the seven-day boundary. No capture files are deleted and cumulative results/rating history does not expire. Cloud replay history uses its immutable server age; local grandfathering does not grant free new cloud shares of older games. Existing public links remain readable and repeated sharing reuses the same link without spending another allowance. The free share quota is per installation, not a promised account-wide anti-abuse boundary.
 
-New-user Discord activation uses configured OAuth credentials and a fixed guild membership check. `activation: {required, verified, joinUrl}` is separate from billing capabilities. Pending activation gates downloads and new device-link approval, while billing management and existing capture stay available. Accounts predating activation enforcement remain exempt. An invite link alone does not grant activation; real provider configuration and testing are still pending.
+Trace access does not require Discord or any community membership. Verified email establishes the account; Free capabilities, Stripe billing and the pinned owner switch determine product access.
 
 ## Services
 
@@ -14,9 +14,7 @@ New isolated AWS SAM membership stack, separate from existing capture stack. Cog
 
 Base native: compile/env TRACE_MEMBERSHIP_API_URL. Web proxy: `/trace/api/:action` on existing Trace Vercel deployment; upstream `${TRACE_MEMBERSHIP_API_URL}/v1/:action`.
 
-The backend's trusted `WebOrigin` supplies checkout, portal, and Discord callback return URLs. Production/live billing requires exactly `https://victoryroad.app`; staging may use an explicitly configured protected Vercel origin. No request header controls these destinations. The release desktop validates the production `/trace/link?code=...` URL; the web app supports `/trace/link` as an alias of the consent-based `/trace/connect` flow.
-
-Discord activation: the browser submits an authenticated same-origin form to `/trace/discord/callback`. The server calls `POST discord/start`, binds the returned state to a short-lived HttpOnly cookie, and redirects to Discord. On callback, the server validates the cookie/state and calls `POST discord/complete {code,state}` with the verified account session. The backend binds a one-time nonce hash to account, guild and expiry, checks Discord's member API, then records activation. OAuth tokens never enter page JavaScript or stored account rows. A safe result code and optional device-code context return to My account.
+The backend's trusted `WebOrigin` supplies checkout and portal return URLs. Production/live billing requires exactly `https://victoryroad.app`; staging may use an explicitly configured protected Vercel origin. No request header controls these destinations. The release desktop validates the production `/trace/link?code=...` URL; the web app supports `/trace/link` as an alias of the consent-based `/trace/connect` flow.
 
 POST auth/signup {email,password}; POST auth/confirm {email,code}; POST auth/resend {email}; POST auth/login {email,password} => {accessToken,refreshToken,expiresIn}; POST auth/refresh {refreshToken} same result; POST auth/recover {email}; POST auth/reset {email,code,password}; POST auth/logout bearer. Web proxy keeps tokens in HttpOnly Secure SameSite=Lax cookies and never returns them to browser JS; checks same Origin on mutations.
 

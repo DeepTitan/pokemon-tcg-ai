@@ -35,19 +35,6 @@ Parameters:
     Default: https://victoryroad.app
     AllowedPattern: '^https://(victoryroad\.app|[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.vercel\.app)$'
     Description: Fixed trusted return origin. Staging may use a stable protected Vercel alias; production/live billing must use victoryroad.app.
-  DiscordRequired:
-    Type: String
-    Default: 'false'
-    AllowedValues: ['false', 'true']
-    Description: Require one-time guild verification for new account downloads and new account/device linking. Existing account records remain exempt.
-  DiscordClientId:
-    Type: String
-    Default: ''
-    AllowedPattern: '^$|^[0-9]{17,20}$'
-  DiscordGuildId:
-    Type: String
-    Default: ''
-    AllowedPattern: '^$|^[0-9]{17,20}$'
   BillingEnabled:
     Type: String
     Default: 'false'
@@ -59,7 +46,7 @@ Parameters:
   StripeSecretArn:
     Type: String
     Default: ''
-    Description: Secrets Manager JSON with secretKey, webhookSecret, webProxySecret and discordClientSecret. Never pass secret values as parameters.
+    Description: Secrets Manager JSON with secretKey, webhookSecret and webProxySecret. Never pass secret values as parameters.
     AllowedPattern: '^$|^arn:aws:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+$'
   TracePriceId:
     Type: String
@@ -83,19 +70,6 @@ Conditions:
   HasReservedConcurrency: !Not [!Equals [!Ref ReservedConcurrency, 0]]
   HasSesIdentity: !Not [!Equals [!Ref SesIdentity, '']]
 Rules:
-  ProductionActivation:
-    RuleCondition: !Equals [!Ref Environment, production]
-    Assertions:
-      - Assert: !Equals [!Ref DiscordRequired, 'true']
-        AssertDescription: Production requires configured one-time Discord verification for new accounts.
-  DiscordConfigurationComplete:
-    RuleCondition: !Equals [!Ref DiscordRequired, 'true']
-    Assertions:
-      - Assert: !And
-          - !Not [!Equals [!Ref DiscordClientId, '']]
-          - !Not [!Equals [!Ref DiscordGuildId, '']]
-          - !Not [!Equals [!Ref StripeSecretArn, '']]
-        AssertDescription: Discord activation needs application ID, guild ID and the service secret ARN.
   ProductionRedirect:
     RuleCondition: !Or [!Equals [!Ref Environment, production], !Equals [!Ref StripeMode, live]]
     Assertions:
@@ -256,9 +230,6 @@ Resources:
           TRACE_PRICE_ID: !Ref TracePriceId
           SUPPORTER_PRICE_ID: !Ref SupporterPriceId
           STRIPE_PORTAL_CONFIG_ID: !Ref StripePortalConfigId
-          DISCORD_REQUIRED: !Ref DiscordRequired
-          DISCORD_CLIENT_ID: !Ref DiscordClientId
-          DISCORD_GUILD_ID: !Ref DiscordGuildId
           WEB_ORIGIN: !Ref WebOrigin
       Policies:
         - Statement:
