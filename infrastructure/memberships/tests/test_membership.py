@@ -71,12 +71,32 @@ class FakeStore:
         self.owners, self.locks = {}, {}
         self.fail_save = False
         self.fail_receipt = False
+        self.discord_states = {}
+        self.fail_discord_response = False
 
     def account(self, subject):
         return deepcopy(self.accounts.get(subject))
 
-    def remember_account(self, subject, email):
-        self.accounts.setdefault(subject, {}).update(email=email, emailVerified=True)
+    def remember_account(self, subject, email, discord_required=False):
+        self.accounts.setdefault(subject, {'discordActivationRequired': discord_required}).update(email=email, emailVerified=True)
+
+    def create_discord_state(self, proof, subject, guild, expires):
+        self.discord_states[proof] = {'subject': subject, 'guildId': guild, 'ttl': expires}
+
+    def discord_state(self, proof):
+        return deepcopy(self.discord_states.get(proof))
+
+    def complete_discord(self, proof, subject, user, guild, lease, now):
+        if self.fail_save:
+            raise RuntimeError('synthetic persistence failure')
+        if self.locks.get(subject) is not lease:
+            raise ApiError(409, 'billing_busy')
+        state = self.discord_states[proof]
+        assert state['subject'] == subject and state['guildId'] == guild and state['ttl'] > now and not state.get('usedAt')
+        self.accounts[subject].update(discordUserId=user, discordGuildId=guild, discordVerifiedAt=now)
+        state.update(usedAt=now, discordUserId=user)
+        if self.fail_discord_response:
+            raise RuntimeError('synthetic lost successful response')
 
     def owner_enabled(self, subject):
         return self.owners.get(subject) is True
@@ -225,6 +245,42 @@ class MembershipTests(unittest.TestCase):
         with self.assertRaises(ApiError) as raised:
             callback()
         self.assertEqual(raised.exception.code, code)
+
+    def test_free_capabilities_for_unlinked_and_inactive_accounts(self):
+        expected = {'recordMatches': True, 'leaderboard': True, 'recentReplayDays': 7,
+                    'freeSharesPerWindow': 1, 'shareWindowDays': 7,
+                    'fullHistory': False, 'expandedSharing': False, 'opponentDecklists': False}
+        unlinked = self.service.handle(request('devices/status', device=True))
+        self.assertFalse(unlinked['linked'])
+        self.assertFalse(unlinked['traceAccess'])
+        self.assertEqual(unlinked['capabilities'], expected)
+        for status in ('canceled', 'past_due', 'unpaid', 'incomplete', 'trialing', 'paused'):
+            with self.subTest(status=status):
+                self.stripe.current = [subscription(status=status)]
+                self.store.accounts[USER].pop('snapshot', None)
+                account = self.service.handle(request('account'))
+                self.assertEqual(account['capabilities'], expected)
+                self.assertFalse(account['traceAccess'])
+
+    def test_paid_and_owner_capabilities_preserve_free_baseline(self):
+        for plan in ('trace', 'supporter'):
+            self.stripe.current = [subscription(plan)]
+            self.store.accounts[USER].pop('snapshot', None)
+            account = self.service.handle(request('account'))
+            caps = account['capabilities']
+            self.assertTrue(caps['recordMatches'])
+            self.assertTrue(caps['leaderboard'])
+            self.assertEqual(caps['recentReplayDays'], 7)
+            self.assertTrue(caps['fullHistory'])
+            self.assertTrue(caps['expandedSharing'])
+            self.assertEqual(caps['opponentDecklists'], plan == 'supporter')
+        self.store.owners[OWNER] = True
+        owner = self.service.entitlement(OWNER)
+        self.assertTrue(owner['capabilities']['opponentDecklists'])
+        self.store.owners[OWNER] = False
+        revoked = self.service.entitlement(OWNER)
+        self.assertTrue(revoked['capabilities']['recordMatches'])
+        self.assertFalse(revoked['capabilities']['fullHistory'])
 
     def test_paid_supporter_and_trace_permissions(self):
         account = self.service.handle(request('account'))

@@ -9,7 +9,31 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parent
 PARAMETERS = {'Environment', 'CaptureDevicesTableName', 'BillingEnabled', 'StripeMode', 'StripeSecretArn',
-              'TracePriceId', 'SupporterPriceId', 'StripePortalConfigId', 'OwnerSubject'}
+              'TracePriceId', 'SupporterPriceId', 'StripePortalConfigId', 'OwnerSubject',
+              'ReservedConcurrency', 'SesIdentity', 'SesFromEmail', 'SesRegion',
+              'WebOrigin', 'DiscordRequired', 'DiscordClientId', 'DiscordGuildId'}
+
+
+def validate_email(params):
+    configured = [bool(params[key]) for key in ('SesIdentity', 'SesFromEmail', 'SesRegion')]
+    if any(configured) and not all(configured):
+        raise ValueError('Configure SesIdentity, SesFromEmail and SesRegion together.')
+    if params['Environment'] == 'production' and not all(configured):
+        raise ValueError('Production needs verified SES delivery; Cognito default email is development-only.')
+    if not any(configured):
+        return
+    identity, sender = params['SesIdentity'].lower(), params['SesFromEmail'].lower()
+    domain_pattern = r'(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}'
+    email_pattern = r'[a-z0-9._+-]+@' + domain_pattern
+    if len(identity) > 254 or not re.fullmatch(email_pattern if '@' in identity else domain_pattern, identity):
+        raise ValueError('SesIdentity must be a domain or email address, not an ARN or secret.')
+    if len(sender) > 254 or not re.fullmatch(email_pattern, sender):
+        raise ValueError('SesFromEmail must be an email address without a display name.')
+    domain = sender.rsplit('@', 1)[1]
+    if ('@' in identity and sender != identity) or ('@' not in identity and domain != identity and not domain.endswith('.' + identity)):
+        raise ValueError('SesFromEmail must be covered by the verified SesIdentity.')
+    if not re.fullmatch(r'[a-z]{2}-[a-z]+(?:-[a-z]+)?-\d', params['SesRegion']):
+        raise ValueError('Invalid SesRegion.')
 
 
 def validate(config, allow_live=False):
@@ -24,6 +48,33 @@ def validate(config, allow_live=False):
             raise ValueError(f'Invalid {name}.')
     if params['BillingEnabled'] not in {'true', 'false'} or params['StripeMode'] not in {'test', 'live'}:
         raise ValueError('Invalid BillingEnabled or StripeMode.')
+    if not re.fullmatch(r'[a-z0-9-]+', params['Environment']):
+        raise ValueError('Invalid Environment.')
+    if not re.fullmatch(r'[A-Za-z0-9_.-]{3,255}', params['CaptureDevicesTableName']):
+        raise ValueError('Invalid CaptureDevicesTableName.')
+    if not re.fullmatch(r'0|[1-9][0-9]{0,3}', params['ReservedConcurrency']) or int(params['ReservedConcurrency']) > 1000:
+        raise ValueError('ReservedConcurrency must be 0 (unreserved) or an integer from 1 to 1000.')
+    validate_email(params)
+    if not re.fullmatch(r'https://(?:victoryroad\.app|[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.vercel\.app)', params['WebOrigin']):
+        raise ValueError('WebOrigin must be the canonical site or one fixed HTTPS Vercel origin, without path/query.')
+    if (params['Environment'] == 'production' or params['StripeMode'] == 'live') and params['WebOrigin'] != 'https://victoryroad.app':
+        raise ValueError('Production/live billing must use the canonical victoryroad.app WebOrigin.')
+    if params['DiscordRequired'] not in ('false', 'true'):
+        raise ValueError('DiscordRequired must be true or false.')
+    for field in ('DiscordClientId', 'DiscordGuildId'):
+        if params[field] and not re.fullmatch(r'[0-9]{17,20}', params[field]):
+            raise ValueError(f'{field} must be a Discord snowflake ID, not a name/invite/secret.')
+    if params['Environment'] == 'production' and params['DiscordRequired'] != 'true':
+        raise ValueError('Production needs one-time Discord activation enabled for new accounts.')
+    if params['DiscordRequired'] == 'true' and not all(params[field] for field in ('DiscordClientId', 'DiscordGuildId', 'StripeSecretArn')):
+        raise ValueError('Discord needs its application ID, guild ID and the service secret ARN.')
+    for key, pattern in {
+        'StripeSecretArn': r'arn:aws:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+',
+        'TracePriceId': r'price_[A-Za-z0-9]+', 'SupporterPriceId': r'price_[A-Za-z0-9]+',
+        'StripePortalConfigId': r'bpc_[A-Za-z0-9]+',
+    }.items():
+        if params[key] and not re.fullmatch(pattern, params[key]):
+            raise ValueError(f'Invalid {key}; use an ID/ARN, never raw secret values.')
     if params['OwnerSubject'] and not re.fullmatch(r'[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}', params['OwnerSubject']):
         raise ValueError('OwnerSubject must be the verified Cognito UUID, never an email/name.')
     if params['BillingEnabled'] == 'true':

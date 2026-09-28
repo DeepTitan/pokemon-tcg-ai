@@ -9,16 +9,21 @@ _service = None
 def service():
     global _service
     if _service is None:
-        from adapters import Cognito, Store, Stripe
+        from adapters import Cognito, Discord, Store, Stripe
         config = Config(pool_id=os.environ['USER_POOL_ID'], client_id=os.environ['USER_POOL_CLIENT_ID'],
                         region=os.environ['AWS_REGION'], owner_subject=os.environ.get('OWNER_SUBJECT', ''),
                         billing_enabled=os.environ.get('BILLING_ENABLED') == 'true',
                         stripe_live=os.environ.get('STRIPE_MODE') == 'live',
                         trace_price=os.environ.get('TRACE_PRICE_ID', ''),
-                        supporter_price=os.environ.get('SUPPORTER_PRICE_ID', ''))
+                        supporter_price=os.environ.get('SUPPORTER_PRICE_ID', ''),
+                        discord_required=os.environ.get('DISCORD_REQUIRED') == 'true',
+                        discord_client_id=os.environ.get('DISCORD_CLIENT_ID', ''),
+                        discord_guild_id=os.environ.get('DISCORD_GUILD_ID', ''),
+                        web_origin=os.environ.get('WEB_ORIGIN', 'https://victoryroad.app'))
         _service = MembershipService(config,
             Store(os.environ['MEMBERSHIPS_TABLE'], os.environ['CAPTURE_DEVICES_TABLE'], os.environ['OWNER_SWITCH_TABLE']),
-            Cognito(config), Stripe(os.environ.get('STRIPE_SECRET_ARN', ''), os.environ.get('STRIPE_PORTAL_CONFIG_ID', ''), config.stripe_live))
+            Cognito(config), Stripe(os.environ.get('STRIPE_SECRET_ARN', ''), os.environ.get('STRIPE_PORTAL_CONFIG_ID', ''), config.stripe_live, config.web_origin),
+            discord=Discord(os.environ.get('STRIPE_SECRET_ARN', ''), config.web_origin))
     return _service
 
 

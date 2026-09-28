@@ -11,12 +11,12 @@ Parameters:
     Type: String
     Default: ''
     AllowedPattern: '^$|^https://[A-Za-z0-9.-]+(/[A-Za-z0-9_-]+)*$'
-    Description: Verified membership service endpoint, configured before enabling paid access.
+    Description: Verified membership service endpoint for premium replay and sharing access.
   RequireMembership:
     Type: String
     Default: 'false'
     AllowedValues: ['true', 'false']
-    Description: Enable only after the membership rollout and existing-user policy are ready.
+    Description: Enforce seven-day free replay history and one new share per installation per seven days. Capture and leaderboard ingestion remain free.
 
 Rules:
   PaidAccessRequiresMembershipService:

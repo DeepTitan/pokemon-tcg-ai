@@ -6,6 +6,7 @@ import importlib.util
 import io
 import json
 import os
+import re
 from pathlib import Path
 import sys
 import types
@@ -19,6 +20,19 @@ class ClientError(Exception):
         super().__init__(code)
 
 
+class Serializer:
+    def serialize(self, value):
+        if isinstance(value, str):
+            return {"S": value}
+        if isinstance(value, bool):
+            return {"BOOL": value}
+        if isinstance(value, int):
+            return {"N": str(value)}
+        if value is None:
+            return {"NULL": True}
+        raise AssertionError(f"Unexpected transaction attribute: {type(value)}")
+
+
 def load_app():
     # Stub only SDK initialization; every table/object operation below is an
     # explicit in-memory fake. Accidentally calling a real AWS client is impossible.
@@ -29,10 +43,12 @@ def load_app():
     exceptions.ClientError = ClientError
     conditions = types.ModuleType("boto3.dynamodb.conditions")
     conditions.Key = Mock()
+    dynamo_types = types.ModuleType("boto3.dynamodb.types")
+    dynamo_types.TypeSerializer = Serializer
     modules = {"boto3": boto, "botocore": types.ModuleType("botocore"),
                "botocore.exceptions": exceptions,
                "boto3.dynamodb": types.ModuleType("boto3.dynamodb"),
-               "boto3.dynamodb.conditions": conditions}
+               "boto3.dynamodb.conditions": conditions, "boto3.dynamodb.types": dynamo_types}
     env = {name: name for name in ("DEVICES_TABLE", "MATCHES_TABLE", "SHARES_TABLE", "PAYLOAD_BUCKET")}
     spec = importlib.util.spec_from_file_location("trace_cloud_test_app", Path(__file__).parents[1] / "lambda/app.py")
     app = importlib.util.module_from_spec(spec)
@@ -55,6 +71,9 @@ class Table:
     def get_item(self, *, Key, **_):
         item = self.items.get(self.key(Key))
         return {"Item": copy.deepcopy(item)} if item else {}
+
+    def query(self, **_):
+        return {"Items": copy.deepcopy(list(self.items.values()))}
 
     def put_item(self, *, Item, ConditionExpression=None):
         key = self.key(Item)
@@ -79,11 +98,63 @@ class Table:
             item.setdefault("createdAt", values[":created"])
         else:
             names = ExpressionAttributeNames or {}
-            for assignment in UpdateExpression.removeprefix("SET ").split(", "):
+            setting, _, removing = UpdateExpression.partition(" REMOVE ")
+            for assignment in re.split(r", (?![^()]*\))", setting.removeprefix("SET ")):
                 field, placeholder = assignment.split(" = ")
-                item[names.get(field, field)] = copy.deepcopy(values[placeholder])
+                field = names.get(field, field)
+                if placeholder.startswith("if_not_exists("):
+                    item.setdefault(field, copy.deepcopy(values[placeholder.split(", ")[1][:-1]]))
+                else:
+                    item[field] = copy.deepcopy(values[placeholder])
+            if removing:
+                for field in removing.split(", "):
+                    item.pop(names.get(field, field), None)
         self.items[key] = item
         return {"Attributes": copy.deepcopy(item)}
+
+
+class Transactions:
+    """Validate every condition before applying anything, as DynamoDB does."""
+    def __init__(self):
+        self.calls = []
+        self.before_commit = None
+
+    def transact_write_items(self, *, TransactItems):
+        self.calls.append(copy.deepcopy(TransactItems))
+        if self.before_commit:
+            hook, self.before_commit = self.before_commit, None
+            hook()
+        tables = {app.MATCHES_TABLE: app.matches, app.SHARES_TABLE: app.shares, app.DEVICES_TABLE: app.devices}
+        decoded = []
+        def values(mapping):
+            return {key: int(value["N"]) if "N" in value else value.get("S", value.get("BOOL"))
+                    for key, value in mapping.items()}
+        for write in TransactItems:
+            if "Put" in write:
+                request = write["Put"]
+                table, item = tables[request["TableName"]], values(request["Item"])
+                if table.key(item) in table.items:
+                    raise ClientError("TransactionCanceledException")
+                decoded.append(("put", table, item, None))
+                continue
+            request = write["Update"]
+            table, key = tables[request["TableName"]], values(request["Key"])
+            item = table.items.get(table.key(key))
+            args = values(request["ExpressionAttributeValues"])
+            if not item:
+                raise ClientError("TransactionCanceledException")
+            if table is app.matches and "shareId" in item and item["shareId"] != args.get(":old"):
+                raise ClientError("TransactionCanceledException")
+            if table is app.devices and item.get("lastFreeShareAt", -1) > args[":cutoff"]:
+                raise ClientError("TransactionCanceledException")
+            decoded.append(("update", table, key, {**request, "ExpressionAttributeValues": args}))
+        for operation, table, key, request in decoded:
+            if operation == "put":
+                table.put_item(Item=key)
+            else:
+                table.update_item(Key=key, UpdateExpression=request["UpdateExpression"],
+                                  ExpressionAttributeValues=request["ExpressionAttributeValues"])
+        return {}
 
 
 class Objects:
@@ -120,6 +191,7 @@ class SharedReplayTests(unittest.TestCase):
         app.shares = Table("shareId")
         app.devices = Table("deviceId")
         app.s3 = Objects()
+        app.dynamodb_client = Transactions()
         self.device = "trace-device-test-001"
         self.match = "match-1"
         self.review = {"id": self.match, "source": "live-network", "localPlayer": "Player A",

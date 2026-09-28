@@ -1,52 +1,63 @@
-# Trace membership rollout
+# Trace freemium and membership rollout
 
-## Agreed product behavior
+## Agreed behavior
 
-- Trace costs USD $14.99 per month.
-- Supporters Club costs USD $39.99 per month and includes Trace.
-- Full opponent starting decklists require Supporters Club and a recorded match-end event. A client closing or a guessed winner does not unlock them.
-- One verified owner account may bypass payment. The immutable account subject is pinned in infrastructure; its separate database row controls the `enabled` Boolean. This grants product access, not AWS or billing administration. It never bypasses the match-end restriction.
-- A match already admitted by the desktop app continues recording if membership subsequently expires or the installation is unlinked. Network routing is never changed by membership checks.
+- **Free:** continuous capture, leaderboard eligibility, full replays from the last seven days, and one new replay share per installation per rolling seven days. This is ongoing free access, not a seven-day recording trial.
+- **Pro:** USD $14.99/month for full archive access and expanded sharing. Internal plan ID remains `trace`.
+- **Supporters Club:** USD $39.99/month, including Pro and post-match opponent deck study. Full opponent starting lists require authoritative match-end evidence; closing the client or an inferred winner cannot unlock them.
+- Subscription status never filters rating events, deletes captures or stops recording. Existing locally saved games are grandfathered by the native migration; new old-game cloud reads/shares follow the cloud policy. Existing public links remain accessible.
+- One verified owner may bypass billing through a pinned Cognito subject and separate database switch. This grants product access, not AWS/billing administration, and never bypasses match-end evidence.
+- New account activation requires a one-time verified join of the configured Discord guild. Existing membership account records remain exempt. Gate new authenticated downloads and new device-link approvals, never ongoing/unlinked capture. An invite link alone is not verification.
 
 ## Release locations
 
-- Desktop, capture service, and new membership service: `release/trace-memberships-20260927`, branch `codex/trace-memberships`, based on upstream `9bda5aa7585988e8c15851e396d05c82062efc45`.
-- Trace website: sibling checkout `release/trace-memberships-web-20260927`, branch `codex/trace-memberships-web`, based on the separate deployed website source.
-- Do not deploy the dirty root workspace or the unrelated Prize Map checkout. The website and desktop have different current release sources.
+- Desktop/capture/membership: `release/trace-memberships-20260927`, branch `codex/trace-memberships`, based on upstream `9bda5aa7585988e8c15851e396d05c82062efc45`.
+- Website: sibling `release/trace-memberships-web-20260927`, branch `codex/trace-memberships-web`, based on the separate deployed website source.
+- Do not deploy the dirty root workspace or unrelated Prize Map source.
 
-## Not activated
+## Readiness and configuration
 
-The implementation is not a production release. Before enabling it:
+Local implementation and offline checks do **not** establish a production launch or successful provider integration. At the last preflight, AWS sessions were expired, permission for the previously blocked production billing-secret retrieval remained unresolved, and the owner's verified email/subject had not been supplied. Do not retrieve credentials through another path to bypass an approval rejection.
 
-1. Resolve the owner's email, then have that person verify their own account. Pin its Cognito `sub` only after verification. Never infer ownership from a Pokémon username or repository author.
-2. Resolve whether existing users must subscribe or retain access. The implementation currently has no grandfathered-user exception; do not publish it as a migration policy by accident.
-3. Renew the expired AWS session. Reading `trace-production` failed with “Your session has expired. Please reauthenticate using aws login.”
-4. Obtain the pending permission to use existing production Stripe credentials. Automatic review rejected `vercel env pull` because it would copy production billing secrets to a local file. Do not fetch them through another path to bypass that rejection.
-5. Configure and exercise Stripe test-mode checkout, renewal, upgrade, cancellation, invalid signatures, retries, and device linking before live billing. No real payment was made during implementation.
+- `ReservedConcurrency=0` omits a reservation; it does not set Lambda's actual reserved concurrency to zero. Positive values require verified regional headroom. AWS retains 100 unreserved units, so the old hardcoded reservation of 20 could fail in a limited account. [AWS concurrency guidance](https://docs.aws.amazon.com/lambda/latest/dg/configuration-concurrency.html)
+- `SesIdentity`, `SesFromEmail`, `SesRegion` configure a verified SES sender in this account; supply all three together. Production requires SES. Blank development settings use Cognito's default sender, currently limited to 50 emails/day per AWS account. Confirm SES production sending, identity verification and supported region; the deploy principal may need `iam:CreateServiceLinkedRole`. [Cognito quotas](https://docs.aws.amazon.com/cognito/latest/developerguide/quotas.html), [email configuration](https://docs.aws.amazon.com/cognito/latest/developerguide/user-pool-email.html)
+- `DiscordRequired`, `DiscordClientId`, `DiscordGuildId` configure activation. Production requires them plus the service secret ARN; its Secrets Manager JSON needs `discordClientSecret`. Obtain the real guild ID from Discord, never infer it from the invite. The fixed invite is `https://discord.gg/bxKJGB9dSY`.
+- `WebOrigin` fixes Stripe returns and the Discord callback. Production/live billing require `https://victoryroad.app`; test stacks may explicitly use one HTTPS Vercel origin. Request headers/client fields never select this origin.
 
-## Deployment order
+## Isolated provider dry run
 
-1. Follow `infrastructure/memberships/README.md` for the isolated account/membership stack, initially with billing disabled. Preserve the existing capture device table. Use separate fixed USD monthly Stripe prices and a dedicated portal configuration.
-2. Inspect the currently deployed capture template before changing it. Preserve the existing matches table, bucket versions, and `KEYS_ONLY` DynamoDB stream used by live leaderboards. The checked-in template retains that stream.
-3. Configure the membership endpoint on the website and as the GitHub repository variable `TRACE_MEMBERSHIP_API_URL`. The desktop release workflow refuses to publish without an HTTPS endpoint.
-4. Deploy the website account/proxy changes from the website checkout. Keep public leaderboards and sanitized replays working. Verify signed-out, unpaid, both paid plans, and owner states.
-5. After the owner has verified their account, pin `OwnerSubject` and enable only its `OwnerSwitches` record. Test both switch positions before enabling general paid access.
-6. Deploy capture privacy/registration changes. Set `MembershipApiUrl`; enable `RequireMembership` only after the agreed existing-user policy is implemented and the new desktop build is ready. Missing membership configuration cannot be enabled by CloudFormation.
-7. Release the desktop app through its normal signed macOS/Windows release workflow after reviewing the new upstream head. Test with saved/synthetic captures only; do not start a real game.
-8. Verify the public website, account cookies, checkout redirects, webhook processing, linked-device access, updater feed, and post-match unlock against the deployed stack.
+1. Publish a **protected preview** with billing unavailable and choose a stable Vercel alias. Do not expose test checkout on the public production site. Keep the same alias across redeployments so cookies and callbacks retain their origin.
+2. Create an isolated staging capture stack/table and synthetic devices using explicit `TRACE_STACK_NAME` and `TRACE_ENVIRONMENT=staging`. Never upload synthetic ranked fixtures into production or point staging membership at the production device table.
+3. Configure staging membership with that staging device table and the preview alias as `WebOrigin`. Keep `StripeMode=test`; use dedicated sandbox prices, webhook and portal, separate from film billing. Register the Discord callback as `<WebOrigin>/trace/discord/callback` with `identify guilds.members.read` scopes. Configure verified email delivery or a tightly limited development sender for initial tests.
+4. Set preview `TRACE_MEMBERSHIP_API_URL`, `TRACE_MEMBERSHIP_PROXY_SECRET` and matching `TRACE_WEB_ORIGIN`. Match the proxy secret to service `webProxySecret`; neither enters JavaScript. Enable test billing only on staging after configuration.
+5. Complete Free signup, email confirmation/resend/recovery, Discord join/verification, download, both sandbox purchases, claim and device linking. Release desktop binaries deliberately accept only the production link URL: approve a staging code manually on the protected preview and inspect staging device status instead of weakening release validation.
+6. Test failed card, canceled checkout, refresh-only session, wrong-account recovery, duplicate clicks/tabs, lost responses, delayed/duplicate/out-of-order webhooks, plan switching, cancellation, failed invoice, owner on/off and unlink. No redirect parameter or browser flag may grant access.
+7. With saved/synthetic captures, verify recent free reads, locked new old replays, local grandfathering, one free share then rejection, repeat-share reuse, concurrent share requests, premium sharing, membership outages and pre/post-match deck restrictions. Existing sanitized public links must remain readable. **Do not launch Pokémon TCG Live or enter a match.**
 
-## Boundaries and limitations
+Required real-provider evidence: actual email receipt/recovery, Discord nonmember/pending-member denial and successful verification, CSRF/state rejection, atomic DynamoDB/IAM behavior, Stripe sandbox reconciliation, and preview redirect/cookie handling. Offline fakes cannot prove these integrations.
 
-- Owner switch reads and protected decklist requests check the server afresh. Ordinary native access uses an in-memory lease of up to 60 seconds, refreshed every 30 seconds; use Refresh membership for an immediate visible account update.
-- Plan buttons go straight to hosted Stripe Checkout; account creation and email verification happen after payment. Configure the web proxy's shared secret together with `webProxySecret` in the service secret, and test post-payment claiming, wrong-account recovery, cancellation, reloads, and duplicate clicks before launch.
-- Missing/offline/expired membership cannot unlock new paid access. Raw captured data and already admitted matches are preserved.
-- Opponent lists are removed from normal frontend events, reviews, summaries, and public share responses. A separate native command checks membership and raw match-end evidence before returning a list.
-- Legacy public replay artifacts are rebuilt using projection format 2 before honoring old ETags. Previously downloaded copies cannot be recalled.
-- Old desktop binaries and locally saved captures cannot be remotely revoked. Public GitHub installers are not a secure entitlement boundary; current native and service checks provide access control.
-- Cloud-restored reviews without native raw match-end evidence must report opponent lists unavailable rather than trust a client-provided winner.
+## Production deployment order
+
+1. After the isolated dry run passes, inspect the deployed capture template and reviewed change set. Preserve device/match/share tables, private bucket versions and the `KEYS_ONLY` leaderboard stream. No replacement or destructive migration is intended.
+2. Deploy the production membership stack with SES, Discord, canonical `WebOrigin` and billing initially disabled. The complete config is validated by `infrastructure/memberships/deploy.py`; `--execute` performs writes. Enabled live billing additionally requires `--allow-live-billing`.
+3. Have the owner verify their account, pin its immutable Cognito `sub`, and enable only that subject's database switch. Never infer ownership from a player name, unrelated caller-supplied email or Git author.
+4. Configure separate live Stripe prices ($14.99/$39.99 monthly USD, quantity one), webhook and portal. Adapter and snapshot webhook version are pinned to `2024-06-20`. Set live service and web proxy secrets together.
+5. Deploy the website/account/proxy/callback changes from the website checkout. Preserve leaderboard/share routes. The callback is `/trace/discord/callback`; review this explicit apex route separately from single-segment shared replay routing.
+6. Deploy capture privacy/freemium changes. Explicitly set `MembershipApiUrl`; enable `RequireMembership` only when membership/website/native releases are coordinated. The flag enforces premium history and free-share quota, never uploads or summaries.
+7. Capture deployment preserves previous parameter values unless overridden explicitly with `TRACE_MEMBERSHIP_API_URL`, `TRACE_REQUIRE_MEMBERSHIP` or `TRACE_ENVIRONMENT`. Staging cannot publish the release API variable. Updating GitHub `TRACE_SYNC_API_URL` requires explicit `TRACE_PUBLISH_RELEASE_API=true` and canonical `trace-production` stack/environment.
+8. Set desktop `TRACE_MEMBERSHIP_API_URL` and publish through normal signed macOS/Windows release workflow after reviewing upstream changes. Verify updater feeds, free capture, paid reads, webhooks, public leaderboard and post-match unlock before calling rollout complete.
+
+## Boundaries and recovery
+
+- `traceAccess` remains a **paid** compatibility Boolean. Additive `capabilities` supplies free recording/leaderboard, seven-day replay/one-share limits and explicit premium capabilities. Outages leave free capture usable.
+- Ordinary native premium access uses a lease up to 60 seconds, refreshed every 30 seconds and capped at subscription expiry. Owner/protected list checks refresh from the server.
+- Share pointer, public lookup and free-use timestamp commit atomically. Retry the same game after preparation/network failure. The allowance is per installation, not account-wide anti-abuse.
+- Cloud history age is immutable once stored. Existing records use the earliest usable old date; corrections do not restart the free window. No originals are deleted on downgrade. Public compact leaderboard history covers all accepted games.
+- Discord state is short-lived, hashed, bound to the verified account and fixed guild, and consumed atomically with activation. Tokens remain in backend memory. Verification is one-time, not continuous monitoring. Existing account records stay exempt.
+- Public installers/old binaries can bypass website download onboarding; this is not DRM. Raw local captures and previously downloaded copies cannot be remotely recalled.
+- Full opponent inventories are removed from ordinary/public replay data. Protected native reads require current Supporters/owner access and raw terminal evidence. Cloud-restored reviews lacking evidence show lists unavailable.
+- Legacy public replay artifacts rebuild through privacy projection format 2 before honoring old ETags.
 
 ## Offline verification
 
-Run capture/privacy tests with `python3 -m unittest discover -s infrastructure/aws/tests -p 'test*.py'` and membership tests with `python3 -m unittest discover -s infrastructure/memberships/tests -p 'test*.py'`.
-
-Frontend, native, and website checks are documented in each implementation's test files. None of these checks requires opening Pokémon TCG Live or joining a match.
+Run `python3 -m unittest discover -s infrastructure/aws/tests -p 'test*.py'` and `python3 -m unittest discover -s infrastructure/memberships/tests -p 'test*.py'`. Also check Python compilation, shell syntax and YAML parsing. These require no credentials, email sends, card charges or game launches. SAM/CloudFormation semantic validation and actual provider/IAM tests remain requirements of the authorized staging rollout.

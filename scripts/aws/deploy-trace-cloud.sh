@@ -8,6 +8,33 @@ STACK_NAME="${TRACE_STACK_NAME:-trace-production}"
 
 # Fail before accessing AWS if the read/write/privacy contracts regress.
 python3 -m unittest discover -s "$REPO_ROOT/infrastructure/aws/tests" -v
+python3 "$REPO_ROOT/infrastructure/aws/deploy_parameters.py" --validate-input
+
+DEPLOY_WORK_DIR="$(mktemp -d)"
+trap 'rm -rf "$DEPLOY_WORK_DIR"' EXIT
+EXISTING_PARAMETERS="$DEPLOY_WORK_DIR/parameters.json"
+if aws cloudformation describe-stacks --profile "$AWS_PROFILE_NAME" --region "$AWS_REGION_NAME" \
+  --stack-name "$STACK_NAME" --query 'Stacks[0].Parameters' --output json \
+  >"$EXISTING_PARAMETERS" 2>"$DEPLOY_WORK_DIR/describe-error"; then
+  :
+else
+  DESCRIBE_ERROR="$(cat "$DEPLOY_WORK_DIR/describe-error")"
+  if [[ "$DESCRIBE_ERROR" == *ValidationError* && "$DESCRIBE_ERROR" == *"does not exist"* ]]; then
+    printf '[]\n' >"$EXISTING_PARAMETERS"
+  else
+    printf 'Could not inspect the existing capture stack. Check AWS login and permissions; nothing deployed.\n' >&2
+    exit 1
+  fi
+fi
+OVERRIDE_LINES="$(python3 "$REPO_ROOT/infrastructure/aws/deploy_parameters.py" "$EXISTING_PARAMETERS" --stack-name "$STACK_NAME")"
+EFFECTIVE_ENVIRONMENT="$(python3 "$REPO_ROOT/infrastructure/aws/deploy_parameters.py" "$EXISTING_PARAMETERS" --stack-name "$STACK_NAME" --environment)"
+PARAMETER_ARGS=()
+if [[ -n "$OVERRIDE_LINES" ]]; then
+  PARAMETER_ARGS+=(--parameter-overrides)
+  while IFS= read -r parameter; do
+    PARAMETER_ARGS+=("$parameter")
+  done <<<"$OVERRIDE_LINES"
+fi
 
 ACCOUNT_ID="$(aws sts get-caller-identity --profile "$AWS_PROFILE_NAME" --query Account --output text)"
 ARTIFACT_BUCKET="trace-cloudformation-${ACCOUNT_ID}-${AWS_REGION_NAME}"
@@ -30,8 +57,7 @@ aws s3api put-public-access-block \
   --public-access-block-configuration \
   'BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true'
 
-PACKAGED_TEMPLATE="$(mktemp)"
-trap 'rm -f "$PACKAGED_TEMPLATE"' EXIT
+PACKAGED_TEMPLATE="$DEPLOY_WORK_DIR/packaged.yml"
 
 aws cloudformation package \
   --profile "$AWS_PROFILE_NAME" \
@@ -48,7 +74,8 @@ aws cloudformation deploy \
   --stack-name "$STACK_NAME" \
   --capabilities CAPABILITY_IAM \
   --no-fail-on-empty-changeset \
-  --tags app=trace environment=production
+  ${PARAMETER_ARGS[@]+"${PARAMETER_ARGS[@]}"} \
+  --tags app=trace "environment=$EFFECTIVE_ENVIRONMENT"
 
 API_URL="$(aws cloudformation describe-stacks \
   --profile "$AWS_PROFILE_NAME" \
@@ -57,5 +84,7 @@ API_URL="$(aws cloudformation describe-stacks \
   --query 'Stacks[0].Outputs[?OutputKey==`ApiUrl`].OutputValue | [0]' \
   --output text)"
 
-gh variable set TRACE_SYNC_API_URL --repo DeepTitan/pokemon-tcg-ai --body "$API_URL"
+if [[ "${TRACE_PUBLISH_RELEASE_API:-false}" == 'true' ]]; then
+  gh variable set TRACE_SYNC_API_URL --repo DeepTitan/pokemon-tcg-ai --body "$API_URL"
+fi
 printf 'Trace cloud API deployed: %s\n' "$API_URL"

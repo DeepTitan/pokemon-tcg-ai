@@ -1,6 +1,10 @@
 # Trace memberships — implementation contract (not deployed)
 
-Trace: USD 14.99/month. Supporters Club: USD 39.99/month, includes Trace and post-match opponent decklists. Authoritative EndGameModification required for opponent decklist release; inferred wins/client exit are not completion. Admin bypasses billing only, never match completion. Existing-user migration and owner verified email are pending user answers.
+Free: continuous recording, leaderboard/results, the latest seven days of full replays, and one new replay share per installation per rolling seven days. Pro: USD 14.99/month, full retained replay archive and expanded sharing (internal plan ID `trace`). Supporters Club: USD 39.99/month, includes Pro and post-match deck study (internal ID `supporter`). Authoritative EndGameModification is required for full opponent decklist release; inferred wins/client exit are not completion. Admin bypasses billing only, never match completion. The owner's verified email/immutable subject and real-provider verification are still required before launch.
+
+Existing local SQLite records, pre-upgrade JSONL captures, and a one-time browser archive migration remain readable without payment. New captures use native stored timestamps to enforce the seven-day boundary. No capture files are deleted and cumulative results/rating history does not expire. Cloud replay history uses its immutable server age; local grandfathering does not grant free new cloud shares of older games. Existing public links remain readable and repeated sharing reuses the same link without spending another allowance. The free share quota is per installation, not a promised account-wide anti-abuse boundary.
+
+New-user Discord activation uses configured OAuth credentials and a fixed guild membership check. `activation: {required, verified, joinUrl}` is separate from billing capabilities. Pending activation gates downloads and new device-link approval, while billing management and existing capture stay available. Accounts predating activation enforcement remain exempt. An invite link alone does not grant activation; real provider configuration and testing are still pending.
 
 ## Services
 
@@ -10,26 +14,32 @@ New isolated AWS SAM membership stack, separate from existing capture stack. Cog
 
 Base native: compile/env TRACE_MEMBERSHIP_API_URL. Web proxy: `/trace/api/:action` on existing Trace Vercel deployment; upstream `${TRACE_MEMBERSHIP_API_URL}/v1/:action`.
 
+The backend's trusted `WebOrigin` supplies checkout, portal, and Discord callback return URLs. Production/live billing requires exactly `https://victoryroad.app`; staging may use an explicitly configured protected Vercel origin. No request header controls these destinations. The release desktop validates the production `/trace/link?code=...` URL; the web app supports `/trace/link` as an alias of the consent-based `/trace/connect` flow.
+
+Discord activation: the browser submits an authenticated same-origin form to `/trace/discord/callback`. The server calls `POST discord/start`, binds the returned state to a short-lived HttpOnly cookie, and redirects to Discord. On callback, the server validates the cookie/state and calls `POST discord/complete {code,state}` with the verified account session. The backend binds a one-time nonce hash to account, guild and expiry, checks Discord's member API, then records activation. OAuth tokens never enter page JavaScript or stored account rows. A safe result code and optional device-code context return to My account.
+
 POST auth/signup {email,password}; POST auth/confirm {email,code}; POST auth/resend {email}; POST auth/login {email,password} => {accessToken,refreshToken,expiresIn}; POST auth/refresh {refreshToken} same result; POST auth/recover {email}; POST auth/reset {email,code,password}; POST auth/logout bearer. Web proxy keeps tokens in HttpOnly Secure SameSite=Lax cookies and never returns them to browser JS; checks same Origin on mutations.
 
-GET account (Cognito bearer) => {email, plan: 'none'|'trace'|'supporter', traceAccess:boolean, opponentDecklists:boolean, admin:boolean, status:string, expiresAt:string|null, cancelAtPeriodEnd:boolean}. Missing/invalid plan/status fails closed. Admin requires immutable verified subject, separate DB switch and does not mint a Stripe subscription.
+GET account (Cognito bearer) => {email, plan: 'none'|'trace'|'supporter', traceAccess:boolean, opponentDecklists:boolean, admin:boolean, status:string, expiresAt:string|null, cancelAtPeriodEnd:boolean, capabilities}. Legacy `traceAccess` remains a paid-only flag. Free access is represented explicitly by `capabilities`: {recordMatches:true, leaderboard:true, recentReplayDays:7, fullHistory:boolean, expandedSharing:boolean, opponentDecklists:boolean, freeSharesPerWindow:1, shareWindowDays:7}. Unknown premium capabilities fail closed; billing failure or cancellation does not stop Free recording. Admin requires immutable verified subject, separate DB switch and does not mint a Stripe subscription.
 POST checkout {plan:'trace'|'supporter'} (account bearer) => {url}; price IDs/amount/currency/monthly recurrence validated server-side. Duplicate subscription routed to portal or refused. Success/cancel URL on fixed victoryroad.app/trace/account.
 POST portal (account bearer) => {url}. POST webhook receives raw Stripe signature+body, verified and idempotent, reconciles authoritative current subscription under account serialization/conditional writes; allowlisted plan prices only.
 
 Native membership calls authenticate with existing capture device UUID and bearer (`x-trace-device`, Authorization Bearer existingCloudToken); service verifies hash in existing devices table, does not accept caller-provided account subject.
-GET devices/status => same entitlement fields as account, plus linked:boolean. No account returns none/false.
+GET devices/status => same entitlement fields as account, plus linked:boolean. No account returns no paid access and retains Free capabilities.
 POST devices/link/start => {userCode,verificationUrl,expiresAt}. Store short-lived one-time code hash bound to authenticated device. Native polls devices/status using device credentials. Existing linkage only replaced through deliberate unlink first.
 POST devices/link/approve {userCode} (account bearer) => {linked:true}. Explicit browser consent, matching code shown. No auto-approval from a URL. GET account only; no admin-role assignment routes.
 POST devices/unlink (device bearer) removes linkage.
 
 ## Desktop IPC contract
 
-membership_status => {linked, email, plan, traceAccess, opponentDecklists, admin, status, expiresAt, cancelAtPeriodEnd}
+membership_status => {linked, email, plan, traceAccess, opponentDecklists, admin, status, expiresAt, cancelAtPeriodEnd, capabilities}
 membership_link => {userCode, verificationUrl, expiresAt} and opens fixed https victoryroad.app URL in external browser (no native client launch).
 membership_unlink => status.
 load_opponent_decklist {matchId} => validated list only after fresh membership verification + native stored terminal evidence. Always omit opponent full inventory from ordinary operation/review/summary events. Own deck and naturally revealed cards remain.
 
-Credentials never enter JS, logs, or private replay exports. Keep updater/account recovery usable without payment. Never terminate live capture routing due to expiry/connectivity.
+Credentials never enter JS, logs, or private replay exports. Keep updater/account recovery usable without payment. Never terminate live capture routing due to expiry/connectivity. Native startup, capture, and compact history summaries require no membership admission call. Native replay checks use stored age or the one-time migration exemption. Server cloud reads older than seven days require fullHistory; new free shares use an atomic match/share/quota transaction. `share_limit_reached` includes nextShareAt; `history_membership_required` requires Pro for an old private replay/new share.
+
+These checks govern the supported current client and server APIs. Retained local raw files and old binaries cannot be made tamper-proof by a desktop UI entitlement. Do not advertise DRM or claim old versions enforce these new limits.
 
 ## Direct Stripe checkout (September 27 follow-up)
 

@@ -13,6 +13,8 @@ from urllib.parse import urlencode
 
 ACCOUNT_URL = 'https://victoryroad.app/trace/account'
 LINK_URL = 'https://victoryroad.app/trace/link'
+DISCORD_CALLBACK_URL = 'https://victoryroad.app/trace/discord/callback'
+DISCORD_JOIN_URL = 'https://discord.gg/bxKJGB9dSY'
 PRICE_AMOUNTS = {'trace': 1499, 'supporter': 3999}
 DEVICE_ID = re.compile(r'^[A-Za-z0-9._-]{16,128}$')
 SUBJECT = re.compile(r'^[A-Za-z0-9_-]{1,128}$')
@@ -45,6 +47,10 @@ class Config:
     stripe_live: bool = False
     trace_price: str = ''
     supporter_price: str = ''
+    discord_required: bool = False
+    discord_client_id: str = ''
+    discord_guild_id: str = ''
+    web_origin: str = 'https://victoryroad.app'
 
     @property
     def prices(self):
@@ -55,8 +61,22 @@ def digest(value):
     return hashlib.sha256(value.encode()).hexdigest()
 
 
+def trusted_web_origin(value):
+    if not isinstance(value, str) or not re.fullmatch(r'https://(?:victoryroad\.app|[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.vercel\.app)', value):
+        raise ApiError(503, 'service_unavailable')
+    return value
+
+
 def iso_timestamp(value):
     return dt.datetime.fromtimestamp(int(value), dt.timezone.utc).isoformat().replace('+00:00', 'Z')
+
+
+def capabilities(paid=False, supporter=False):
+    """Free recording never depends on billing, linking, or subscription status."""
+    return {'recordMatches': True, 'leaderboard': True, 'recentReplayDays': 7,
+            'freeSharesPerWindow': 1, 'shareWindowDays': 7,
+            'fullHistory': bool(paid), 'expandedSharing': bool(paid),
+            'opponentDecklists': bool(paid and supporter)}
 
 
 def headers(event):
@@ -203,8 +223,12 @@ def subscription_snapshot(subscriptions, config, now):
 
 
 class MembershipService:
-    def __init__(self, config, store, cognito, stripe, clock=time.time):
+    def __init__(self, config, store, cognito, stripe, clock=time.time, discord=None):
         self.config, self.store, self.cognito, self.stripe, self.clock = config, store, cognito, stripe, clock
+        self.discord = discord
+        self.web_origin = trusted_web_origin(config.web_origin)
+        if config.stripe_live and self.web_origin != 'https://victoryroad.app':
+            raise ApiError(503, 'service_unavailable')
 
     def now(self):
         return int(self.clock())
@@ -229,7 +253,7 @@ class MembershipService:
         if attrs.get('email_verified') != 'true':
             raise ApiError(403, 'email_not_verified')
         email = email_value(attrs.get('email'))
-        self.store.remember_account(subject, email)
+        self.store.remember_account(subject, email, self.config.discord_required)
         return subject, email
 
     def device_identity(self, event):
@@ -256,7 +280,8 @@ class MembershipService:
         if admin:
             return {'email': email or account.get('email'), 'plan': 'supporter', 'traceAccess': True,
                     'opponentDecklists': True, 'admin': True, 'status': 'admin',
-                    'expiresAt': None, 'cancelAtPeriodEnd': False}
+                    'expiresAt': None, 'cancelAtPeriodEnd': False,
+                    'capabilities': capabilities(True, True), 'activation': self.activation(account)}
         # Webhooks normally keep this fresh. Reads repair missed events; stale/failed
         # reconciliation never continues granting paid access from an old snapshot.
         if account and account.get('customerId') and self.config.billing_enabled and now - int(snapshot.get('syncedAt', 0)) > 300:
@@ -271,7 +296,59 @@ class MembershipService:
         return {'email': email or (account or {}).get('email'), 'plan': plan if plan in PRICE_AMOUNTS else 'none',
                 'traceAccess': allowed, 'opponentDecklists': allowed and plan == 'supporter', 'admin': False,
                 'status': status if current else 'none', 'expiresAt': iso_timestamp(expires) if expires else None,
-                'cancelAtPeriodEnd': snapshot.get('cancelAtPeriodEnd') is True}
+                'cancelAtPeriodEnd': snapshot.get('cancelAtPeriodEnd') is True,
+                'capabilities': capabilities(allowed, plan == 'supporter'), 'activation': self.activation(account)}
+
+    def activation(self, account):
+        account = account or {}
+        verified = bool(re.fullmatch(r'[0-9]{17,20}', str(account.get('discordUserId', '')))
+                        and account.get('discordGuildId') == self.config.discord_guild_id
+                        and int(account.get('discordVerifiedAt') or 0) > 0)
+        return {'required': self.config.discord_required and account.get('discordActivationRequired') is True,
+                'verified': verified, 'joinUrl': DISCORD_JOIN_URL}
+
+    def require_activation(self, subject):
+        activation = self.activation(self.store.account(subject))
+        if activation['required'] and not activation['verified']:
+            raise ApiError(403, 'discord_required')
+
+    def require_discord(self):
+        if (not self.config.discord_required or self.discord is None
+                or not re.fullmatch(r'[0-9]{17,20}', self.config.discord_client_id)
+                or not re.fullmatch(r'[0-9]{17,20}', self.config.discord_guild_id)):
+            raise ApiError(503, 'discord_unavailable')
+
+    def discord_start(self, subject):
+        self.require_discord()
+        self.store.limit('discord-start:' + subject, 6, 600, self.now())
+        state = secrets.token_urlsafe(32)
+        self.store.create_discord_state(digest(state), subject, self.config.discord_guild_id, self.now() + 600)
+        return {'url': 'https://discord.com/oauth2/authorize?' + urlencode({
+            'client_id': self.config.discord_client_id, 'response_type': 'code',
+            'redirect_uri': self.web_origin + '/trace/discord/callback', 'scope': 'identify guilds.members.read', 'state': state,
+        })}
+
+    def discord_complete(self, subject, code, state):
+        self.require_discord()
+        if (not isinstance(state, str) or not re.fullmatch(r'[A-Za-z0-9_-]{43}', state)
+                or not isinstance(code, str) or not 1 <= len(code) <= 512 or re.search(r'\s', code)):
+            raise ApiError(400, 'discord_state_invalid')
+        proof = digest(state)
+        with self.store.account_lock(subject, self.now()) as lease:
+            record = self.store.discord_state(proof)
+            if (not record or record.get('subject') != subject or record.get('guildId') != self.config.discord_guild_id
+                    or int(record.get('ttl', 0)) <= self.now()):
+                raise ApiError(400, 'discord_state_invalid')
+            if record.get('usedAt'):
+                account = self.store.account(subject) or {}
+                if self.activation(account)['verified'] and account.get('discordUserId') == record.get('discordUserId'):
+                    return {'verified': True}
+                raise ApiError(400, 'discord_state_invalid')
+            discord_user = self.discord.verify_member(code, self.config.discord_client_id, self.config.discord_guild_id)
+            if not isinstance(discord_user, str) or not re.fullmatch(r'[0-9]{17,20}', discord_user):
+                raise ApiError(503, 'discord_unavailable')
+            self.store.complete_discord(proof, subject, discord_user, self.config.discord_guild_id, lease, self.now())
+        return {'verified': True}
 
     def reconcile(self, subject, account, lease):
         self.require_billing()
@@ -525,6 +602,7 @@ class MembershipService:
                 'expiresAt': iso_timestamp(expires)}
 
     def approve_link(self, subject, user_code):
+        self.require_activation(subject)
         self.store.limit('link-approve:' + subject, 12, 600, self.now())
         if not isinstance(user_code, str) or len(user_code) > 32:
             raise ApiError(400, 'invalid_code')
@@ -642,11 +720,17 @@ class MembershipService:
                 return self.device_status(device, credential_hash)
             raise ApiError(405, 'method_not_allowed')
         if (method, path) not in {('GET', '/v1/account'), ('POST', '/v1/checkout'),
-                                  ('POST', '/v1/portal'), ('POST', '/v1/devices/link/approve')}:
+                                  ('POST', '/v1/portal'), ('POST', '/v1/devices/link/approve'),
+                                  ('POST', '/v1/discord/start'), ('POST', '/v1/discord/complete')}:
             raise ApiError(404, 'not_found')
         subject, email = self.account_identity(event)
         if path == '/v1/account':
             return self.entitlement(subject, email)
+        if path == '/v1/discord/start':
+            return self.discord_start(subject)
+        if path == '/v1/discord/complete':
+            request = body(event)
+            return self.discord_complete(subject, request.get('code'), request.get('state'))
         if path == '/v1/checkout':
             return self.checkout(subject, email, body(event).get('plan'))
         if path == '/v1/portal':

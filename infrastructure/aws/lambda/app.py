@@ -14,6 +14,7 @@ import urllib.request
 import boto3
 from botocore.exceptions import ClientError
 from boto3.dynamodb.conditions import Key
+from boto3.dynamodb.types import TypeSerializer
 
 
 DEVICES_TABLE = os.environ["DEVICES_TABLE"]
@@ -26,8 +27,13 @@ REQUIRE_MEMBERSHIP = os.environ.get("REQUIRE_MEMBERSHIP", "false") == "true"
 DEVICE_ID = re.compile(r"^[A-Za-z0-9._-]{16,128}$")
 MATCH_ID = re.compile(r"^[A-Za-z0-9._:-]{1,220}$")
 SHARE_ID = re.compile(r"^[A-Za-z0-9_-]{20,64}$")
+FREE_HISTORY_SECONDS = 7 * 86400
+MATCH_SUMMARY_FIELDS = ("importedAt", "source", "localPlayer", "opponent", "winner", "turnCount",
+                        "localRating", "opponentRating", "ratingChange", "ratingAfter", "operationCount",
+                        "durationSeconds", "socialPreview")
 
 dynamodb = boto3.resource("dynamodb")
+dynamodb_client = boto3.client("dynamodb")
 devices = dynamodb.Table(DEVICES_TABLE)
 matches = dynamodb.Table(MATCHES_TABLE)
 shares = dynamodb.Table(SHARES_TABLE)
@@ -51,10 +57,6 @@ def handler(event, _context):
         identity = authorize(event)
         if not identity:
             return response(401, {"error": "unauthorized"})
-        membership_error = require_membership(event)
-        if membership_error:
-            return membership_error
-
         if method == "GET" and path == "/v1/matches":
             return list_matches(identity)
 
@@ -64,7 +66,7 @@ def handler(event, _context):
         if method == "PUT":
             return put_match(identity, match_id, event)
         if method == "GET":
-            return get_match(identity, match_id)
+            return get_match(identity, match_id, event)
         if method == "POST" and path.endswith("/share"):
             return share_match(identity, match_id, event)
         return response(404, {"error": "not_found"})
@@ -141,9 +143,20 @@ def device_membership(event):
     return json.loads(encoded)
 
 
-def require_membership(event):
-    # This rollout switch is infrastructure configuration, never client input.
-    # Enable after accounts, billing, and existing-user policy are ready.
+def has_paid_capability(membership, capability):
+    if not isinstance(membership, dict) or membership.get("linked") is not True:
+        return False
+    owner = membership.get("status") == "admin" and membership.get("admin") is True and membership.get("plan") == "supporter"
+    expires = parsed_time(membership.get("expiresAt"))
+    paid = (membership.get("status") == "active" and membership.get("plan") in ("trace", "supporter")
+            and expires is not None and expires > utc_now())
+    return (membership.get("traceAccess") is True and (paid or owner)
+            and isinstance(membership.get("capabilities"), dict)
+            and membership["capabilities"].get(capability) is True)
+
+
+def require_membership(event, capability="fullHistory"):
+    # The flag enables premium read/share enforcement, never capture enforcement.
     if not REQUIRE_MEMBERSHIP:
         return None
     try:
@@ -152,12 +165,42 @@ def require_membership(event):
         return response(503, {"error": "membership_unavailable"})
     if not isinstance(membership, dict):
         return response(503, {"error": "membership_unavailable"})
-    linked = membership.get("linked") is True
-    paid = membership.get("status") == "active" and membership.get("plan") in ("trace", "supporter")
-    owner = membership.get("status") == "admin" and membership.get("admin") is True and membership.get("plan") == "supporter"
-    if linked and membership.get("traceAccess") is True and (paid or owner):
+    if has_paid_capability(membership, capability):
         return None
-    return response(403, {"error": "membership_required"})
+    return response(403, {"error": "history_membership_required"})
+
+
+def utc_now():
+    return dt.datetime.now(dt.timezone.utc)
+
+
+def parsed_time(value):
+    try:
+        parsed = dt.datetime.fromisoformat(value.replace("Z", "+00:00")) if isinstance(value, str) else None
+        return parsed.astimezone(dt.timezone.utc) if parsed is not None and parsed.tzinfo is not None else None
+    except (ValueError, OverflowError):
+        return None
+
+
+def history_started_at(item, now=None):
+    """Persisted age wins; legacy rows use their earliest usable existing date.
+
+    A client timestamp can only shorten first-upload access. Neither a correction
+    nor a later client date can refresh the stored seven-day access window.
+    """
+    fixed = parsed_time(item.get("historyStartedAt"))
+    if fixed is not None:
+        return fixed
+    dates = [parsed_time(item.get(key)) for key in ("importedAt", "updatedAt")]
+    if now is not None:
+        dates.append(now)
+    return min((date for date in dates if date is not None), default=None)
+
+
+def is_recent_match(item):
+    started = history_started_at(item)
+    now = utc_now()
+    return started is not None and now - dt.timedelta(seconds=FREE_HISTORY_SECONDS) < started <= now
 
 
 def put_match(device_id, match_id, event):
@@ -188,7 +231,7 @@ def put_match(device_id, match_id, event):
         Key={"deviceId": device_id, "matchId": match_id},
         ConsistentRead=True,
     ).get("Item") or {}
-    item = clean({
+    fields = clean({
         "deviceId": device_id,
         "matchId": match_id,
         "objectKey": object_key,
@@ -196,10 +239,31 @@ def put_match(device_id, match_id, event):
         "updatedAt": now,
         "payloadBytes": len(compressed),
         "reducerVersion": reducer_version,
-        "shareId": existing.get("shareId"),
         **summary,
     })
-    matches.put_item(Item=item)
+    anchor = history_started_at(existing) if existing else history_started_at(fields, parsed_time(now))
+    # An undated legacy row must not become "new" merely because it was repaired.
+    anchor = (anchor or dt.datetime(1970, 1, 1, tzinfo=dt.timezone.utc)).isoformat().replace("+00:00", "Z")
+    # Updating fields preserves a concurrent share reservation. In particular,
+    # a background capture upload cannot erase shareId or refresh its access age.
+    fields.pop("deviceId")
+    fields.pop("matchId")
+    names = {f"#f{i}": key for i, key in enumerate(fields)}
+    values = {f":v{i}": value for i, value in enumerate(fields.values())}
+    expression = ", ".join(f"#f{i} = :v{i}" for i in range(len(fields)))
+    removed = {f"#r{i}": key for i, key in enumerate(MATCH_SUMMARY_FIELDS) if key not in fields}
+    names.update(removed)
+    expression += ", historyStartedAt = if_not_exists(historyStartedAt, :anchor)"
+    if removed:
+        # Keep the old replacement semantics for corrected/missing summary data.
+        # Preserving a stale Elo after a correction would change ranked eligibility.
+        expression += " REMOVE " + ", ".join(removed)
+    item = matches.update_item(
+        Key={"deviceId": device_id, "matchId": match_id},
+        UpdateExpression="SET " + expression,
+        ExpressionAttributeNames=names,
+        ExpressionAttributeValues={**values, ":anchor": anchor}, ReturnValues="ALL_NEW",
+    )["Attributes"]
     # Only explicitly shared matches get a public-response artifact. Refresh it
     # during upload so viewers do not pay the serialization cost after an update.
     if item.get("shareId"):
@@ -218,13 +282,17 @@ def list_matches(device_id):
     return response(200, {"matches": [public_summary(item) for item in items]})
 
 
-def get_match(device_id, match_id):
+def get_match(device_id, match_id, event=None):
     item = matches.get_item(
         Key={"deviceId": device_id, "matchId": match_id},
         ConsistentRead=True,
     ).get("Item")
     if not item:
         return response(404, {"error": "match_not_found"})
+    if not is_recent_match(item):
+        denied = require_membership(event or {})
+        if denied:
+            return denied
     review = stored_review(item)
     return compressed_response(200, {
         "review": visible_review(review),
@@ -240,6 +308,22 @@ def share_match(device_id, match_id, event):
     ).get("Item")
     if not item:
         return response(404, {"error": "match_not_found"})
+
+    share_id = item.get("shareId")
+    existing_share = isinstance(share_id, str) and SHARE_ID.fullmatch(share_id)
+    free_share = False
+    if REQUIRE_MEMBERSHIP and not existing_share:
+        if not is_recent_match(item):
+            denied = require_membership(event, "expandedSharing")
+            if denied:
+                return denied
+        else:
+            # A billing outage must not block the free allowance. Only a fresh,
+            # valid entitlement can bypass its server-side quota.
+            try:
+                free_share = not has_paid_capability(device_membership(event), "expandedSharing")
+            except (OSError, ValueError, urllib.error.URLError):
+                free_share = True
 
     supplied_summary = social_summary_fields(read_json(event).get("summary"))
     if supplied_summary:
@@ -257,33 +341,10 @@ def share_match(device_id, match_id, event):
             ReturnValues="ALL_NEW",
         )["Attributes"]
 
-    share_id = item.get("shareId")
-    if not isinstance(share_id, str) or not SHARE_ID.fullmatch(share_id):
-        for _ in range(5):
-            candidate = secrets.token_urlsafe(18)
-            try:
-                shares.put_item(
-                    Item={
-                        "shareId": candidate,
-                        "deviceId": device_id,
-                        "matchId": match_id,
-                        "createdAt": timestamp(),
-                    },
-                    ConditionExpression="attribute_not_exists(shareId)",
-                )
-                share_id = candidate
-                break
-            except ClientError as error:
-                if error.response.get("Error", {}).get("Code") != "ConditionalCheckFailedException":
-                    raise
-        else:
-            raise RuntimeError("share_id_generation_failed")
-
-        matches.update_item(
-            Key={"deviceId": device_id, "matchId": match_id},
-            UpdateExpression="SET shareId = :share_id",
-            ExpressionAttributeValues={":share_id": share_id},
-        )
+    if not existing_share:
+        share_id, denied = reserve_share(device_id, match_id, item, free_share)
+        if denied:
+            return denied
     else:
         # Repair the public lookup if a retained match outlived a replaced share table.
         shares.update_item(
@@ -305,6 +366,65 @@ def share_match(device_id, match_id, event):
         "shareId": share_id,
         "url": f"{PUBLIC_SHARE_BASE_URL}/{share_id}",
     })
+
+
+def reserve_share(device_id, match_id, item, free_share):
+    """One pointer, public lookup and free-use reservation commit atomically.
+
+    Reusing the same match does not consume another allowance, even after a lost
+    response or failure while preparing the public payload. Quota is per capture
+    installation, not an account-wide anti-abuse measure.
+    """
+    serialize = TypeSerializer().serialize
+    attrs = lambda values: {key: serialize(value) for key, value in values.items()}
+    for _ in range(5):
+        previous = item.get("shareId")
+        if isinstance(previous, str) and SHARE_ID.fullmatch(previous):
+            return previous, None
+        candidate = secrets.token_urlsafe(18)
+        now = int(utc_now().timestamp())
+        condition = "attribute_not_exists(shareId)"
+        values = {":share": candidate}
+        if "shareId" in item:
+            condition += " OR shareId = :old"
+            values[":old"] = item["shareId"]
+        writes = [
+            {"Update": {"TableName": MATCHES_TABLE, "Key": attrs({"deviceId": device_id, "matchId": match_id}),
+                        "UpdateExpression": "SET shareId = :share",
+                        "ConditionExpression": "attribute_exists(matchId) AND (" + condition + ")",
+                        "ExpressionAttributeValues": attrs(values)}},
+            {"Put": {"TableName": SHARES_TABLE,
+                     "Item": attrs({"shareId": candidate, "deviceId": device_id, "matchId": match_id, "createdAt": timestamp()}),
+                     "ConditionExpression": "attribute_not_exists(shareId)"}},
+        ]
+        if free_share:
+            writes.append({"Update": {
+                "TableName": DEVICES_TABLE, "Key": attrs({"deviceId": device_id}),
+                "UpdateExpression": "SET lastFreeShareAt = :now, lastFreeShareId = :share",
+                "ConditionExpression": "attribute_exists(deviceId) AND (attribute_not_exists(lastFreeShareAt) OR lastFreeShareAt <= :cutoff)",
+                "ExpressionAttributeValues": attrs({":now": now, ":share": candidate, ":cutoff": now - FREE_HISTORY_SECONDS}),
+            }})
+        try:
+            dynamodb_client.transact_write_items(TransactItems=writes)
+            return candidate, None
+        except ClientError as error:
+            if error.response.get("Error", {}).get("Code") != "TransactionCanceledException":
+                raise
+            current = matches.get_item(Key={"deviceId": device_id, "matchId": match_id}, ConsistentRead=True).get("Item")
+            if not current:
+                return None, response(404, {"error": "match_not_found"})
+            previous = current.get("shareId")
+            if isinstance(previous, str) and SHARE_ID.fullmatch(previous):
+                return previous, None
+            if free_share:
+                device = devices.get_item(Key={"deviceId": device_id}, ConsistentRead=True).get("Item") or {}
+                used = device.get("lastFreeShareAt")
+                if used is not None and int(used) > now - FREE_HISTORY_SECONDS:
+                    next_share = dt.datetime.fromtimestamp(int(used) + FREE_HISTORY_SECONDS, dt.timezone.utc)
+                    return None, response(403, {"error": "share_limit_reached",
+                                               "nextShareAt": next_share.isoformat().replace("+00:00", "Z")})
+            item = current
+    return None, response(409, {"error": "share_busy"})
 
 
 def stored_review(item):

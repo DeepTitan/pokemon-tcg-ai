@@ -139,8 +139,10 @@ class MembershipEnforcementTests(unittest.TestCase):
 
     def test_paid_plans_and_only_explicit_owner_status_grant_access(self):
         for plan in ('trace', 'supporter'):
-            self.assertIsNone(self.check({'linked': True, 'traceAccess': True, 'plan': plan, 'status': 'active'}))
-        self.assertIsNone(self.check({'linked': True, 'traceAccess': True, 'plan': 'supporter', 'admin': True, 'status': 'admin'}))
+            self.assertIsNone(self.check({'linked': True, 'traceAccess': True, 'plan': plan, 'status': 'active',
+                                          'expiresAt': '2999-01-01T00:00:00Z', 'capabilities': {'fullHistory': True}}))
+        self.assertIsNone(self.check({'linked': True, 'traceAccess': True, 'plan': 'supporter', 'admin': True,
+                                     'status': 'admin', 'capabilities': {'fullHistory': True}}))
 
     def test_expired_unlinked_unpaid_or_ambiguous_state_is_denied(self):
         base = {'linked': True, 'traceAccess': True, 'plan': 'supporter', 'status': 'active'}
@@ -162,13 +164,15 @@ class MembershipEnforcementTests(unittest.TestCase):
             self.assertIsNone(app.require_membership({}))
             fetch.assert_not_called()
 
-    def test_private_route_stops_before_reading_or_writing_a_match(self):
+    def test_capture_upload_never_depends_on_membership(self):
         event = {'requestContext': {'http': {'method': 'PUT'}}, 'rawPath': '/v1/matches/test',
                  'pathParameters': {'matchId': 'test'}}
         with patch.object(app, 'REQUIRE_MEMBERSHIP', True), patch.object(app, 'authorize', return_value='device'), \
-                patch.object(app, 'device_membership', return_value={'status': 'canceled'}), patch.object(app, 'put_match') as write:
-            self.assertEqual(app.handler(event, None)['statusCode'], 403)
-            write.assert_not_called()
+                patch.object(app, 'device_membership', side_effect=OSError) as fetch, \
+                patch.object(app, 'put_match', return_value={'statusCode': 200}) as write:
+            self.assertEqual(app.handler(event, None)['statusCode'], 200)
+            write.assert_called_once()
+            fetch.assert_not_called()
 
     def test_public_share_does_not_require_viewers_to_have_a_membership(self):
         event = {'requestContext': {'http': {'method': 'GET'}}, 'rawPath': '/v1/shares/' + 'a' * 24,
