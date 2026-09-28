@@ -1,4 +1,5 @@
 import base64
+import copy
 import datetime as dt
 import gzip
 import hashlib
@@ -7,6 +8,8 @@ import json
 import os
 import re
 import secrets
+import urllib.error
+import urllib.request
 
 import boto3
 from botocore.exceptions import ClientError
@@ -18,6 +21,8 @@ MATCHES_TABLE = os.environ["MATCHES_TABLE"]
 SHARES_TABLE = os.environ["SHARES_TABLE"]
 PAYLOAD_BUCKET = os.environ["PAYLOAD_BUCKET"]
 PUBLIC_SHARE_BASE_URL = os.environ.get("PUBLIC_SHARE_BASE_URL", "https://victoryroad.app/trace").rstrip("/")
+MEMBERSHIP_API_URL = os.environ.get("MEMBERSHIP_API_URL", "").rstrip("/")
+REQUIRE_MEMBERSHIP = os.environ.get("REQUIRE_MEMBERSHIP", "false") == "true"
 DEVICE_ID = re.compile(r"^[A-Za-z0-9._-]{16,128}$")
 MATCH_ID = re.compile(r"^[A-Za-z0-9._:-]{1,220}$")
 SHARE_ID = re.compile(r"^[A-Za-z0-9_-]{20,64}$")
@@ -46,6 +51,9 @@ def handler(event, _context):
         identity = authorize(event)
         if not identity:
             return response(401, {"error": "unauthorized"})
+        membership_error = require_membership(event)
+        if membership_error:
+            return membership_error
 
         if method == "GET" and path == "/v1/matches":
             return list_matches(identity)
@@ -75,12 +83,19 @@ def register(event):
 
     token = secrets.token_urlsafe(36)
     now = timestamp()
-    devices.put_item(Item={
-        "deviceId": device_id,
-        "tokenHash": digest(token),
-        "createdAt": now,
-        "updatedAt": now,
-    })
+    try:
+        devices.put_item(Item={
+            "deviceId": device_id,
+            "tokenHash": digest(token),
+            "createdAt": now,
+            "updatedAt": now,
+        }, ConditionExpression="attribute_not_exists(deviceId)")
+    except ClientError as error:
+        if error.response.get("Error", {}).get("Code") != "ConditionalCheckFailedException":
+            raise
+        # Device identifiers are public identifiers, not proof of ownership.
+        # Re-registering must never replace another installation's bearer token.
+        return response(409, {"error": "device_already_registered"})
     return response(201, {"deviceId": device_id, "token": token})
 
 
@@ -102,6 +117,47 @@ def authorize(event):
         ExpressionAttributeValues={":now": timestamp()},
     )
     return device_id
+
+
+class NoMembershipRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        # Never forward device credentials to a redirected host.
+        return None
+
+
+def device_membership(event):
+    if not re.fullmatch(r"https://[A-Za-z0-9.-]+(?:/[A-Za-z0-9_-]+)*", MEMBERSHIP_API_URL):
+        raise ValueError("membership_not_configured")
+    headers = {str(key).lower(): value for key, value in (event.get("headers") or {}).items()}
+    request = urllib.request.Request(MEMBERSHIP_API_URL + "/v1/devices/status", headers={
+        "Authorization": headers.get("authorization", ""),
+        "X-Trace-Device": headers.get("x-trace-device", ""),
+        "Accept": "application/json",
+    })
+    with urllib.request.build_opener(NoMembershipRedirects()).open(request, timeout=5) as result:
+        encoded = result.read(16385)
+    if len(encoded) > 16384:
+        raise ValueError("invalid_membership_response")
+    return json.loads(encoded)
+
+
+def require_membership(event):
+    # This rollout switch is infrastructure configuration, never client input.
+    # Enable after accounts, billing, and existing-user policy are ready.
+    if not REQUIRE_MEMBERSHIP:
+        return None
+    try:
+        membership = device_membership(event)
+    except (OSError, ValueError, urllib.error.URLError):
+        return response(503, {"error": "membership_unavailable"})
+    if not isinstance(membership, dict):
+        return response(503, {"error": "membership_unavailable"})
+    linked = membership.get("linked") is True
+    paid = membership.get("status") == "active" and membership.get("plan") in ("trace", "supporter")
+    owner = membership.get("status") == "admin" and membership.get("admin") is True and membership.get("plan") == "supporter"
+    if linked and membership.get("traceAccess") is True and (paid or owner):
+        return None
+    return response(403, {"error": "membership_required"})
 
 
 def put_match(device_id, match_id, event):
@@ -171,7 +227,7 @@ def get_match(device_id, match_id):
         return response(404, {"error": "match_not_found"})
     review = stored_review(item)
     return compressed_response(200, {
-        "review": review,
+        "review": visible_review(review),
         "reducerVersion": int(item.get("reducerVersion", 0)),
         "updatedAt": item.get("updatedAt"),
     })
@@ -259,9 +315,155 @@ def stored_review(item):
     return json.loads(gzip.decompress(stored))
 
 
+def visible_review(review, public=False):
+    """Project a replay without the protected starting opponent inventory.
+
+    Stored captures remain intact. Full lists are never a public-share feature;
+    updated desktop clients retrieve their own opponent list separately after
+    checking current membership and native terminal match evidence.
+    """
+    if not isinstance(review, dict):
+        return {}
+    result = copy.deepcopy(review)
+    local = result.get("localPlayer")
+    if public or not isinstance(local, str) or not local:
+        result.pop("decklists", None)
+    elif isinstance(result.get("decklists"), list):
+        result["decklists"] = [entry for entry in result["decklists"]
+                               if isinstance(entry, dict) and entry.get("playerName") == local]
+    else:
+        result.pop("decklists", None)
+    # Raw capture/debug strings can include the original full match-start packet.
+    result["rawLog"] = ""
+
+    def hidden_card(card):
+        return {"id": card.get("id", "hidden"), "name": "Hidden card",
+                "cardType": "Trainer", "trainerType": "Item", "cardNumber": "",
+                "imageUrl": "/tracker-assets/pokemon-card-back.jpg"}
+
+    def strip_inventories(value, depth=0):
+        if isinstance(value, list):
+            return [strip_inventories(entry, depth + 1) for entry in value]
+        if isinstance(value, dict):
+            return {key: strip_inventories(entry, depth + 1) for key, entry in value.items()
+                    if key.lower() not in ("deckinfo", "rawoperations", "rawpayload", "decodedmessage")
+                    and not (depth > 0 and key.lower() in ("decklists", "rawlog"))}
+        return value
+
+    def card_ids(value):
+        if isinstance(value, list):
+            return set().union(*(card_ids(entry) for entry in value)) if value else set()
+        if isinstance(value, dict):
+            identifiers = {value['id']} if isinstance(value.get('id'), str) else set()
+            for entry in value.values():
+                identifiers.update(card_ids(entry))
+            return identifiers
+        return set()
+
+    turns = result.get("turns")
+    if not isinstance(turns, list):
+        result["turns"] = []
+        turns = []
+    for turn in turns:
+        if not isinstance(turn, dict):
+            continue
+        canonical = turn.get("canonical")
+        if not isinstance(canonical, dict):
+            turn.pop("canonical", None)
+            canonical = {}
+        visibility = canonical.get("visibility")
+        if not isinstance(visibility, dict):
+            visibility = {}
+        state = canonical.get("state")
+        if not isinstance(state, dict):
+            canonical.pop("state", None)
+            state = {}
+        players = state.get("players")
+        if not isinstance(players, list):
+            state.pop("players", None)
+            players = []
+        names = canonical.get("playerNames")
+        if not isinstance(names, list):
+            names = []
+        public_ids = set()
+        for player in players:
+            if isinstance(player, dict):
+                for zone in ("active", "bench", "discard", "lostZone"):
+                    public_ids.update(card_ids(player.get(zone)))
+        public_ids.update(card_ids(state.get("stadium")))
+        local_visible_ids = set()
+        for index, player in enumerate(players):
+            if isinstance(player, dict) and index < len(names) and names[index] == local:
+                for zone in ("deck", "hand", "prizes"):
+                    local_visible_ids.update(identifier for identifier in card_ids(player.get(zone))
+                                             if visibility.get(identifier) != "hidden")
+        # Legacy reducers marked deck identities "known" just because a packet
+        # contained a source ID. Only explicit reveals or public board evidence
+        # qualify; presence of a hidden-zone card ID is not visibility evidence.
+        def revealed(card):
+            identifier = card.get("id")
+            return isinstance(identifier, str) and (identifier in public_ids or visibility.get(identifier) == "temporarily-revealed")
+
+        for index, player in enumerate(players):
+            if not isinstance(player, dict):
+                continue
+            is_local = index < len(names) and names[index] == local
+            for zone in ("deck", "hand", "prizes"):
+                cards = player.get(zone)
+                if not isinstance(cards, list):
+                    continue
+                player[zone] = [
+                    card if not isinstance(card, dict) or
+                    revealed(card) or
+                    (is_local and visibility.get(card.get("id")) != "hidden")
+                    else hidden_card(card) for card in cards
+                ]
+        pending = canonical.get("pendingCards")
+        if isinstance(pending, list):
+            for index, cards in enumerate(pending):
+                if not isinstance(cards, list):
+                    pending[index] = []
+                    continue
+                is_local = index < len(names) and names[index] == local
+                pending[index] = [card if isinstance(card, dict) and
+                                  (revealed(card) or visibility.get(card.get("id")) == "known" or
+                                   (is_local and visibility.get(card.get("id")) != "hidden"))
+                                  else hidden_card(card if isinstance(card, dict) else {}) for card in cards]
+        elif pending is not None:
+            canonical.pop("pendingCards", None)
+        selections = canonical.get("selections")
+        selections = list(selections) if isinstance(selections, list) else []
+        selections.append(canonical.get("selection"))
+        for selection in selections:
+            if isinstance(selection, dict) and isinstance(selection.get("optionCards"), list):
+                selection["optionCards"] = [card if isinstance(card, dict) and
+                                             (revealed(card) or card.get("id") in local_visible_ids)
+                                             else hidden_card(card if isinstance(card, dict) else {})
+                                             for card in selection["optionCards"]]
+        snapshot = turn.get("snapshot")
+        if not isinstance(snapshot, dict):
+            turn.pop("snapshot", None)
+            snapshot = {}
+        snapshot_players = snapshot.get("players")
+        if not isinstance(snapshot_players, dict):
+            snapshot.pop("players", None)
+            snapshot_players = {}
+        for name, board in snapshot_players.items():
+            if name == local or not isinstance(board, dict):
+                continue
+            for zone in ("deckCards", "prizeCards", "knownHandCards"):
+                if isinstance(board.get(zone), list):
+                    board[zone] = [card for card in board[zone] if isinstance(card, dict)
+                                   and revealed(card)]
+            board["knownHand"] = [card["name"] for card in board.get("knownHandCards", [])
+                                  if isinstance(card, dict) and isinstance(card.get("name"), str)]
+    return strip_inventories(result)
+
+
 def shared_source(item):
     # Small, deterministic fingerprint; no replay parsing is needed to check it.
     source = {
+        "projectionVersion": 2,
         "deviceId": item["deviceId"], "matchId": item["matchId"],
         "objectKey": item["objectKey"], "objectVersionId": item.get("objectVersionId"),
         "summary": public_summary(item),
@@ -272,7 +474,7 @@ def shared_source(item):
 def prepare_shared_replay(share_id, shared, item, review=None, force=False):
     source = shared_source(item)
     prepared = shared.get("preparedReplay")
-    if (not force and isinstance(prepared, dict) and prepared.get("format") == 1
+    if (not force and isinstance(prepared, dict) and prepared.get("format") == 2
             and prepared.get("source") == source and prepared.get("objectKey")
             and prepared.get("objectVersionId") and prepared.get("etag")):
         return prepared, None
@@ -280,7 +482,7 @@ def prepare_shared_replay(share_id, shared, item, review=None, force=False):
     if review is None:
         review = stored_review(item)
     payload = {
-        "review": review, "summary": public_summary(item),
+        "review": visible_review(review, public=True), "summary": public_summary(item),
         "reducerVersion": int(item.get("reducerVersion", 0)),
         "updatedAt": item.get("updatedAt"),
     }
@@ -296,7 +498,7 @@ def prepare_shared_replay(share_id, shared, item, review=None, force=False):
     if not version_id or version_id == "null":
         raise RuntimeError("Shared replay preparation requires versioned storage")
     prepared = {
-        "format": 1, "source": source, "objectKey": object_key,
+        "format": 2, "source": source, "objectKey": object_key,
         "objectVersionId": version_id, "etag": etag,
     }
     # Pin an S3 version so concurrent updates cannot replace bytes underneath an

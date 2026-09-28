@@ -7,6 +7,23 @@ Parameters:
     Type: String
     Default: production
     AllowedPattern: '[a-z0-9-]+'
+  MembershipApiUrl:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^https://[A-Za-z0-9.-]+(/[A-Za-z0-9_-]+)*$'
+    Description: Verified membership service endpoint, configured before enabling paid access.
+  RequireMembership:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: Enable only after the membership rollout and existing-user policy are ready.
+
+Rules:
+  PaidAccessRequiresMembershipService:
+    RuleCondition: !Equals [!Ref RequireMembership, 'true']
+    Assertions:
+      - Assert: !Not [!Equals [!Ref MembershipApiUrl, '']]
+        AssertDescription: Configure the membership API before enabling paid access.
 
 Globals:
   Function:
@@ -22,6 +39,8 @@ Globals:
         SHARES_TABLE: !Ref TraceShares
         PAYLOAD_BUCKET: !Ref TracePayloads
         PUBLIC_SHARE_BASE_URL: https://victoryroad.app/trace
+        MEMBERSHIP_API_URL: !Ref MembershipApiUrl
+        REQUIRE_MEMBERSHIP: !Ref RequireMembership
 
 Resources:
   TraceApi:
@@ -65,6 +84,9 @@ Resources:
     UpdateReplacePolicy: Retain
     Properties:
       BillingMode: PAY_PER_REQUEST
+      # Preserve the deployed stream consumed by live leaderboard updates.
+      StreamSpecification:
+        StreamViewType: KEYS_ONLY
       AttributeDefinitions:
         - AttributeName: deviceId
           AttributeType: S

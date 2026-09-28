@@ -120,6 +120,11 @@ jobs:
           TRACE_SYNC_API_URL: ${{ vars.TRACE_SYNC_API_URL }}
         run: node -e "const value=process.env.TRACE_SYNC_API_URL; if (!value || new URL(value).protocol !== 'https:') throw new Error('TRACE_SYNC_API_URL must be a configured HTTPS endpoint')"
 
+      - name: Require membership endpoint
+        env:
+          TRACE_MEMBERSHIP_API_URL: ${{ vars.TRACE_MEMBERSHIP_API_URL }}
+        run: node -e "const value=process.env.TRACE_MEMBERSHIP_API_URL; if (!value || new URL(value).protocol !== 'https:') throw new Error('TRACE_MEMBERSHIP_API_URL must be configured before publishing paid access')"
+
       - name: Run Windows capture integration tests
         if: matrix.platform == 'windows-latest'
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib
@@ -326,6 +331,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           TRACE_SYNC_API_URL: ${{ vars.TRACE_SYNC_API_URL }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          TRACE_MEMBERSHIP_API_URL: ${{ vars.TRACE_MEMBERSHIP_API_URL }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}

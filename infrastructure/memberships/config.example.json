@@ -1,0 +1,17 @@
+{
+  "stackName": "trace-memberships-staging",
+  "region": "us-east-1",
+  "profile": "default",
+  "artifactBucket": "REPLACE_WITH_PRIVATE_DEPLOYMENT_BUCKET",
+  "parameters": {
+    "Environment": "staging",
+    "CaptureDevicesTableName": "REPLACE_WITH_EXISTING_CAPTURE_DEVICES_TABLE",
+    "BillingEnabled": "false",
+    "StripeMode": "test",
+    "StripeSecretArn": "",
+    "TracePriceId": "",
+    "SupporterPriceId": "",
+    "StripePortalConfigId": "",
+    "OwnerSubject": ""
+  }
+}

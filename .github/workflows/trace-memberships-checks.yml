@@ -1,0 +1,32 @@
+name: Trace membership access checks
+
+on:
+  pull_request:
+    paths:
+      - 'infrastructure/aws/**'
+      - 'infrastructure/memberships/**'
+      - '.github/workflows/trace-memberships-checks.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'infrastructure/aws/**'
+      - 'infrastructure/memberships/**'
+      - '.github/workflows/trace-memberships-checks.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  offline-access-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Check membership policy and payment event handling
+        run: python3 -m unittest discover -s infrastructure/memberships/tests -v
+      - name: Check capture access and replay privacy
+        run: python3 -m unittest discover -s infrastructure/aws/tests -v
+      - name: Check Python syntax
+        run: python3 -m py_compile infrastructure/aws/lambda/app.py infrastructure/memberships/lambda/*.py infrastructure/memberships/deploy.py

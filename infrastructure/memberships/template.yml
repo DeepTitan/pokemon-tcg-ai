@@ -1,0 +1,217 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Isolated Trace memberships. Billing disabled until explicitly configured and approved.
+Parameters:
+  Environment:
+    Type: String
+    Default: staging
+    AllowedPattern: '[a-z0-9-]+'
+  CaptureDevicesTableName:
+    Type: String
+    AllowedPattern: '[A-Za-z0-9_.-]{3,255}'
+  BillingEnabled:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['false', 'true']
+  StripeMode:
+    Type: String
+    Default: test
+    AllowedValues: [test, live]
+  StripeSecretArn:
+    Type: String
+    Default: ''
+    Description: Secrets Manager JSON with secretKey and webhookSecret. Never pass secret values as parameters.
+    AllowedPattern: '^$|^arn:aws:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+$'
+  TracePriceId:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^price_[A-Za-z0-9]+$'
+  SupporterPriceId:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^price_[A-Za-z0-9]+$'
+  StripePortalConfigId:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^bpc_[A-Za-z0-9]+$'
+  OwnerSubject:
+    Type: String
+    Default: ''
+    Description: Verified owner's immutable Cognito sub, pinned by operator after identity verification. Blank disables override.
+    AllowedPattern: '^$|^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$'
+Conditions:
+  HasStripeSecret: !Not [!Equals [!Ref StripeSecretArn, '']]
+Rules:
+  BillingRequiresConfiguration:
+    RuleCondition: !Equals [!Ref BillingEnabled, 'true']
+    Assertions:
+      - Assert: !Not [!Equals [!Ref StripeSecretArn, '']]
+        AssertDescription: Billing needs a Stripe secret ARN.
+      - Assert: !Not [!Equals [!Ref TracePriceId, '']]
+        AssertDescription: Billing needs the Trace price ID.
+      - Assert: !Not [!Equals [!Ref SupporterPriceId, '']]
+        AssertDescription: Billing needs the Supporters price ID.
+      - Assert: !Not [!Equals [!Ref TracePriceId, !Ref SupporterPriceId]]
+        AssertDescription: Plans must have different prices.
+      - Assert: !Not [!Equals [!Ref StripePortalConfigId, '']]
+        AssertDescription: Billing needs an isolated portal configuration.
+Resources:
+  MembershipApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: '$default'
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 30
+        ThrottlingRateLimit: 15
+      # Browser calls go through same-origin HttpOnly-cookie proxy, never direct CORS.
+  Accounts:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+  OwnerSwitches:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: ownerSubject
+          AttributeType: S
+      KeySchema:
+        - AttributeName: ownerSubject
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      UserPoolName: !Sub 'trace-memberships-${Environment}'
+      DeletionProtection: ACTIVE
+      UsernameAttributes: [email]
+      UsernameConfiguration:
+        CaseSensitive: false
+      AutoVerifiedAttributes: [email]
+      UserAttributeUpdateSettings:
+        AttributesRequireVerificationBeforeUpdate: [email]
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      VerificationMessageTemplate:
+        DefaultEmailOption: CONFIRM_WITH_CODE
+        EmailSubject: Verify your Trace account
+        EmailMessage: 'Your Trace verification code is {####}.'
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          TemporaryPasswordValidityDays: 1
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientName: trace-memberships-web
+      GenerateSecret: false
+      ExplicitAuthFlows: [ALLOW_USER_PASSWORD_AUTH, ALLOW_REFRESH_TOKEN_AUTH]
+      PreventUserExistenceErrors: ENABLED
+      EnableTokenRevocation: true
+      ReadAttributes: [sub, email, email_verified]
+      WriteAttributes: [email]
+      AccessTokenValidity: 60
+      IdTokenValidity: 60
+      RefreshTokenValidity: 30
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+        RefreshToken: days
+  MembershipFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambda/
+      Handler: app.handler
+      Runtime: python3.13
+      Architectures: [arm64]
+      MemorySize: 256
+      Timeout: 29
+      ReservedConcurrentExecutions: 20
+      Environment:
+        Variables:
+          MEMBERSHIPS_TABLE: !Ref Accounts
+          OWNER_SWITCH_TABLE: !Ref OwnerSwitches
+          CAPTURE_DEVICES_TABLE: !Ref CaptureDevicesTableName
+          USER_POOL_ID: !Ref UserPool
+          USER_POOL_CLIENT_ID: !Ref UserPoolClient
+          OWNER_SUBJECT: !Ref OwnerSubject
+          BILLING_ENABLED: !Ref BillingEnabled
+          STRIPE_MODE: !Ref StripeMode
+          STRIPE_SECRET_ARN: !Ref StripeSecretArn
+          TRACE_PRICE_ID: !Ref TracePriceId
+          SUPPORTER_PRICE_ID: !Ref SupporterPriceId
+          STRIPE_PORTAL_CONFIG_ID: !Ref StripePortalConfigId
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:DeleteItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt Accounts.Arn
+            - Effect: Allow
+              Action: ['dynamodb:GetItem']
+              Resource: !GetAtt OwnerSwitches.Arn
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${CaptureDevicesTableName}'
+            - !If
+              - HasStripeSecret
+              - Effect: Allow
+                Action: ['secretsmanager:GetSecretValue']
+                Resource: !Ref StripeSecretArn
+              - !Ref AWS::NoValue
+      Events:
+        MembershipRoutes:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref MembershipApi
+            Path: /v1/{proxy+}
+            Method: ANY
+  MembershipLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${MembershipFunction}'
+      RetentionInDays: 30
+Outputs:
+  MembershipApiUrl:
+    Value: !Sub 'https://${MembershipApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}'
+  MembershipsTableName:
+    Value: !Ref Accounts
+  OwnerSwitchTableName:
+    Value: !Ref OwnerSwitches
+  UserPoolId:
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Value: !Ref UserPoolClient

@@ -142,12 +142,13 @@ class SharedReplayTests(unittest.TestCase):
     def prepared(self):
         return app.shares.get_item(Key={"shareId": self.share_id})["Item"]["preparedReplay"]
 
-    def test_private_upload_and_retrieval_unchanged(self):
+    def test_private_upload_retained_but_retrieval_projected(self):
         self.assertEqual(len(app.s3.writes), 1)
         self.assertEqual(app.shares.items, {})
         result = app.get_match(self.device, self.match)
         self.assertEqual(result["headers"]["cache-control"], "no-store")
-        self.assertEqual(decode(result)["review"], self.review)
+        self.assertEqual(decode(result)["review"], app.visible_review(self.review))
+        self.assertEqual(app.stored_review(self.item()), self.review)
 
     def test_share_prepares_complete_payload_before_returning(self):
         self.assertEqual(self.share()["statusCode"], 200)
@@ -158,7 +159,7 @@ class SharedReplayTests(unittest.TestCase):
         self.assertEqual(stored["ServerSideEncryption"], "AES256")
         self.assertEqual(stored["ContentEncoding"], "gzip")
         payload = json.loads(gzip.decompress(stored["Body"]))
-        self.assertEqual(payload, {"review": self.review, "summary": app.public_summary(self.item()),
+        self.assertEqual(payload, {"review": app.visible_review(self.review, public=True), "summary": app.public_summary(self.item()),
                                    "reducerVersion": 11, "updatedAt": self.item()["updatedAt"]})
         self.assertNotIn("deviceId", payload)
         self.assertNotIn("objectKey", payload["summary"])
@@ -170,7 +171,7 @@ class SharedReplayTests(unittest.TestCase):
              patch.object(app.gzip, "compress", side_effect=AssertionError("compressed replay")), \
              patch.object(app.json, "loads", side_effect=AssertionError("parsed replay")):
             result = app.get_shared_match(self.share_id)
-        self.assertEqual(decode(result)["review"], self.review)
+        self.assertEqual(decode(result)["review"], app.visible_review(self.review, public=True))
         self.assertEqual(len(app.s3.reads), 1)
         self.assertEqual(app.s3.reads[0]["VersionId"], self.prepared()["objectVersionId"])
         self.assertEqual(result["headers"]["cache-control"], "private, no-cache")
@@ -219,7 +220,7 @@ class SharedReplayTests(unittest.TestCase):
         self.assertNotEqual(self.prepared()["etag"], old_etag)
         result = app.get_shared_match(self.share_id, request_headers={"if-none-match": old_etag})
         self.assertEqual(result["statusCode"], 200)
-        self.assertEqual(decode(result)["review"], self.review)
+        self.assertEqual(decode(result)["review"], app.visible_review(self.review, public=True))
 
     def test_changed_share_metadata_invalidates_prepared_response(self):
         self.share()
@@ -237,7 +238,7 @@ class SharedReplayTests(unittest.TestCase):
         item.pop("objectVersionId")
         app.matches.put_item(Item=item)
         app.shares.put_item(Item={"shareId": self.share_id, "deviceId": self.device, "matchId": self.match})
-        self.assertEqual(decode(app.get_shared_match(self.share_id))["review"], self.review)
+        self.assertEqual(decode(app.get_shared_match(self.share_id))["review"], app.visible_review(self.review, public=True))
         writes = len(app.s3.writes)
         app.get_shared_match(self.share_id)
         self.assertEqual(len(app.s3.writes), writes)
@@ -246,7 +247,7 @@ class SharedReplayTests(unittest.TestCase):
         self.share()
         prepared = self.prepared()
         del app.s3.versions[(prepared["objectKey"], prepared["objectVersionId"])]
-        self.assertEqual(decode(app.get_shared_match(self.share_id))["review"], self.review)
+        self.assertEqual(decode(app.get_shared_match(self.share_id))["review"], app.visible_review(self.review, public=True))
         self.assertNotEqual(self.prepared()["objectVersionId"], prepared["objectVersionId"])
         self.assertEqual(self.prepared()["etag"], prepared["etag"])
 
@@ -269,9 +270,9 @@ class SharedReplayTests(unittest.TestCase):
         with patch.object(app.s3, "put_object", side_effect=fail_prepared):
             with self.assertRaisesRegex(RuntimeError, "prepared write failed"):
                 self.upload()
-        self.assertEqual(decode(app.get_match(self.device, self.match))["review"], self.review)
+        self.assertEqual(decode(app.get_match(self.device, self.match))["review"], app.visible_review(self.review))
         self.assertEqual(self.upload()["statusCode"], 200)
-        self.assertEqual(decode(app.get_shared_match(self.share_id))["review"], self.review)
+        self.assertEqual(decode(app.get_shared_match(self.share_id))["review"], app.visible_review(self.review, public=True))
 
     def test_stale_prepared_pointer_does_not_serve_old_replay(self):
         self.share()
@@ -285,13 +286,13 @@ class SharedReplayTests(unittest.TestCase):
         self.share()
         original = app.s3.writes[-1]
         app.s3.put_object(**{**original, "Body": gzip.compress(b'{"wrong":"version"}')})
-        self.assertEqual(decode(app.get_shared_match(self.share_id))["review"], self.review)
+        self.assertEqual(decode(app.get_shared_match(self.share_id))["review"], app.visible_review(self.review, public=True))
 
     def test_source_reads_are_version_pinned(self):
         source = app.s3.writes[0]
         app.s3.put_object(**{**source, "Body": gzip.compress(b'{"wrong":"version"}')})
         self.share()
-        self.assertEqual(decode(app.get_shared_match(self.share_id))["review"], self.review)
+        self.assertEqual(decode(app.get_shared_match(self.share_id))["review"], app.visible_review(self.review, public=True))
 
     def test_summary_only_stays_small_and_separate(self):
         self.share({"localPlayer": "Player A", "opponent": "Player B", "finalSnapshot": {"players": {
