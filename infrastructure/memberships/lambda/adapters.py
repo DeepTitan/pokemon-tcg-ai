@@ -178,8 +178,9 @@ class Store:
         bucket = str(now // seconds)
         try:
             self.table.update_item(Key={'pk': 'RATE#' + key + '#' + bucket},
-                                   UpdateExpression='SET ttl = :ttl ADD attempts :one',
-                                   ConditionExpression='attribute_not_exists(attempts) OR attempts < :maximum',
+                                   UpdateExpression='SET #ttl = :ttl ADD #attempts :one',
+                                   ConditionExpression='attribute_not_exists(#attempts) OR #attempts < :maximum',
+                                   ExpressionAttributeNames={'#ttl': 'ttl', '#attempts': 'attempts'},
                                    ExpressionAttributeValues={':ttl': now + seconds * 2, ':one': 1, ':maximum': maximum})
         except ClientError as error:
             if conditional_error(error):

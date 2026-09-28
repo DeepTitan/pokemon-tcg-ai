@@ -184,6 +184,36 @@ class AdapterTests(unittest.TestCase):
         store.owner_enabled('subject')
         self.assertTrue(store.owners.get_item.call_args.kwargs['ConsistentRead'])
 
+    def test_auth_rate_limit_aliases_reserved_ttl_and_keeps_atomic_counter(self):
+        store = adapters.Store('members', 'devices', 'owner-switch')
+        store.limit('auth:synthetic-account-hash', 30, 300, 1234)
+        write = store.table.update_item.call_args.kwargs
+        self.assertEqual(write['Key'], {'pk': 'RATE#auth:synthetic-account-hash#4'})
+        # DynamoDB reserves TTL; using the bare attribute makes every auth call fail.
+        self.assertEqual(write['ExpressionAttributeNames'], {'#ttl': 'ttl', '#attempts': 'attempts'})
+        self.assertEqual(write['UpdateExpression'], 'SET #ttl = :ttl ADD #attempts :one')
+        self.assertEqual(write['ConditionExpression'], 'attribute_not_exists(#attempts) OR #attempts < :maximum')
+        self.assertEqual(write['ExpressionAttributeValues'], {':ttl': 1834, ':one': 1, ':maximum': 30})
+
+    def test_rate_limit_exhaustion_is_429_but_provider_failure_is_not_masked(self):
+        store = adapters.Store('members', 'devices', 'owner-switch')
+        store.table.update_item.side_effect = ClientError('ConditionalCheckFailedException')
+        with self.assertRaises(ApiError) as caught:
+            store.limit('auth:synthetic-account-hash', 30, 300, 1234)
+        self.assertEqual((caught.exception.status, caught.exception.code), (429, 'rate_limited'))
+        store.table.update_item.side_effect = ClientError('ValidationException')
+        with self.assertRaises(ClientError):
+            store.limit('auth:synthetic-account-hash', 30, 300, 1234)
+        store.table.update_item.side_effect = None
+
+    def test_cognito_wrong_password_returns_invalid_credentials_401(self):
+        cognito = adapters.Cognito(Config('pool', 'client', 'region'))
+        cognito.client = Mock()
+        cognito.client.initiate_auth.side_effect = ClientError('NotAuthorizedException')
+        with self.assertRaises(ApiError) as caught:
+            cognito.login('member@example.test', 'synthetic-wrong-password')
+        self.assertEqual((caught.exception.status, caught.exception.code), (401, 'invalid_credentials'))
+
     def test_guest_claim_is_one_transaction_guarding_both_leases_and_customer_ownership(self):
         store = adapters.Store('members', 'devices', 'owner-switch')
         store.table.name = 'members'
