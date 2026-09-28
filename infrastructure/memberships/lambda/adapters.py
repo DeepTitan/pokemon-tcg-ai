@@ -2,6 +2,7 @@
 from contextlib import contextmanager
 from decimal import Decimal
 import json
+import re
 import secrets
 import time
 import urllib.error
@@ -315,13 +316,15 @@ class Stripe:
             if not self.secret_arn:
                 raise ApiError(503, 'billing_unavailable')
             value = self.secrets_client.get_secret_value(SecretId=self.secret_arn)
-            self._secrets = json.loads(value['SecretString'])
-            self._secrets_until = time.time() + 300
-            prefix = 'sk_live_' if self.live else 'sk_test_'
-            key = self._secrets.get('secretKey', '')
-            if not key.startswith(prefix):
+            candidate = json.loads(value['SecretString'])
+            key = candidate.get('secretKey') if isinstance(candidate, dict) else None
+            mode = 'live' if self.live else 'test'
+            if not isinstance(key, str) or not re.fullmatch(r'(?:sk|rk)_' + mode + r'_[A-Za-z0-9]+', key):
                 self._secrets = None
+                self._secrets_until = 0
                 raise ApiError(503, 'billing_unavailable')
+            self._secrets = candidate
+            self._secrets_until = time.time() + 300
         return self._secrets
 
     def webhook_secret(self):

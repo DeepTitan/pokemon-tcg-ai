@@ -95,6 +95,47 @@ class AdapterTests(unittest.TestCase):
             stripe.secrets()
         self.assertEqual(caught.exception.code, 'billing_unavailable')
 
+    def test_standard_and_restricted_keys_work_only_in_their_configured_mode(self):
+        for live in (False, True):
+            for family in ('sk', 'rk'):
+                key = f'{family}_{"live" if live else "test"}_Synthetic123'
+                with self.subTest(live=live, family=family):
+                    stripe = adapters.Stripe('secret-arn', 'bpc_fixture', live)
+                    stripe.secrets_client = Mock()
+                    stripe.secrets_client.get_secret_value.return_value = {'SecretString': json.dumps({'secretKey': key})}
+                    stripe.opener = MagicMock()
+                    stripe.opener.open.return_value.__enter__.return_value = io.BytesIO(b'{"id":"price_fixture"}')
+                    stripe.price('price_fixture')
+                    sent = stripe.opener.open.call_args.args[0]
+                    self.assertEqual(sent.get_header('Authorization'), 'Bearer ' + key)
+                    stripe.secrets()
+                    stripe.secrets_client.get_secret_value.assert_called_once_with(SecretId='secret-arn')
+
+                    wrong_mode = adapters.Stripe('secret-arn', 'bpc_fixture', not live)
+                    wrong_mode.secrets_client = stripe.secrets_client
+                    wrong_mode.opener = Mock()
+                    with self.assertRaises(ApiError) as caught:
+                        wrong_mode.price('price_fixture')
+                    self.assertEqual(caught.exception.code, 'billing_unavailable')
+                    wrong_mode.opener.open.assert_not_called()
+                    self.assertIsNone(wrong_mode._secrets)
+
+    def test_malformed_or_publishable_credentials_never_reach_stripe_or_cache(self):
+        for key in (None, 123, [], {}, '', 'rk_test_', 'sk_test_', 'pk_test_Synthetic',
+                    'sk_org_Synthetic', ' rk_test_Synthetic', 'rk_test_Synthetic\n',
+                    'rk_test_Syn thetic', 'rk_test_Synthetic/123', 'sk_test_Synthetic-123'):
+            with self.subTest(key=key):
+                stripe = adapters.Stripe('secret-arn', 'bpc_fixture', False)
+                stripe.secrets_client = Mock()
+                stripe.secrets_client.get_secret_value.return_value = {'SecretString': json.dumps({'secretKey': key})}
+                stripe.opener = Mock()
+                with self.assertRaises(ApiError) as caught:
+                    stripe.price('price_fixture')
+                self.assertEqual(caught.exception.code, 'billing_unavailable')
+                self.assertIsNone(stripe._secrets)
+                self.assertEqual(stripe._secrets_until, 0)
+                stripe.opener.open.assert_not_called()
+
     def test_checkout_cannot_choose_redirect_or_price_from_client_parameters(self):
         stripe = adapters.Stripe('secret-arn', 'bpc_fixture', False)
         stripe.request = Mock(return_value={'id': 'cs_fixture'})
