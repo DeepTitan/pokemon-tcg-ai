@@ -130,24 +130,7 @@ impl Recorder {
             "live-{}",
             operation.match_id.as_deref().unwrap_or(&operation.game_id)
         );
-        if !self
-            .app
-            .try_state::<crate::membership::Membership>()
-            .is_some_and(|membership| membership.admit_match(&match_id))
-        {
-            if let Ok(mut error) = self.state.last_error.lock() {
-                *error = Some("Membership was unavailable when this match started. Trace will record the next match after access is restored.".into());
-            }
-            return;
-        }
-        if let Ok(mut error) = self.state.last_error.lock() {
-            if error
-                .as_deref()
-                .is_some_and(|message| message.starts_with("Membership was unavailable"))
-            {
-                *error = None;
-            }
-        }
+        // Recording is free and must not depend on account linkage or network leases.
         self.state.operation_count.fetch_add(1, Ordering::Relaxed);
         let stored = self
             .app

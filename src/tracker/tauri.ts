@@ -115,6 +115,11 @@ export async function initializeTrackerStorage(): Promise<StorageStatus> {
   return invoke<StorageStatus>('initialize_tracker_storage');
 }
 
+export async function importLegacyReviews(reviews: MatchReview[], reducerVersion: number): Promise<void> {
+  if (!isTauri()) return;
+  return invoke<void>('import_legacy_reviews', { reviews, reducerVersion });
+}
+
 export async function listMatchSummaries(offset = 0, limit = 50): Promise<MatchSummary[]> {
   if (!isTauri()) return [];
   return invoke<MatchSummary[]>('list_match_summaries', { offset, limit });

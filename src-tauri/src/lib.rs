@@ -213,7 +213,6 @@ fn recent_match_operations(
     membership: tauri::State<'_, membership::Membership>,
     storage: tauri::State<'_, storage::MatchStorage>,
 ) -> Result<Vec<wire::CapturedOperation>, String> {
-    membership.require_trace()?;
     capture::recent_operations(&app)
         .into_iter()
         .map(|operation| {
@@ -221,9 +220,37 @@ fn recent_match_operations(
                 "live-{}",
                 operation.match_id.as_deref().unwrap_or(&operation.game_id)
             );
-            Ok(storage.match_access(&id)?.project_operation(operation))
+            if storage.replay_requires_pro(&id)? && !membership.has_full_history() {
+                return Ok(None);
+            }
+            Ok(Some(storage.match_access(&id)?.project_operation(operation)))
         })
+        .filter_map(|result| result.transpose())
         .collect()
+}
+
+async fn verify_replay_access(
+    storage: &storage::MatchStorage,
+    membership: &membership::Membership,
+    cloud: &cloud_sync::CloudSync,
+    id: &str,
+) -> Result<(), String> {
+    if storage.replay_requires_pro(id)? && !membership.has_full_history() {
+        membership.refresh(cloud).await;
+        membership.require_full_history()?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn import_legacy_reviews(
+    storage: tauri::State<'_, storage::MatchStorage>,
+    reviews: Vec<Value>,
+    reducer_version: i64,
+) -> Result<(), String> {
+    let storage = storage.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || storage.import_legacy_reviews(reviews, reducer_version))
+        .await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -247,12 +274,10 @@ async fn initialize_tracker_storage(
 
 #[tauri::command]
 async fn list_match_summaries(
-    membership: tauri::State<'_, membership::Membership>,
     storage: tauri::State<'_, storage::MatchStorage>,
     offset: i64,
     limit: i64,
 ) -> Result<Vec<storage::MatchSummary>, String> {
-    membership.require_trace()?;
     let storage = storage.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         storage
@@ -268,10 +293,11 @@ async fn list_match_summaries(
 #[tauri::command]
 async fn load_match_review(
     membership: tauri::State<'_, membership::Membership>,
+    cloud_sync: tauri::State<'_, cloud_sync::CloudSync>,
     storage: tauri::State<'_, storage::MatchStorage>,
     match_id: String,
 ) -> Result<tauri::ipc::Response, String> {
-    membership.require_trace()?;
+    verify_replay_access(&storage, &membership, &cloud_sync, &match_id).await?;
     let storage = storage.inner().clone();
     let json = tauri::async_runtime::spawn_blocking(move || -> Result<String, String> {
         let access = storage.match_access(&match_id)?;
@@ -311,13 +337,11 @@ async fn persist_match_review(
 
 #[tauri::command]
 async fn share_match(
-    membership: tauri::State<'_, membership::Membership>,
     storage: tauri::State<'_, storage::MatchStorage>,
     cloud_sync: tauri::State<'_, cloud_sync::CloudSync>,
     review: Value,
     reducer_version: i64,
 ) -> Result<cloud_sync::ShareLink, String> {
-    membership.require_trace()?;
     let storage = storage.inner().clone();
     let (review, summary) = tauri::async_runtime::spawn_blocking(move || -> Result<_, String> {
         let review = storage.review_for_storage(review)?;
@@ -334,10 +358,11 @@ async fn share_match(
 #[tauri::command]
 async fn load_match_operations(
     membership: tauri::State<'_, membership::Membership>,
+    cloud_sync: tauri::State<'_, cloud_sync::CloudSync>,
     storage: tauri::State<'_, storage::MatchStorage>,
     match_id: String,
 ) -> Result<Vec<wire::CapturedOperation>, String> {
-    membership.require_trace()?;
+    verify_replay_access(&storage, &membership, &cloud_sync, &match_id).await?;
     let storage = storage.inner().clone();
     tauri::async_runtime::spawn_blocking(move || -> Result<Vec<_>, String> {
         let access = storage.match_access(&match_id)?;
@@ -359,10 +384,15 @@ async fn list_raw_match_ids(
     reducer_version: i64,
     limit: i64,
 ) -> Result<Vec<String>, String> {
-    membership.require_trace()?;
     let storage = storage.inner().clone();
+    let full_history = membership.has_full_history();
     tauri::async_runtime::spawn_blocking(move || {
-        storage.raw_match_ids(pending_only, reducer_version, limit)
+        storage.raw_match_ids(pending_only, reducer_version, limit)?
+            .into_iter().filter_map(|id| match storage.replay_requires_pro(&id) {
+                Ok(true) if !full_history => None,
+                Ok(_) => Some(Ok(id)),
+                Err(error) => Some(Err(error)),
+            }).collect::<Result<Vec<_>, String>>()
     })
     .await
     .map_err(|error| error.to_string())?
@@ -376,13 +406,7 @@ async fn request_capture_permission(app: tauri::AppHandle) -> Result<CaptureStat
 }
 
 #[tauri::command]
-async fn start_tracking(
-    app: tauri::AppHandle,
-    membership: tauri::State<'_, membership::Membership>,
-    cloud_sync: tauri::State<'_, cloud_sync::CloudSync>,
-) -> Result<CaptureStatus, String> {
-    membership.refresh(&cloud_sync).await;
-    membership.require_trace()?;
+async fn start_tracking(app: tauri::AppHandle) -> Result<CaptureStatus, String> {
     capture::start(app).await
 }
 
@@ -556,6 +580,8 @@ pub fn run() {
             let database_path = app.path().app_data_dir()?.join("trace.sqlite3");
             let storage =
                 storage::MatchStorage::new(database_path).map_err(std::io::Error::other)?;
+            storage.prepare_legacy_replay_snapshot(&app.path().app_data_dir()?.join("capture/operations.jsonl"))
+                .map_err(std::io::Error::other)?;
             let cloud_sync_path = app.path().app_data_dir()?.join("cloud-sync.json");
             let cloud_sync = cloud_sync::CloudSync::new(cloud_sync_path);
             app.manage(storage.clone());
@@ -594,6 +620,7 @@ pub fn run() {
             capture_status,
             recent_match_operations,
             initialize_tracker_storage,
+            import_legacy_reviews,
             list_match_summaries,
             load_match_review,
             persist_match_review,

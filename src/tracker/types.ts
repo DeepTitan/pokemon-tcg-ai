@@ -250,6 +250,8 @@ export interface MatchSummary {
   reducerVersion: number;
   finalSnapshot?: TrackerBoardSnapshot;
   recording: boolean;
+  /** Native archive policy; older data is retained, never deleted. */
+  replayRequiresPro?: boolean;
 }
 
 export interface StorageStatus {
@@ -296,6 +298,17 @@ export interface TrackerEnvironment {
   capture: CaptureStatus;
 }
 
+export interface MembershipCapabilities {
+  recordMatches: boolean;
+  leaderboard: boolean;
+  recentReplayDays: number;
+  fullHistory: boolean;
+  expandedSharing: boolean;
+  opponentDecklists: boolean;
+  freeSharesPerWindow: number;
+  shareWindowDays: number;
+}
+
 export interface MembershipStatus {
   linked: boolean;
   email: string | null;
@@ -306,6 +319,7 @@ export interface MembershipStatus {
   status: string;
   expiresAt: string | null;
   cancelAtPeriodEnd: boolean;
+  capabilities?: MembershipCapabilities;
 }
 export interface MembershipLink {
   userCode: string;

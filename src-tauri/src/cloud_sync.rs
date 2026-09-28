@@ -9,6 +9,25 @@ use uuid::Uuid;
 
 const MAX_REVIEWS_PER_SWEEP: usize = 16;
 
+fn share_failure_message(status: StatusCode, body: &Value) -> String {
+    match (status, body.get("error").and_then(Value::as_str)) {
+        (StatusCode::FORBIDDEN, Some("share_limit_reached")) => {
+            let next = body.get("nextShareAt").and_then(Value::as_str)
+                .filter(|value| value.len() >= 20 && value.len() <= 32 && value.ends_with('Z')
+                    && value.bytes().all(|c| c.is_ascii_digit() || b"-:TZ.".contains(&c)))
+                .map(|value| format!(" Next free share: {} UTC.", value[..16].replace('T', " ")))
+                .unwrap_or_default();
+            format!("Your free replay share is used for this 7-day period.{next} Trace Pro includes unlimited sharing.")
+        }
+        (StatusCode::FORBIDDEN, Some("history_membership_required")) =>
+            "Trace Pro is needed to create a new share link for a replay older than 7 days. Your match is still saved.".into(),
+        (StatusCode::SERVICE_UNAVAILABLE, Some("membership_unavailable")) =>
+            "Couldn’t verify paid sharing access. Try again shortly; your match is still saved.".into(),
+        _ => format!("Could not create a share link ({status})."),
+    }
+}
+
+
 #[derive(Clone)]
 pub struct CloudSync {
     endpoint: Option<Url>,
@@ -303,10 +322,9 @@ impl CloudSync {
                 return Ok(None);
             }
             if !response.status().is_success() {
-                return Err(format!(
-                    "Could not create a share link ({}).",
-                    response.status()
-                ));
+                let status = response.status();
+                let body = response.json::<Value>().await.unwrap_or(Value::Null);
+                return Err(share_failure_message(status, &body));
             }
             let share = response
                 .json::<ShareLink>()
@@ -317,6 +335,27 @@ impl CloudSync {
             }
             return Ok(Some(share));
         }
+    }
+
+    /// A late 401 may refer to credentials replaced by another request. Only clear
+    /// the exact attempted pair, serialized against new registration and persistence.
+    pub(crate) async fn reject_membership_credentials(&self, device: &str, token: &str) {
+        let _registration = self.registration_lock.lock().await;
+        let cleared = {
+            let mut config = self.config.lock().await;
+            if config.device_id == device && config.token.as_deref() == Some(token) {
+                config.token = None;
+                true
+            } else { false }
+        };
+        if cleared { let _ = self.save_config_blocking(); }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_test_endpoint(config_path: PathBuf, endpoint: Url) -> Self {
+        let mut cloud = Self::new(config_path);
+        cloud.endpoint = Some(endpoint);
+        cloud
     }
 
     pub(crate) async fn membership_credentials(&self) -> Result<(String, String), String> {
@@ -413,6 +452,14 @@ impl CloudSync {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn sharing_limits_explain_recovery_without_echoing_untrusted_errors() {
+        use super::*;
+        assert!(share_failure_message(StatusCode::FORBIDDEN, &json!({"error":"share_limit_reached", "nextShareAt":"2026-10-05T15:30:00Z"})).contains("2026-10-05 15:30 UTC"));
+        assert!(share_failure_message(StatusCode::FORBIDDEN, &json!({"error":"history_membership_required"})).contains("still saved"));
+        assert!(share_failure_message(StatusCode::SERVICE_UNAVAILABLE, &json!({"error":"membership_unavailable"})).contains("Try again"));
+        assert!(!share_failure_message(StatusCode::FORBIDDEN, &json!({"error":"secret trace", "nextShareAt":"secret"})).contains("secret"));
+    }
     use super::*;
 
     #[test]
@@ -439,6 +486,26 @@ mod tests {
 
         fs::remove_dir_all(directory).unwrap();
     }
+    #[tokio::test]
+    async fn late_membership_401_cannot_clear_newer_device_or_token() {
+        let directory = std::env::temp_dir().join(format!("trace-stale-token-{}", Uuid::new_v4()));
+        let cloud = CloudSync::new(directory.join("cloud-sync.json"));
+        {
+            let mut config = cloud.config.lock().await;
+            config.device_id = "new-device".into();
+            config.token = Some("new-token".into());
+        }
+        cloud.reject_membership_credentials("old-device", "old-token").await;
+        cloud.reject_membership_credentials("new-device", "old-token").await;
+        assert_eq!(cloud.membership_credentials().await.unwrap(), ("new-device".into(), "new-token".into()));
+        cloud.reject_membership_credentials("new-device", "new-token").await;
+        assert!(cloud.config.lock().await.token.is_none());
+        let saved: CloudSyncConfig = serde_json::from_slice(&fs::read(directory.join("cloud-sync.json")).unwrap()).unwrap();
+        assert_eq!(saved.device_id, "new-device");
+        assert!(saved.token.is_none());
+        fs::remove_dir_all(directory).unwrap();
+    }
+
     #[tokio::test]
     async fn registration_conflict_recovers_once_and_concurrent_callers_share_credentials() {
         use std::io::{Read, Write};

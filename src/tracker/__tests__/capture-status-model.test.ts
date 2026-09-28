@@ -55,6 +55,7 @@ assert.match(updateNoticeSource, /disabled=\{busy \|\| checking \|\| matchInProg
 
 console.log('capture-status-model: healthy recordings, modal waiting state, and update deferral verified');
 
-const membershipBlockedMatch = environment({ clientAttached: true, lastError: 'Membership was unavailable when this match started.' });
-assert.equal(captureIndicator(membershipBlockedMatch).tone, 'error');
-assert.match(visibleCaptureError(membershipBlockedMatch) || '', /Membership was unavailable/);
+// Capture startup and operation storage must stay independent of paid account checks.
+assert.doesNotMatch(trackerAppSource, /membershipSessionReady|membershipBlocked|!membership\?\.traceAccess/);
+const recorderSource = readFileSync(new URL('../../../src-tauri/src/capture.rs', import.meta.url), 'utf8');
+assert.doesNotMatch(recorderSource, /admit_match|require_trace|crate::membership/);

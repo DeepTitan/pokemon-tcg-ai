@@ -25,7 +25,7 @@ import { InfiniteArchiveList } from './InfiniteArchiveList.js';
 import { CaptureSetupModal } from './CaptureSetupModal.js';
 import {
   getMembershipStatus, loadOpponentDecklist, getRecentMatchOperations, getTraceVersion, getTrackerEnvironment, initializeTrackerStorage, isTauri, listMatchSummaries,
-  listRawMatchIds, loadMatchOperations, loadMatchReview, onMatchOperation, persistMatchReview,
+  importLegacyReviews, listRawMatchIds, loadMatchOperations, loadMatchReview, onMatchOperation, persistMatchReview,
   resolveCardSources, shareMatch, startTracking, stopTracking, LEADERBOARD_URL, openLeaderboard,
 } from './tauri.js';
 import { LiveReviewAssembler } from './live-operation-reducer.js';
@@ -587,7 +587,7 @@ function ArchiveFeaturedCard({ card, label, rating, tone, catalog }: { card: Tra
   </span>;
 }
 
-function ArchiveRow({ summary, selected, catalog, onSelect }: { summary: MatchSummary; selected: boolean; catalog: ReadonlyMap<string, CardInfo>; onSelect: () => void }) {
+function ArchiveRow({ summary, selected, catalog, onSelect, locked = false }: { summary: MatchSummary; selected: boolean; locked?: boolean; catalog: ReadonlyMap<string, CardInfo>; onSelect: () => void }) {
   const result = resultLabel(summary);
   const matchup = archiveMatchup(summary, catalog);
   const localCardName = matchup.localCard ? (resolvedCardInfo(matchup.localCard, catalog)?.name || matchup.localCard.name) : 'Unknown deck';
@@ -601,7 +601,7 @@ function ArchiveRow({ summary, selected, catalog, onSelect }: { summary: MatchSu
       type="button"
       className={`session-card ${selected ? 'selected' : ''} ${summary.recording ? 'recording' : ''}`}
       onClick={onSelect}
-      aria-label={`${result} against ${summary.opponent}. ${localCardName} versus ${opponentCardName}.${summary.localRating != null ? ` Your Elo ${summary.localRating}.` : ''}${summary.opponentRating != null ? ` Opponent Elo ${summary.opponentRating}.` : ''}${ratingChangeLabel ? ` ${ratingChangeLabel} Elo. New rating ${summary.ratingAfter}.` : ''} ${dateLabel}. ${durationLabel}. ${prizeLabel}.`}
+      aria-label={`${result} against ${summary.opponent}. ${localCardName} versus ${opponentCardName}.${summary.localRating != null ? ` Your Elo ${summary.localRating}.` : ''}${summary.opponentRating != null ? ` Opponent Elo ${summary.opponentRating}.` : ''}${ratingChangeLabel ? ` ${ratingChangeLabel} Elo. New rating ${summary.ratingAfter}.` : ''} ${dateLabel}. ${durationLabel}. ${prizeLabel}.${locked ? ' Trace Pro replay.' : ''}`}
     >
       <span className="session-matchup" aria-hidden="true">
         <ArchiveFeaturedCard card={matchup.localCard} label="You" rating={summary.localRating} tone="local" catalog={catalog} />
@@ -614,7 +614,7 @@ function ArchiveRow({ summary, selected, catalog, onSelect }: { summary: MatchSu
         <span className="session-meta">
           <time dateTime={summary.importedAt}><CalendarBlank size={12} weight="bold" />{dateLabel}</time>
           <small><Clock size={12} weight="bold" />{durationLabel}</small>
-          <small><Trophy size={12} weight="fill" />{prizeLabel}</small>
+          <small><Trophy size={12} weight="fill" />{prizeLabel}</small>{locked && <small className="archive-pro-label">Pro replay</small>}
         </span>
       </span>
     </button>
@@ -675,12 +675,10 @@ export default function TrackerApp() {
   const [showSettings, setShowSettings] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
   const [membership, setMembership] = useState<MembershipStatus | null>(null);
-  const [membershipSessionReady, setMembershipSessionReady] = useState(() => !isTauri());
   const refreshMembership = useCallback(async () => {
     if (!isTauri() || sharedMode) return;
     const status = await getMembershipStatus();
     setMembership(status);
-    if (status.traceAccess) setMembershipSessionReady(true);
   }, [sharedMode]);
   useEffect(() => {
     if (!isTauri() || sharedMode) return;
@@ -691,10 +689,10 @@ export default function TrackerApp() {
     return () => { active = false; clearInterval(timer); window.removeEventListener('focus', refresh); };
   }, [refreshMembership, sharedMode]);
   useEffect(() => {
-    if (!membership?.traceAccess || !isTauri()) return;
+    if (sharedMode || !isTauri()) return;
     try { if (localStorage.getItem(CAPTURE_DISCLOSURE_KEY) !== 'acknowledged') setShowSetup(true); }
     catch { setShowSetup(true); }
-  }, [membership?.traceAccess]);
+  }, [sharedMode]);
   const [archiveOpen, setArchiveOpen] = useState(() => !sharedMode);
   const [sharedAccessOpen, setSharedAccessOpen] = useState(() => {
     if (!sharedMode) return false;
@@ -1046,7 +1044,7 @@ export default function TrackerApp() {
           clientLifecycleRef.current = observation.state;
           if (observation.clientExited) finalizeActiveMatchForClientExit();
           setEnvironment(next);
-          if (isTauri() && membership?.traceAccess && !next.capture.permissionReady && !setupPrompted.current) {
+          if (isTauri() && !next.capture.permissionReady && !setupPrompted.current) {
             setupPrompted.current = true;
             setShowSetup(true);
           }
@@ -1056,7 +1054,7 @@ export default function TrackerApp() {
     void refresh();
     const timer = window.setInterval(refresh, 1500);
     return () => { active = false; window.clearInterval(timer); };
-  }, [finalizeActiveMatchForClientExit, sharedMode, membership?.traceAccess]);
+  }, [finalizeActiveMatchForClientExit, sharedMode]);
 
   useEffect(() => {
     if (sharedMode) return;
@@ -1065,14 +1063,13 @@ export default function TrackerApp() {
   }, [environment.capture.enabled, environment.capture.clientAttached, environment.capture.waitingForMatchEnd, environment.capture.lastError, sharedMode]);
 
   useEffect(() => {
-    if (sharedMode || !isTauri() || !membership?.traceAccess || !environment.capture.permissionReady || autoStartAttempted.current || busy || showSetup) return;
+    if (sharedMode || !isTauri() || !environment.capture.permissionReady || autoStartAttempted.current || busy || showSetup) return;
     autoStartAttempted.current = true;
     if (environment.capture.enabled) return;
     void startTracking().then((capture) => { setEnvironment((current) => ({ ...current, capture })); setError(null); }).catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)));
-  }, [environment.capture.permissionReady, environment.capture.enabled, busy, sharedMode, showSetup, membership?.traceAccess]);
+  }, [environment.capture.permissionReady, environment.capture.enabled, busy, sharedMode, showSetup]);
 
   useEffect(() => {
-    if (isTauri() && !membershipSessionReady && !sharedMode) { setRestoringReview(false); return; }
     let unlisten: () => void = () => undefined;
     let active = true;
     const schedulePersistence = (review: MatchReview) => {
@@ -1208,10 +1205,8 @@ export default function TrackerApp() {
         }
         if (isTauri()) {
           const legacyReviews = localStorage.getItem(STORAGE_MIGRATED_KEY) === '1' ? [] : loadReviews();
-          for (const review of legacyReviews) await commitReview(review);
-          if (legacyReviews.length) {
-            localStorage.setItem(STORAGE_MIGRATED_KEY, '1');
-          }
+          await importLegacyReviews(legacyReviews, REDUCER_VERSION);
+          localStorage.setItem(STORAGE_MIGRATED_KEY, '1');
           // The SQLite archive is ready during native setup. Show it before
           // running legacy import/status maintenance, which can be slow on a
           // machine with an old capture file or a cold antivirus scan.
@@ -1221,7 +1216,8 @@ export default function TrackerApp() {
           setArchiveTotal(stored.length);
 
           const rawIds = await listRawMatchIds(false, 1);
-          const preferredId = rawIds[0] || stored[0]?.id;
+          // Never block live capture bootstrap by attempting to open a locked archive row.
+          const preferredId = rawIds[0] || stored.find(summary => !summary.replayRequiresPro)?.id;
           const cached = preferredId ? await loadMatchReview(preferredId) : null;
           if (!active) return;
           if (cached) displayReview(cached, true);
@@ -1296,7 +1292,7 @@ export default function TrackerApp() {
       persistTimersRef.current.forEach((timer) => window.clearTimeout(timer));
       persistTimersRef.current.clear();
     };
-  }, [commitReview, displayReview, mergeCatalog, rebuildOperations, rebuildStoredMatch, resolveCardsForPayload, sharedReplayId, upsertSummary, membershipSessionReady]);
+  }, [commitReview, displayReview, mergeCatalog, rebuildOperations, rebuildStoredMatch, resolveCardsForPayload, sharedReplayId, upsertSummary]);
 
   useEffect(() => {
     if (!notice) return undefined;
@@ -1551,22 +1547,15 @@ export default function TrackerApp() {
   const updateNotice = <UpdateNotice matchInProgress={environment.clientRunning} settingsOpen={showSettings} />;
   const accountSettings = <MembershipSettings status={membership} onRefresh={refreshMembership} onChange={setMembership} />;
 
-  const membershipBlocked = isTauri() && !sharedMode && !membership?.traceAccess;
+  const fullHistory = Boolean(membership?.traceAccess && membership.capabilities?.fullHistory);
 
   const selectedShareUrl = selectedReview ? shareLinks[selectedReview.id] : null;
 
   return (
-    <div className={`app-shell ${sharedMode ? 'shared-replay' : ''} ${membershipBlocked ? 'membership-gate' : ''}`}>
+    <div className={`app-shell ${sharedMode ? 'shared-replay' : ''}`}>
       {!sharedMode && <div className="window-drag-region" onMouseDown={beginWindowDrag} aria-hidden="true" />}
 
-      {membershipBlocked && <>
-    <section className="membership-gate-panel"><img src="/tracker-assets/trace-mascot.png" alt="" /><h1>{!membership ? 'Checking your account…' : membership.status === 'not_configured' ? 'Memberships are not configured' : 'Your matches. Every turn.'}</h1>
-      <p>{!membership ? 'One moment while Trace checks your membership.' : membership.status === 'not_configured' ? 'Update Trace or try again when memberships are available in this build.' : membership.status === 'unavailable' ? 'Trace couldn’t verify your membership. Check your connection, then refresh your account.' : 'Link your Victory Road account and choose a membership to use Trace.'}</p>
-      <button className="primary" type="button" onClick={openSettings}>Account and updates</button>
-      {environment.capture.enabled && <p className="membership-capture-note">A match already being recorded will keep saving. Membership changes never interrupt your game connection.</p>}
-    </section>
-      </>}
-      {!membershipBlocked && <main className={`workspace ${archiveOpen ? 'archive-open' : 'archive-collapsed'} ${timelineOpen ? 'timeline-open' : 'timeline-collapsed'} ${sharedMode ? `shared-mode ${sharedAccessOpen ? 'shared-access-open' : 'shared-access-collapsed'}` : ''}`}>
+      <main className={`workspace ${archiveOpen ? 'archive-open' : 'archive-collapsed'} ${timelineOpen ? 'timeline-open' : 'timeline-collapsed'} ${sharedMode ? `shared-mode ${sharedAccessOpen ? 'shared-access-open' : 'shared-access-collapsed'}` : ''}`}>
         {sharedMode && <SharedAccessRail open={sharedAccessOpen} onToggle={() => {
           const open = !sharedAccessOpen;
           setSharedAccessOpen(open);
@@ -1592,7 +1581,12 @@ export default function TrackerApp() {
             {searchActive && <small role="status">{searchLoading ? `Searching all games · ${visibleSummaries.length} found` : searchError ? 'Search incomplete — some older games could not load.' : `${visibleSummaries.length} ${visibleSummaries.length === 1 ? 'game' : 'games'} found`}{searchError && <button type="button" onClick={() => setSearchRetry(value => value + 1)}>Retry</button>}</small>}
           </div>
           <InfiniteArchiveList itemCount={summaries.length} hasMore={isTauri() && summaries.length < archiveTotal} searchActive={searchActive} loadMore={loadOlderMatches}>
-            {visibleSummaries.map((summary) => <ArchiveRow key={summary.id} summary={summary} selected={summary.id === selectedId} catalog={cardCatalog} onSelect={() => void selectSummary(summary)} />)}
+            {visibleSummaries.map((summary) => <ArchiveRow key={summary.id} summary={summary} selected={summary.id === selectedId} catalog={cardCatalog} locked={Boolean(summary.replayRequiresPro && !fullHistory)} onSelect={() => {
+              if (summary.replayRequiresPro && !fullHistory) {
+                setNotice('Your match is saved. Trace Pro unlocks replays older than 7 days.');
+                openSettings();
+              } else void selectSummary(summary);
+            }} />)}
             {searchActive && !visibleSummaries.length && !searchLoading && !searchError && <div className="empty-library"><MagnifyingGlass size={28} /><strong>No matching games</strong><p>Try part of a player’s name, a Pokémon, or a different date.</p><button type="button" onClick={() => setArchiveQuery('')}>Clear search</button></div>}
             {!searchActive && !summaries.length && !restoringReview && <div className="empty-library"><BookOpenText size={38} weight="duotone" /><strong>No matches yet</strong><p>Turn on automatic capture and play normally. Your games will collect here.</p><button type="button" onClick={() => importLog(DEMO_BATTLE_LOG)}>Explore a sample</button></div>}
             {!searchActive && !summaries.length && restoringReview && <div className="empty-library archive-loading"><BookOpenText size={38} weight="duotone" /><strong>Restoring your archive…</strong><p>Loading the latest saved match.</p></div>}
@@ -1681,17 +1675,17 @@ export default function TrackerApp() {
             {!timeline.entries.length && !liveOperations.length && <div className="empty-timeline"><BookOpenText size={34} weight="duotone" /><p>Match events appear here as the board is rebuilt.</p></div>}
           </div>
         </aside>}
-      </main>}
+      </main>
 
-      {!membershipBlocked && !sharedMode && !archiveOpen && <button className="panel-restore-button archive-restore-button" type="button" aria-label="Open match archive" aria-expanded="false" title="Open match archive" onClick={() => setArchiveOpen(true)}><CardsThree size={22} weight="duotone" /></button>}
-      {!membershipBlocked && !timelineOpen && <button className="panel-restore-button timeline-restore-button" type="button" aria-label="Open game log" aria-expanded="false" title="Open game log" onClick={() => setTimelineOpen(true)}><List size={22} weight="bold" /></button>}
+      {!sharedMode && !archiveOpen && <button className="panel-restore-button archive-restore-button" type="button" aria-label="Open match archive" aria-expanded="false" title="Open match archive" onClick={() => setArchiveOpen(true)}><CardsThree size={22} weight="duotone" /></button>}
+      {!timelineOpen && <button className="panel-restore-button timeline-restore-button" type="button" aria-label="Open game log" aria-expanded="false" title="Open game log" onClick={() => setTimelineOpen(true)}><List size={22} weight="bold" /></button>}
 
-      {!membershipBlocked && !sharedMode && environment.capture.waitingForMatchEnd && !safetyDismissed && !showSetup && !showSettings && <div className="capture-safety-backdrop"><section className="capture-safety-dialog" role="alertdialog" aria-modal="true" aria-labelledby="capture-safety-title" aria-describedby="capture-safety-description"><div className="capture-safety-icon" aria-hidden="true"><ShieldCheck size={33} weight="fill" /><i /></div><span>Safe connection</span><h2 id="capture-safety-title">TCG Live is already connected</h2><p id="capture-safety-description">Trace can’t safely tell whether a match is active. It won’t interrupt your connection or install an update.</p><div className="capture-safety-waiting"><i aria-hidden="true" /><span><strong>In a match? Finish playing first.</strong><small>Already on Home? Quit TCG Live, leave Trace open until it says Ready, then reopen TCG Live.</small></span></div><div className="modal-actions"><button type="button" onClick={() => setSafetyDismissed(true)}>Continue reviewing</button><button type="button" onClick={openSettings}>Open Settings</button></div></section></div>}
-      {!membershipBlocked && !sharedMode && showSetup && <CaptureSetupModal onClose={closeSetup} onCapture={capture => setEnvironment(current => ({ ...current, capture }))} />}
+      {!sharedMode && environment.capture.waitingForMatchEnd && !safetyDismissed && !showSetup && !showSettings && <div className="capture-safety-backdrop"><section className="capture-safety-dialog" role="alertdialog" aria-modal="true" aria-labelledby="capture-safety-title" aria-describedby="capture-safety-description"><div className="capture-safety-icon" aria-hidden="true"><ShieldCheck size={33} weight="fill" /><i /></div><span>Safe connection</span><h2 id="capture-safety-title">TCG Live is already connected</h2><p id="capture-safety-description">Trace can’t safely tell whether a match is active. It won’t interrupt your connection or install an update.</p><div className="capture-safety-waiting"><i aria-hidden="true" /><span><strong>In a match? Finish playing first.</strong><small>Already on Home? Quit TCG Live, leave Trace open until it says Ready, then reopen TCG Live.</small></span></div><div className="modal-actions"><button type="button" onClick={() => setSafetyDismissed(true)}>Continue reviewing</button><button type="button" onClick={openSettings}>Open Settings</button></div></section></div>}
+      {!sharedMode && showSetup && <CaptureSetupModal onClose={closeSetup} onCapture={capture => setEnvironment(current => ({ ...current, capture }))} />}
       {!sharedMode && showSettings && <UpdateSettingsModal onClose={() => setShowSettings(false)} version={appVersion}>{isTauri() && accountSettings}</UpdateSettingsModal>}
-      {!membershipBlocked && shareUrl && <div className="modal-backdrop share-modal-backdrop"><div className="share-modal" role="dialog" aria-modal="true" aria-labelledby="share-match-title"><div className="modal-title"><div><span>Ready to send</span><h2 id="share-match-title">Share this match</h2></div><button type="button" onClick={() => setShareUrl(null)} aria-label="Close share dialog"><X size={21} weight="bold" /></button></div><p>Anyone with this link can click through the replay in their browser.</p><div className="share-link-row"><input value={shareUrl} readOnly aria-label="Share link" onFocus={(event) => event.currentTarget.select()} /><button className="primary" type="button" onClick={() => void copyShareUrl(shareUrl)}><Copy size={16} weight="bold" />Copy link</button></div></div></div>}
-      <ReviewOverlay inspector={membershipBlocked ? null : inspector} catalog={cardCatalog} onClose={() => setInspector(null)} onInspectCard={openCard} />
-      {!sharedMode && (!showSetup || membershipBlocked) && updateNotice}
+      {shareUrl && <div className="modal-backdrop share-modal-backdrop"><div className="share-modal" role="dialog" aria-modal="true" aria-labelledby="share-match-title"><div className="modal-title"><div><span>Ready to send</span><h2 id="share-match-title">Share this match</h2></div><button type="button" onClick={() => setShareUrl(null)} aria-label="Close share dialog"><X size={21} weight="bold" /></button></div><p>Anyone with this link can click through the replay in their browser.</p><div className="share-link-row"><input value={shareUrl} readOnly aria-label="Share link" onFocus={(event) => event.currentTarget.select()} /><button className="primary" type="button" onClick={() => void copyShareUrl(shareUrl)}><Copy size={16} weight="bold" />Copy link</button></div></div></div>}
+      <ReviewOverlay inspector={inspector} catalog={cardCatalog} onClose={() => setInspector(null)} onInspectCard={openCard} />
+      {!sharedMode && !showSetup && updateNotice}
       {(notice || error || captureError) && <div className={`toast ${error || captureError ? 'error' : ''}`}><span>{error || captureError ? <X size={18} weight="bold" /> : <CheckCircle size={18} weight="fill" />}</span><p>{error || captureError || notice}</p><button type="button" onClick={() => { setError(null); setCaptureError(null); setNotice(null); }} aria-label="Dismiss notification"><X size={16} weight="bold" /></button></div>}
     </div>
   );

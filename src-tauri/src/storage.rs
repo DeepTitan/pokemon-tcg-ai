@@ -8,6 +8,7 @@ use std::{
     fs::{self, File},
     io::{BufRead, BufReader, Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
+    sync::{Arc, Mutex},
 };
 
 const SCHEMA_VERSION: i64 = 2;
@@ -25,6 +26,7 @@ pub struct PendingCloudReview {
 #[derive(Clone)]
 pub struct MatchStorage {
     database_path: PathBuf,
+    legacy_review_lock: Arc<Mutex<()>>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -65,6 +67,8 @@ pub struct MatchSummary {
     pub decklists: Option<Vec<Value>>,
     #[serde(default)]
     pub recording: bool,
+    #[serde(default)]
+    pub replay_requires_pro: bool,
 }
 
 fn capture_elapsed_seconds(
@@ -125,7 +129,7 @@ impl MatchStorage {
         if let Some(parent) = database_path.parent() {
             fs::create_dir_all(parent).map_err(|error| error.to_string())?;
         }
-        let storage = Self { database_path };
+        let storage = Self { database_path, legacy_review_lock: Arc::new(Mutex::new(())) };
         storage.initialize_schema()?;
         Ok(storage)
     }
@@ -163,6 +167,12 @@ impl MatchStorage {
                     reducer_version INTEGER NOT NULL DEFAULT 0,
                     summary_json TEXT,
                     review_gzip BLOB
+                );
+                CREATE TABLE IF NOT EXISTS replay_access (
+                    match_id TEXT PRIMARY KEY,
+                    saved_at INTEGER NOT NULL,
+                    grandfathered INTEGER NOT NULL DEFAULT 0,
+                    FOREIGN KEY(match_id) REFERENCES matches(id) ON DELETE CASCADE
                 );
                 CREATE TABLE IF NOT EXISTS operations (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -236,6 +246,14 @@ impl MatchStorage {
                 ",
             )
             .map_err(|error| error.to_string())?;
+        // Snapshot only once. An upgrade never removes access to already-saved matches.
+        // Future captures receive their own native save time and are never re-grandfathered.
+        connection.execute_batch("BEGIN IMMEDIATE;
+            INSERT OR IGNORE INTO replay_access(match_id, saved_at, grandfathered)
+                SELECT id, unixepoch(), 1 FROM matches
+                WHERE NOT EXISTS(SELECT 1 FROM metadata WHERE key='freemium_archive_snapshot');
+            INSERT OR IGNORE INTO metadata(key, value) VALUES('freemium_archive_snapshot', '1');
+            COMMIT;").map_err(|e| e.to_string())?;
         connection
             .execute(
                 "INSERT INTO metadata(key, value) VALUES('schema_version', ?1)
@@ -261,6 +279,10 @@ impl MatchStorage {
                 params![&match_id, operation.received_at],
             )
             .map_err(|error| error.to_string())?;
+        connection.execute(
+            "INSERT OR IGNORE INTO replay_access(match_id, saved_at) VALUES(?1, unixepoch())",
+            [&match_id],
+        ).map_err(|e| e.to_string())?;
         let inserted = connection
             .execute(
                 "INSERT OR IGNORE INTO operations(
@@ -381,7 +403,56 @@ impl MatchStorage {
                 access.local_player_name.as_deref(),
             );
         }
+        summary.replay_requires_pro = self.replay_requires_pro(&summary.id)?;
         Ok(summary)
+    }
+
+    pub fn replay_requires_pro(&self, id: &str) -> Result<bool, String> {
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| e.to_string())?.as_secs() as i64;
+        self.replay_requires_pro_at(id, now)
+    }
+
+    fn replay_requires_pro_at(&self, id: &str, now: i64) -> Result<bool, String> {
+        self.connection()?.query_row(
+            "SELECT grandfathered=0 AND (saved_at > ?2 OR ?2-saved_at >= ?3) FROM replay_access WHERE match_id=?1",
+            params![id, now, crate::membership::RECENT_REPLAY_SECONDS], |row| row.get(0),
+        ).optional().map_err(|e| e.to_string()).map(|value| value.unwrap_or(false))
+    }
+
+    /// Freeze the existing recovery file boundary before capture starts. Later fallback
+    /// appends are new captures, not an extension of the grandfathered archive.
+    pub fn prepare_legacy_replay_snapshot(&self, path: &Path) -> Result<(), String> {
+        let length = fs::metadata(path).map(|file| file.len()).unwrap_or(0);
+        self.connection()?.execute(
+            "INSERT OR IGNORE INTO metadata(key, value) VALUES('freemium_legacy_bytes', ?1)",
+            [length.to_string()],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// One-time migration from the old webview archive. Recording and normal imports
+    /// use persist_review instead, so edits cannot reset a replay's native age.
+    pub fn import_legacy_reviews(&self, reviews: Vec<Value>, reducer_version: i64) -> Result<(), String> {
+        let _lock = self.legacy_review_lock.lock().map_err(|_| "Archive migration is busy.")?;
+        let mut connection = self.connection()?;
+        let migrated: bool = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM metadata WHERE key='freemium_browser_archive')", [], |row| row.get(0),
+        ).map_err(|e| e.to_string())?;
+        if migrated { return Ok(()); }
+        let mut ids = Vec::new();
+        for review in reviews {
+            let review = self.review_for_storage(review)?;
+            ids.push(self.persist_review(&review, reducer_version)?.id);
+        }
+        let transaction = connection.transaction().map_err(|e| e.to_string())?;
+        for id in ids {
+            transaction.execute("UPDATE replay_access SET grandfathered=1 WHERE match_id=?1", [id])
+                .map_err(|e| e.to_string())?;
+        }
+        transaction.execute("INSERT OR IGNORE INTO metadata(key,value) VALUES('freemium_browser_archive','1')", [])
+            .map_err(|e| e.to_string())?;
+        transaction.commit().map_err(|e| e.to_string())
     }
 
     pub fn import_legacy_jsonl(&self, path: &Path) -> Result<i64, String> {
@@ -389,6 +460,9 @@ impl MatchStorage {
         let Some(file_length) = fs::metadata(path).ok().map(|metadata| metadata.len()) else {
             return Ok(0);
         };
+        let legacy_bytes = connection.query_row(
+            "SELECT value FROM metadata WHERE key='freemium_legacy_bytes'", [], |row| row.get::<_, String>(0),
+        ).optional().map_err(|e| e.to_string())?.and_then(|value| value.parse::<u64>().ok()).unwrap_or(0);
         let saved_offset = connection
             .query_row(
                 "SELECT value FROM metadata WHERE key='legacy_jsonl_offset'",
@@ -422,6 +496,10 @@ impl MatchStorage {
             if let Ok(operation) = serde_json::from_str::<CapturedOperation>(line.trim_end()) {
                 if Self::insert_operation(&transaction, &operation)? {
                     imported += 1;
+                }
+                if offset <= legacy_bytes {
+                    transaction.execute("UPDATE replay_access SET grandfathered=1 WHERE match_id=?1", [operation_match_id(&operation)])
+                        .map_err(|e| e.to_string())?;
                 }
             }
         }
@@ -572,6 +650,7 @@ impl MatchStorage {
                     .unwrap_or_default(),
             ),
             recording,
+            replay_requires_pro: false,
         };
         let summary_json = serde_json::to_string(&summary).map_err(|error| error.to_string())?;
         let review_json = serde_json::to_vec(review).map_err(|error| error.to_string())?;
@@ -600,6 +679,9 @@ impl MatchStorage {
                 ],
             )
             .map_err(|error| error.to_string())?;
+        transaction.execute(
+            "INSERT OR IGNORE INTO replay_access(match_id, saved_at) VALUES(?1, unixepoch())", [&id],
+        ).map_err(|e| e.to_string())?;
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |duration| duration.as_secs() as i64);
@@ -810,6 +892,7 @@ impl MatchStorage {
                 final_snapshot: None,
                 decklists: None,
                 recording: true,
+                replay_requires_pro: false,
             });
             // Upgrade only the compact summary, once per old row. Keep unrelated
             // summary fields and the original review/operations byte-for-byte.
@@ -1009,6 +1092,85 @@ mod tests {
             message_index: Some(7),
             operation: json!({"operationNumber": 7}),
         }
+    }
+
+    #[test]
+    fn recent_replays_expire_at_seven_days_without_deleting_or_redating_data() {
+        let (directory, storage) = temporary_storage();
+        storage.record_operation(&operation()).unwrap();
+        let connection = storage.connection().unwrap();
+        connection.execute("UPDATE replay_access SET saved_at=100 WHERE match_id='live-match-1'", []).unwrap();
+        let boundary = 100 + crate::membership::RECENT_REPLAY_SECONDS;
+        assert!(storage.replay_requires_pro_at("live-match-1", 99).unwrap(), "a future native timestamp is not a verified recent replay");
+        assert!(!storage.replay_requires_pro_at("live-match-1", 100).unwrap());
+        assert!(!storage.replay_requires_pro_at("live-match-1", boundary - 1).unwrap());
+        assert!(storage.replay_requires_pro_at("live-match-1", boundary).unwrap());
+        assert!(storage.replay_requires_pro_at("live-match-1", boundary + 1).unwrap());
+        // A UI-provided date, rebuilding the replay or receiving another operation
+        // cannot reset the native age of an existing archive entry.
+        storage.persist_review(&json!({"id":"live-match-1", "importedAt":"2999-01-01", "turns":[]}), 99).unwrap();
+        let mut later = operation();
+        later.operation_id = Some("next-operation".into());
+        storage.record_operation(&later).unwrap();
+        assert!(storage.replay_requires_pro_at("live-match-1", boundary + 1).unwrap());
+        assert_eq!(storage.load_operations("live-match-1").unwrap().len(), 2);
+        assert!(storage.load_review("live-match-1").unwrap().is_some());
+        assert_eq!(storage.list_summaries(0, 20).unwrap().len(), 1);
+        drop(connection);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn migration_preserves_existing_archive_once_and_never_grandfathers_new_captures() {
+        let (directory, storage) = temporary_storage();
+        storage.record_operation(&operation()).unwrap();
+        let original = storage.load_operations("live-match-1").unwrap()[0].operation.clone();
+        // Simulate an archive written by the preceding release.
+        storage.connection().unwrap().execute_batch("DELETE FROM replay_access; DELETE FROM metadata WHERE key='freemium_archive_snapshot';").unwrap();
+        let upgraded = MatchStorage::new(directory.join("trace.sqlite3")).unwrap();
+        let future = i64::MAX / 2;
+        assert!(!upgraded.replay_requires_pro_at("live-match-1", future).unwrap());
+        let mut fresh = operation();
+        fresh.match_id = Some("new-match".into());
+        upgraded.record_operation(&fresh).unwrap();
+        let reopened = MatchStorage::new(directory.join("trace.sqlite3")).unwrap();
+        assert!(reopened.replay_requires_pro_at("live-new-match", future).unwrap());
+        assert!(!reopened.replay_requires_pro_at("live-match-1", future).unwrap());
+        assert_eq!(reopened.load_operations("live-match-1").unwrap()[0].operation, original);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn legacy_file_snapshot_preserves_only_pre_upgrade_bytes() {
+        let (directory, storage) = temporary_storage();
+        let file = directory.join("operations.jsonl");
+        let original = format!("{}\n", serde_json::to_string(&operation()).unwrap());
+        fs::write(&file, &original).unwrap();
+        storage.prepare_legacy_replay_snapshot(&file).unwrap();
+        let mut fresh = operation();
+        fresh.match_id = Some("later-fallback".into());
+        let appended = format!("{}{}\n", original, serde_json::to_string(&fresh).unwrap());
+        fs::write(&file, &appended).unwrap();
+        storage.prepare_legacy_replay_snapshot(&file).unwrap();
+        assert_eq!(storage.import_legacy_jsonl(&file).unwrap(), 2);
+        assert!(!storage.replay_requires_pro_at("live-match-1", i64::MAX / 2).unwrap());
+        assert!(storage.replay_requires_pro_at("live-later-fallback", i64::MAX / 2).unwrap());
+        assert_eq!(fs::read_to_string(file).unwrap(), appended);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn legacy_browser_reviews_migrate_once_without_granting_later_imports() {
+        let (directory, storage) = temporary_storage();
+        let review = json!({"id":"old-browser-match", "importedAt":"2020-01-01", "turns":[]});
+        storage.import_legacy_reviews(vec![review], 99).unwrap();
+        assert!(!storage.replay_requires_pro_at("old-browser-match", i64::MAX / 2).unwrap());
+        let later = json!({"id":"new-browser-match", "importedAt":"2020-01-01", "turns":[]});
+        storage.persist_review(&later, 99).unwrap();
+        storage.import_legacy_reviews(vec![later], 99).unwrap();
+        assert!(storage.replay_requires_pro_at("new-browser-match", i64::MAX / 2).unwrap());
+        assert_eq!(storage.list_summaries(0, 20).unwrap().len(), 2);
+        fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]

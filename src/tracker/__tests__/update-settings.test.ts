@@ -6,7 +6,7 @@ const app = readFileSync(new URL('../TrackerApp.tsx', import.meta.url), 'utf8');
 const updater = readFileSync(new URL('../UpdateNotice.tsx', import.meta.url), 'utf8');
 assert.equal((app.match(/<UpdateNotice /g) || []).length, 1);
 assert.match(app, /const updateNotice = <UpdateNotice matchInProgress=\{environment.clientRunning\} settingsOpen=\{showSettings\}/);
-assert.match(app, /!sharedMode && \(!showSetup \|\| membershipBlocked\) && updateNotice/);
+assert.match(app, /!sharedMode && !showSetup && updateNotice/);
 assert.match(app, /<CaptureSetupModal onClose=\{closeSetup\} onCapture=/);
 assert.doesNotMatch(app, /aria-label="Animated replay frames"/);
 assert.match(app, /onClick=\{toggleFrameAnimations\}/);
