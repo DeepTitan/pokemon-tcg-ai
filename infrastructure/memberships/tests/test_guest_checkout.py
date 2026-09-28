@@ -318,6 +318,16 @@ class GuestCheckoutTests(unittest.TestCase):
         session['line_items']['data'][0]['price']['unit_amount'] = 1
         self.assert_error('billing_unavailable', lambda: self.service.handle(self.event('claim')))
 
+    def test_prior_tier_paid_invoice_cannot_be_claimed_as_supporter(self):
+        session = self.buy()
+        prior_invoice = subscription('trace', id=session['subscription']['id'],
+                                     customer=session['customer'])['latest_invoice']
+        session['subscription']['latest_invoice'] = prior_invoice
+        self.stripe.by_customer[session['customer']][0]['latest_invoice'] = deepcopy(prior_invoice)
+        self.assert_error('purchase_not_active', lambda: self.service.handle(self.event('claim')))
+        self.assertNotIn('claimedBy', self.store.guests[self.proof])
+        self.assertEqual(self.store.accounts[USER]['customerId'], 'cus_fixture')
+
     def test_complete_purchase_with_inactive_billing_blocks_repurchase(self):
         for status in ('canceled', 'past_due', 'unpaid', 'paused'):
             with self.subTest(status=status):

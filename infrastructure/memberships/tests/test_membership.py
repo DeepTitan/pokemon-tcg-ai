@@ -31,10 +31,24 @@ def price(plan='supporter'):
 
 
 def subscription(plan='supporter', **values):
-    return {'id': 'sub_fixture', 'customer': 'cus_fixture', 'status': 'active', 'livemode': False,
-            'current_period_end': NOW + 86400, 'cancel_at_period_end': False,
-            'latest_invoice': {'id': 'in_fixture', 'paid': True},
-            'items': {'data': [{'price': price(plan), 'quantity': 1}]}, **values}
+    result = {'id': 'sub_fixture', 'customer': 'cus_fixture', 'status': 'active', 'livemode': False,
+              'current_period_start': NOW - 29 * 86400, 'current_period_end': NOW + 86400,
+              'cancel_at_period_end': False,
+              'items': {'data': [{'id': 'si_fixture', 'price': price(plan), 'quantity': 1}]}, **values}
+    result.setdefault('latest_invoice', {
+        'id': 'in_fixture', 'object': 'invoice', 'paid': True, 'status': 'paid', 'livemode': False,
+        'subscription': result['id'], 'customer': result['customer'], 'currency': 'usd',
+        'billing_reason': 'subscription_cycle', 'amount_paid': price(plan)['unit_amount'],
+        'total': price(plan)['unit_amount'], 'amount_remaining': 0,
+        'lines': {'has_more': False, 'data': [{
+            'id': 'il_fixture', 'object': 'line_item', 'type': 'subscription',
+            'subscription': result['id'], 'subscription_item': 'si_fixture',
+            'price': price(plan), 'quantity': 1, 'amount': price(plan)['unit_amount'],
+            'currency': 'usd', 'livemode': False, 'proration': False,
+            'period': {'start': result['current_period_start'], 'end': result['current_period_end']},
+        }]},
+    })
+    return result
 
 
 def token(subject=USER, **values):

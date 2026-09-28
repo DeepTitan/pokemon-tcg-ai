@@ -14,6 +14,7 @@ from urllib.parse import urlencode
 ACCOUNT_URL = 'https://victoryroad.app/trace/account'
 LINK_URL = 'https://victoryroad.app/trace/link'
 PRICE_AMOUNTS = {'trace': 1499, 'supporter': 3999}
+PAID_EVIDENCE_VERSION = 1
 DEVICE_ID = re.compile(r'^[A-Za-z0-9._-]{16,128}$')
 SUBJECT = re.compile(r'^[A-Za-z0-9_-]{1,128}$')
 # Cognito subjects are UUIDs; pattern also permits synthetic nonproduction test subjects.
@@ -184,6 +185,56 @@ def price_plan(price, config, require_active=False):
     return plan
 
 
+def invoice_covers_current_plan(sub, item, plan, config, now):
+    """Require paid current-tier service, not merely an older paid invoice (API 2024-06-20)."""
+    def identifier(value):
+        return value.get('id') if isinstance(value, dict) else value
+
+    def integer(value):
+        return isinstance(value, int) and not isinstance(value, bool)
+
+    invoice = sub.get('latest_invoice')
+    if not isinstance(invoice, dict) or invoice.get('paid') is not True or invoice.get('status') != 'paid':
+        return False
+    if (not sub.get('id') or not sub.get('customer') or not item.get('id')
+            or identifier(invoice.get('subscription')) != sub['id']
+            or identifier(invoice.get('customer')) != sub['customer']
+            or invoice.get('livemode') is not config.stripe_live or invoice.get('currency') != 'usd'):
+        return False
+    start, end = sub.get('current_period_start'), sub.get('current_period_end')
+    if not integer(start) or not integer(end) or not 0 <= start <= now < end:
+        return False
+    lines = invoice.get('lines')
+    # Expanded invoices contain a bounded first page. Incomplete evidence must
+    # not grant a tier; do not guess about omitted debit/credit lines.
+    if not isinstance(lines, dict) or lines.get('has_more') is not False or not isinstance(lines.get('data'), list):
+        return False
+    for line in lines['data']:
+        if not isinstance(line, dict):
+            return False
+        period = line.get('period')
+        credits = line.get('proration_details')
+        if (not isinstance(period, dict) or not integer(line.get('amount')) or line['amount'] < 0
+                or not integer(line.get('quantity')) or line['quantity'] != 1
+                or line.get('livemode') is not config.stripe_live or line.get('currency') != 'usd'
+                or identifier(line.get('subscription')) != sub['id']
+                or identifier(line.get('subscription_item')) != item['id']
+                or price_plan(line.get('price'), config) != plan):
+            continue
+        # Subscription-generated prorations may be invoiceitem lines. Manual
+        # invoice items and credits alone never establish current service.
+        if line.get('type') != 'subscription' and not (line.get('type') == 'invoiceitem' and line.get('proration') is True):
+            continue
+        if credits is not None and (not isinstance(credits, dict) or credits.get('credited_items') is not None):
+            continue
+        line_start, line_end = period.get('start'), period.get('end')
+        if integer(line_start) and integer(line_end) and start <= line_start <= now < line_end == end:
+            # A paid zero-total invoice (credits/discounts) or a zero-cent
+            # rounded proration is valid; no new card charge is required.
+            return True
+    return False
+
+
 def subscription_snapshot(subscriptions, config, now):
     """Unknown/multiple membership subscriptions fail closed, including malformed active prices."""
     candidates = []
@@ -194,7 +245,8 @@ def subscription_snapshot(subscriptions, config, now):
             continue  # Unrelated Victory Road subscriptions never grant Trace access.
         if sub.get('status') not in {'canceled', 'incomplete_expired'}:
             candidates.append(sub)
-    snapshot = {'plan': 'none', 'status': 'none', 'expiresAt': 0, 'cancelAtPeriodEnd': False, 'syncedAt': now}
+    snapshot = {'plan': 'none', 'status': 'none', 'expiresAt': 0, 'cancelAtPeriodEnd': False,
+                'syncedAt': now, 'paidEvidenceVersion': PAID_EVIDENCE_VERSION}
     if len(candidates) > 1:
         return {**snapshot, 'status': 'subscription_conflict'}
     if not candidates:
@@ -204,13 +256,11 @@ def subscription_snapshot(subscriptions, config, now):
     plan = price_plan(items[0].get('price'), config) if len(items) == 1 else None
     if not plan or items[0].get('quantity') != 1 or sub.get('livemode') is not config.stripe_live:
         return {**snapshot, 'status': 'invalid_subscription'}
-    invoice = sub.get('latest_invoice') or {}
-    paid = isinstance(invoice, dict) and invoice.get('paid') is True
     period_end = sub.get('current_period_end')
     if not isinstance(period_end, int) or isinstance(period_end, bool):
         return {**snapshot, 'status': 'invalid_subscription'}
     status = str(sub.get('status', 'none'))
-    if status == 'active' and not paid:
+    if status == 'active' and not invoice_covers_current_plan(sub, items[0], plan, config, now):
         status = 'payment_pending'
     return {**snapshot, 'plan': plan, 'status': status, 'expiresAt': period_end,
             'cancelAtPeriodEnd': sub.get('cancel_at_period_end') is True,
@@ -278,14 +328,17 @@ class MembershipService:
                     'capabilities': capabilities(True, True)}
         # Webhooks normally keep this fresh. Reads repair missed events; stale/failed
         # reconciliation never continues granting paid access from an old snapshot.
-        if account and account.get('customerId') and self.config.billing_enabled and now - int(snapshot.get('syncedAt', 0)) > 300:
+        if account and account.get('customerId') and self.config.billing_enabled and (
+                snapshot.get('paidEvidenceVersion') != PAID_EVIDENCE_VERSION
+                or now - int(snapshot.get('syncedAt', 0)) > 300):
             with self.store.account_lock(subject, now) as lease:
                 account = self.store.account(subject)
                 snapshot = self.reconcile(subject, account, lease)
         status = snapshot.get('status', 'none')
         plan = snapshot.get('plan', 'none')
         expires = int(snapshot.get('expiresAt') or 0)
-        current = self.config.billing_enabled and now - int(snapshot.get('syncedAt', 0)) <= 300
+        current = (self.config.billing_enabled and snapshot.get('paidEvidenceVersion') == PAID_EVIDENCE_VERSION
+                   and now - int(snapshot.get('syncedAt', 0)) <= 300)
         allowed = bool(current and plan in PRICE_AMOUNTS and status == 'active' and expires > now)
         return {'email': email or (account or {}).get('email'), 'plan': plan if plan in PRICE_AMOUNTS else 'none',
                 'traceAccess': allowed, 'opponentDecklists': allowed and plan == 'supporter', 'admin': False,
