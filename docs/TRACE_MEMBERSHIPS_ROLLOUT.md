@@ -38,6 +38,7 @@ The implementation is not a production release. Before enabling it:
 ## Boundaries and limitations
 
 - Owner switch reads and protected decklist requests check the server afresh. Ordinary native access uses an in-memory lease of up to 60 seconds, refreshed every 30 seconds; use Refresh membership for an immediate visible account update.
+- Plan buttons go straight to hosted Stripe Checkout; account creation and email verification happen after payment. Configure the web proxy's shared secret together with `webProxySecret` in the service secret, and test post-payment claiming, wrong-account recovery, cancellation, reloads, and duplicate clicks before launch.
 - Missing/offline/expired membership cannot unlock new paid access. Raw captured data and already admitted matches are preserved.
 - Opponent lists are removed from normal frontend events, reviews, summaries, and public share responses. A separate native command checks membership and raw match-end evidence before returning a list.
 - Legacy public replay artifacts are rebuilt using projection format 2 before honoring old ETags. Previously downloaded copies cannot be recalled.

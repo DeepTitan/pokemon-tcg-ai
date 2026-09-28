@@ -132,6 +132,41 @@ class AdapterTests(unittest.TestCase):
         store.owner_enabled('subject')
         self.assertTrue(store.owners.get_item.call_args.kwargs['ConsistentRead'])
 
+    def test_guest_claim_is_one_transaction_guarding_both_leases_and_customer_ownership(self):
+        store = adapters.Store('members', 'devices', 'owner-switch')
+        store.table.name = 'members'
+        store.claim_guest('proof', 'subject', {'customerId': 'cus_new', 'sessionId': 'cs_paid'},
+                          {'plan': 'supporter', 'status': 'active'}, 'cus_old', 'guest-lease', 'account-lease', 1234)
+        items = store.client.transact_write_items.call_args.kwargs['TransactItems']
+        guards = [item['ConditionCheck'] for item in items if 'ConditionCheck' in item]
+        self.assertEqual({entry['Key']['pk']['S'] for entry in guards}, {'LOCK#GUEST#proof', 'LOCK#subject'})
+        account = next(item['Update'] for item in items if 'Update' in item)
+        self.assertEqual(account['ConditionExpression'], 'customerId = :previous')
+        self.assertEqual(account['ExpressionAttributeValues'][':previous'], {'S': 'cus_old'})
+        claimed = next(item['Put'] for item in items if item.get('Put', {}).get('Item', {}).get('pk') == {'S': 'GUEST#proof'})
+        self.assertIn('sessionId = :session', claimed['ConditionExpression'])
+        self.assertIn('attribute_not_exists(claimedBy)', claimed['ConditionExpression'])
+        reverse = next(item['Put'] for item in items if item.get('Put', {}).get('Item', {}).get('pk') == {'S': 'CUSTOMER#cus_new'})
+        self.assertIn('attribute_not_exists(pk)', reverse['ConditionExpression'])
+        retired = next(item['Delete'] for item in items if 'Delete' in item)
+        self.assertEqual(retired['Key'], {'pk': {'S': 'CUSTOMER#cus_old'}})
+        self.assertIn('#subject = :subject', retired['ConditionExpression'])
+
+    def test_guest_stripe_session_collects_email_and_binds_proof_to_subscription(self):
+        stripe = adapters.Stripe('secret-arn', 'bpc_fixture', False)
+        stripe.request = Mock(return_value={'id': 'cs_guest'})
+        stripe.create_guest_customer('hashed-proof')
+        self.assertNotIn('email', stripe.request.call_args.args[2])
+        stripe.guest_checkout('cus_guest', 'price_supporter', 'hashed-proof', 'reservation', 1234)
+        fields = stripe.request.call_args.args[2]
+        self.assertEqual(fields['customer'], 'cus_guest')
+        self.assertEqual(fields['metadata[trace_guest]'], 'hashed-proof')
+        self.assertEqual(fields['subscription_data[metadata][trace_guest]'], 'hashed-proof')
+        self.assertEqual(fields['subscription_data[metadata][trace_reservation]'], 'reservation')
+        self.assertNotIn('customer_email', fields)
+        stripe.retrieve_checkout('cs_guest')
+        self.assertEqual(stripe.request.call_args.args[2]['expand[]'], ['subscription.latest_invoice', 'line_items'])
+
     def test_cognito_resend_hides_unknown_account_and_rejects_throttling(self):
         cognito = adapters.Cognito(Config('pool', 'client', 'region'))
         cognito.client = Mock()

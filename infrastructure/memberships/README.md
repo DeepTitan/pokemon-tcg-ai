@@ -16,6 +16,28 @@ Subscription state is read consistently from DynamoDB. Verified webhooks trigger
 
 Checkouts persist a stable idempotency key before creation, retrieve current session state on retries, and expire a previous open session when the selected plan changes. Checkout sessions accept card payment only. Return URLs are fixed to `https://victoryroad.app/trace/account`. API redirects are disabled and returned URLs must use the expected Stripe host. Nothing trusts a client price, customer ID, account subject, plan flag, or admin flag.
 
+## Checkout before account setup
+
+New visitors choose a plan and go directly to Stripe. They create or sign into a verified Trace account after payment, using the same email they entered at checkout. Returning signed-in members use the existing account checkout/portal flow; owners already have access and are not asked to pay.
+
+The website first creates a random 32-byte proof in an HttpOnly, Secure, SameSite cookie, then starts checkout with that existing cookie. The browser never receives the proof in JSON or a URL. The service stores only its SHA-256 hash. The three server-only endpoints additionally require `x-trace-proxy-key`, taken from the website's `TRACE_MEMBERSHIP_PROXY_SECRET` and compared against `webProxySecret` in the dedicated Secrets Manager JSON:
+
+| Endpoint | Server request | Response |
+| --- | --- | --- |
+| `POST /v1/checkout/guest` | `{plan, checkoutToken}` | `{url}` to hosted Stripe Checkout |
+| `POST /v1/checkout/status` | `{checkoutToken}` | `{state, plan, expiresAt}` without email or Stripe/customer/session IDs |
+| `POST /v1/checkout/claim` | `{checkoutToken}` plus verified Cognito bearer | `{claimed:true}` after the transaction commits |
+
+Status states are `none`, `open`, `processing`, `paid`, `expired`, and `claimed`. Unknown valid proofs return `none`. Open sessions have a one-hour deadline. A completed purchase with inactive current billing returns `processing` plus `reason: "purchase_not_active"`, so the website offers billing help and blocks a second purchase. It never treats a formerly paid subscription as an unused checkout merely because billing later failed or was canceled.
+
+Guest records are serialized under a separate conditional lease. A blank anonymous Stripe customer is saved before checkout; Stripe collects its email during checkout. Each reservation has stable idempotency and metadata bindings. Repeated clicks reuse the same open session, and changing plan expires the prior session first. If Stripe created a session but its response was lost, the service retries the original key while valid or locates that exact reservation under its persisted customer. It does not discard the reservation just because an immediate session listing was empty. Customer-only partial records recover safely.
+
+Claiming re-fetches the exact Stripe session, checks its customer, proof hash, reservation, mode, price and payment, then verifies that the account's verified email matches Stripe's checkout email. A second fresh lookup checks the customer's current subscriptions. Both guest and account leases are held while one DynamoDB transaction binds the customer, saves the entitlement snapshot, and marks the purchase claimed. Reverse customer ownership cannot be overwritten. A retry after a lost successful response is safe. Redirect parameters, browser emails, session IDs and subscription flags never grant access.
+
+An account with an abandoned or canceled older membership customer may claim a legitimate guest purchase. The service first verifies no live or unfinished subscription remains, expires that old customer's open Trace checkouts, rechecks subscriptions, and atomically replaces the old binding. An existing active/unpaid/unfinished membership returns `subscription_exists`; it is never overwritten and no refund or additional charge is attempted automatically.
+
+Unpaid guest records expire after 90 days. Once a completed paid session is observed, its record loses its TTL and is retained until claimed or resolved. The pre-checkout `GUEST_CUSTOMER` binding also lets paid webhooks retain the record when the browser never returns. Claimed records remain for a further 90 days. The website cookie lasts 30 days; losing it requires support to verify and recover the purchase. There is deliberately no API accepting a user-supplied session ID as a substitute. Missing-proof or duplicate-active-purchase copy must direct the user to recovery/billing help, not tell them to pay again. Guest deduplication is browser-bound and cannot prevent someone intentionally purchasing again from a different browser/proof before an account is linked.
+
 ## Database records and owner switch
 
 The membership table has a single string partition key `pk`:
@@ -24,6 +46,8 @@ The membership table has a single string partition key `pk`:
 | --- | --- |
 | `ACCOUNT#<sub>` | Verified email, bound Stripe customer, subscription snapshot, pending checkout reservation |
 | `CUSTOMER#<cus_id>` | Reverse customer-to-subject binding written before checkout |
+| `GUEST#<proof hash>` | Guest customer, exact reservation/session, payment retention and claim state |
+| `GUEST_CUSTOMER#<cus_id>` | Guest proof binding, written before checkout, for paid webhook retention |
 | `DEVICE#<capture UUID>` | Linked subject and the capture credential hash at approval |
 | `LINK#<SHA-256 code>` | Device/credential binding and ten-minute expiry; atomically consumed |
 | `EVENT#<evt_id>` | Processed webhook receipt, retained 30 days |
@@ -55,7 +79,7 @@ Before pinning the owner, verify their exact email with Cognito, inspect that ac
 3. Cognito's default email service has a small sending quota. Before public launch, configure verified production SES delivery in the user pool and confirm delivery/recovery/domain settings. Do not launch a paid signup flow with only an untested sandbox sender.
 4. In a dedicated Stripe sandbox, create two fixed recurring USD monthly prices: 1499 and 3999 cents, quantity one. No free trial, adjustable quantity, or promotion-code field. Create an isolated customer portal configuration permitting only these plans, payment-method updates, invoices and subscription cancellation. Do not reuse the film product's portal configuration.
 5. Register a snapshot webhook endpoint at `<MembershipApiUrl>/v1/webhook`, API version **2024-06-20**, for `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `checkout.session.async_payment_failed`, `customer.subscription.created/updated/deleted/paused/resumed`, `invoice.paid`, `invoice.payment_failed` and `invoice.payment_action_required`. The Stripe API adapter explicitly pins 2024-06-20.
-6. Store `{"secretKey":"sk_test_...","webhookSecret":"whsec_..."}` as a dedicated Secrets Manager secret. Pass only its ARN, the price IDs, and the portal configuration ID to deployment. No secret values in source, CLI arguments, build logs, browser code, or app binaries. Secret retrieval occurs only in the Lambda at runtime, with a five-minute cache. Switch API+webhook secrets together.
+6. Store `{"secretKey":"sk_test_...","webhookSecret":"whsec_...","webProxySecret":"<random server-only secret of at least 43 characters>"}` as a dedicated Secrets Manager secret. Pass only its ARN, the price IDs, and the portal configuration ID to deployment. No secret values in source, CLI arguments, build logs, browser code, or app binaries. Secret retrieval occurs only in the Lambda at runtime, with a five-minute cache. Set the matching `TRACE_MEMBERSHIP_PROXY_SECRET` only on the website server. Guest routes fail closed when it is absent. Switch API+webhook secrets together.
 7. Set `BillingEnabled=true` in the **test stack**, connect the web proxy/native URL, and verify signup, email confirmation/recovery, purchase, failed card, account refresh, duplicate checkout, plan change, cancellation, invoice failure, device link/unlink, owner on/off, and pre/post-match decklist gates end to end. Offline tests below are not proof of these external-service integrations.
 8. Launch only after the existing-user migration policy and owner identity are settled. Configure live prices/secret and `StripeMode=live`; deploying enabled live billing additionally requires `--allow-live-billing`. Set `TRACE_MEMBERSHIP_API_URL` for the server proxy, capture API and desktop build. Root deployment owns those integrations. No automatic publication or destructive migration is part of this script.
 
@@ -68,7 +92,7 @@ python3 -m unittest discover -s infrastructure/memberships/tests -v
 python3 -m py_compile infrastructure/memberships/lambda/*.py infrastructure/memberships/deploy.py
 ```
 
-All 34 offline tests pass. Tests use synthetic accounts, in-memory fake persistence/Cognito/Stripe, deterministic time and genuine HMAC signatures. They exercise grants/revocation/expiry, strict prices, owner-only scope, wrong-pool credentials, replayed/expired link codes, changed device tokens, duplicate checkout recovery, stale snapshots, webhook ordering/duplicate delivery, concurrency and failed persistence. They never start Trace or Pokémon TCG Live, charge a card, or send email.
+All 58 offline tests pass. Tests use synthetic accounts, in-memory fake persistence/Cognito/Stripe, deterministic time and genuine HMAC signatures. They exercise grants/revocation/expiry, strict prices, owner-only scope, wrong-pool credentials, replayed/expired link codes, changed device tokens, duplicate checkout recovery, stale snapshots, webhook ordering/duplicate delivery, concurrency and failed persistence. Guest tests additionally cover direct purchase without an account, proof/session binding, partial records, lost Stripe responses, duplicate clicks, expired checkout recovery, paid webhook retention, email mismatch, atomic claim failures/retries, abandoned prior customers, and inactive paid purchases that must not trigger repayment. They never start Trace or Pokémon TCG Live, charge a card, or send email.
 
 YAML syntax and Python compilation also pass. SAM/CloudFormation semantic validation, real Cognito email delivery, Stripe sandbox checkout/webhook/portal verification and deployed IAM checks remain deployment-stage requirements; this environment had no SAM CLI or Python AWS SDK installed, and no secrets/cloud writes were authorized for this subtask.
 

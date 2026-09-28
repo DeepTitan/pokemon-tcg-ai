@@ -55,6 +55,55 @@ class Store:
     def capture_device(self, device):
         return self.devices.get_item(Key={'deviceId': device}, ConsistentRead=True).get('Item')
 
+    def guest(self, proof):
+        return self.get('GUEST#' + proof)
+
+    def guest_customer_proof(self, customer):
+        return (self.get('GUEST_CUSTOMER#' + customer) or {}).get('proof')
+
+    def guest_lock(self, proof, now):
+        return self.account_lock('GUEST#' + proof, now)
+
+    def guest_put(self, proof, record):
+        return {'Put': {'TableName': self.table.name,
+                        'Item': self.serialized({**record, 'pk': 'GUEST#' + proof})}}
+
+    def save_guest(self, proof, record, lease, now):
+        self.transact([self.lock_check('GUEST#' + proof, lease, now), self.guest_put(proof, record)])
+
+    def bind_guest_customer(self, proof, record, lease, now):
+        self.transact([self.lock_check('GUEST#' + proof, lease, now), self.guest_put(proof, record),
+                       {'Put': {'TableName': self.table.name,
+                                'Item': self.serialized({'pk': 'GUEST_CUSTOMER#' + record['customerId'], 'proof': proof}),
+                                'ConditionExpression': 'attribute_not_exists(pk) OR proof = :proof',
+                                'ExpressionAttributeValues': self.serialized({':proof': proof})}}])
+
+    def claim_guest(self, proof, subject, record, snapshot, previous, guest_lease, account_lease, now):
+        account_update = self.account_update(subject, {'customerId': record['customerId'], 'snapshot': snapshot})
+        update = account_update['Update']
+        update['UpdateExpression'] += ' REMOVE checkout'
+        update['ConditionExpression'] = 'customerId = :previous' if previous else 'attribute_not_exists(customerId)'
+        if previous:
+            update['ExpressionAttributeValues'][':previous'] = self.serializer.serialize(previous)
+        claimed = {**record, 'claimedBy': subject, 'claimedAt': now, 'ttl': now + 90 * 86400}
+        guest_put = self.guest_put(proof, claimed)
+        guest_put['Put'].update(
+            ConditionExpression='sessionId = :session AND (attribute_not_exists(claimedBy) OR claimedBy = :subject)',
+            ExpressionAttributeValues=self.serialized({':session': record['sessionId'], ':subject': subject}))
+        items = [self.lock_check('GUEST#' + proof, guest_lease, now), self.lock_check(subject, account_lease, now),
+                 account_update, guest_put,
+                 {'Put': {'TableName': self.table.name,
+                          'Item': self.serialized({'pk': 'CUSTOMER#' + record['customerId'], 'subject': subject}),
+                          'ConditionExpression': 'attribute_not_exists(pk) OR #subject = :subject',
+                          'ExpressionAttributeNames': {'#subject': 'subject'},
+                          'ExpressionAttributeValues': self.serialized({':subject': subject})}}]
+        if previous and previous != record['customerId']:
+            items.append({'Delete': {'TableName': self.table.name, 'Key': self.serialized({'pk': 'CUSTOMER#' + previous}),
+                                    'ConditionExpression': 'attribute_not_exists(pk) OR #subject = :subject',
+                                    'ExpressionAttributeNames': {'#subject': 'subject'},
+                                    'ExpressionAttributeValues': self.serialized({':subject': subject})}})
+        self.transact(items)
+
     def device_link(self, device):
         return self.get('DEVICE#' + device)
 
@@ -277,6 +326,12 @@ class Stripe:
             raise ApiError(503, 'billing_unavailable')
         return value
 
+    def proxy_secret(self):
+        value = self.secrets().get('webProxySecret', '')
+        if not isinstance(value, str) or len(value) < 43 or len(value) > 512:
+            raise ApiError(503, 'billing_unavailable')
+        return value
+
     def request(self, method, path, fields=None, idempotency=None):
         if not path.startswith('/v1/') or not re_safe_path(path):
             raise ApiError(503, 'billing_unavailable')
@@ -319,8 +374,29 @@ class Stripe:
             'expires_at': expires,
         }, 'trace-checkout-' + key)
 
+    def create_guest_customer(self, proof):
+        # Checkout collects the email for this deliberately blank anonymous customer.
+        return self.request('POST', '/v1/customers', {'metadata[trace_guest]': proof}, 'trace-guest-customer-' + proof)
+
+    def guest_checkout(self, customer, price, proof, key, expires):
+        return self.request('POST', '/v1/checkout/sessions', {
+            'mode': 'subscription', 'customer': customer, 'client_reference_id': 'guest_' + proof,
+            'line_items[0][price]': price, 'line_items[0][quantity]': 1, 'payment_method_types[0]': 'card',
+            'metadata[trace_guest]': proof, 'metadata[trace_reservation]': key,
+            'subscription_data[metadata][trace_guest]': proof, 'subscription_data[metadata][trace_reservation]': key,
+            'success_url': ACCOUNT_URL + '?checkout=success', 'cancel_url': ACCOUNT_URL + '?checkout=cancel',
+            'expires_at': expires,
+        }, 'trace-guest-checkout-' + key)
+
+    def checkout_sessions(self, customer):
+        result = self.request('GET', '/v1/checkout/sessions', {'customer': customer, 'limit': 100})
+        if result.get('has_more') or not isinstance(result.get('data'), list):
+            raise ApiError(503, 'billing_unavailable')
+        return result['data']
+
     def retrieve_checkout(self, identifier):
-        return self.request('GET', '/v1/checkout/sessions/' + identifier)
+        return self.request('GET', '/v1/checkout/sessions/' + identifier,
+                            {'expand[]': ['subscription.latest_invoice', 'line_items']})
 
     def checkout_url(self, session):
         return allowed_url(session.get('url'), 'checkout.stripe.com')

@@ -30,3 +30,19 @@ membership_unlink => status.
 load_opponent_decklist {matchId} => validated list only after fresh membership verification + native stored terminal evidence. Always omit opponent full inventory from ordinary operation/review/summary events. Own deck and naturally revealed cards remain.
 
 Credentials never enter JS, logs, or private replay exports. Keep updater/account recovery usable without payment. Never terminate live capture routing due to expiry/connectivity.
+
+## Direct Stripe checkout (September 27 follow-up)
+
+The public plan buttons start hosted Stripe Checkout before account registration, matching the existing Victory Road film purchase flow. Stripe collects the purchase email. On return, the buyer creates or signs into a verified Trace account using that same email, claims the paid purchase, and links the desktop app. Logged-in members and the owner use their existing account state to avoid another purchase.
+
+The website generates a random purchase token and retains it only in a Secure, HttpOnly, host-only cookie. It sends that token to the membership service together with an `x-trace-proxy-key` header. The header value is `TRACE_MEMBERSHIP_PROXY_SECRET` on the website and `webProxySecret` in the membership service's Secrets Manager JSON. Neither value enters page JavaScript, URLs, or analytics.
+
+The browser first calls the web-only `POST /trace/api/checkout/prepare` to establish the cookie; that action creates no Stripe resources. A same-origin Web Lock serializes preparation and checkout across tabs. Guest checkout requires the existing cookie and never replaces it, so a dropped checkout response can be retried with the same purchase proof. Browsers without Web Locks receive an unsupported-browser message before any payment session is created. Every checkout entry point checks an existing purchase before choosing between guest and authenticated checkout.
+
+- `POST checkout/guest {plan,checkoutToken}` returns a validated Stripe Checkout URL. Repeated requests reuse the reserved session; selecting another plan expires an open prior checkout. Completed purchases cannot open a second checkout from the same purchase token.
+- `POST checkout/status {checkoutToken}` returns `{state,plan,expiresAt}`; states are `none`, `open`, `processing`, `paid`, `expired`, or `claimed`. A completed purchase whose subscription needs attention stays `processing` with the allowlisted `reason: purchase_not_active`, directing the buyer to recovery instead of another purchase. No purchase email, Stripe customer/session ID, or secret is returned.
+- `POST checkout/claim {checkoutToken}` additionally requires a verified Cognito account and returns `{claimed:true}`. The service retrieves the exact bound session from Stripe, verifies paid subscription/price/mode/metadata, matches its email to the verified account, and binds ownership transactionally before granting access.
+
+A return URL, browser-supplied email, session ID, or payment-success flag cannot grant access. Losing the browser's purchase cookie requires recovery/support rather than permitting arbitrary purchase claims. Proof-free duplicate prevention across different browsers is not promised; existing members should sign in and manage their existing subscription.
+
+Paid, unclaimed purchase evidence is retained until the purchase is resolved; the one-hour Checkout expiry does not erase a completed purchase. Account binding and the freshly reconciled entitlement snapshot are committed together. Retrying a claim verifies the payment again and safely returns the same ownership. An abandoned account customer may be replaced only after its open checkouts are expired and fresh reconciliation confirms it has no ongoing Trace subscription.

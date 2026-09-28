@@ -17,6 +17,8 @@ PRICE_AMOUNTS = {'trace': 1499, 'supporter': 3999}
 DEVICE_ID = re.compile(r'^[A-Za-z0-9._-]{16,128}$')
 SUBJECT = re.compile(r'^[A-Za-z0-9_-]{1,128}$')
 # Cognito subjects are UUIDs; pattern also permits synthetic nonproduction test subjects.
+CHECKOUT_TOKEN = re.compile(r'^[A-Za-z0-9_-]{43,128}$')
+GUEST_RETENTION_SECONDS = 90 * 86400
 LINK_CODE = re.compile(r'^[A-Z2-7]{10}$')
 EVENT_TYPES = frozenset({
     'checkout.session.completed', 'checkout.session.async_payment_succeeded',
@@ -106,6 +108,18 @@ def password_value(value):
     )):
         raise ApiError(400, 'invalid_password')
     return value
+
+
+def checkout_digest(value):
+    if not isinstance(value, str) or not CHECKOUT_TOKEN.fullmatch(value):
+        raise ApiError(400, 'checkout_not_found')
+    try:
+        decoded = base64.urlsafe_b64decode(value + '=' * (-len(value) % 4))
+    except ValueError:
+        raise ApiError(400, 'checkout_not_found')
+    if len(decoded) < 32:
+        raise ApiError(400, 'checkout_not_found')
+    return digest(value)
 
 
 def confirmation_code(value):
@@ -310,6 +324,188 @@ class MembershipService:
             self.store.save_account(subject, {'checkout': {**pending, 'sessionId': session['id']}}, lease, self.now())
             return {'url': self.stripe.checkout_url(session)}
 
+    def require_proxy(self, event):
+        self.require_billing()
+        supplied = headers(event).get('x-trace-proxy-key', '')
+        expected = self.stripe.proxy_secret()
+        if not supplied or len(supplied) > 512 or not hmac.compare_digest(supplied, expected):
+            raise ApiError(401, 'unauthorized')
+
+    def guest_record(self, proof, required=True):
+        record = self.store.guest(proof)
+        if not record:
+            if required:
+                raise ApiError(404, 'checkout_not_found')
+            return None
+        if not record.get('paidAt') and not record.get('claimedBy') and int(record.get('claimExpiresAt', 0)) <= self.now():
+            raise ApiError(410, 'checkout_expired')
+        return record
+
+    def guest_session(self, proof, record, lease, create=False):
+        """Recover the exact reservation, including a lost creation response older than 24h."""
+        if not record.get('key'):
+            return None
+        identifier = record.get('sessionId')
+        if not identifier:
+            matches = [session for session in self.stripe.checkout_sessions(record['customerId'])
+                       if (session.get('metadata') or {}).get('trace_guest') == proof
+                       and (session.get('metadata') or {}).get('trace_reservation') == record['key']]
+            if len(matches) > 1:
+                raise ApiError(503, 'billing_unavailable')
+            if matches:
+                identifier = matches[0]['id']
+            elif create and int(record['expiresAt']) > self.now():
+                session = self.stripe.guest_checkout(record['customerId'], self.config.prices[record['plan']],
+                                                     proof, record['key'], int(record['expiresAt']))
+                identifier = session['id']
+            else:
+                return None
+            record['sessionId'] = identifier
+            self.store.save_guest(proof, record, lease, self.now())
+        session = self.stripe.retrieve_checkout(identifier)
+        metadata = session.get('metadata') or {}
+        if (session.get('id') != identifier or session.get('customer') != record['customerId']
+                or session.get('client_reference_id') != 'guest_' + proof
+                or metadata.get('trace_guest') != proof or metadata.get('trace_reservation') != record['key']
+                or session.get('mode') != 'subscription' or session.get('livemode') is not self.config.stripe_live):
+            raise ApiError(503, 'billing_unavailable')
+        items = (session.get('line_items') or {}).get('data') or []
+        if ((session.get('line_items') or {}).get('has_more') or len(items) != 1
+                or items[0].get('quantity') != 1 or price_plan(items[0].get('price'), self.config) != record['plan']):
+            raise ApiError(503, 'billing_unavailable')
+        if session.get('status') == 'complete' and session.get('payment_status') == 'paid' and not record.get('paidAt'):
+            record['paidAt'] = self.now()
+            record.pop('ttl', None)
+            record.pop('claimExpiresAt', None)
+            self.store.save_guest(proof, record, lease, self.now())
+        return session
+
+    def paid_guest_subscription(self, proof, record, session):
+        subscription = session.get('subscription')
+        if (session.get('status') != 'complete' or session.get('payment_status') != 'paid'):
+            raise ApiError(409, 'payment_processing')
+        if not isinstance(subscription, dict):
+            raise ApiError(503, 'billing_unavailable')
+        if (subscription.get('customer') != record['customerId']
+                or (subscription.get('metadata') or {}).get('trace_guest') != proof
+                or (subscription.get('metadata') or {}).get('trace_reservation') != record['key']):
+            raise ApiError(503, 'billing_unavailable')
+        snapshot = subscription_snapshot([subscription], self.config, self.now())
+        if snapshot['plan'] != record['plan'] or snapshot['status'] != 'active' or snapshot['expiresAt'] <= self.now():
+            raise ApiError(409, 'purchase_not_active')
+        return snapshot
+
+    def guest_checkout(self, plan, token):
+        self.require_billing()
+        proof = checkout_digest(token)
+        if plan not in PRICE_AMOUNTS:
+            raise ApiError(400, 'invalid_plan')
+        if price_plan(self.stripe.price(self.config.prices[plan]), self.config, require_active=True) != plan:
+            raise ApiError(503, 'billing_unavailable')
+        self.store.limit('guest-checkout:' + proof, 12, 600, self.now())
+        with self.store.guest_lock(proof, self.now()) as lease:
+            record = self.guest_record(proof, required=False)
+            if record and record.get('claimedBy'):
+                raise ApiError(409, 'purchase_already_claimed')
+            if record and record.get('customerId'):
+                previous = self.guest_session(proof, record, lease, create=True)
+                if previous and previous.get('status') == 'complete':
+                    raise ApiError(409, 'payment_already_completed')
+                if previous and previous.get('status') == 'open':
+                    if record['plan'] == plan and int(previous.get('expires_at', 0)) > self.now():
+                        return {'url': self.stripe.checkout_url(previous)}
+                    self.stripe.expire_checkout(previous['id'])
+            if not record:
+                record = {'createdAt': self.now(), 'claimExpiresAt': self.now() + GUEST_RETENTION_SECONDS,
+                          'ttl': self.now() + GUEST_RETENTION_SECONDS}
+                self.store.save_guest(proof, record, lease, self.now())
+            if not record.get('customerId'):
+                customer = self.stripe.create_guest_customer(proof)
+                record['customerId'] = customer['id']
+                self.store.bind_guest_customer(proof, record, lease, self.now())
+            record = {**record, 'plan': plan, 'key': secrets.token_urlsafe(24), 'expiresAt': self.now() + 3600}
+            record.pop('sessionId', None)
+            self.store.save_guest(proof, record, lease, self.now())
+            session = self.guest_session(proof, record, lease, create=True)
+            if not session or session.get('status') != 'open':
+                raise ApiError(503, 'billing_unavailable')
+            return {'url': self.stripe.checkout_url(session)}
+
+    def guest_status(self, token):
+        self.require_billing()
+        proof = checkout_digest(token)
+        with self.store.guest_lock(proof, self.now()) as lease:
+            record = self.guest_record(proof, required=False)
+            if not record:
+                return {'state': 'none', 'plan': 'none', 'expiresAt': None}
+            if record.get('claimedBy'):
+                return {'state': 'claimed', 'plan': record.get('plan', 'none'), 'expiresAt': None}
+            if not record.get('customerId') or not record.get('key'):
+                return {'state': 'none', 'plan': 'none', 'expiresAt': None}
+            session = self.guest_session(proof, record, lease)
+            if not session or session.get('status') == 'expired':
+                return {'state': 'expired', 'plan': record['plan'], 'expiresAt': iso_timestamp(record['expiresAt'])}
+            if session.get('status') == 'open':
+                return {'state': 'open', 'plan': record['plan'], 'expiresAt': iso_timestamp(session['expires_at'])}
+            try:
+                self.paid_guest_subscription(proof, record, session)
+            except ApiError as error:
+                if error.code in {'payment_processing', 'purchase_not_active'}:
+                    return {'state': 'processing', 'plan': record['plan'], 'expiresAt': None,
+                            **({'reason': 'purchase_not_active'} if error.code == 'purchase_not_active' else {})}
+                raise
+            return {'state': 'paid', 'plan': record['plan'], 'expiresAt': None}
+
+    def retire_unused_customer(self, subject, account, lease):
+        """An abandoned account checkout must not strand a legitimate guest purchase."""
+        if self.reconcile(subject, account, lease)['status'] != 'none':
+            raise ApiError(409, 'subscription_exists')
+        for session in self.stripe.checkout_sessions(account['customerId']):
+            if session.get('status') != 'open':
+                continue
+            if session.get('client_reference_id') != subject or session.get('mode') != 'subscription':
+                raise ApiError(409, 'subscription_exists')
+            self.stripe.expire_checkout(session['id'])
+        # A concurrent completion cannot sneak a second subscription in during expiration.
+        if self.reconcile(subject, account, lease)['status'] != 'none':
+            raise ApiError(409, 'subscription_exists')
+
+    def claim_checkout(self, subject, email, token):
+        self.require_billing()
+        proof = checkout_digest(token)
+        with self.store.guest_lock(proof, self.now()) as guest_lease:
+            record = self.guest_record(proof)
+            if record.get('claimedBy') and record['claimedBy'] != subject:
+                raise ApiError(409, 'purchase_already_claimed')
+            if not record.get('customerId') or not record.get('key'):
+                raise ApiError(404, 'checkout_not_found')
+            session = self.guest_session(proof, record, guest_lease)
+            if not session or session.get('status') == 'expired':
+                raise ApiError(410, 'checkout_expired')
+            snapshot = self.paid_guest_subscription(proof, record, session)
+            checkout_email = (session.get('customer_details') or {}).get('email')
+            if not isinstance(checkout_email, str) or checkout_email.strip().lower() != email:
+                raise ApiError(409, 'checkout_email_mismatch')
+            with self.store.account_lock(subject, self.now()) as account_lease:
+                account = self.store.account(subject)
+                mapped = self.store.customer_subject(record['customerId'])
+                if mapped and mapped != subject:
+                    raise ApiError(409, 'purchase_already_claimed')
+                previous = account.get('customerId')
+                if previous and previous != record['customerId']:
+                    self.retire_unused_customer(subject, account, account_lease)
+                # Re-fetch every subscription for this customer under the account lease:
+                # a fresh exact session alone cannot hide a conflicting second subscription.
+                subscriptions = self.stripe.subscriptions(record['customerId'])
+                if any(sub.get('customer') != record['customerId'] for sub in subscriptions):
+                    raise ApiError(503, 'billing_unavailable')
+                current = subscription_snapshot(subscriptions, self.config, self.now())
+                if (current.get('subscriptionId') != snapshot.get('subscriptionId') or current['status'] != 'active'
+                        or current['plan'] != record['plan'] or current['expiresAt'] <= self.now()):
+                    raise ApiError(409, 'purchase_not_active')
+                self.store.claim_guest(proof, subject, record, current, previous, guest_lease, account_lease, self.now())
+            return {'claimed': True}
+
     def portal(self, subject):
         self.require_billing()
         account = self.store.account(subject)
@@ -359,7 +555,15 @@ class MembershipService:
             raise ApiError(400, 'invalid_request')
         subject = self.store.customer_subject(customer_id)
         if not subject:
-            # This dedicated endpoint may receive another Victory Road product's events.
+            # Keep paid but unclaimed purchases recoverable even when the browser never
+            # returns. The guest/customer binding exists before Checkout can be opened.
+            proof = self.store.guest_customer_proof(customer_id)
+            if proof:
+                with self.store.guest_lock(proof, self.now()) as lease:
+                    record = self.store.guest(proof)
+                    if record and not record.get('claimedBy'):
+                        self.guest_session(proof, record, lease)
+            # Unrelated film customers still do not grant any membership.
             return {'received': True}
         with self.store.account_lock(subject, self.now()) as lease:
             if not self.store.event_seen(incoming['id']):
@@ -418,6 +622,15 @@ class MembershipService:
             return self.auth(action, event)
         if method == 'POST' and path == '/v1/webhook':
             return self.webhook(event)
+        if method == 'POST' and path in {'/v1/checkout/guest', '/v1/checkout/status', '/v1/checkout/claim'}:
+            self.require_proxy(event)
+            request = body(event)
+            if path.endswith('/guest'):
+                return self.guest_checkout(request.get('plan'), request.get('checkoutToken'))
+            if path.endswith('/status'):
+                return self.guest_status(request.get('checkoutToken'))
+            subject, email = self.account_identity(event)
+            return self.claim_checkout(subject, email, request.get('checkoutToken'))
         if path in {'/v1/devices/status', '/v1/devices/link/start', '/v1/devices/unlink'}:
             device, credential_hash = self.device_identity(event)
             if method == 'GET' and path.endswith('/status'):

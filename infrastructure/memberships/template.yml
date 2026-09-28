@@ -20,7 +20,7 @@ Parameters:
   StripeSecretArn:
     Type: String
     Default: ''
-    Description: Secrets Manager JSON with secretKey and webhookSecret. Never pass secret values as parameters.
+    Description: Secrets Manager JSON with secretKey, webhookSecret and webProxySecret. Never pass secret values as parameters.
     AllowedPattern: '^$|^arn:aws:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+$'
   TracePriceId:
     Type: String
