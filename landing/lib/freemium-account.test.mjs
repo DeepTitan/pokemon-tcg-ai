@@ -29,7 +29,7 @@ test('free account offers downloads and account linking before optional upgrades
   assert.match(html, /<h2>Free<\/h2>/);
   assert.match(html, /No subscription needed/);
   for (const platform of ['mac', 'windows']) assert.match(html, new RegExp(`platform=${platform}`));
-  assert.match(html, /Have a code from Trace\? Link the app/);
+  assert.match(html, /data-route href="\/trace\/connect">Link app<\/a>/);
   assert(html.indexOf('Download for macOS') < html.indexOf('data-checkout="trace"'));
   assert.match(html, /Choose Pro/); assert.match(html, /Choose Supporters Club/);
   assert.doesNotMatch(html, /Opponent decklist|See the other side|No active plan|Choose a monthly plan to use Trace/i);

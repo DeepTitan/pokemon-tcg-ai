@@ -127,10 +127,10 @@ function renderAuth(name) {
     }); });
   }
 }
-function planCard(plan) {
+function upgradeRow(plan) {
   const supporter = plan === 'supporter';
   const price = supporter ? '39.99' : '14.99';
-  return `<article class="plan ${supporter ? 'supporter' : ''} ${context().plan === plan ? 'plan-selected' : ''}"><h3>${planNames[plan]}</h3><p class="price">$${price}<span>/ month</span></p><ul class="benefits">${supporter ? '<li>Everything in Pro</li><li>Post-match deck study</li>' : '<li>Everything in Free</li><li>Full replay archive</li><li>Expanded sharing</li>'}</ul><button type="button" class="button ${supporter ? 'secondary' : 'primary'}" data-checkout="${plan}">Choose ${planNames[plan]} <span aria-hidden="true">→</span></button></article>`;
+  return `<article class="account-upgrade ${context().plan === plan ? 'plan-selected' : ''}"><div class="upgrade-copy"><h3>${planNames[plan]}</h3><p>${supporter ? 'Everything in Pro, plus post-match deck study.' : 'Full replay archive and expanded sharing.'}</p></div><p class="upgrade-price">$${price}<span>/ month</span></p><button type="button" class="button secondary" data-checkout="${plan}">Choose ${planNames[plan]}</button></article>`;
 }
 function dateLabel(value) {
   if (!value) return '';
@@ -168,20 +168,23 @@ function renderAccount(account, purchase = { state: 'none', plan: 'none' }) {
   const unfinishedUpgrade = !active && ['none', 'canceled', 'incomplete_expired'].includes(account.status) && ['open', 'expired'].includes(purchase.state) && Boolean(planNames[purchase.plan]);
   const memberName = admin ? 'Owner access' : active ? planNames[account.plan] : canUseTrace ? 'Free' : 'Trace account';
   const until = dateLabel(account.expiresAt);
-  const status = admin ? 'Enabled' : active ? account.cancelAtPeriodEnd ? 'Ends ' + until : 'Active' : canUseTrace ? 'Active' : 'Access unavailable';
+  const paidInactive = !active && account.plan !== 'none';
+  const status = admin ? 'Enabled' : active && account.cancelAtPeriodEnd ? 'Won’t renew' : canUseTrace ? 'Active' : 'Unavailable';
   const canceled = new URLSearchParams(location.search).get('checkout') === 'cancel';
   const success = new URLSearchParams(location.search).get('checkout') === 'success';
-  const billingText = admin ? 'Your owner access is enabled. No subscription is needed.' : active ? `${account.plan === 'supporter' ? '$39.99' : '$14.99'} USD / month.${until ? ` ${account.cancelAtPeriodEnd ? 'Access ends' : 'Next billing date:'} ${until}.` : ''}` : canUseTrace ? 'Automatic recording, your latest 7 days of replays, and leaderboard access. No subscription needed.' : 'We could not confirm access. Refresh your account or contact support.';
+  const billingText = admin ? 'All features included.' : active ? (until ? `${account.cancelAtPeriodEnd ? 'Available until' : 'Renews'} ${until}` : 'Monthly subscription') : canUseTrace ? 'No subscription needed.' : 'We could not confirm access. Try refreshing your account.';
+  const features = canUseTrace ? active || admin ? ['Full replay archive', 'Expanded sharing', ...(account.opponentDecklists ? ['Post-match deck study'] : [])] : ['Automatic recording', 'Last 7 days of replays', 'Leaderboard & results', '1 replay share every 7 days'] : [];
   mount(`<div class="account-heading"><div><h1>My account</h1><p class="account-email">${esc(account.email)}</p></div><button class="text-button" id="sign-out" type="button">Sign out</button></div>${messageSlot()}
-    <section class="account-panel"><div class="panel-top"><h2>${memberName}</h2><span class="status-label ${canUseTrace ? '' : 'paused'}">${esc(status)}</span></div><p>${billingText}</p>
-      ${active && account.opponentDecklists ? '<p class="supporter-lock">Post-match deck study is included.</p>' : ''}
-      ${!admin && account.plan !== 'none' ? '<button type="button" class="button" id="manage-billing">Manage billing</button>' : ''}
-    </section>
-    ${canUseTrace ? `<section class="account-panel"><h2>Get Trace</h2><p>Download the app, then select Link account in Trace.</p><div class="account-actions"><a class="button secondary" href="/trace/access?action=download&amp;platform=mac"><img src="/trace-assets/apple.svg" alt="" />Download for macOS</a><a class="button secondary" href="/trace/access?action=download&amp;platform=windows"><img src="/trace-assets/windows.svg" alt="" />Download for Windows</a></div><p class="small-note">macOS Apple silicon · Windows 64-bit</p><a class="back-link" data-route href="${esc(route('connect'))}">${context().userCode ? 'Continue linking your app' : 'Have a code from Trace? Link the app'}</a></section>` : ''}
-    ${unfinishedUpgrade ? `<section class="account-panel"><h2>Finish your upgrade</h2><p>Your ${planNames[purchase.plan]} checkout is ${purchase.state === 'expired' ? 'expired' : 'unfinished'}. ${canUseTrace ? 'You can keep using Free.' : ''}</p><button class="button secondary" type="button" id="resume-upgrade">Continue to Stripe</button></section>` : ''}
-    ${!active && ['none', 'canceled', 'incomplete_expired'].includes(account.status) ? `<div class="plans">${planCard('trace')}${planCard('supporter')}</div><p class="existing-account">USD · Monthly · Cancel anytime</p>` : ''}
-    ${!active ? '<button class="text-button refresh-button" id="refresh-account" type="button">Refresh account</button>' : ''}
-    ${!active && account.plan !== 'none' ? '<p class="small-note">Your paid features are inactive. Open Manage billing if a payment needs attention.</p>' : ''}`, 'My account');
+    <div class="account-workspace ${canUseTrace ? '' : 'access-unavailable'}">
+      ${canUseTrace ? `<section class="account-downloads" aria-labelledby="download-heading"><div class="download-heading"><h2 id="download-heading">Get Trace</h2><p>Install the app, then link your account.</p></div><div class="download-options"><a class="download-option" href="/trace/access?action=download&amp;platform=mac"><img src="/trace-assets/apple.svg" alt="" /><span><strong>Download for macOS</strong><small>Apple silicon</small></span></a><a class="download-option" href="/trace/access?action=download&amp;platform=windows"><img src="/trace-assets/windows.svg" alt="" /><span><strong>Download for Windows</strong><small>64-bit</small></span></a></div><div class="account-link-app"><div><h3>Already have Trace?</h3><p>Use the code shown in the app.</p></div><a class="button primary" data-route href="${esc(route('connect'))}">${context().userCode ? 'Continue linking your app' : 'Link app'}</a></div></section>` : ''}
+      <section class="account-membership" aria-label="Your plan"><p class="account-section-label">Your plan</p><div class="membership-title"><h2>${memberName}</h2><span class="status-label ${!canUseTrace || account.cancelAtPeriodEnd ? 'paused' : ''}">${esc(status)}</span></div>${!admin && active ? `<p class="membership-price">${account.plan === 'supporter' ? '$39.99' : '$14.99'}<span>USD / month</span></p>` : ''}<p class="membership-detail">${esc(billingText)}</p>${features.length ? `<ul class="membership-features">${features.map((feature) => `<li>${esc(feature)}</li>`).join('')}</ul>` : ''}
+      ${paidInactive ? '<p class="billing-attention">Your paid features are inactive. Check your billing to restore them.</p>' : ''}
+      ${!canUseTrace ? '<p class="billing-attention">Access unavailable</p>' : ''}
+      ${(!admin && account.plan !== 'none') || !active ? `<div class="membership-actions">${!admin && account.plan !== 'none' ? '<button type="button" class="text-button manage-billing" id="manage-billing">Manage billing</button>' : ''}${!active ? '<button class="text-button" id="refresh-account" type="button">Refresh account</button>' : ''}</div>` : ''}
+      </section>
+    </div>
+    ${unfinishedUpgrade ? `<section class="account-pending"><div><h2>Finish your upgrade</h2><p>Your ${planNames[purchase.plan]} checkout is ${purchase.state === 'expired' ? 'expired' : 'unfinished'}. ${canUseTrace ? 'You can keep using Free.' : ''}</p></div><button class="button secondary" type="button" id="resume-upgrade">Continue to Stripe</button></section>` : ''}
+    ${!active && ['none', 'canceled', 'incomplete_expired'].includes(account.status) ? `<section class="account-upgrades" aria-labelledby="upgrade-heading"><div class="upgrade-heading"><h2 id="upgrade-heading">Upgrade your plan</h2><p>USD · Monthly · Cancel anytime</p></div><div class="account-upgrade-list">${upgradeRow('trace')}${upgradeRow('supporter')}</div></section>` : ''}`, 'My account');
   document.getElementById('sign-out').addEventListener('click', async (event) => {
     event.currentTarget.disabled = true;
     try { await api('auth/logout', {}); email = ''; navigate('login', { userCode: null, plan: null, download: null }); }
