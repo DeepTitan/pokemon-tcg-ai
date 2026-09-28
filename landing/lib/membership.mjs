@@ -1,8 +1,10 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 // Browser session boundary for Trace membership. Tokens are never sent to page JS.
 export const ACCESS_COOKIE = '__Host-trace-member-access';
 export const REFRESH_COOKIE = '__Host-trace-member-refresh';
 export const CHECKOUT_COOKIE = '__Host-trace-checkout';
+export const DISCORD_COOKIE = '__Host-trace-discord';
+export const DISCORD_JOIN_URL = 'https://discord.gg/bxKJGB9dSY';
 const GUEST_ACTIONS = new Set(['checkout/guest', 'checkout/status', 'checkout/claim']);
 const validCheckoutToken = (value) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 const pendingCookies = new WeakMap();
@@ -78,11 +80,29 @@ export function publicAccount(value) {
   const paid = value.status === 'active' && value.plan !== 'none' && typeof value.expiresAt === 'string' && Date.parse(value.expiresAt) > Date.now();
   const admin = value.admin === true && value.status === 'admin' && value.plan === 'supporter';
   const traceAccess = (paid || admin) && value.traceAccess === true;
+  const supplied = object(value.capabilities) ? value.capabilities : {};
+  const knownStatus = ['none', 'active', 'trialing', 'past_due', 'unpaid', 'paused', 'incomplete', 'incomplete_expired', 'canceled'].includes(value.status) || admin;
+  const recordMatches = knownStatus && supplied.recordMatches === true;
+  const supporter = traceAccess && value.plan === 'supporter';
   return {
     email: value.email, plan: value.plan, status: value.status.slice(0, 40), admin,
     traceAccess, opponentDecklists: traceAccess && (value.plan === 'supporter' || admin) && value.opponentDecklists === true,
     expiresAt: typeof value.expiresAt === 'string' && Number.isFinite(Date.parse(value.expiresAt)) ? value.expiresAt : null,
     cancelAtPeriodEnd: value.cancelAtPeriodEnd === true,
+    ...(value.activation !== undefined ? { activation: {
+      required: value.activation?.required !== false,
+      verified: value.activation?.verified === true,
+      joinUrl: DISCORD_JOIN_URL,
+    } } : {}),
+    capabilities: {
+      recordMatches, leaderboard: knownStatus && supplied.leaderboard === true,
+      recentReplayDays: recordMatches && supplied.recentReplayDays === 7 ? 7 : 0,
+      fullHistory: traceAccess && supplied.fullHistory === true,
+      expandedSharing: traceAccess && supplied.expandedSharing === true,
+      opponentDecklists: supporter && supplied.opponentDecklists === true,
+      freeSharesPerWindow: recordMatches && supplied.freeSharesPerWindow === 1 ? 1 : 0,
+      shareWindowDays: recordMatches && supplied.shareWindowDays === 7 ? 7 : 0,
+    },
   };
 }
 
@@ -132,10 +152,11 @@ function failure(response, status, action, body) {
     410: 'This code has expired. Request a new code and try again.',
     429: 'Too many attempts. Wait a moment, then try again.',
   };
-  const codes = new Set(['invalid_request', 'invalid_email', 'invalid_password', 'invalid_code', 'unauthorized', 'invalid_credentials', 'email_not_verified', 'device_already_linked', 'billing_busy', 'subscription_exists', 'rate_limited', 'billing_unavailable', 'service_unavailable', 'checkout_expired', 'payment_processing', 'payment_already_completed', 'purchase_already_claimed', 'checkout_email_mismatch', 'checkout_not_found', 'purchase_not_active']);
+  const codes = new Set(['invalid_request', 'invalid_email', 'invalid_password', 'invalid_code', 'unauthorized', 'invalid_credentials', 'email_not_verified', 'device_already_linked', 'billing_busy', 'subscription_exists', 'rate_limited', 'billing_unavailable', 'service_unavailable', 'checkout_expired', 'payment_processing', 'payment_already_completed', 'purchase_already_claimed', 'checkout_email_mismatch', 'checkout_not_found', 'purchase_not_active', 'discord_required']);
   const code = codes.has(body?.error) ? body.error : undefined;
   const explanation = code === 'invalid_password' ? 'Use 12–128 characters, with uppercase and lowercase letters, a number, and a symbol.' : code === 'invalid_code' ? 'That code is invalid or expired. Check the code and try again.' : code === 'subscription_exists' ? 'You already have a subscription. Use Manage billing to change your plan.' : null;
   const purchaseExplanation = ({
+    discord_required: 'Join the Trace Discord and verify your membership in My account before linking the app.',
     purchase_not_active: 'This purchase no longer has an active membership. Check Manage billing or contact support before paying again.',
     checkout_not_found: 'We could not find this purchase. Open the browser you used at checkout, or sign in if you already linked it.',
     checkout_expired: 'This checkout link has expired. If you already paid, sign in or contact support before paying again.',
@@ -261,7 +282,7 @@ export function createMembershipHandler({ service = createMembershipService(), o
           if (existing.status === 200) {
             account = publicAccount(existing.body);
             if (!account) return send(response, 503, { error: 'We could not confirm your membership. Please try again.' });
-            if (account.admin || account.traceAccess || account.plan !== 'none') return send(response, 200, { accountRequired: true });
+            if (account.admin || account.traceAccess || !['none', 'canceled', 'incomplete_expired'].includes(account.status)) return send(response, 200, { accountRequired: true });
           } else if (existing.status !== 401) return failure(response, existing.status, 'account', existing.body);
           let openGuest = false;
           if (checkoutToken) {
@@ -367,17 +388,95 @@ export function createMemberDownloadHandler({ service = createMembershipService(
     try {
       const result = await withSession(request, response, service, 'account', 'GET');
       const account = result.status === 200 ? publicAccount(result.body) : null;
-      if (result.status === 401 || (account && !account.traceAccess)) {
+      const needsActivation = account?.activation?.required === true && account.activation.verified !== true;
+      const canDownload = !needsActivation && (account?.traceAccess === true || account?.capabilities.recordMatches === true);
+      if (result.status === 401 || (account && !canDownload)) {
         if (!wantsDownload) return send(response, result.status === 401 ? 401 : 200, { unlocked: false });
         response.statusCode = 303;
         response.setHeader('Location', `${webOrigin}/trace/${result.status === 401 ? 'login' : 'account'}?download=${platform}`);
         return response.end();
       }
-      if (!account?.traceAccess) return send(response, 503, { error: 'We could not confirm access. Please try again.' });
+      if (!canDownload) return send(response, 503, { error: 'We could not confirm access. Please try again.' });
       if (!wantsDownload) return send(response, 200, { unlocked: true });
       response.statusCode = 303;
       response.setHeader('Location', DOWNLOADS[platform]);
       response.end();
     } catch { return send(response, 503, { error: 'Downloads are temporarily unavailable. Please try again.' }); }
+  };
+}
+
+export function safeDiscordUrl(value, origin = 'https://victoryroad.app') {
+  try {
+    const url = new URL(value);
+    if (typeof value !== 'string' || value.length > 4096 || url.origin !== 'https://discord.com' ||
+        url.pathname !== '/oauth2/authorize' || url.username || url.password || url.hash) return null;
+    const params = url.searchParams;
+    if (['state', 'redirect_uri', 'response_type', 'scope', 'client_id'].some((key) => params.getAll(key).length !== 1) ||
+        params.get('redirect_uri') !== `${origin}/trace/discord/callback` || params.get('response_type') !== 'code' ||
+        !/^\d{1,30}$/.test(params.get('client_id')) || !/^[A-Za-z0-9_-]{32,128}$/.test(params.get('state'))) return null;
+    const scopes = params.get('scope').split(/\s+/).sort();
+    return scopes.join(' ') === 'guilds.members.read identify' ? url : null;
+  } catch { return null; }
+}
+
+// The browser follows server redirects; OAuth codes and state never reach page JS.
+export function createDiscordHandler({ service = createMembershipService(), origin = process.env.TRACE_WEB_ORIGIN || 'https://victoryroad.app' } = {}) {
+  const webOrigin = membershipOrigin(origin);
+  const digest = (value) => createHash('sha256').update(value).digest('hex');
+  return async function discord(request, response) {
+    setPrivateHeaders(response);
+    response.setHeader('X-Robots-Tag', 'noindex, nofollow');
+    const redirect = (result, context = {}) => {
+      const target = new URL('/trace/account', webOrigin || 'https://victoryroad.app');
+      target.searchParams.set('discord', result);
+      if (/^[A-Z2-7]{10}$/.test(context.userCode || '')) target.searchParams.set('userCode', context.userCode);
+      if (['mac', 'windows'].includes(context.download)) target.searchParams.set('download', context.download);
+      response.statusCode = 303;
+      response.setHeader('Location', target.href);
+      response.end();
+    };
+    if (!['GET', 'POST'].includes(request.method)) {
+      response.setHeader('Allow', 'GET, POST');
+      return send(response, 405, { error: 'Method not allowed.' });
+    }
+    if (!webOrigin || !service.configured) return redirect('unavailable');
+    try {
+      if (request.method === 'POST') {
+        if (request.headers?.origin !== webOrigin || ['cross-site', 'none'].includes(request.headers?.['sec-fetch-site']) ||
+            !/^application\/x-www-form-urlencoded(?:\s*;|$)/i.test(request.headers?.['content-type'] || '')) {
+          return send(response, 403, { error: 'Open My account on Victory Road and try again.' });
+        }
+        const raw = typeof request.body === 'string' ? Object.fromEntries(new URLSearchParams(request.body)) : request.body;
+        const context = object(raw) ? raw : {};
+        const result = await withSession(request, response, service, 'discord/start', 'POST', {});
+        if (result.status === 401) return redirect('signin', context);
+        const target = result.status === 200 ? safeDiscordUrl(result.body.url, webOrigin) : null;
+        if (!target) return redirect('unavailable', context);
+        const proof = { hash: digest(target.searchParams.get('state')), issuedAt: Date.now(),
+          ...(/^[A-Z2-7]{10}$/.test(context.userCode || '') ? { userCode: context.userCode } : {}),
+          ...(['mac', 'windows'].includes(context.download) ? { download: context.download } : {}) };
+        writeCookies(response, [cookie(DISCORD_COOKIE, encodeURIComponent(JSON.stringify(proof)), 600)]);
+        response.statusCode = 303;
+        response.setHeader('Location', target.href);
+        return response.end();
+      }
+      const url = new URL(request.url, webOrigin);
+      const state = url.searchParams.get('state');
+      let proof;
+      try { proof = JSON.parse(decodeURIComponent(readCookies(request.headers?.cookie)[DISCORD_COOKIE] || '')); } catch { /* Invalid or expired browser proof. */ }
+      if (!object(proof) || !/^[a-f0-9]{64}$/.test(proof.hash || '') || !Number.isFinite(proof.issuedAt) ||
+          Date.now() - proof.issuedAt > 600000 || proof.issuedAt > Date.now() + 30000 ||
+          url.searchParams.getAll('state').length !== 1 || !/^[A-Za-z0-9_-]{32,128}$/.test(state || '') ||
+          !timingSafeEqual(Buffer.from(proof.hash, 'hex'), Buffer.from(digest(state), 'hex'))) return redirect('retry');
+      writeCookies(response, [cookie(DISCORD_COOKIE, '', 0)]);
+      if (url.searchParams.has('error')) return redirect('canceled', proof);
+      const code = url.searchParams.get('code');
+      if (url.searchParams.getAll('code').length !== 1 || !/^[A-Za-z0-9._~-]{1,512}$/.test(code || '')) return redirect('retry', proof);
+      const result = await withSession(request, response, service, 'discord/complete', 'POST', { code, state });
+      if (result.status === 200 && result.body.verified === true) return redirect('verified', proof);
+      if (result.status === 401) return redirect('signin', proof);
+      const codeMap = { discord_not_joined: 'join', discord_pending: 'pending', discord_state_invalid: 'retry', discord_already_linked: 'linked' };
+      return redirect(codeMap[result.body.error] || 'unavailable', proof);
+    } catch { return redirect('unavailable'); }
   };
 }

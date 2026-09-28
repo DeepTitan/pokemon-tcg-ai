@@ -54,3 +54,8 @@ assert.match(updateNoticeSource, /if \(matchInProgressRef\.current \|\| \(await 
 assert.match(updateNoticeSource, /disabled=\{busy \|\| checking \|\| matchInProgress\}/);
 
 console.log('capture-status-model: healthy recordings, modal waiting state, and update deferral verified');
+
+// Capture startup and operation storage must stay independent of paid account checks.
+assert.doesNotMatch(trackerAppSource, /membershipSessionReady|membershipBlocked|!membership\?\.traceAccess/);
+const recorderSource = readFileSync(new URL('../../../src-tauri/src/capture.rs', import.meta.url), 'utf8');
+assert.doesNotMatch(recorderSource, /admit_match|require_trace|crate::membership/);

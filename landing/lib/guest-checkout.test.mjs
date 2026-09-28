@@ -6,8 +6,8 @@ import { ACCESS_COOKIE, REFRESH_COOKIE, CHECKOUT_COOKIE, createMembershipHandler
 const proof = 'a'.repeat(64);
 const checkoutUrl = 'https://checkout.stripe.com/c/pay/cs_test_offline';
 const token = 'private.access.token';
-const none = { email: 'player@example.test', plan: 'none', status: 'none', admin: false, traceAccess: false, opponentDecklists: false, expiresAt: null, cancelAtPeriodEnd: false };
-const active = { ...none, plan: 'supporter', status: 'active', traceAccess: true, opponentDecklists: true, expiresAt: '2099-10-01T00:00:00Z' };
+const none = { email: 'player@example.test', plan: 'none', status: 'none', admin: false, traceAccess: false, opponentDecklists: false, expiresAt: null, cancelAtPeriodEnd: false, capabilities: { recordMatches: true, leaderboard: true, recentReplayDays: 7, fullHistory: false, expandedSharing: false, opponentDecklists: false, freeSharesPerWindow: 1, shareWindowDays: 7 } };
+const active = { ...none, plan: 'supporter', status: 'active', traceAccess: true, opponentDecklists: true, expiresAt: '2099-10-01T00:00:00Z', capabilities: { ...none.capabilities, fullHistory: true, expandedSharing: true, opponentDecklists: true } };
 const result = () => ({ statusCode: 200, headers: {}, setHeader(k, v) { this.headers[k.toLowerCase()] = v; }, end(body) { this.body = body; } });
 const json = (res) => JSON.parse(res.body);
 async function invoke(action, { cookie = '', body = {}, headers = {}, service, newCheckoutToken = () => proof } = {}) {
@@ -68,7 +68,7 @@ test('owner and existing paid members reach account without another checkout', a
   }
 });
 
-test('signed-in unpaid accounts use authenticated checkout only when no guest purchase is associated', async () => {
+test('signed-in free accounts use authenticated checkout only when no guest purchase is associated', async () => {
   const calls = [];
   const res = await invoke('checkout/guest', { cookie: `${ACCESS_COOKIE}=${token}; ${CHECKOUT_COOKIE}=${proof}`, body: { plan: 'trace' }, service: { configured: true, guestConfigured: true, call: async (action, input) => {
     calls.push({ action, input });
@@ -158,11 +158,14 @@ test('proxy secret is sent only server-to-server on guest routes and unconfigure
   assert.equal((await invoke('checkout/prepare', { service: missing })).statusCode, 503);
 });
 
-test('homepage directly opens Stripe and never routes a plan button to signup', () => {
+test('free plan starts signup while paid plan buttons still directly open Stripe', () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   assert.match(html, /data-plan="trace"/); assert.match(html, /data-plan="supporter"/);
   assert.doesNotMatch(html, /href="\/trace\/signup\?plan=/);
-  assert.match(html, /See plans/); assert.match(html, /Set up Trace after checkout/);
+  assert.match(html, /href="\/trace\/signup">Start free/);
+  assert.match(html, /<h3>Free<\/h3>/); assert.match(html, /<h3>Pro<\/h3>/);
+  assert.match(html, /Last 7 days of replays/); assert.match(html, /Full replay archive/);
+  assert.match(html, /Post-match deck study/); assert.doesNotMatch(html, /opponent decklist/i);
 });
 
 test('two browser tabs serialize prepare and checkout under the same Web Lock; unsupported browsers do not start requests', async () => {

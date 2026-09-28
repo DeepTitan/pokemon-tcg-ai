@@ -1,0 +1,10 @@
+{
+  "route": {
+    "name": "Trace account script",
+    "description": "Serve the account interface from the Trace deployment.",
+    "enabled": true,
+    "srcSyntax": "equals",
+    "route": { "src": "/trace-member.js", "dest": "https://victoryroad-lovat.vercel.app/trace-member.js" }
+  },
+  "position": { "placement": "before", "referenceId": "ca154d6b-73e7-4b69-9708-9e1abec80201" }
+}

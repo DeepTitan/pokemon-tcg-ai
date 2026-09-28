@@ -6,7 +6,9 @@ const ORIGIN = 'https://victoryroad.app';
 const access = 'private.access.token';
 const refresh = 'private.refresh.token';
 const cookies = `${ACCESS_COOKIE}=${access}; ${REFRESH_COOKIE}=${refresh}`;
-const account = { email: 'member@example.test', plan: 'supporter', traceAccess: true, opponentDecklists: true, admin: false, status: 'active', expiresAt: '2099-01-01T00:00:00Z', cancelAtPeriodEnd: false };
+const freeCapabilities = { recordMatches: true, leaderboard: true, recentReplayDays: 7, fullHistory: false, expandedSharing: false, opponentDecklists: false, freeSharesPerWindow: 1, shareWindowDays: 7 };
+const account = { email: 'member@example.test', plan: 'supporter', traceAccess: true, opponentDecklists: true, admin: false, status: 'active', expiresAt: '2099-01-01T00:00:00Z', cancelAtPeriodEnd: false, capabilities: { ...freeCapabilities, fullHistory: true, expandedSharing: true, opponentDecklists: true } };
+const freeAccount = { ...account, plan: 'none', status: 'none', traceAccess: false, opponentDecklists: false, expiresAt: null, capabilities: freeCapabilities };
 const session = { accessToken: access, refreshToken: refresh, expiresIn: 3600 };
 const response = () => ({ statusCode: 200, headers: {}, setHeader(key, value) { this.headers[key.toLowerCase()] = value; }, end(value = '') { this.body = value; } });
 async function invoke(action, { method = action === 'account' ? 'GET' : 'POST', headers = {}, body = {}, service, origin = ORIGIN } = {}) {
@@ -144,8 +146,44 @@ test('download route checks current membership, ignores legacy cookies and restr
     assert.equal(result.statusCode, 303); assert.equal(result.headers.location, `${ORIGIN}/trace/login?download=mac`);
   }
   const result = response();
-  await createMemberDownloadHandler({ service: { configured: true, call: async () => ({ status: 200, body: { ...account, traceAccess: false } }) } })({ method: 'GET', url: '/trace/access?action=download&platform=mac', headers: { cookie: cookies } }, result);
+  await createMemberDownloadHandler({ service: { configured: true, call: async () => ({ status: 200, body: { ...account, traceAccess: false, capabilities: {} } }) } })({ method: 'GET', url: '/trace/access?action=download&platform=mac', headers: { cookie: cookies } }, result);
   assert.equal(result.headers.location, `${ORIGIN}/trace/account?download=mac`);
+});
+
+test('verified free accounts download without checkout and never gain paid capabilities', async () => {
+  assert.deepEqual(publicAccount(freeAccount), freeAccount);
+  const forged = publicAccount({ ...freeAccount, capabilities: { ...account.capabilities } });
+  assert.equal(forged.traceAccess, false);
+  for (const name of ['fullHistory', 'expandedSharing', 'opponentDecklists']) assert.equal(forged.capabilities[name], false);
+  for (const platform of ['mac', 'windows']) {
+    const result = response();
+    const calls = [];
+    await createMemberDownloadHandler({ service: { configured: true, call: async (action) => { calls.push(action); return { status: 200, body: freeAccount }; } } })({ method: 'GET', url: `/trace/access?action=download&platform=${platform}`, headers: { cookie: cookies } }, result);
+    assert.equal(result.statusCode, 303);
+    assert.equal(result.headers.location, DOWNLOADS[platform]);
+    assert.deepEqual(calls, ['account']);
+  }
+});
+
+test('canceled and overdue subscriptions keep confirmed free capabilities without premium access', () => {
+  for (const status of ['canceled', 'past_due', 'unpaid', 'incomplete', 'paused']) {
+    const result = publicAccount({ ...account, status });
+    assert.equal(result.traceAccess, false);
+    assert.deepEqual(result.capabilities, freeCapabilities);
+  }
+  const expired = publicAccount({ ...account, expiresAt: '2020-01-01T00:00:00Z' });
+  assert.deepEqual(expired.capabilities, freeCapabilities);
+});
+
+test('unknown or malformed capabilities cannot unlock free downloads or broaden replay access', () => {
+  for (const override of [{ capabilities: undefined }, { capabilities: { recordMatches: 'true' } }, { status: 'unknown' }]) {
+    assert.equal(publicAccount({ ...freeAccount, ...override }).capabilities.recordMatches, false);
+  }
+  const result = publicAccount({ ...freeAccount, capabilities: { ...freeCapabilities, recentReplayDays: 999, freeSharesPerWindow: -1, shareWindowDays: 0, privateToken: 'private' } });
+  assert.equal(result.capabilities.recentReplayDays, 0);
+  assert.equal(result.capabilities.freeSharesPerWindow, 0);
+  assert.equal(result.capabilities.shareWindowDays, 0);
+  assert.doesNotMatch(JSON.stringify(result), /private/);
 });
 
 test('outages or invalid account response never unlock downloads', async () => {

@@ -1,0 +1,18 @@
+{
+  "projectId": "prj_UGSMF2MDs5KZ5LlRHdC1MvHEPFMs",
+  "teamId": "team_6rqfBuaO0W1ndg07WpRuoUv0",
+  "observedDate": "2026-09-28",
+  "version": { "id": "8873491d-2269-4fa7-aa14-fc889ff753ac", "s3Key": "f4796b4e858a355e", "createdBy": "", "lastModified": 1789418082791, "ruleCount": 9, "alias": "prize-map-02d614-routes-deeptitan-6729s-projects.vercel.app" },
+  "routes": [
+    { "id": "5ed3ec5f-3ed2-49bd-9d7a-dc655bc65884", "name": "Trace download media", "enabled": true, "staged": false, "route": { "src": "/trace-assets/:file", "dest": "https://victoryroad-lovat.vercel.app/trace-assets/:file" }, "srcSyntax": "path-to-regexp", "routeType": "rewrite" },
+    { "id": "ab72577b-90c9-41e8-9fbd-81ae9a58028c", "name": "Trace download preview", "enabled": true, "staged": false, "route": { "src": "/trace-og.png", "dest": "https://victoryroad-lovat.vercel.app/trace-og.png" }, "srcSyntax": "path-to-regexp", "routeType": "rewrite" },
+    { "id": "e020154f-3fe1-47a4-89db-d9f4116d7e27", "name": "Trace download script", "enabled": true, "staged": false, "route": { "src": "/trace-script.js", "dest": "https://victoryroad-lovat.vercel.app/trace-script.js" }, "srcSyntax": "path-to-regexp", "routeType": "rewrite" },
+    { "id": "b6ae0ffd-f48a-41c9-bba4-645b79406d6b", "name": "Trace download styles", "enabled": true, "staged": false, "route": { "src": "/trace-styles.css", "dest": "https://victoryroad-lovat.vercel.app/trace-styles.css" }, "srcSyntax": "path-to-regexp", "routeType": "rewrite" },
+    { "id": "8255df27-0b05-430c-81d9-794cb52e0eb8", "name": "Trace download page", "enabled": true, "staged": false, "route": { "src": "/trace", "dest": "https://victoryroad-lovat.vercel.app/" }, "srcSyntax": "path-to-regexp", "routeType": "rewrite" },
+    { "id": "238eb89d-7ffc-479d-be32-a4359fb26b91", "name": "Trace replay media", "enabled": true, "staged": false, "route": { "src": "/tracker-assets/:file", "dest": "https://victoryroad-lovat.vercel.app/tracker-assets/:file" }, "srcSyntax": "path-to-regexp", "routeType": "rewrite" },
+    { "id": "3f5f9533-244c-499c-8af9-77dab7513d50", "name": "Trace replay application", "enabled": true, "staged": false, "route": { "src": "/assets/tracker-:asset", "dest": "https://victoryroad-lovat.vercel.app/assets/tracker-:asset" }, "srcSyntax": "path-to-regexp", "routeType": "rewrite" },
+    { "id": "76628744-2585-4e67-be9c-5da62ab2edbf", "name": "Trace social card images", "enabled": true, "staged": false, "route": { "src": "/api/share-card", "dest": "https://victoryroad-lovat.vercel.app/api/share-card" }, "srcSyntax": "path-to-regexp", "routeType": "rewrite" },
+    { "id": "ca154d6b-73e7-4b69-9708-9e1abec80201", "name": "Trace shared match pages", "enabled": true, "staged": false, "route": { "src": "/trace/:shareId", "dest": "https://victoryroad-lovat.vercel.app/trace/:shareId" }, "srcSyntax": "path-to-regexp", "routeType": "rewrite" }
+  ],
+  "limit": { "maxRoutes": 100, "currentRoutes": 9 }
+}

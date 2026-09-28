@@ -9,15 +9,19 @@ Implementation prepared locally; no payments, accounts, emails, or production de
 - `TRACE_MEMBERSHIP_PROXY_SECRET`: 43–512 character server-only secret matching `webProxySecret` in the membership backend. It authenticates guest-checkout/status/claim calls from this proxy. It is never included in frontend JavaScript or responses.
 - Stripe and Cognito credentials stay in the membership service. None belong in this website, frontend JavaScript, or browser storage.
 
-The membership proxy fails closed without a valid service URL. Public pricing, leaderboard, and shared replays remain accessible. Pricing buttons open Stripe Checkout directly. No Trace sign-in or signup is required before payment. After paying, the purchaser signs up or signs in with the email used at checkout and explicitly activates the membership. Protected account/download actions require email-verified sign-in. Access and refresh tokens are stored only in Secure, HttpOnly, host-only cookies; state-changing requests require an exact allowed Origin and JSON content type. Provider JSON and errors are allowlisted before reaching the browser.
+The membership proxy fails closed without a valid service URL. Public pricing, leaderboard, and shared replays remain accessible. Start free opens signup; verified Free accounts can download and link Trace without payment. Paid pricing buttons open Stripe Checkout directly. No Trace sign-in or signup is required before payment. After paying, the purchaser signs up or signs in with the email used at checkout and explicitly activates the membership. Protected account/download actions require email-verified sign-in. Access and refresh tokens are stored only in Secure, HttpOnly, host-only cookies; state-changing requests require an exact allowed Origin and JSON content type. Provider JSON and errors are allowlisted before reaching the browser.
 
-`/trace/access` now checks current member entitlements before redirecting to fixed installers. Legacy password/Discord grants do not grant access. The installers themselves are still existing public GitHub release assets: download gating is not the desktop entitlement boundary. Desktop and capture services must enforce app and opponent-decklist access independently.
+`/trace/access` checks current account capabilities before redirecting to fixed installers. A verified Free account with server-confirmed `capabilities.recordMatches: true` can download; payment is not required. Legacy password/Discord grants do not grant access. The installers themselves are still existing public GitHub release assets: download gating is not the desktop entitlement boundary. Desktop and capture services enforce replay history, sharing, and opponent-decklist access independently.
+
+Free includes continuous recording, the latest seven days of replays, leaderboard/results, and one new replay share per rolling seven days. Pro is displayed at $14.99/month but retains the internal plan ID `trace`; it adds the full replay archive and expanded sharing. Supporters Club remains $39.99/month with internal ID `supporter`, adding “Post-match deck study.” Match completion remains mandatory for that feature, including owner access.
+
+The service's legacy `traceAccess` stays a paid-access flag. Free access comes from the allowlisted `capabilities` object: `recordMatches`, `leaderboard`, `recentReplayDays: 7`, `fullHistory`, `expandedSharing`, `opponentDecklists`, `freeSharesPerWindow: 1`, and `shareWindowDays: 7`. Premium capability flags require current paid/admin access; missing/unknown permissions fail closed. Canceled or overdue subscriptions retain confirmed Free capabilities. Overdue accounts see Manage billing rather than a second checkout. Free users upgrading later use their existing signed-in account.
 
 Owner access is displayed only when the member service returns `plan: supporter`, `status: admin`, and `admin: true`. This site has no owner-role assignment or override switch. The backend's configured owner subject and database switch remain authoritative. Owner access never bypasses match completion.
 
 ## Routes
 
-- `/trace`: public pricing ($14.99 USD/month Trace; $39.99 USD/month Supporters Club).
+- `/trace`: public pricing (Free; $14.99 USD/month Pro; $39.99 USD/month Supporters Club).
 - `/trace/signup`, `/trace/confirm`, `/trace/login`, `/trace/recover`, `/trace/reset`: account lifecycle including resend confirmation code.
 - `/trace/account`: membership status, subscription management and authenticated downloads.
 - `/trace/connect?userCode=XXXXX-XXXXX`: link a desktop app only after explicit code confirmation and consent.
@@ -35,6 +39,16 @@ Checkout returns to `/trace/account?checkout=success` or `?checkout=cancel`. Gue
 - A completed but inactive subscription returns `processing` with `reason: purchase_not_active`. The page shows billing/support recovery and does not suggest paying again. Missing browser proof also offers sign-in/support recovery without pretending activation succeeded.
 - Paid unclaimed records remain in the backend indefinitely for recovery; the browser cookie still expires after 30 days or can be cleared by the customer. Cookie loss and an unverified/mismatched email cannot be solved by trusting a caller-provided Stripe session ID. Support recovery is required when both normal sign-in and the original browser proof are unavailable.
 
+## Discord activation
+
+New accounts may require Discord activation as reported by the service's `activation.required` flag. Existing accounts are exempt unless the service explicitly marks them required. The landing page discloses this before checkout. My account offers Join Discord and Verify Discord; pending activation hides downloads and new device approval, while billing, sign-out, paid-purchase recovery, existing recording and public replay viewing remain available.
+
+Verification starts with a same-origin form POST to `/trace/discord/callback`. The server obtains the authorization URL, checks its exact Discord origin/path, configured callback and minimal scopes (`identify guilds.members.read`), stores a 10-minute HttpOnly hash of state, and issues a 303. The GET callback requires matching unexpired browser proof plus an authenticated member session, exchanges code/state server-side, clears proof and redirects to a clean account URL. OAuth code, state and provider tokens never enter page JS or browser storage. A retained app-link code is allowed through fixed context fields; explicit app consent is still required afterward. No bot permission or Discord role management is requested.
+
+`TRACE_WEB_ORIGIN` must match the backend's `WebOrigin` and the Discord application callback registration. Production uses `https://victoryroad.app/trace/discord/callback`; an isolated preview must register its own exact callback and use matching server-only configuration. Missing sessions restart verification after sign-in. Missing guild membership, pending Discord welcome steps, denied consent and outages show distinct recovery copy. The offline fixture does not connect to Discord.
+
+Both root and standalone landing Vercel configurations include the callback and `/trace/link` alias. The apex requires three additive rules; see `docs/apex-routing/README.md`. No apex route has been mutated by preparing that plan.
+
 ## Offline preview
 
 Run `node scripts/preview-trace-memberships.mjs`, then open `http://127.0.0.1:5190/trace`.
@@ -45,8 +59,9 @@ Fixture account states:
 
 - `/__fixture?role=admin`: owner access without checkout.
 - `/__fixture?role=supporter`: active Supporters Club.
-- `/__fixture?role=trace`: active Trace only.
-- `/__fixture?role=none`: signed in, needs a plan.
+- `/__fixture?role=trace`: active Pro.
+- `/__fixture?role=free`: signed in with Free access and optional upgrades (`role=none` is a compatibility alias).
+- `/__fixture?role=activation`: new Free account awaiting Discord verification (real OAuth disabled).
 - `/__fixture?role=anonymous`: signed out.
 - `/__fixture?role=unconfigured`: unavailable membership service.
 
@@ -62,9 +77,9 @@ These fixture routes exist only in the separate preview server, which is exclude
 
 ## Validation
 
-- `node --test landing/lib/membership.test.mjs landing/lib/download-access.test.mjs landing/lib/guest-checkout.test.mjs`: 38 tests covering CSRF, token redaction/refresh/revocation, legacy grant removal, exact origin and redirect allowlists, entitlement expiry, owner schema, duplicate subscriptions, code approval and failures.
-- `npm --prefix landing test`: 96 tests pass, including existing public leaderboard, replay and social-image tests. Guest coverage includes stable cookie bootstrap, lost-response retry safety, CSRF, secret/token redaction, cross-tab checkout locking, authenticated/guest duplicate guards, plan switches, explicit activation, email mismatch, inactive purchases and owner no-charge behavior.
-- Production tracker/leaderboard bundles and landing build pass. Existing asset/chunk-size warnings remain.
+- `node --test landing/lib/membership.test.mjs landing/lib/download-access.test.mjs landing/lib/guest-checkout.test.mjs landing/lib/freemium-account.test.mjs landing/lib/discord-activation.test.mjs`: focused coverage for CSRF, token redaction/refresh/revocation, legacy grant removal, exact origin and redirect allowlists, entitlement expiry, owner schema, duplicate subscriptions, code approval, Free downloads/upgrades, malformed capabilities and server-only Discord activation.
+- `npm --prefix landing test`: 120 tests pass, including existing public leaderboard, replay and social-image tests. Guest coverage includes stable cookie bootstrap, lost-response retry safety, CSRF, secret/token redaction, cross-tab checkout locking, authenticated/guest duplicate guards, plan switches, explicit activation, email mismatch, inactive purchases and owner no-charge behavior. Freemium coverage verifies Free downloads without checkout, overdue-account recovery, premium-capability restrictions, and that Free access cannot falsely confirm payment. Discord tests cover state/cookie expiry, mismatched callbacks, session refresh, user cancellation, pending guild membership, billing recovery and the native `/trace/link` alias. Route-review tests reject existing-route changes and unexpected transforms. An unfinished upgrade does not block a Free user's downloads; resuming or switching that upgrade stays on its existing guest checkout path.
+- The exact root `vercel.json` build command passes after the latest tracker parity sync: landing dependency install, share runtime, tracker, leaderboard, landing output (including 5 artwork tests), and public leaderboard pages. Existing runtime asset and chunk-size warnings remain. Final output contains tracker bundle `tracker-Cdb-_eCl.js`.
 - Browser fixture verified signup → confirm → login → plan selection, disabled payment flow, owner access, required device consent and connected state. Desktop and 390px mobile layouts checked; no horizontal overflow. Screenshots in `artifacts/membership/` (ignored local artifacts).
 - Direct-checkout follow-up verified the pricing action skips signup, the synthetic paid return carries setup into signup, explicit activation reaches active membership, unfinished checkout can resume, and inactive purchases show recovery. Preview payments remain disabled; no live Stripe/Cognito integration or real charge was tested.
 

@@ -1,0 +1,10 @@
+{
+  "route": {
+    "name": "Trace Discord verification",
+    "description": "Forward activation start and OAuth callback directly to the Trace server handler.",
+    "enabled": true,
+    "srcSyntax": "equals",
+    "route": { "src": "/trace/discord/callback", "dest": "https://victoryroad-lovat.vercel.app/trace/discord/callback" }
+  },
+  "position": { "placement": "before", "referenceId": "ca154d6b-73e7-4b69-9708-9e1abec80201" }
+}

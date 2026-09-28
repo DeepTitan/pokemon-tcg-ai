@@ -4,9 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#f7f2e8" />
-  <meta name="description" content="Review your Pokémon TCG Live matches with Trace. Join for $14.99/month, or get post-match opponent decklists with Supporters Club for $39.99/month." />
+  <meta name="description" content="Turn your Pokémon TCG Live matches into practice. Record your games, replay key turns, and learn from the decisions you made with Trace." />
   <meta property="og:title" content="Trace — Review the spot. Find the line." />
-  <meta property="og:description" content="Your matches, ready to review. Trace from $14.99/month." />
+  <meta property="og:description" content="Turn your matches into practice. Replay key turns and learn from every game." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://victoryroad.app/trace" />
   <meta property="og:image" content="https://victoryroad.app/trace-og.png?v=2" />
@@ -17,48 +17,50 @@
   <link rel="stylesheet" href="/trace-styles.css" />
   <title>Trace — Review the spot. Find the line.</title>
 </head>
-<body>
+<body class="landing-page">
   <header class="site-header">
     <a class="brand" href="/trace" aria-label="Trace home"><img src="/trace-assets/trace-mascot.png" alt="" /><strong>Trace</strong></a>
-    <nav aria-label="Main"><a href="/trace/leaderboard">Leaderboard</a><a href="#plans">Plans</a><a class="nav-account" href="/trace/account">My account <span aria-hidden="true">↗</span></a></nav>
+    <nav aria-label="Main"><a href="/trace/leaderboard">Leaderboard</a><a href="#plans">Plans</a><a class="nav-account" href="/trace/account">Account</a></nav>
   </header>
   <main>
     <section class="hero" aria-labelledby="hero-title">
-      <div class="hero-copy"><p class="eyebrow">For Pokémon TCG Live</p>
+      <div class="hero-copy"><p class="eyebrow">Pokémon TCG Live</p>
         <h1 id="hero-title">Review the spot.<br /><span>Find the line.</span></h1>
-        <p class="hero-description">Replay your matches, revisit the tricky turns, and see where the game changed.</p>
-        <a class="button primary" href="#plans">See plans <span aria-hidden="true">→</span></a>
+        <p class="hero-description">Replay your matches. Learn from every turn.</p>
+        <a class="button primary" href="/trace/signup">Start free <span aria-hidden="true">→</span></a>
         <p class="compatibility">macOS Apple silicon · Windows 64-bit</p>
       </div>
       <div class="replay-frame"><img src="/trace-assets/trace-match-dragapult-alakazam.png" alt="Trace match review showing the board, match history, and turn controls" width="1800" height="1125" /></div>
     </section>
     <section class="plans-section" id="plans" aria-labelledby="plans-title">
-      <div class="section-heading"><div><p class="eyebrow">Your next game starts here</p><h2 id="plans-title">Pick your plan.</h2></div><p>Monthly billing. Cancel anytime.<br />Prices in USD.</p></div>
-      <div class="plans">
-        <article class="plan"><div class="plan-heading"><h3>Trace</h3><p>Go back. See the play.</p></div>
-          <p class="price">$14.99<span>/ month</span></p>
-          <ul class="benefits"><li>Access to the Trace desktop app</li><li>Record and review your matches</li><li>Step through the game, turn by turn</li></ul>
-          <button class="button secondary" type="button" data-plan="trace">Get Trace <span aria-hidden="true">→</span></button>
+      <div class="section-heading"><h2 id="plans-title">Choose your plan</h2><p>USD · Cancel anytime</p></div>
+      <div class="plans plan-comparison">
+        <article class="plan"><h3>Free</h3>
+          <p class="price">$0<span>/ month</span></p>
+          <ul class="benefits"><li>Automatic recording</li><li>Last 7 days of replays</li><li>Leaderboard &amp; results</li><li>1 replay share every 7 days</li></ul>
+          <a class="button secondary" href="/trace/signup">Start free <span aria-hidden="true">→</span></a>
         </article>
-        <article class="plan supporter"><div class="plan-heading"><h3>Supporters Club</h3><p>See the other side of the match.</p></div>
+        <article class="plan"><h3>Pro</h3>
+          <p class="price">$14.99<span>/ month</span></p>
+          <ul class="benefits"><li>Everything in Free</li><li>Full replay archive</li><li>Expanded sharing</li></ul>
+          <button class="button primary" type="button" data-plan="trace">Get Pro <span aria-hidden="true">→</span></button>
+        </article>
+        <article class="plan supporter"><h3>Supporters Club</h3>
           <p class="price">$39.99<span>/ month</span></p>
-          <ul class="benefits"><li>Everything in Trace</li><li>Opponent decklists after the match ends</li></ul>
-          <p class="plan-note">Decklists unlock only when Trace records the end of a match. Never during play.</p>
-          <button class="button primary" type="button" data-plan="supporter">Join Supporters Club <span aria-hidden="true">→</span></button>
+          <ul class="benefits"><li>Everything in Pro</li><li>Post-match deck study</li></ul>
+          <button class="button secondary" type="button" data-plan="supporter">Join Supporters Club <span aria-hidden="true">→</span></button>
         </article>
       </div>
       <p id="checkout-message" class="message error checkout-message" role="alert" hidden></p>
-      <p class="checkout-note">Pay securely with Stripe. Set up Trace after checkout.</p>
+      <div class="plan-footer"><p>Discord required to get started · Secure checkout with Stripe</p><a href="/trace/login">Sign in</a></div>
       <noscript><p class="checkout-note">Enable JavaScript to open secure checkout.</p></noscript>
-      <p class="existing-account">Already a member? <a href="/trace/login">Sign in to download Trace or manage your plan.</a></p>
     </section>
-    <section class="faq-section" aria-labelledby="faq-title"><h2 id="faq-title">Good to know.</h2><div class="faq-list">
-      <details><summary>When can I see my opponent’s decklist?</summary><p>Supporters Club members can view it after Trace has recorded that the match ended. It stays locked while a match is in progress, even if you close the game.</p></details>
-      <details><summary>How do I connect my membership to Trace?</summary><p>Choose your plan and pay with Stripe. Then create an account or sign in with the same email you used at checkout, and download Trace. In the app, select Link account. Sign in on Victory Road and confirm the code shown in Trace.</p></details>
-      <details><summary>How do I change or cancel my plan?</summary><p>Open My account and choose Manage billing. You can change your plan or cancel there. After canceling, your access continues until the end of your paid period.</p></details>
+    <section class="faq-section" aria-label="Getting started and billing"><div class="faq-list">
+      <details><summary>Getting started</summary><p>Create a free account, confirm your email, and join the Trace Discord. Verify Discord in My account, then download Trace and link the app. If you buy a plan first, use the same email at checkout and signup.</p></details>
+      <details><summary>Billing &amp; cancellation</summary><p>Open Account → Manage billing to change or cancel your plan. Paid features stay active until the end of your billing period. Free recording continues.</p></details>
     </div></section>
   </main>
-  <footer class="site-footer"><p>Unofficial companion for Pokémon TCG Live. Not affiliated with or endorsed by The Pokémon Company International.</p><div><a href="/discord">Community &amp; support</a><span>© <span id="year">2026</span> Victory Road</span></div></footer>
+  <footer class="site-footer"><p>Unofficial Pokémon TCG Live companion.<br />Not affiliated with The Pokémon Company International.</p><div><a href="/discord">Community &amp; support</a><span>© <span id="year">2026</span> Victory Road</span></div></footer>
   <script src="/trace-script.js" defer></script>
 </body>
 </html>

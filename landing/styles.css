@@ -65,10 +65,10 @@ button {
 }
 
 .site-header {
-  height:82px;
-  max-width:1280px;
+  height:72px;
+  max-width:1120px;
   margin:auto;
-  padding:0 40px;
+  padding:0 32px;
   display:flex;
   align-items:center;
   justify-content:space-between;
@@ -85,13 +85,13 @@ button {
 }
 
 .brand img {
-  width:40px;
-  height:48px;
+  width:36px;
+  height:42px;
   object-fit:contain;
 }
 
 .brand strong {
-  font:800 27px Nunito,system-ui,sans-serif;
+  font:800 25px Nunito,system-ui,sans-serif;
   letter-spacing:-1px;
 }
 
@@ -112,43 +112,46 @@ button {
 }
 
 .nav-account {
-  padding:11px 14px;
-  border:1px solid var(--line);
-  border-radius:5px;
+  color:var(--muted);
 }
 
 .hero {
-  max-width:1440px;
+  max-width:1120px;
   margin:auto;
-  padding:78px 40px 76px;
+  padding:64px 32px 72px;
   display:grid;
-  grid-template-columns:minmax(340px,.9fr) minmax(0,1.35fr);
+  grid-template-columns:minmax(280px,.9fr) minmax(0,1.15fr);
   align-items:center;
-  gap:60px;
+  gap:40px;
 }
 
 .hero-copy {
   max-width:520px;
-  margin-left:max(0px,calc((100vw - 1440px)/8));
+  margin-left:0;
 }
 
 .eyebrow {
   color:var(--green);
-  font-size:12px;
-  font-weight:800;
-  letter-spacing:1.25px;
-  text-transform:uppercase;
+  font-size:13px;
+  font-weight:600;
+  letter-spacing:.1px;
   margin:0 0 15px;
 }
 
-h1,h2,h3 {
+h1 {
   font-family:Nunito,"Avenir Next",system-ui,sans-serif;
   font-weight:800;
   letter-spacing:-1.2px;
 }
 
+h2,h3 {
+  font-family:"Avenir Next",Avenir,"Segoe UI",system-ui,sans-serif;
+  font-weight:650;
+  letter-spacing:-.6px;
+}
+
 h1 {
-  font-size:clamp(42px,4.4vw,64px);
+  font-size:clamp(40px,4.4vw,56px);
   line-height:1.06;
   margin:0 0 22px;
 }
@@ -158,13 +161,13 @@ h1 span {
 }
 
 h2 {
-  font-size:38px;
+  font-size:28px;
   line-height:1.12;
   margin:0;
 }
 
 h3 {
-  font-size:27px;
+  font-size:21px;
   margin:0;
   line-height:1.1;
 }
@@ -172,9 +175,9 @@ h3 {
 .hero-description {
   max-width:390px;
   color:var(--muted);
-  font-size:18px;
+  font-size:16px;
   line-height:1.6;
-  margin:0 0 28px;
+  margin:0 0 24px;
 }
 
 .button {
@@ -188,7 +191,7 @@ h3 {
   padding:12px 20px;
   text-decoration:none;
   font-size:14px;
-  font-weight:800;
+  font-weight:650;
   color:var(--ink);
   background:var(--paper);
   line-height:1.35;
@@ -200,8 +203,8 @@ h3 {
 }
 
 .button.secondary {
-  background:#edf0e8;
-  border-color:#b3c0ad;
+  background:transparent;
+  border-color:#b9b9ac;
 }
 
 .button:hover {
@@ -214,7 +217,7 @@ h3 {
 }
 
 .compatibility {
-  font-size:11px;
+  font-size:12px;
   color:var(--muted);
   margin:14px 0 0;
 }
@@ -222,10 +225,9 @@ h3 {
 .replay-frame {
   overflow:hidden;
   border:1px solid #cbbfaa;
-  border-radius:9px;
+  border-radius:6px;
   background:var(--paper);
-  box-shadow:0 14px 38px #172b4915;
-  transform:rotate(-1deg);
+  box-shadow:0 8px 24px #172b490d;
 }
 
 .replay-frame img {
@@ -235,9 +237,9 @@ h3 {
 }
 
 .plans-section,.faq-section {
-  max-width:1040px;
+  max-width:984px;
   margin:auto;
-  padding:58px 40px;
+  padding:40px 32px 0;
 }
 
 .plans-section {
@@ -246,10 +248,10 @@ h3 {
 
 .section-heading {
   display:flex;
-  align-items:flex-end;
+  align-items:baseline;
   justify-content:space-between;
   gap:24px;
-  margin-bottom:28px;
+  margin-bottom:24px;
 }
 
 .section-heading>p {
@@ -264,6 +266,53 @@ h3 {
   display:grid;
   grid-template-columns:repeat(2,minmax(0,1fr));
   gap:20px;
+}
+
+.plan-comparison {
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:0;
+  border:1px solid var(--line);
+  border-radius:7px;
+  overflow:hidden;
+  background:var(--paper);
+}
+
+.plan-comparison .plan,.plan-comparison .plan.supporter {
+  padding:28px 24px;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  box-shadow:none;
+}
+
+.plan-comparison .plan + .plan {
+  border-left:1px solid var(--line);
+}
+
+.plan-footer {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:20px;
+  color:var(--muted);
+  font-size:12px;
+  padding:8px 0;
+}
+
+.plan-footer p {
+  margin:0;
+}
+
+.plan-footer a {
+  display:inline-flex;
+  align-items:center;
+  min-height:44px;
+  font-weight:600;
+  text-decoration:none;
+}
+
+.plan-footer a:hover {
+  text-decoration:underline;
 }
 
 .plan {
@@ -288,11 +337,12 @@ h3 {
 }
 
 .price {
-  font-size:43px;
+  font-size:40px;
   letter-spacing:-1.5px;
   line-height:1.2;
-  font-weight:800;
-  margin:27px 0;
+  font-weight:650;
+  font-variant-numeric:tabular-nums;
+  margin:16px 0 24px;
 }
 
 .price span {
@@ -308,13 +358,13 @@ h3 {
   padding:0;
   margin:0 0 26px;
   display:grid;
-  gap:14px;
+  gap:10px;
   font-size:14px;
   line-height:1.5;
 }
 
 .benefits li {
-  padding-left:25px;
+  padding-left:21px;
   position:relative;
 }
 
@@ -353,11 +403,8 @@ h3 {
 }
 
 .faq-section {
-  padding-top:22px;
-  padding-bottom:85px;
-  display:grid;
-  grid-template-columns:1fr 1.8fr;
-  gap:48px;
+  padding-top:12px;
+  padding-bottom:56px;
 }
 
 .faq-section h2 {
@@ -366,7 +413,7 @@ h3 {
 
 .faq-list details {
   border-top:1px solid var(--line);
-  padding:19px 0;
+  padding:0;
 }
 
 .faq-list details:last-child {
@@ -374,22 +421,25 @@ h3 {
 }
 
 .faq-list summary {
-  font-weight:700;
-  font-size:15px;
+  font-weight:600;
+  font-size:14px;
   cursor:pointer;
+  min-height:54px;
+  padding:17px 0;
 }
 
 .faq-list p {
   font-size:14px;
   line-height:1.7;
   color:var(--muted);
-  margin:15px 0 0;
+  margin:0 0 20px;
+  max-width:620px;
 }
 
 .site-footer {
-  max-width:1200px;
+  max-width:1056px;
   border-top:1px solid var(--line);
-  padding:26px 0 34px;
+  padding:24px 0 28px;
   margin:0 auto;
   display:flex;
   justify-content:space-between;
@@ -712,16 +762,10 @@ h3 {
   max-width:100%;
 }
 
-@media(min-width:1400px) {
-  .hero-copy {
-    margin-left:40px;
-  }
-}
-
 @media(max-width:900px) {
   .hero {
     gap:28px;
-    padding:60px 32px;
+    padding:48px 32px 56px;
     grid-template-columns:.9fr 1.1fr;
   }
   h1 {
@@ -732,9 +776,6 @@ h3 {
   }
   .site-footer {
     margin:0 32px;
-  }
-  .faq-section {
-    gap:30px;
   }
   .site-header {
     padding:0 32px;
@@ -779,7 +820,7 @@ h3 {
     max-width:460px;
   }
   .hero h1 {
-    font-size:47px;
+    font-size:clamp(38px,9vw,47px);
   }
   .hero-description {
     font-size:16px;
@@ -789,14 +830,14 @@ h3 {
     transform:none;
   }
   .plans-section,.faq-section {
-    padding:38px 24px;
+    padding:32px 24px 0;
   }
   .section-heading {
     display:block;
   }
   .section-heading>p {
     text-align:left;
-    margin-top:14px;
+    margin-top:10px;
     font-size:12px;
   }
   .plans {
@@ -806,13 +847,23 @@ h3 {
   .plan {
     padding:26px;
   }
+  .plan-comparison {
+    grid-template-columns:1fr;
+    gap:0;
+  }
+  .plan-comparison .plan,.plan-comparison .plan.supporter {
+    padding:26px;
+  }
+  .plan-comparison .plan + .plan {
+    border-left:0;
+    border-top:1px solid var(--line);
+  }
   h2 {
-    font-size:34px;
+    font-size:26px;
   }
   .faq-section {
-    grid-template-columns:1fr;
-    gap:22px;
-    padding-bottom:50px;
+    padding-top:12px;
+    padding-bottom:40px;
   }
   .site-footer {
     margin:0 24px;

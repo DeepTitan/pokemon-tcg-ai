@@ -7,6 +7,10 @@ target
 dist
 **/dist
 coverage
+artifacts
+release
+.agents
+.codex
 design-qa.md
 *.log
 .DS_Store
@@ -14,7 +18,7 @@ design-qa.md
 dist-leaderboard
 
 # The AWS publisher has its own deployment package.
-infrastructure/leaderboard
+infrastructure
 
 # Publish only the Trace website source and its approved public assets.
 data

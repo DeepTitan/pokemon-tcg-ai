@@ -104,7 +104,7 @@ export interface TrackedCard {
   cardType?: string;
 }
 
-export type TrackedChoiceRole = 'action' | 'chosen' | 'discarded' | 'promoted';
+export type TrackedChoiceRole = 'action' | 'chosen' | 'unchosen' | 'discarded' | 'promoted';
 
 export interface TrackedChoiceCard extends TrackedCard {
   choiceRole: TrackedChoiceRole;
@@ -224,6 +224,8 @@ export interface MatchReview {
   localRating?: number;
   opponentRating?: number;
   resultReason?: 'local-client-closed';
+  /** Native captured EndGameModification; winner alone may be inferred. */
+  matchCompleted?: boolean;
   turns: TrackedTurn[];
   rawLog: string;
 }
@@ -248,6 +250,8 @@ export interface MatchSummary {
   reducerVersion: number;
   finalSnapshot?: TrackerBoardSnapshot;
   recording: boolean;
+  /** Native archive policy; older data is retained, never deleted. */
+  replayRequiresPro?: boolean;
 }
 
 export interface StorageStatus {
@@ -292,4 +296,33 @@ export interface TrackerEnvironment {
   pid: number | null;
   captureMode: 'existing-client';
   capture: CaptureStatus;
+}
+
+export interface MembershipCapabilities {
+  recordMatches: boolean;
+  leaderboard: boolean;
+  recentReplayDays: number;
+  fullHistory: boolean;
+  expandedSharing: boolean;
+  opponentDecklists: boolean;
+  freeSharesPerWindow: number;
+  shareWindowDays: number;
+}
+
+export interface MembershipStatus {
+  linked: boolean;
+  email: string | null;
+  plan: 'none' | 'trace' | 'supporter';
+  traceAccess: boolean;
+  opponentDecklists: boolean;
+  admin: boolean;
+  status: string;
+  expiresAt: string | null;
+  cancelAtPeriodEnd: boolean;
+  capabilities?: MembershipCapabilities;
+}
+export interface MembershipLink {
+  userCode: string;
+  verificationUrl: string;
+  expiresAt: string;
 }

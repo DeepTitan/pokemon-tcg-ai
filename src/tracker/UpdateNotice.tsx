@@ -37,7 +37,7 @@ export function UpdateNotice({ matchInProgress = false, settingsOpen = false, co
   const operationRef = useRef(false);
   const updateRef = useRef<Update | null>(null);
   const [checking, setChecking] = useState(false);
-  const [checkMessage, setCheckMessage] = useState('Check for the latest signed version of Trace.');
+  const [checkMessage, setCheckMessage] = useState('Trace checks for updates automatically. You can check here anytime.');
   const [dismissed, setDismissed] = useState(false);
   const [settingsTarget, setSettingsTarget] = useState<HTMLElement | null>(null);
   const phaseRef = useRef(phase);
@@ -182,7 +182,14 @@ export function UpdateNotice({ matchInProgress = false, settingsOpen = false, co
               : 'Install update';
 
   const compactControls = <div className="connect-update-control"><button type="button" disabled={!isTauri() || checking || busy || phase === 'ready' || phase === 'downloaded'} onClick={() => void refresh(true)}>{checking ? 'Checking…' : 'Check for updates'}</button>{isTauri() && <span role="status">{message || (update ? `Trace ${update.version} available` : checkMessage)}</span>}</div>;
-  const settings = settingsTarget && createPortal(compactSettings ? compactControls : <section className="settings-updates"><strong>App updates</strong><p role="status">{!isTauri() ? 'Updates are available in the installed Trace app.' : message || checkMessage}</p>{matchInProgress && <p>Quit TCG Live before installing or restarting Trace. Checking for updates is safe while playing.</p>}<button type="button" disabled={!isTauri() || checking || busy || phase === 'ready' || phase === 'downloaded'} onClick={() => void refresh(true)}>{checking ? 'Checking…' : 'Check for updates'}</button>{update && <button type="button" disabled={busy || checking || matchInProgress} onClick={() => void action()}>{actionLabel} · {update.version}</button>}</section>, settingsTarget);
+  const settings = settingsTarget && createPortal(compactSettings ? compactControls : <section className="settings-updates">
+    <p role="status">{!isTauri() ? 'Updates are available in the installed Trace app.' : checking ? 'Checking for updates…' : message || checkMessage}</p>
+    <button className={update ? undefined : 'settings-update-primary'} type="button" disabled={!isTauri() || checking || busy || phase === 'ready' || phase === 'downloaded'} onClick={() => void refresh(true)}>
+      <ArrowClockwise size={17} weight="bold" />{checking ? 'Checking…' : 'Check for updates'}
+    </button>
+    {update && <button className="settings-update-primary" type="button" disabled={busy || checking || matchInProgress} onClick={() => void action()}>{actionLabel}</button>}
+    {update && matchInProgress && <p className="settings-update-hint">Finish your game and quit TCG Live before installing or restarting Trace.</p>}
+  </section>, settingsTarget);
   return <>{settings}{update && !dismissed && !settingsOpen && (
     <aside className={`update-notice phase-${phase}`} aria-live="polite">
       <div className="update-notice-icon">

@@ -24,9 +24,9 @@ import { readArchiveSearchIndex, searchArchive } from './archive-search.js';
 import { InfiniteArchiveList } from './InfiniteArchiveList.js';
 import { CaptureSetupModal } from './CaptureSetupModal.js';
 import {
-  getRecentMatchOperations, getTraceVersion, getTrackerEnvironment, initializeTrackerStorage, isTauri, listMatchSummaries,
-  listRawMatchIds, loadMatchOperations, loadMatchReview, onMatchOperation, persistMatchReview,
-  resolveCardSources, shareMatch, startTracking, stopTracking,
+  getMembershipStatus, loadOpponentDecklist, getRecentMatchOperations, getTraceVersion, getTrackerEnvironment, initializeTrackerStorage, isTauri, listMatchSummaries,
+  importLegacyReviews, listRawMatchIds, loadMatchOperations, loadMatchReview, onMatchOperation, persistMatchReview,
+  resolveCardSources, shareMatch, startTracking, stopTracking, LEADERBOARD_URL, openLeaderboard,
 } from './tauri.js';
 import { LiveReviewAssembler } from './live-operation-reducer.js';
 import { ReviewOverlay, type ReviewInspector } from './ReviewInteractions.js';
@@ -35,8 +35,9 @@ import { cardInfoToEngineCard, cardSourceIdFromReviewCard } from './card-adapter
 import { sortCardsForDisplay } from './card-order-model.js';
 import { findEnergyType } from './EnergyBadge.js';
 import { buildTimeline, eventKeyForReviewIndex } from './timeline-model.js';
-import { presentTurnEvents, selectionForEvent } from './game-log-copy.js';
+import { presentTurnEvents, selectionForEvent, unselectedChoiceCopy } from './game-log-copy.js';
 import { cardEffectSummary } from './card-effect-model.js';
+import { actionCardsForTurn } from './action-card-model.js';
 import { attackResolutionForTurn, type AttackResolution } from './attack-resolution-model.js';
 import { damageChangesForTurn, type PokemonDamageChange } from './damage-change-model.js';
 import { positionChangesForTurn, type PokemonPositionChange } from './position-change-model.js';
@@ -60,10 +61,12 @@ import {
   type FrameNavigationRequest,
 } from './frame-animation-model.js';
 import { UpdateNotice } from './UpdateNotice.js';
+import { UpdateSettingsModal } from './UpdateSettingsModal.js';
+import { MembershipSettings } from './MembershipSettings.js';
 import { loadSharedReplay, readStoredShareLinks, sharedReplayIdFromPath, storeShareLink } from './share-replay.js';
 import { CARD_BACK_ART, cardCatalogEntryNeedsRefresh, findCatalogCard, publicCardArtUrl, resolvedCardArt, showCardBackOnError } from './card-art.js';
 import type {
-  CapturedDecklist, CapturedOperation, CardInfo, CanonicalReviewState, MatchReview, MatchSummary, ReviewCardVisibility, ReviewSelection, TrackedCard, TrackedChoiceCard, TrackedPlayerBoard,
+  MembershipStatus, CapturedDecklist, CapturedOperation, CardInfo, CanonicalReviewState, MatchReview, MatchSummary, ReviewCardVisibility, ReviewSelection, TrackedCard, TrackedChoiceCard, TrackedPlayerBoard,
   TrackedPokemon, TrackedTurn, TrackerEnvironment, TrackerEventKind,
 } from './types.js';
 import './tracker.css';
@@ -350,33 +353,6 @@ function withoutActorPrefix(text: string, actor: string): string {
   return text.replace(new RegExp(`^${actor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:\\s*`, 'i'), '');
 }
 
-function actionCardsForTurn(turn: TrackedTurn, catalog: ReadonlyMap<string, CardInfo>): TrackedChoiceCard[] {
-  const cards = [...(turn.choiceCards || [])];
-  const promotionOnly = cards.some((card) => card.choiceRole === 'promoted')
-    && !cards.some((card) => card.choiceRole === 'action');
-  if (promotionOnly) return cards;
-  const actionCardIds = new Set(cards
-    .filter((card) => card.choiceRole === 'action' && card.cardId)
-    .map((card) => card.cardId!.toLowerCase()));
-
-  turn.events.forEach((event) => {
-    if (!event.cardId || actionCardIds.has(event.cardId.toLowerCase())) return;
-    const info = catalog.get(event.cardId) || catalog.get(event.cardId.toLowerCase());
-    if (!info) return;
-    cards.unshift({
-      id: `${turn.index}:action:${info.id}`,
-      cardId: info.id,
-      name: info.name,
-      imageDataUrl: info.imageDataUrl,
-      cardType: info.cardType,
-      choiceRole: 'action',
-    });
-    actionCardIds.add(event.cardId.toLowerCase());
-  });
-
-  return cards;
-}
-
 function actionEventsForTurn(turn: TrackedTurn): TurnChoiceFrame['events'] {
   const actor = turn.player || '';
   const grouped = new Map<string, { id: string; kind: TrackerEventKind; text: string; count: number; targetIds: Set<string> }>();
@@ -426,13 +402,13 @@ function ChoiceStage({ boardName, frames, currentReviewIndex, catalog, onOpen }:
       {primaryEvent && <span className="primary"><EventIcon kind={primaryEvent.kind} size={14} text={primaryEvent.text} /><strong>{primaryEvent.text}</strong></span>}
       {supportingCopy && <span className="supporting-summary"><strong>{supportingCopy}</strong></span>}
     </div>
-    <div className="choice-stage-cards">
+    <div className={`choice-stage-cards ${choices.some(({ card }) => card.choiceRole === 'unchosen') ? 'has-unchosen' : ''}`}>
       {choices.map(({ card, frame }, index) => {
         const info = resolvedCardInfo(card, catalog);
         const name = info?.name || card.name;
         const current = frame.reviewIndex === currentReviewIndex;
-        const roleCopy = card.choiceRole === 'discarded' ? 'Discarded card' : card.choiceRole === 'chosen' ? 'Chosen card' : card.choiceRole === 'promoted' ? 'Promoted to Active' : 'Action card';
-        return <button type="button" className={`choice-card role-${card.choiceRole} ${current ? 'current' : ''}`} aria-current={current ? 'step' : undefined} aria-label={`${roleCopy}: ${name}`} title={`${frame.label} · ${roleCopy}: ${name}`} onClick={() => onOpen(card)} key={`${frame.reviewIndex}-${card.id}-${index}`}><img src={resolvedCardImage(card, catalog)} data-card-id={card.cardId} alt={name} onError={showCardBackOnError} /></button>;
+        const roleCopy = card.choiceRole === 'unchosen' ? 'Not chosen' : card.choiceRole === 'discarded' ? 'Discarded card' : card.choiceRole === 'chosen' ? 'Chosen card' : card.choiceRole === 'promoted' ? 'Promoted to Active' : 'Action card';
+        return <button type="button" className={`choice-card role-${card.choiceRole} ${current ? 'current' : ''}`} aria-current={current ? 'step' : undefined} aria-label={`${roleCopy}: ${name}`} title={`${frame.label} · ${roleCopy}: ${name}`} onClick={() => onOpen(card)} key={`${frame.reviewIndex}-${card.id}-${index}`}><img src={resolvedCardImage(card, catalog)} data-card-id={card.cardId} alt={name} onError={showCardBackOnError} />{card.choiceRole === 'unchosen' && <span className="choice-card-label">Not chosen</span>}</button>;
       })}
     </div>
   </aside>;
@@ -532,7 +508,7 @@ function OpponentHandSummary({ boardName, count, onOpen }: { boardName: string; 
   );
 }
 
-export function PlayerField({ board, decklist, canonical, pendingCards, visibility, catalog, choiceFrames, currentReviewIndex, turnNumber, status, handoff, stadiumCard, stadiumName, stadiumOwner, localPlayerName, opponentName, defeatedIds, defeatedNames, damageChanges, positionChanges, attackerId, opponent = false, avatar, onOpenPokemon, onOpenChoice, onOpenCard, onOpenZone }: { board: TrackedPlayerBoard; decklist?: CapturedDecklist; canonical: PlayerState; pendingCards?: Card[]; visibility: Record<string, ReviewCardVisibility>; catalog: ReadonlyMap<string, CardInfo>; choiceFrames: TurnChoiceFrame[]; currentReviewIndex: number; turnNumber: number; status: PlayerTurnStatus; handoff?: TurnHandoffRole; stadiumCard: Card | null; stadiumName?: string; stadiumOwner?: string; localPlayerName: string; opponentName: string; defeatedIds: ReadonlySet<string>; defeatedNames: ReadonlySet<string>; damageChanges: ReadonlyMap<string, PokemonDamageChange>; positionChanges: ReadonlyMap<string, PokemonPositionChange>; attackerId?: string; opponent?: boolean; avatar: string; onOpenPokemon: (id: string) => void; onOpenChoice: (card: TrackedCard) => void; onOpenCard: (card: Card) => void; onOpenZone: (title: string, subtitle: string, cards: Card[], visibility: Record<string, ReviewCardVisibility>) => void }) {
+export function PlayerField({ board, decklist, deckAccess, canonical, pendingCards, visibility, catalog, choiceFrames, currentReviewIndex, turnNumber, status, handoff, stadiumCard, stadiumName, stadiumOwner, localPlayerName, opponentName, defeatedIds, defeatedNames, damageChanges, positionChanges, attackerId, opponent = false, avatar, onOpenPokemon, onOpenChoice, onOpenCard, onOpenZone }: { board: TrackedPlayerBoard; decklist?: CapturedDecklist; deckAccess?: { loadDeck?: () => Promise<CapturedDecklist>; unavailableReason: string; accessKey: string }; canonical: PlayerState; pendingCards?: Card[]; visibility: Record<string, ReviewCardVisibility>; catalog: ReadonlyMap<string, CardInfo>; choiceFrames: TurnChoiceFrame[]; currentReviewIndex: number; turnNumber: number; status: PlayerTurnStatus; handoff?: TurnHandoffRole; stadiumCard: Card | null; stadiumName?: string; stadiumOwner?: string; localPlayerName: string; opponentName: string; defeatedIds: ReadonlySet<string>; defeatedNames: ReadonlySet<string>; damageChanges: ReadonlyMap<string, PokemonDamageChange>; positionChanges: ReadonlyMap<string, PokemonPositionChange>; attackerId?: string; opponent?: boolean; avatar: string; onOpenPokemon: (id: string) => void; onOpenChoice: (card: TrackedCard) => void; onOpenCard: (card: Card) => void; onOpenZone: (title: string, subtitle: string, cards: Card[], visibility: Record<string, ReviewCardVisibility>) => void }) {
   const benches = [...board.bench, ...Array.from({ length: Math.max(0, 5 - board.bench.length) }, () => null)].slice(0, 5);
   const tone = opponent ? 'coral' : 'blue';
   const isDefeated = (pokemon: TrackedPokemon | null) => Boolean(pokemon && (defeatedIds.has(pokemon.id) || defeatedNames.has(pokemon.name)));
@@ -557,7 +533,7 @@ export function PlayerField({ board, decklist, canonical, pendingCards, visibili
     <section className={`player-field ${opponent ? 'opponent' : 'local'} ${status.isCurrentTurn && !handoff ? 'current-turn' : ''} ${handoff ? `turn-${handoff}` : ''} ${status.itemLocked ? 'item-locked' : ''}`}>
       <div className="player-strip">
         {handoff && handoff !== 'receiving' && <div key={`pass-impact:${currentReviewIndex}:${handoff}`} className={`pass-impact ${handoff}`} aria-hidden="true"><span className="pass-impact-streak" /><b>{handoff === 'timed-out' ? 'TIME EXPIRED' : 'TURN PASSED'}</b><span className="pass-impact-arrow">{opponent ? '↓' : '↑'}</span></div>}
-        <div className="player-identity"><img src={avatar} alt="" /><div><span>{opponent ? 'Opponent' : 'You'}</span><strong key={`${currentReviewIndex}:${handoff || 'normal'}`} className={handoff ? `header-handoff ${handoff}` : undefined}><span className="header-player-name">{board.name}</span>{handoff && <span className="header-handoff-message" role="status">{handoff === 'receiving' ? opponent ? 'Opponent’s turn next' : 'Your turn next' : handoff === 'timed-out' ? 'Time expired →' : 'Passed turn →'}</span>}</strong></div><PlayerDecklist name={board.name} deck={decklist} catalog={catalog} />{opponent && <OpponentHandSummary boardName={board.name} count={handCount} onOpen={openHand} />}</div>
+        <div className="player-identity"><img src={avatar} alt="" /><div><span>{opponent ? 'Opponent' : 'You'}</span><strong key={`${currentReviewIndex}:${handoff || 'normal'}`} className={handoff ? `header-handoff ${handoff}` : undefined}><span className="header-player-name">{board.name}</span>{handoff && <span className="header-handoff-message" role="status">{handoff === 'receiving' ? opponent ? 'Opponent’s turn next' : 'Your turn next' : handoff === 'timed-out' ? 'Time expired →' : 'Passed turn →'}</span>}</strong></div><PlayerDecklist name={board.name} deck={decklist} catalog={catalog} {...deckAccess} />{opponent && <OpponentHandSummary boardName={board.name} count={handCount} onOpen={openHand} />}</div>
         <div className="turn-statuses" aria-label={`${board.name} turn status`}>
           <span className="status-slot turn-slot">{handoff === 'passing' || handoff === 'timed-out'
             ? <span className={`status-pill turn-handoff-pill ${handoff}`} aria-label={`Turn ${turnNumber} ${handoff === 'timed-out' ? 'ended when the timer expired' : 'ended without an attack'}`}><span>Turn {turnNumber}</span><b>{handoff === 'timed-out' ? 'Timed out' : 'Passed'}</b></span>
@@ -611,7 +587,7 @@ function ArchiveFeaturedCard({ card, label, rating, tone, catalog }: { card: Tra
   </span>;
 }
 
-function ArchiveRow({ summary, selected, catalog, onSelect }: { summary: MatchSummary; selected: boolean; catalog: ReadonlyMap<string, CardInfo>; onSelect: () => void }) {
+function ArchiveRow({ summary, selected, catalog, onSelect, locked = false }: { summary: MatchSummary; selected: boolean; locked?: boolean; catalog: ReadonlyMap<string, CardInfo>; onSelect: () => void }) {
   const result = resultLabel(summary);
   const matchup = archiveMatchup(summary, catalog);
   const localCardName = matchup.localCard ? (resolvedCardInfo(matchup.localCard, catalog)?.name || matchup.localCard.name) : 'Unknown deck';
@@ -625,7 +601,7 @@ function ArchiveRow({ summary, selected, catalog, onSelect }: { summary: MatchSu
       type="button"
       className={`session-card ${selected ? 'selected' : ''} ${summary.recording ? 'recording' : ''}`}
       onClick={onSelect}
-      aria-label={`${result} against ${summary.opponent}. ${localCardName} versus ${opponentCardName}.${summary.localRating != null ? ` Your Elo ${summary.localRating}.` : ''}${summary.opponentRating != null ? ` Opponent Elo ${summary.opponentRating}.` : ''}${ratingChangeLabel ? ` ${ratingChangeLabel} Elo. New rating ${summary.ratingAfter}.` : ''} ${dateLabel}. ${durationLabel}. ${prizeLabel}.`}
+      aria-label={`${result} against ${summary.opponent}. ${localCardName} versus ${opponentCardName}.${summary.localRating != null ? ` Your Elo ${summary.localRating}.` : ''}${summary.opponentRating != null ? ` Opponent Elo ${summary.opponentRating}.` : ''}${ratingChangeLabel ? ` ${ratingChangeLabel} Elo. New rating ${summary.ratingAfter}.` : ''} ${dateLabel}. ${durationLabel}. ${prizeLabel}.${locked ? ' Trace Pro replay.' : ''}`}
     >
       <span className="session-matchup" aria-hidden="true">
         <ArchiveFeaturedCard card={matchup.localCard} label="You" rating={summary.localRating} tone="local" catalog={catalog} />
@@ -638,7 +614,7 @@ function ArchiveRow({ summary, selected, catalog, onSelect }: { summary: MatchSu
         <span className="session-meta">
           <time dateTime={summary.importedAt}><CalendarBlank size={12} weight="bold" />{dateLabel}</time>
           <small><Clock size={12} weight="bold" />{durationLabel}</small>
-          <small><Trophy size={12} weight="fill" />{prizeLabel}</small>
+          <small><Trophy size={12} weight="fill" />{prizeLabel}</small>{locked && <small className="archive-pro-label">Pro replay</small>}
         </span>
       </span>
     </button>
@@ -696,11 +672,27 @@ export default function TrackerApp() {
     capture: { permissionReady: false, enabled: false, observerRunning: false, routeActive: false, clientAttached: false, waitingForMatchEnd: false, matchInProgress: false, frameCount: 0, operationCount: 0, lastError: null, observerPort: 8899 },
   });
   const [safetyDismissed, setSafetyDismissed] = useState(false);
-  const [showSetup, setShowSetup] = useState(() => {
-    if (!isTauri()) return false;
-    try { return localStorage.getItem(CAPTURE_DISCLOSURE_KEY) !== 'acknowledged'; }
-    catch { return true; }
-  });
+  const [showSettings, setShowSettings] = useState(false);
+  const [showSetup, setShowSetup] = useState(false);
+  const [membership, setMembership] = useState<MembershipStatus | null>(null);
+  const refreshMembership = useCallback(async () => {
+    if (!isTauri() || sharedMode) return;
+    const status = await getMembershipStatus();
+    setMembership(status);
+  }, [sharedMode]);
+  useEffect(() => {
+    if (!isTauri() || sharedMode) return;
+    let active = true;
+    const refresh = () => { if (active) void refreshMembership().catch(() => { if (active) setError('Could not check your Trace membership. Open Settings to try again.'); }); };
+    refresh(); const timer = window.setInterval(refresh, 30000);
+    window.addEventListener('focus', refresh);
+    return () => { active = false; clearInterval(timer); window.removeEventListener('focus', refresh); };
+  }, [refreshMembership, sharedMode]);
+  useEffect(() => {
+    if (sharedMode || !isTauri()) return;
+    try { if (localStorage.getItem(CAPTURE_DISCLOSURE_KEY) !== 'acknowledged') setShowSetup(true); }
+    catch { setShowSetup(true); }
+  }, [sharedMode]);
   const [archiveOpen, setArchiveOpen] = useState(() => !sharedMode);
   const [sharedAccessOpen, setSharedAccessOpen] = useState(() => {
     if (!sharedMode) return false;
@@ -1213,10 +1205,8 @@ export default function TrackerApp() {
         }
         if (isTauri()) {
           const legacyReviews = localStorage.getItem(STORAGE_MIGRATED_KEY) === '1' ? [] : loadReviews();
-          for (const review of legacyReviews) await commitReview(review);
-          if (legacyReviews.length) {
-            localStorage.setItem(STORAGE_MIGRATED_KEY, '1');
-          }
+          await importLegacyReviews(legacyReviews, REDUCER_VERSION);
+          localStorage.setItem(STORAGE_MIGRATED_KEY, '1');
           // The SQLite archive is ready during native setup. Show it before
           // running legacy import/status maintenance, which can be slow on a
           // machine with an old capture file or a cold antivirus scan.
@@ -1226,7 +1216,8 @@ export default function TrackerApp() {
           setArchiveTotal(stored.length);
 
           const rawIds = await listRawMatchIds(false, 1);
-          const preferredId = rawIds[0] || stored[0]?.id;
+          // Never block live capture bootstrap by attempting to open a locked archive row.
+          const preferredId = rawIds[0] || stored.find(summary => !summary.replayRequiresPro)?.id;
           const cached = preferredId ? await loadMatchReview(preferredId) : null;
           if (!active) return;
           if (cached) displayReview(cached, true);
@@ -1354,7 +1345,7 @@ export default function TrackerApp() {
   }, [selectedEventKey, selectedReview?.id, timeline.entries.length]);
 
   useEffect(() => {
-    if (!selectedReview || showSetup || inspector || restoringReview || environment.capture.waitingForMatchEnd) return undefined;
+    if (!selectedReview || showSetup || showSettings || inspector || restoringReview || environment.capture.waitingForMatchEnd) return undefined;
 
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target instanceof HTMLElement ? event.target : null;
@@ -1371,7 +1362,7 @@ export default function TrackerApp() {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [environment.capture.waitingForMatchEnd, inspector, keyMoments, navigateToFrame, selectedReview, showSetup, restoringReview]);
+  }, [environment.capture.waitingForMatchEnd, inspector, keyMoments, navigateToFrame, selectedReview, showSetup, showSettings, restoringReview]);
 
   useEffect(() => {
     if (environment.capture.waitingForMatchEnd) setPlaying(false);
@@ -1408,6 +1399,12 @@ export default function TrackerApp() {
     try { localStorage.setItem(CAPTURE_DISCLOSURE_KEY, 'acknowledged'); }
     catch { /* Disclosure persistence is best-effort. */ }
     setShowSetup(false);
+  }, []);
+
+  const openSettings = useCallback(() => {
+    setPlaying(false);
+    setSafetyDismissed(true);
+    setShowSettings(true);
   }, []);
 
   const openCard = useCallback((card: Card, pokemon?: PokemonInPlay) => {
@@ -1534,6 +1531,24 @@ export default function TrackerApp() {
     }
   }, [copyShareUrl, selectedReview, shareLinks, sharedMode, sharing]);
 
+  const loadSelectedOpponentDeck = useCallback(async () => {
+    if (!selectedReview) throw new Error('Select a match first.');
+    const deck = await loadOpponentDecklist(selectedReview.id);
+    await resolveCardsForPayload(deck);
+    return deck;
+  }, [selectedReview?.id, resolveCardsForPayload]);
+  const opponentDeckAccess = {
+    loadDeck: isTauri() && !sharedMode && membership?.opponentDecklists && selectedReview?.matchCompleted ? loadSelectedOpponentDeck : undefined,
+    unavailableReason: sharedMode ? 'Opponent decklists are available to Supporters Club members in Trace.'
+      : !selectedReview?.matchCompleted ? selectedReview?.winner ? 'This capture is missing a verified match result.' : 'Available after Trace records the match result.'
+      : !membership?.opponentDecklists ? 'Supporters Club unlocks opponent decklists after the match.' : 'Decklist not available',
+    accessKey: `${selectedReview?.id}:${membership?.email}:${membership?.opponentDecklists}:${membership?.status}:${selectedReview?.matchCompleted}`,
+  };
+  const updateNotice = <UpdateNotice matchInProgress={environment.clientRunning} settingsOpen={showSettings} />;
+  const accountSettings = <MembershipSettings status={membership} onRefresh={refreshMembership} onChange={setMembership} />;
+
+  const fullHistory = Boolean(membership?.traceAccess && membership.capabilities?.fullHistory);
+
   const selectedShareUrl = selectedReview ? shareLinks[selectedReview.id] : null;
 
   return (
@@ -1549,14 +1564,29 @@ export default function TrackerApp() {
         {!sharedMode && archiveOpen && <aside className="session-rail">
           <div className="archive-heading" onMouseDown={beginWindowDrag}>
             <div className="archive-brand"><span><img src="/tracker-assets/trace-mascot.png" alt="" /></span><div><span className="archive-brand-name"><strong>Trace</strong>{appVersion && <b>v{appVersion}</b>}</span><small>Every turn, in view</small></div><div className={`header-status ${captureStatus.tone}`} title={environment.capture.lastError || undefined}><i /><b>{captureStatus.label}</b></div></div>
-            <div className="archive-title"><div><p>{archiveTotal} {archiveTotal === 1 ? 'match' : 'matches'} recorded</p></div><button className="panel-collapse-button" type="button" aria-label="Collapse match archive" aria-expanded="true" title="Collapse match archive" onClick={() => setArchiveOpen(false)}><CaretLeft size={17} weight="bold" /></button></div>
+            <div className="archive-title">
+              <div><p>{archiveTotal} {archiveTotal === 1 ? 'match' : 'matches'} recorded</p></div>
+              <div className="archive-title-actions">
+                <a className="archive-leaderboard-link" href={LEADERBOARD_URL} target="_blank" rel="noopener noreferrer" title="Open leaderboards in your browser" onClick={(event) => {
+                  if (!isTauri()) return;
+                  event.preventDefault();
+                  void openLeaderboard().catch(() => setError('Could not open your browser. Visit victoryroad.app/trace/leaderboard.'));
+                }}><Trophy size={14} weight="regular" aria-hidden="true" /><span>Leaderboards</span></a>
+                <button className="panel-collapse-button" type="button" aria-label="Collapse match archive" aria-expanded="true" title="Collapse match archive" onClick={() => setArchiveOpen(false)}><CaretLeft size={17} weight="bold" /></button>
+              </div>
+            </div>
           </div>
           <div className="archive-search">
             <div className="archive-search-field"><MagnifyingGlass size={16} aria-hidden="true" /><input type="search" aria-label="Search match archive" placeholder="Search players or Pokémon" value={archiveQuery} onChange={(event) => setArchiveQuery(event.target.value)} onKeyDown={(event) => { event.stopPropagation(); if (event.key === 'Escape') setArchiveQuery(''); }} />{searchActive && <button type="button" aria-label="Clear archive search" onClick={() => setArchiveQuery('')}><X size={14} /></button>}</div>
             {searchActive && <small role="status">{searchLoading ? `Searching all games · ${visibleSummaries.length} found` : searchError ? 'Search incomplete — some older games could not load.' : `${visibleSummaries.length} ${visibleSummaries.length === 1 ? 'game' : 'games'} found`}{searchError && <button type="button" onClick={() => setSearchRetry(value => value + 1)}>Retry</button>}</small>}
           </div>
           <InfiniteArchiveList itemCount={summaries.length} hasMore={isTauri() && summaries.length < archiveTotal} searchActive={searchActive} loadMore={loadOlderMatches}>
-            {visibleSummaries.map((summary) => <ArchiveRow key={summary.id} summary={summary} selected={summary.id === selectedId} catalog={cardCatalog} onSelect={() => void selectSummary(summary)} />)}
+            {visibleSummaries.map((summary) => <ArchiveRow key={summary.id} summary={summary} selected={summary.id === selectedId} catalog={cardCatalog} locked={Boolean(summary.replayRequiresPro && !fullHistory)} onSelect={() => {
+              if (summary.replayRequiresPro && !fullHistory) {
+                setNotice('Your match is saved. Trace Pro unlocks replays older than 7 days.');
+                openSettings();
+              } else void selectSummary(summary);
+            }} />)}
             {searchActive && !visibleSummaries.length && !searchLoading && !searchError && <div className="empty-library"><MagnifyingGlass size={28} /><strong>No matching games</strong><p>Try part of a player’s name, a Pokémon, or a different date.</p><button type="button" onClick={() => setArchiveQuery('')}>Clear search</button></div>}
             {!searchActive && !summaries.length && !restoringReview && <div className="empty-library"><BookOpenText size={38} weight="duotone" /><strong>No matches yet</strong><p>Turn on automatic capture and play normally. Your games will collect here.</p><button type="button" onClick={() => importLog(DEMO_BATTLE_LOG)}>Explore a sample</button></div>}
             {!searchActive && !summaries.length && restoringReview && <div className="empty-library archive-loading"><BookOpenText size={38} weight="duotone" /><strong>Restoring your archive…</strong><p>Loading the latest saved match.</p></div>}
@@ -1567,7 +1597,7 @@ export default function TrackerApp() {
           {restoringReview ? <MatchLoadingSkeleton /> : selectedReview && selectedTurn && localBoard && opponentBoard && selectedCanonical && localCanonicalPlayer && opponentCanonicalPlayer && turnStatus ? <>
             <BoardZoomViewport><div className={`board-frame ${frameAnimations ? 'frame-motion-enabled' : ''} ${frameScrubbing ? 'frame-scrubbing' : ''}`}>
               <div className="reconstructed-chip"><CheckCircle size={18} weight="fill" />Board reconstructed</div>
-              <PlayerField decklist={selectedReview.decklists?.find(deck => deck.playerName === opponentBoard.name)} board={opponentBoard} canonical={opponentCanonicalPlayer} pendingCards={selectedCanonical.pendingCards?.[selectedCanonical.localPlayerIndex === 0 ? 1 : 0]} visibility={selectedCanonical.visibility} catalog={cardCatalog} choiceFrames={turnChoiceFrames.filter((frame) => frame.actor === opponentBoard.name)} currentReviewIndex={turnIndex} turnNumber={selectedCanonical.state.turnNumber} status={turnStatus.players[opponentBoard.name]} handoff={turnPass ? turnPass.passer === opponentBoard.name ? turnPass.reason === 'timeout' ? 'timed-out' : 'passing' : 'receiving' : undefined} stadiumCard={selectedCanonical.state.stadium} stadiumName={turnStatus.stadiumName} stadiumOwner={turnStatus.stadiumOwner} localPlayerName={localBoard.name} opponentName={opponentBoard.name} defeatedIds={defeatedIds} defeatedNames={defeatedNames} damageChanges={damageChanges} positionChanges={positionChanges} attackerId={attackResolution?.sourceId} opponent avatar={TRAINER_ART[0]} onOpenPokemon={openPokemon} onOpenChoice={openChoiceCard} onOpenCard={openCard} onOpenZone={openZone} />
+              <PlayerField deckAccess={opponentDeckAccess} board={opponentBoard} canonical={opponentCanonicalPlayer} pendingCards={selectedCanonical.pendingCards?.[selectedCanonical.localPlayerIndex === 0 ? 1 : 0]} visibility={selectedCanonical.visibility} catalog={cardCatalog} choiceFrames={turnChoiceFrames.filter((frame) => frame.actor === opponentBoard.name)} currentReviewIndex={turnIndex} turnNumber={selectedCanonical.state.turnNumber} status={turnStatus.players[opponentBoard.name]} handoff={turnPass ? turnPass.passer === opponentBoard.name ? turnPass.reason === 'timeout' ? 'timed-out' : 'passing' : 'receiving' : undefined} stadiumCard={selectedCanonical.state.stadium} stadiumName={turnStatus.stadiumName} stadiumOwner={turnStatus.stadiumOwner} localPlayerName={localBoard.name} opponentName={opponentBoard.name} defeatedIds={defeatedIds} defeatedNames={defeatedNames} damageChanges={damageChanges} positionChanges={positionChanges} attackerId={attackResolution?.sourceId} opponent avatar={TRAINER_ART[0]} onOpenPokemon={openPokemon} onOpenChoice={openChoiceCard} onOpenCard={openCard} onOpenZone={openZone} />
               <div className="midline"><span /></div>
               <PlayerField decklist={selectedReview.decklists?.find(deck => deck.playerName === localBoard.name)} board={localBoard} canonical={localCanonicalPlayer} pendingCards={selectedCanonical.pendingCards?.[selectedCanonical.localPlayerIndex]} visibility={selectedCanonical.visibility} catalog={cardCatalog} choiceFrames={turnChoiceFrames.filter((frame) => frame.actor === localBoard.name)} currentReviewIndex={turnIndex} turnNumber={selectedCanonical.state.turnNumber} status={turnStatus.players[localBoard.name]} handoff={turnPass ? turnPass.passer === localBoard.name ? turnPass.reason === 'timeout' ? 'timed-out' : 'passing' : 'receiving' : undefined} stadiumCard={selectedCanonical.state.stadium} stadiumName={turnStatus.stadiumName} stadiumOwner={turnStatus.stadiumOwner} localPlayerName={localBoard.name} opponentName={opponentBoard.name} defeatedIds={defeatedIds} defeatedNames={defeatedNames} damageChanges={damageChanges} positionChanges={positionChanges} attackerId={attackResolution?.sourceId} avatar={TRAINER_ART[2]} onOpenPokemon={openPokemon} onOpenChoice={openChoiceCard} onOpenCard={openCard} onOpenZone={openZone} />
               {frameAnimations && !frameScrubbing && attackResolution && <AttackRoute key={`${selectedReview.id}:${turnIndex}:${attackResolution.sourceId || attackResolution.source}`} resolution={attackResolution} opponentAttacking={attackResolution.attacker === opponentBoard.name} hasImpact={attackResolution.hits.length > 0 || [...damageChanges.values()].some((change) => change.delta > 0)} />}
@@ -1595,7 +1625,7 @@ export default function TrackerApp() {
 
         {timelineOpen && <aside className="timeline-panel">
           <div className="timeline-heading" onMouseDown={beginWindowDrag}><div><span id="match-timeline-heading">Game log</span><small>{timeline.entries.length ? `${timeline.entries.length} events · ${selectedTurn?.label || 'Replay'}` : 'Waiting for a match'}</small></div><div className="timeline-heading-actions"><button type="button" aria-label="Jump to the selected event" title="Jump to selected event" disabled={!selectedEventKey} onClick={() => selectedTimelineEventRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })}><SkipForward size={19} weight="fill" /></button><button className="panel-collapse-button" type="button" aria-label="Collapse game log" aria-expanded="true" title="Collapse game log" onClick={() => setTimelineOpen(false)}><CaretRight size={17} weight="bold" /></button></div></div>
-          {!sharedMode && <div className="timeline-tools"><Toggle on={tracking} disabled={busy} onChange={() => void changeTracking()} /><button className="icon-button" type="button" aria-label="Settings" onClick={() => setShowSetup(true)}><GearSix size={21} weight="bold" /></button></div>}
+          {!sharedMode && <div className="timeline-tools"><Toggle on={tracking} disabled={busy} onChange={() => void changeTracking()} /><button className="icon-button" type="button" aria-label="Settings" aria-haspopup="dialog" onClick={openSettings}><GearSix size={21} weight="bold" /></button></div>}
           {restoringReview && <div className="match-loading-log" aria-hidden="true">{[0, 1, 2, 3, 4].map((row) => <div className="skeleton-block" key={row} />)}</div>}
           <div className="timeline-list" hidden={restoringReview} role="list" aria-labelledby="match-timeline-heading">
             {timeline.groups.map((group) => {
@@ -1610,6 +1640,7 @@ export default function TrackerApp() {
                     const selected = entry.key === selectedEventKey;
                     const selection = selectionForEvent(turn, event);
                     const eventSelectedChoiceNames = selectedCardNames(selection);
+                    const unselectedChoice = unselectedChoiceCopy(turn, event);
                     const visibleFacts = event.facts || [];
                     const displayLabel = eventDisplayLabel(event);
                     const eventCondition = event.kind === 'condition' ? conditionFromEventText(event.text) : null;
@@ -1618,9 +1649,9 @@ export default function TrackerApp() {
                       : undefined;
                     const effect = cardEffectSummary(event, eventCard);
                     return <article className={`timeline-event-wrap kind-${event.kind} ${event.coinResult ? `coin-${event.coinResult}` : ''} ${selected ? 'selected' : ''}`} key={entry.key} role="listitem" aria-setsize={timeline.entries.length} aria-posinset={entry.position}>
-                      <button ref={selected ? selectedTimelineEventRef : undefined} className="timeline-event" type="button" aria-current={selected ? 'step' : undefined} aria-label={`Event ${entry.position} of ${timeline.entries.length}. ${displayLabel}. ${event.text}`} onClick={() => { setSelectedEventKey(entry.key); navigateToFrame(Math.min(entry.reviewIndex, (selectedReview?.turns.length || 1) - 1)); setPlaying(false); setInspector(null); }}>
+                      <button ref={selected ? selectedTimelineEventRef : undefined} className="timeline-event" type="button" aria-current={selected ? 'step' : undefined} aria-label={`Event ${entry.position} of ${timeline.entries.length}. ${displayLabel}. ${event.text}${unselectedChoice ? `. ${unselectedChoice}` : ''}`} onClick={() => { setSelectedEventKey(entry.key); navigateToFrame(Math.min(entry.reviewIndex, (selectedReview?.turns.length || 1) - 1)); setPlaying(false); setInspector(null); }}>
                         <span className={`event-icon ${eventCondition ? `condition-${eventCondition.toLowerCase()}` : ''}`}><EventIcon kind={event.kind} text={event.text} /></span>
-                        <span className="event-copy"><span className="event-meta"><small>{displayLabel}</small><span>Event {entry.position}</span></span><strong>{event.text}</strong></span>
+                        <span className="event-copy"><span className="event-meta"><small>{displayLabel}</small><span>Event {entry.position}</span></span><strong>{event.text}</strong>{unselectedChoice && <span className="event-unchosen">{unselectedChoice}</span>}</span>
                         <span className="event-trailing">{event.coinResult ? <b className={`coin-outcome ${event.coinResult}`}><Coin size={10} weight="fill" />{event.coinResult === 'heads' ? 'Heads' : event.coinResult === 'tails' ? 'Tails' : 'Mixed'}</b> : selected ? <b>Viewing</b> : event.id.includes(':selection:') ? <MagnifyingGlass size={14} weight="bold" /> : <CaretRight size={14} weight="bold" />}</span>
                       </button>
                       {selected && effect && eventCard && <button className="event-effect-detail" type="button" onClick={() => openChoiceCard({ id: `${event.id}:card`, cardId: eventCard.id, name: eventCard.name })} aria-label={`${effect.label}: ${effect.title}. ${effect.text}. Open card details`}>
@@ -1634,7 +1665,7 @@ export default function TrackerApp() {
                           {visibleFacts.map((fact) => <div className={`fact-${fact.kind} tone-${fact.tone || 'neutral'}`} key={fact.id}><dt><i />{fact.label}</dt><dd>{fact.value}</dd></div>)}
                         </dl>
                       </details>}
-                      {selected && selection && (eventSelectedChoiceNames.length > 0 || selection.allOptionIds.length > 0) && <div className="timeline-event-detail"><span>{selection.candidateVisibility === 'private' ? <><b>{eventSelectedChoiceNames.length ? eventSelectedChoiceNames.join(' + ') : 'Hidden choice'}</b><small>{eventSelectedChoiceNames.length ? 'Only the chosen card was revealed' : 'The available cards stayed hidden'}</small></> : <><b>{eventSelectedChoiceNames.length ? eventSelectedChoiceNames.join(' + ') : 'Cards viewed'}</b><small>{selection.allOptionIds.length} card{selection.allOptionIds.length === 1 ? '' : 's'} viewed · {eventSelectedChoiceNames.length} chosen</small></>}</span><button type="button" onClick={() => openSelection(selection)}>{eventSelectedChoiceNames.length ? 'View chosen cards' : 'Review cards'}</button></div>}
+                      {selected && selection && (eventSelectedChoiceNames.length > 0 || selection.allOptionIds.length > 0) && <div className="timeline-event-detail"><span>{selection.candidateVisibility === 'private' ? <><b>{eventSelectedChoiceNames.length ? eventSelectedChoiceNames.join(' + ') : 'Hidden choice'}</b><small>{eventSelectedChoiceNames.length ? 'Only the chosen card was revealed' : 'The available cards stayed hidden'}</small></> : <><b>{eventSelectedChoiceNames.length ? eventSelectedChoiceNames.join(' + ') : 'Cards viewed'}</b><small>{selection.allOptionIds.length} card{selection.allOptionIds.length === 1 ? '' : 's'} viewed · {eventSelectedChoiceNames.length} chosen</small></>}</span><button type="button" onClick={() => openSelection(selection)}>{unselectedChoice ? 'View choices' : eventSelectedChoiceNames.length ? 'View chosen cards' : 'Review cards'}</button></div>}
                     </article>;
                   })}
                 </div>
@@ -1649,11 +1680,12 @@ export default function TrackerApp() {
       {!sharedMode && !archiveOpen && <button className="panel-restore-button archive-restore-button" type="button" aria-label="Open match archive" aria-expanded="false" title="Open match archive" onClick={() => setArchiveOpen(true)}><CardsThree size={22} weight="duotone" /></button>}
       {!timelineOpen && <button className="panel-restore-button timeline-restore-button" type="button" aria-label="Open game log" aria-expanded="false" title="Open game log" onClick={() => setTimelineOpen(true)}><List size={22} weight="bold" /></button>}
 
-      {!sharedMode && environment.capture.waitingForMatchEnd && !safetyDismissed && !showSetup && <div className="capture-safety-backdrop"><section className="capture-safety-dialog" role="alertdialog" aria-modal="true" aria-labelledby="capture-safety-title" aria-describedby="capture-safety-description"><div className="capture-safety-icon" aria-hidden="true"><ShieldCheck size={33} weight="fill" /><i /></div><span>Safe connection</span><h2 id="capture-safety-title">TCG Live is already connected</h2><p id="capture-safety-description">Trace can’t safely tell whether a match is active. It won’t interrupt your connection or install an update.</p><div className="capture-safety-waiting"><i aria-hidden="true" /><span><strong>In a match? Finish playing first.</strong><small>Already on Home? Quit TCG Live, leave Trace open until it says Ready, then reopen TCG Live.</small></span></div><div className="modal-actions"><button type="button" onClick={() => setSafetyDismissed(true)}>Continue reviewing</button><button type="button" onClick={() => setShowSetup(true)}>Open Settings</button></div></section></div>}
+      {!sharedMode && environment.capture.waitingForMatchEnd && !safetyDismissed && !showSetup && !showSettings && <div className="capture-safety-backdrop"><section className="capture-safety-dialog" role="alertdialog" aria-modal="true" aria-labelledby="capture-safety-title" aria-describedby="capture-safety-description"><div className="capture-safety-icon" aria-hidden="true"><ShieldCheck size={33} weight="fill" /><i /></div><span>Safe connection</span><h2 id="capture-safety-title">TCG Live is already connected</h2><p id="capture-safety-description">Trace can’t safely tell whether a match is active. It won’t interrupt your connection or install an update.</p><div className="capture-safety-waiting"><i aria-hidden="true" /><span><strong>In a match? Finish playing first.</strong><small>Already on Home? Quit TCG Live, leave Trace open until it says Ready, then reopen TCG Live.</small></span></div><div className="modal-actions"><button type="button" onClick={() => setSafetyDismissed(true)}>Continue reviewing</button><button type="button" onClick={openSettings}>Open Settings</button></div></section></div>}
       {!sharedMode && showSetup && <CaptureSetupModal onClose={closeSetup} onCapture={capture => setEnvironment(current => ({ ...current, capture }))} />}
+      {!sharedMode && showSettings && <UpdateSettingsModal onClose={() => setShowSettings(false)} version={appVersion}>{isTauri() && accountSettings}</UpdateSettingsModal>}
       {shareUrl && <div className="modal-backdrop share-modal-backdrop"><div className="share-modal" role="dialog" aria-modal="true" aria-labelledby="share-match-title"><div className="modal-title"><div><span>Ready to send</span><h2 id="share-match-title">Share this match</h2></div><button type="button" onClick={() => setShareUrl(null)} aria-label="Close share dialog"><X size={21} weight="bold" /></button></div><p>Anyone with this link can click through the replay in their browser.</p><div className="share-link-row"><input value={shareUrl} readOnly aria-label="Share link" onFocus={(event) => event.currentTarget.select()} /><button className="primary" type="button" onClick={() => void copyShareUrl(shareUrl)}><Copy size={16} weight="bold" />Copy link</button></div></div></div>}
       <ReviewOverlay inspector={inspector} catalog={cardCatalog} onClose={() => setInspector(null)} onInspectCard={openCard} />
-      {!sharedMode && !showSetup && <UpdateNotice matchInProgress={environment.clientRunning} />}
+      {!sharedMode && !showSetup && updateNotice}
       {(notice || error || captureError) && <div className={`toast ${error || captureError ? 'error' : ''}`}><span>{error || captureError ? <X size={18} weight="bold" /> : <CheckCircle size={18} weight="fill" />}</span><p>{error || captureError || notice}</p><button type="button" onClick={() => { setError(null); setCaptureError(null); setNotice(null); }} aria-label="Dismiss notification"><X size={16} weight="bold" /></button></div>}
     </div>
   );

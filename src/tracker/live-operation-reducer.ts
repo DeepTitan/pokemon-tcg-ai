@@ -2087,6 +2087,7 @@ export class LiveReviewAssembler {
     }
     assembly.review.players = [names[1], names[2]];
     assembly.review.decklists = assembly.decklists;
+    assembly.review.matchCompleted ||= operation.traceMatchCompleted === true;
     assembly.review.localPlayer = names[localSide];
     assembly.review.opponent = names[localSide === 1 ? 2 : 1];
     assembly.review.localRating = assembly.matchRatings.get(assembly.review.localPlayer.toLocaleLowerCase());

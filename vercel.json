@@ -23,6 +23,10 @@
   "trailingSlash": false,
   "rewrites": [
     {
+      "source": "/trace/discord/callback",
+      "destination": "/api/discord-callback"
+    },
+    {
       "source": "/trace/api/:action*",
       "destination": "/api/membership?action=:action*"
     },
@@ -60,6 +64,10 @@
     },
     {
       "source": "/trace/connect",
+      "destination": "/trace-account.html"
+    },
+    {
+      "source": "/trace/link",
       "destination": "/trace-account.html"
     },
     {
@@ -139,7 +147,7 @@
       ]
     },
     {
-      "source": "/trace/(account|login|signup|confirm|recover|reset|connect)",
+      "source": "/trace/(account|login|signup|confirm|recover|reset|connect|link)",
       "headers": [
         {
           "key": "Cache-Control",
