@@ -2936,3 +2936,22 @@ button.stadium-marker:focus-visible {
 .timeline-list[hidden] { display: none; }
 @keyframes match-loading-pulse { from { opacity: .5; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .skeleton-block { animation: none; } }
+
+.membership-settings { border-bottom: 1px solid #ded5c5; padding-bottom: 18px; margin-bottom: 18px; }
+.membership-settings h3 { margin: 0; color: #263b59; font-size: 16px; }
+.membership-settings p { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.membership-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.membership-actions button, .membership-actions a { padding: 9px 12px; border: 1px solid #c9bc9e; border-radius: 8px; background: #fff9e9; color: #263b59; font: inherit; font-size: 12px; text-decoration: none; cursor: pointer; }
+.membership-actions button.primary { background: #ffda68; }
+.membership-actions button:disabled { opacity: .6; cursor: default; }
+.membership-link-code { border: 1px solid #ddcba5; border-radius: 8px; background: #fff9e9; padding: 12px; margin: 12px 0; }
+.membership-link-code p { margin-top: 0; }
+.membership-link-code strong { display: block; color: #263b59; font-size: 25px; letter-spacing: .12em; }
+.membership-link-code a { display: inline-block; margin-top: 8px; font-size: 13px; }
+.membership-gate { display: grid; place-items: center; min-height: 100vh; background: #f8f4eb; color: #263b59; }
+.membership-gate > section { max-width: 490px; padding: 36px; text-align: center; }
+.membership-gate > section > img { height: 90px; }
+.membership-gate h1 { font: 800 30px 'Nunito', sans-serif; }
+.membership-gate p { line-height: 1.6; color: #65706d; }
+.membership-gate .primary { padding: 13px 20px; border: 1px solid #d6b04a; border-radius: 10px; color: #263b59; background: #ffda68; font: 800 15px 'Nunito', sans-serif; cursor: pointer; }
+.membership-gate .membership-capture-note { font-size: 12px; margin-top: 22px; }

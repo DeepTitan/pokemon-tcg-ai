@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { X } from '@phosphor-icons/react';
 
-export function UpdateSettingsModal({ onClose, version }: { onClose: () => void; version: string | null }) {
+export function UpdateSettingsModal({ onClose, version, children }: { onClose: () => void; version: string | null; children?: ReactNode }) {
   const dialog = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
@@ -24,9 +24,10 @@ export function UpdateSettingsModal({ onClose, version }: { onClose: () => void;
     }}>
     <header className="update-settings-heading">
       <img src="/tracker-assets/trace-mascot.png" alt="" />
-      <div><h2 id="update-settings-title">Trace updates</h2>{version && <p>Version {version}</p>}</div>
+      <div><h2 id="update-settings-title">{children ? 'Trace settings' : 'Trace updates'}</h2>{version && <p>Version {version}</p>}</div>
       <button type="button" onClick={onClose} aria-label="Close settings"><X size={20} weight="bold" /></button>
     </header>
+    {children}
     <div id="settings-updates" />
   </dialog>;
 }

@@ -54,3 +54,7 @@ assert.match(updateNoticeSource, /if \(matchInProgressRef\.current \|\| \(await 
 assert.match(updateNoticeSource, /disabled=\{busy \|\| checking \|\| matchInProgress\}/);
 
 console.log('capture-status-model: healthy recordings, modal waiting state, and update deferral verified');
+
+const membershipBlockedMatch = environment({ clientAttached: true, lastError: 'Membership was unavailable when this match started.' });
+assert.equal(captureIndicator(membershipBlockedMatch).tone, 'error');
+assert.match(visibleCaptureError(membershipBlockedMatch) || '', /Membership was unavailable/);

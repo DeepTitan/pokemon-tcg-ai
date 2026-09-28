@@ -224,6 +224,8 @@ export interface MatchReview {
   localRating?: number;
   opponentRating?: number;
   resultReason?: 'local-client-closed';
+  /** Native captured EndGameModification; winner alone may be inferred. */
+  matchCompleted?: boolean;
   turns: TrackedTurn[];
   rawLog: string;
 }
@@ -292,4 +294,21 @@ export interface TrackerEnvironment {
   pid: number | null;
   captureMode: 'existing-client';
   capture: CaptureStatus;
+}
+
+export interface MembershipStatus {
+  linked: boolean;
+  email: string | null;
+  plan: 'none' | 'trace' | 'supporter';
+  traceAccess: boolean;
+  opponentDecklists: boolean;
+  admin: boolean;
+  status: string;
+  expiresAt: string | null;
+  cancelAtPeriodEnd: boolean;
+}
+export interface MembershipLink {
+  userCode: string;
+  verificationUrl: string;
+  expiresAt: string;
 }

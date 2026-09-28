@@ -24,7 +24,7 @@ import { readArchiveSearchIndex, searchArchive } from './archive-search.js';
 import { InfiniteArchiveList } from './InfiniteArchiveList.js';
 import { CaptureSetupModal } from './CaptureSetupModal.js';
 import {
-  getRecentMatchOperations, getTraceVersion, getTrackerEnvironment, initializeTrackerStorage, isTauri, listMatchSummaries,
+  getMembershipStatus, loadOpponentDecklist, getRecentMatchOperations, getTraceVersion, getTrackerEnvironment, initializeTrackerStorage, isTauri, listMatchSummaries,
   listRawMatchIds, loadMatchOperations, loadMatchReview, onMatchOperation, persistMatchReview,
   resolveCardSources, shareMatch, startTracking, stopTracking, LEADERBOARD_URL, openLeaderboard,
 } from './tauri.js';
@@ -62,10 +62,11 @@ import {
 } from './frame-animation-model.js';
 import { UpdateNotice } from './UpdateNotice.js';
 import { UpdateSettingsModal } from './UpdateSettingsModal.js';
+import { MembershipSettings } from './MembershipSettings.js';
 import { loadSharedReplay, readStoredShareLinks, sharedReplayIdFromPath, storeShareLink } from './share-replay.js';
 import { CARD_BACK_ART, cardCatalogEntryNeedsRefresh, findCatalogCard, publicCardArtUrl, resolvedCardArt, showCardBackOnError } from './card-art.js';
 import type {
-  CapturedDecklist, CapturedOperation, CardInfo, CanonicalReviewState, MatchReview, MatchSummary, ReviewCardVisibility, ReviewSelection, TrackedCard, TrackedChoiceCard, TrackedPlayerBoard,
+  MembershipStatus, CapturedDecklist, CapturedOperation, CardInfo, CanonicalReviewState, MatchReview, MatchSummary, ReviewCardVisibility, ReviewSelection, TrackedCard, TrackedChoiceCard, TrackedPlayerBoard,
   TrackedPokemon, TrackedTurn, TrackerEnvironment, TrackerEventKind,
 } from './types.js';
 import './tracker.css';
@@ -507,7 +508,7 @@ function OpponentHandSummary({ boardName, count, onOpen }: { boardName: string; 
   );
 }
 
-export function PlayerField({ board, decklist, canonical, pendingCards, visibility, catalog, choiceFrames, currentReviewIndex, turnNumber, status, handoff, stadiumCard, stadiumName, stadiumOwner, localPlayerName, opponentName, defeatedIds, defeatedNames, damageChanges, positionChanges, attackerId, opponent = false, avatar, onOpenPokemon, onOpenChoice, onOpenCard, onOpenZone }: { board: TrackedPlayerBoard; decklist?: CapturedDecklist; canonical: PlayerState; pendingCards?: Card[]; visibility: Record<string, ReviewCardVisibility>; catalog: ReadonlyMap<string, CardInfo>; choiceFrames: TurnChoiceFrame[]; currentReviewIndex: number; turnNumber: number; status: PlayerTurnStatus; handoff?: TurnHandoffRole; stadiumCard: Card | null; stadiumName?: string; stadiumOwner?: string; localPlayerName: string; opponentName: string; defeatedIds: ReadonlySet<string>; defeatedNames: ReadonlySet<string>; damageChanges: ReadonlyMap<string, PokemonDamageChange>; positionChanges: ReadonlyMap<string, PokemonPositionChange>; attackerId?: string; opponent?: boolean; avatar: string; onOpenPokemon: (id: string) => void; onOpenChoice: (card: TrackedCard) => void; onOpenCard: (card: Card) => void; onOpenZone: (title: string, subtitle: string, cards: Card[], visibility: Record<string, ReviewCardVisibility>) => void }) {
+export function PlayerField({ board, decklist, deckAccess, canonical, pendingCards, visibility, catalog, choiceFrames, currentReviewIndex, turnNumber, status, handoff, stadiumCard, stadiumName, stadiumOwner, localPlayerName, opponentName, defeatedIds, defeatedNames, damageChanges, positionChanges, attackerId, opponent = false, avatar, onOpenPokemon, onOpenChoice, onOpenCard, onOpenZone }: { board: TrackedPlayerBoard; decklist?: CapturedDecklist; deckAccess?: { loadDeck?: () => Promise<CapturedDecklist>; unavailableReason: string; accessKey: string }; canonical: PlayerState; pendingCards?: Card[]; visibility: Record<string, ReviewCardVisibility>; catalog: ReadonlyMap<string, CardInfo>; choiceFrames: TurnChoiceFrame[]; currentReviewIndex: number; turnNumber: number; status: PlayerTurnStatus; handoff?: TurnHandoffRole; stadiumCard: Card | null; stadiumName?: string; stadiumOwner?: string; localPlayerName: string; opponentName: string; defeatedIds: ReadonlySet<string>; defeatedNames: ReadonlySet<string>; damageChanges: ReadonlyMap<string, PokemonDamageChange>; positionChanges: ReadonlyMap<string, PokemonPositionChange>; attackerId?: string; opponent?: boolean; avatar: string; onOpenPokemon: (id: string) => void; onOpenChoice: (card: TrackedCard) => void; onOpenCard: (card: Card) => void; onOpenZone: (title: string, subtitle: string, cards: Card[], visibility: Record<string, ReviewCardVisibility>) => void }) {
   const benches = [...board.bench, ...Array.from({ length: Math.max(0, 5 - board.bench.length) }, () => null)].slice(0, 5);
   const tone = opponent ? 'coral' : 'blue';
   const isDefeated = (pokemon: TrackedPokemon | null) => Boolean(pokemon && (defeatedIds.has(pokemon.id) || defeatedNames.has(pokemon.name)));
@@ -532,7 +533,7 @@ export function PlayerField({ board, decklist, canonical, pendingCards, visibili
     <section className={`player-field ${opponent ? 'opponent' : 'local'} ${status.isCurrentTurn && !handoff ? 'current-turn' : ''} ${handoff ? `turn-${handoff}` : ''} ${status.itemLocked ? 'item-locked' : ''}`}>
       <div className="player-strip">
         {handoff && handoff !== 'receiving' && <div key={`pass-impact:${currentReviewIndex}:${handoff}`} className={`pass-impact ${handoff}`} aria-hidden="true"><span className="pass-impact-streak" /><b>{handoff === 'timed-out' ? 'TIME EXPIRED' : 'TURN PASSED'}</b><span className="pass-impact-arrow">{opponent ? '↓' : '↑'}</span></div>}
-        <div className="player-identity"><img src={avatar} alt="" /><div><span>{opponent ? 'Opponent' : 'You'}</span><strong key={`${currentReviewIndex}:${handoff || 'normal'}`} className={handoff ? `header-handoff ${handoff}` : undefined}><span className="header-player-name">{board.name}</span>{handoff && <span className="header-handoff-message" role="status">{handoff === 'receiving' ? opponent ? 'Opponent’s turn next' : 'Your turn next' : handoff === 'timed-out' ? 'Time expired →' : 'Passed turn →'}</span>}</strong></div><PlayerDecklist name={board.name} deck={decklist} catalog={catalog} />{opponent && <OpponentHandSummary boardName={board.name} count={handCount} onOpen={openHand} />}</div>
+        <div className="player-identity"><img src={avatar} alt="" /><div><span>{opponent ? 'Opponent' : 'You'}</span><strong key={`${currentReviewIndex}:${handoff || 'normal'}`} className={handoff ? `header-handoff ${handoff}` : undefined}><span className="header-player-name">{board.name}</span>{handoff && <span className="header-handoff-message" role="status">{handoff === 'receiving' ? opponent ? 'Opponent’s turn next' : 'Your turn next' : handoff === 'timed-out' ? 'Time expired →' : 'Passed turn →'}</span>}</strong></div><PlayerDecklist name={board.name} deck={decklist} catalog={catalog} {...deckAccess} />{opponent && <OpponentHandSummary boardName={board.name} count={handCount} onOpen={openHand} />}</div>
         <div className="turn-statuses" aria-label={`${board.name} turn status`}>
           <span className="status-slot turn-slot">{handoff === 'passing' || handoff === 'timed-out'
             ? <span className={`status-pill turn-handoff-pill ${handoff}`} aria-label={`Turn ${turnNumber} ${handoff === 'timed-out' ? 'ended when the timer expired' : 'ended without an attack'}`}><span>Turn {turnNumber}</span><b>{handoff === 'timed-out' ? 'Timed out' : 'Passed'}</b></span>
@@ -672,11 +673,28 @@ export default function TrackerApp() {
   });
   const [safetyDismissed, setSafetyDismissed] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [showSetup, setShowSetup] = useState(() => {
-    if (!isTauri()) return false;
-    try { return localStorage.getItem(CAPTURE_DISCLOSURE_KEY) !== 'acknowledged'; }
-    catch { return true; }
-  });
+  const [showSetup, setShowSetup] = useState(false);
+  const [membership, setMembership] = useState<MembershipStatus | null>(null);
+  const [membershipSessionReady, setMembershipSessionReady] = useState(() => !isTauri());
+  const refreshMembership = useCallback(async () => {
+    if (!isTauri() || sharedMode) return;
+    const status = await getMembershipStatus();
+    setMembership(status);
+    if (status.traceAccess) setMembershipSessionReady(true);
+  }, [sharedMode]);
+  useEffect(() => {
+    if (!isTauri() || sharedMode) return;
+    let active = true;
+    const refresh = () => { if (active) void refreshMembership().catch(() => { if (active) setError('Could not check your Trace membership. Open Settings to try again.'); }); };
+    refresh(); const timer = window.setInterval(refresh, 30000);
+    window.addEventListener('focus', refresh);
+    return () => { active = false; clearInterval(timer); window.removeEventListener('focus', refresh); };
+  }, [refreshMembership, sharedMode]);
+  useEffect(() => {
+    if (!membership?.traceAccess || !isTauri()) return;
+    try { if (localStorage.getItem(CAPTURE_DISCLOSURE_KEY) !== 'acknowledged') setShowSetup(true); }
+    catch { setShowSetup(true); }
+  }, [membership?.traceAccess]);
   const [archiveOpen, setArchiveOpen] = useState(() => !sharedMode);
   const [sharedAccessOpen, setSharedAccessOpen] = useState(() => {
     if (!sharedMode) return false;
@@ -1028,7 +1046,7 @@ export default function TrackerApp() {
           clientLifecycleRef.current = observation.state;
           if (observation.clientExited) finalizeActiveMatchForClientExit();
           setEnvironment(next);
-          if (isTauri() && !next.capture.permissionReady && !setupPrompted.current) {
+          if (isTauri() && membership?.traceAccess && !next.capture.permissionReady && !setupPrompted.current) {
             setupPrompted.current = true;
             setShowSetup(true);
           }
@@ -1038,7 +1056,7 @@ export default function TrackerApp() {
     void refresh();
     const timer = window.setInterval(refresh, 1500);
     return () => { active = false; window.clearInterval(timer); };
-  }, [finalizeActiveMatchForClientExit, sharedMode]);
+  }, [finalizeActiveMatchForClientExit, sharedMode, membership?.traceAccess]);
 
   useEffect(() => {
     if (sharedMode) return;
@@ -1047,13 +1065,14 @@ export default function TrackerApp() {
   }, [environment.capture.enabled, environment.capture.clientAttached, environment.capture.waitingForMatchEnd, environment.capture.lastError, sharedMode]);
 
   useEffect(() => {
-    if (sharedMode || !isTauri() || !environment.capture.permissionReady || autoStartAttempted.current || busy || showSetup) return;
+    if (sharedMode || !isTauri() || !membership?.traceAccess || !environment.capture.permissionReady || autoStartAttempted.current || busy || showSetup) return;
     autoStartAttempted.current = true;
     if (environment.capture.enabled) return;
     void startTracking().then((capture) => { setEnvironment((current) => ({ ...current, capture })); setError(null); }).catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)));
-  }, [environment.capture.permissionReady, environment.capture.enabled, busy, sharedMode, showSetup]);
+  }, [environment.capture.permissionReady, environment.capture.enabled, busy, sharedMode, showSetup, membership?.traceAccess]);
 
   useEffect(() => {
+    if (isTauri() && !membershipSessionReady && !sharedMode) { setRestoringReview(false); return; }
     let unlisten: () => void = () => undefined;
     let active = true;
     const schedulePersistence = (review: MatchReview) => {
@@ -1277,7 +1296,7 @@ export default function TrackerApp() {
       persistTimersRef.current.forEach((timer) => window.clearTimeout(timer));
       persistTimersRef.current.clear();
     };
-  }, [commitReview, displayReview, mergeCatalog, rebuildOperations, rebuildStoredMatch, resolveCardsForPayload, sharedReplayId, upsertSummary]);
+  }, [commitReview, displayReview, mergeCatalog, rebuildOperations, rebuildStoredMatch, resolveCardsForPayload, sharedReplayId, upsertSummary, membershipSessionReady]);
 
   useEffect(() => {
     if (!notice) return undefined;
@@ -1516,13 +1535,38 @@ export default function TrackerApp() {
     }
   }, [copyShareUrl, selectedReview, shareLinks, sharedMode, sharing]);
 
+  const loadSelectedOpponentDeck = useCallback(async () => {
+    if (!selectedReview) throw new Error('Select a match first.');
+    const deck = await loadOpponentDecklist(selectedReview.id);
+    await resolveCardsForPayload(deck);
+    return deck;
+  }, [selectedReview?.id, resolveCardsForPayload]);
+  const opponentDeckAccess = {
+    loadDeck: isTauri() && !sharedMode && membership?.opponentDecklists && selectedReview?.matchCompleted ? loadSelectedOpponentDeck : undefined,
+    unavailableReason: sharedMode ? 'Opponent decklists are available to Supporters Club members in Trace.'
+      : !selectedReview?.matchCompleted ? selectedReview?.winner ? 'This capture is missing a verified match result.' : 'Available after Trace records the match result.'
+      : !membership?.opponentDecklists ? 'Supporters Club unlocks opponent decklists after the match.' : 'Decklist not available',
+    accessKey: `${selectedReview?.id}:${membership?.email}:${membership?.opponentDecklists}:${membership?.status}:${selectedReview?.matchCompleted}`,
+  };
+  const updateNotice = <UpdateNotice matchInProgress={environment.clientRunning} settingsOpen={showSettings} />;
+  const accountSettings = <MembershipSettings status={membership} onRefresh={refreshMembership} onChange={setMembership} />;
+
+  const membershipBlocked = isTauri() && !sharedMode && !membership?.traceAccess;
+
   const selectedShareUrl = selectedReview ? shareLinks[selectedReview.id] : null;
 
   return (
-    <div className={`app-shell ${sharedMode ? 'shared-replay' : ''}`}>
+    <div className={`app-shell ${sharedMode ? 'shared-replay' : ''} ${membershipBlocked ? 'membership-gate' : ''}`}>
       {!sharedMode && <div className="window-drag-region" onMouseDown={beginWindowDrag} aria-hidden="true" />}
 
-      <main className={`workspace ${archiveOpen ? 'archive-open' : 'archive-collapsed'} ${timelineOpen ? 'timeline-open' : 'timeline-collapsed'} ${sharedMode ? `shared-mode ${sharedAccessOpen ? 'shared-access-open' : 'shared-access-collapsed'}` : ''}`}>
+      {membershipBlocked && <>
+    <section className="membership-gate-panel"><img src="/tracker-assets/trace-mascot.png" alt="" /><h1>{!membership ? 'Checking your account…' : membership.status === 'not_configured' ? 'Memberships are not configured' : 'Your matches. Every turn.'}</h1>
+      <p>{!membership ? 'One moment while Trace checks your membership.' : membership.status === 'not_configured' ? 'Update Trace or try again when memberships are available in this build.' : membership.status === 'unavailable' ? 'Trace couldn’t verify your membership. Check your connection, then refresh your account.' : 'Link your Victory Road account and choose a membership to use Trace.'}</p>
+      <button className="primary" type="button" onClick={openSettings}>Account and updates</button>
+      {environment.capture.enabled && <p className="membership-capture-note">A match already being recorded will keep saving. Membership changes never interrupt your game connection.</p>}
+    </section>
+      </>}
+      {!membershipBlocked && <main className={`workspace ${archiveOpen ? 'archive-open' : 'archive-collapsed'} ${timelineOpen ? 'timeline-open' : 'timeline-collapsed'} ${sharedMode ? `shared-mode ${sharedAccessOpen ? 'shared-access-open' : 'shared-access-collapsed'}` : ''}`}>
         {sharedMode && <SharedAccessRail open={sharedAccessOpen} onToggle={() => {
           const open = !sharedAccessOpen;
           setSharedAccessOpen(open);
@@ -1559,7 +1603,7 @@ export default function TrackerApp() {
           {restoringReview ? <MatchLoadingSkeleton /> : selectedReview && selectedTurn && localBoard && opponentBoard && selectedCanonical && localCanonicalPlayer && opponentCanonicalPlayer && turnStatus ? <>
             <BoardZoomViewport><div className={`board-frame ${frameAnimations ? 'frame-motion-enabled' : ''} ${frameScrubbing ? 'frame-scrubbing' : ''}`}>
               <div className="reconstructed-chip"><CheckCircle size={18} weight="fill" />Board reconstructed</div>
-              <PlayerField decklist={selectedReview.decklists?.find(deck => deck.playerName === opponentBoard.name)} board={opponentBoard} canonical={opponentCanonicalPlayer} pendingCards={selectedCanonical.pendingCards?.[selectedCanonical.localPlayerIndex === 0 ? 1 : 0]} visibility={selectedCanonical.visibility} catalog={cardCatalog} choiceFrames={turnChoiceFrames.filter((frame) => frame.actor === opponentBoard.name)} currentReviewIndex={turnIndex} turnNumber={selectedCanonical.state.turnNumber} status={turnStatus.players[opponentBoard.name]} handoff={turnPass ? turnPass.passer === opponentBoard.name ? turnPass.reason === 'timeout' ? 'timed-out' : 'passing' : 'receiving' : undefined} stadiumCard={selectedCanonical.state.stadium} stadiumName={turnStatus.stadiumName} stadiumOwner={turnStatus.stadiumOwner} localPlayerName={localBoard.name} opponentName={opponentBoard.name} defeatedIds={defeatedIds} defeatedNames={defeatedNames} damageChanges={damageChanges} positionChanges={positionChanges} attackerId={attackResolution?.sourceId} opponent avatar={TRAINER_ART[0]} onOpenPokemon={openPokemon} onOpenChoice={openChoiceCard} onOpenCard={openCard} onOpenZone={openZone} />
+              <PlayerField deckAccess={opponentDeckAccess} board={opponentBoard} canonical={opponentCanonicalPlayer} pendingCards={selectedCanonical.pendingCards?.[selectedCanonical.localPlayerIndex === 0 ? 1 : 0]} visibility={selectedCanonical.visibility} catalog={cardCatalog} choiceFrames={turnChoiceFrames.filter((frame) => frame.actor === opponentBoard.name)} currentReviewIndex={turnIndex} turnNumber={selectedCanonical.state.turnNumber} status={turnStatus.players[opponentBoard.name]} handoff={turnPass ? turnPass.passer === opponentBoard.name ? turnPass.reason === 'timeout' ? 'timed-out' : 'passing' : 'receiving' : undefined} stadiumCard={selectedCanonical.state.stadium} stadiumName={turnStatus.stadiumName} stadiumOwner={turnStatus.stadiumOwner} localPlayerName={localBoard.name} opponentName={opponentBoard.name} defeatedIds={defeatedIds} defeatedNames={defeatedNames} damageChanges={damageChanges} positionChanges={positionChanges} attackerId={attackResolution?.sourceId} opponent avatar={TRAINER_ART[0]} onOpenPokemon={openPokemon} onOpenChoice={openChoiceCard} onOpenCard={openCard} onOpenZone={openZone} />
               <div className="midline"><span /></div>
               <PlayerField decklist={selectedReview.decklists?.find(deck => deck.playerName === localBoard.name)} board={localBoard} canonical={localCanonicalPlayer} pendingCards={selectedCanonical.pendingCards?.[selectedCanonical.localPlayerIndex]} visibility={selectedCanonical.visibility} catalog={cardCatalog} choiceFrames={turnChoiceFrames.filter((frame) => frame.actor === localBoard.name)} currentReviewIndex={turnIndex} turnNumber={selectedCanonical.state.turnNumber} status={turnStatus.players[localBoard.name]} handoff={turnPass ? turnPass.passer === localBoard.name ? turnPass.reason === 'timeout' ? 'timed-out' : 'passing' : 'receiving' : undefined} stadiumCard={selectedCanonical.state.stadium} stadiumName={turnStatus.stadiumName} stadiumOwner={turnStatus.stadiumOwner} localPlayerName={localBoard.name} opponentName={opponentBoard.name} defeatedIds={defeatedIds} defeatedNames={defeatedNames} damageChanges={damageChanges} positionChanges={positionChanges} attackerId={attackResolution?.sourceId} avatar={TRAINER_ART[2]} onOpenPokemon={openPokemon} onOpenChoice={openChoiceCard} onOpenCard={openCard} onOpenZone={openZone} />
               {frameAnimations && !frameScrubbing && attackResolution && <AttackRoute key={`${selectedReview.id}:${turnIndex}:${attackResolution.sourceId || attackResolution.source}`} resolution={attackResolution} opponentAttacking={attackResolution.attacker === opponentBoard.name} hasImpact={attackResolution.hits.length > 0 || [...damageChanges.values()].some((change) => change.delta > 0)} />}
@@ -1637,17 +1681,17 @@ export default function TrackerApp() {
             {!timeline.entries.length && !liveOperations.length && <div className="empty-timeline"><BookOpenText size={34} weight="duotone" /><p>Match events appear here as the board is rebuilt.</p></div>}
           </div>
         </aside>}
-      </main>
+      </main>}
 
-      {!sharedMode && !archiveOpen && <button className="panel-restore-button archive-restore-button" type="button" aria-label="Open match archive" aria-expanded="false" title="Open match archive" onClick={() => setArchiveOpen(true)}><CardsThree size={22} weight="duotone" /></button>}
-      {!timelineOpen && <button className="panel-restore-button timeline-restore-button" type="button" aria-label="Open game log" aria-expanded="false" title="Open game log" onClick={() => setTimelineOpen(true)}><List size={22} weight="bold" /></button>}
+      {!membershipBlocked && !sharedMode && !archiveOpen && <button className="panel-restore-button archive-restore-button" type="button" aria-label="Open match archive" aria-expanded="false" title="Open match archive" onClick={() => setArchiveOpen(true)}><CardsThree size={22} weight="duotone" /></button>}
+      {!membershipBlocked && !timelineOpen && <button className="panel-restore-button timeline-restore-button" type="button" aria-label="Open game log" aria-expanded="false" title="Open game log" onClick={() => setTimelineOpen(true)}><List size={22} weight="bold" /></button>}
 
-      {!sharedMode && environment.capture.waitingForMatchEnd && !safetyDismissed && !showSetup && !showSettings && <div className="capture-safety-backdrop"><section className="capture-safety-dialog" role="alertdialog" aria-modal="true" aria-labelledby="capture-safety-title" aria-describedby="capture-safety-description"><div className="capture-safety-icon" aria-hidden="true"><ShieldCheck size={33} weight="fill" /><i /></div><span>Safe connection</span><h2 id="capture-safety-title">TCG Live is already connected</h2><p id="capture-safety-description">Trace can’t safely tell whether a match is active. It won’t interrupt your connection or install an update.</p><div className="capture-safety-waiting"><i aria-hidden="true" /><span><strong>In a match? Finish playing first.</strong><small>Already on Home? Quit TCG Live, leave Trace open until it says Ready, then reopen TCG Live.</small></span></div><div className="modal-actions"><button type="button" onClick={() => setSafetyDismissed(true)}>Continue reviewing</button><button type="button" onClick={openSettings}>Open Settings</button></div></section></div>}
-      {!sharedMode && showSetup && <CaptureSetupModal onClose={closeSetup} onCapture={capture => setEnvironment(current => ({ ...current, capture }))} />}
-      {!sharedMode && showSettings && <UpdateSettingsModal onClose={() => setShowSettings(false)} version={appVersion} />}
-      {shareUrl && <div className="modal-backdrop share-modal-backdrop"><div className="share-modal" role="dialog" aria-modal="true" aria-labelledby="share-match-title"><div className="modal-title"><div><span>Ready to send</span><h2 id="share-match-title">Share this match</h2></div><button type="button" onClick={() => setShareUrl(null)} aria-label="Close share dialog"><X size={21} weight="bold" /></button></div><p>Anyone with this link can click through the replay in their browser.</p><div className="share-link-row"><input value={shareUrl} readOnly aria-label="Share link" onFocus={(event) => event.currentTarget.select()} /><button className="primary" type="button" onClick={() => void copyShareUrl(shareUrl)}><Copy size={16} weight="bold" />Copy link</button></div></div></div>}
-      <ReviewOverlay inspector={inspector} catalog={cardCatalog} onClose={() => setInspector(null)} onInspectCard={openCard} />
-      {!sharedMode && !showSetup && <UpdateNotice matchInProgress={environment.clientRunning} settingsOpen={showSettings} />}
+      {!membershipBlocked && !sharedMode && environment.capture.waitingForMatchEnd && !safetyDismissed && !showSetup && !showSettings && <div className="capture-safety-backdrop"><section className="capture-safety-dialog" role="alertdialog" aria-modal="true" aria-labelledby="capture-safety-title" aria-describedby="capture-safety-description"><div className="capture-safety-icon" aria-hidden="true"><ShieldCheck size={33} weight="fill" /><i /></div><span>Safe connection</span><h2 id="capture-safety-title">TCG Live is already connected</h2><p id="capture-safety-description">Trace can’t safely tell whether a match is active. It won’t interrupt your connection or install an update.</p><div className="capture-safety-waiting"><i aria-hidden="true" /><span><strong>In a match? Finish playing first.</strong><small>Already on Home? Quit TCG Live, leave Trace open until it says Ready, then reopen TCG Live.</small></span></div><div className="modal-actions"><button type="button" onClick={() => setSafetyDismissed(true)}>Continue reviewing</button><button type="button" onClick={openSettings}>Open Settings</button></div></section></div>}
+      {!membershipBlocked && !sharedMode && showSetup && <CaptureSetupModal onClose={closeSetup} onCapture={capture => setEnvironment(current => ({ ...current, capture }))} />}
+      {!sharedMode && showSettings && <UpdateSettingsModal onClose={() => setShowSettings(false)} version={appVersion}>{isTauri() && accountSettings}</UpdateSettingsModal>}
+      {!membershipBlocked && shareUrl && <div className="modal-backdrop share-modal-backdrop"><div className="share-modal" role="dialog" aria-modal="true" aria-labelledby="share-match-title"><div className="modal-title"><div><span>Ready to send</span><h2 id="share-match-title">Share this match</h2></div><button type="button" onClick={() => setShareUrl(null)} aria-label="Close share dialog"><X size={21} weight="bold" /></button></div><p>Anyone with this link can click through the replay in their browser.</p><div className="share-link-row"><input value={shareUrl} readOnly aria-label="Share link" onFocus={(event) => event.currentTarget.select()} /><button className="primary" type="button" onClick={() => void copyShareUrl(shareUrl)}><Copy size={16} weight="bold" />Copy link</button></div></div></div>}
+      <ReviewOverlay inspector={membershipBlocked ? null : inspector} catalog={cardCatalog} onClose={() => setInspector(null)} onInspectCard={openCard} />
+      {!sharedMode && (!showSetup || membershipBlocked) && updateNotice}
       {(notice || error || captureError) && <div className={`toast ${error || captureError ? 'error' : ''}`}><span>{error || captureError ? <X size={18} weight="bold" /> : <CheckCircle size={18} weight="fill" />}</span><p>{error || captureError || notice}</p><button type="button" onClick={() => { setError(null); setCaptureError(null); setNotice(null); }} aria-label="Dismiss notification"><X size={16} weight="bold" /></button></div>}
     </div>
   );

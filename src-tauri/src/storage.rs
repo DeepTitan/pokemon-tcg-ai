@@ -1,4 +1,4 @@
-use crate::{cards::CardInfo, wire::CapturedOperation};
+use crate::{cards::CardInfo, deck_access::MatchAccess, wire::CapturedOperation};
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -174,6 +174,10 @@ impl MatchStorage {
                     payload_gzip BLOB NOT NULL,
                     FOREIGN KEY(match_id) REFERENCES matches(id) ON DELETE CASCADE
                 );
+                CREATE TABLE IF NOT EXISTS match_access (
+                    match_id TEXT PRIMARY KEY, last_operation_id INTEGER NOT NULL, payload_json TEXT NOT NULL,
+                    FOREIGN KEY(match_id) REFERENCES matches(id) ON DELETE CASCADE
+                );
                 CREATE INDEX IF NOT EXISTS operations_match_order
                     ON operations(match_id, id);
                 CREATE INDEX IF NOT EXISTS matches_recent
@@ -283,11 +287,101 @@ impl MatchStorage {
                 )
                 .map_err(|error| error.to_string())?;
         }
+        if inserted {
+            Self::refresh_match_access(connection, &match_id)?;
+        }
         Ok(inserted)
     }
 
     pub fn record_operation(&self, operation: &CapturedOperation) -> Result<bool, String> {
-        Self::insert_operation(&self.connection()?, operation)
+        let mut connection = self.connection()?;
+        let transaction = connection
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(|e| e.to_string())?;
+        let inserted = Self::insert_operation(&transaction, operation)?;
+        transaction.commit().map_err(|e| e.to_string())?;
+        Ok(inserted)
+    }
+
+    fn refresh_match_access(
+        connection: &Connection,
+        match_id: &str,
+    ) -> Result<MatchAccess, String> {
+        let cached: Option<(i64, String)> = connection
+            .query_row(
+                "SELECT last_operation_id, payload_json FROM match_access WHERE match_id=?1",
+                [match_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        let (mut last_id, mut access) = cached
+            .and_then(|(id, json)| {
+                serde_json::from_str::<MatchAccess>(&json)
+                    .ok()
+                    .map(|v| (id, v))
+            })
+            .unwrap_or((0, MatchAccess::default()));
+        let mut statement = connection
+            .prepare(
+                "SELECT id, payload_gzip FROM operations WHERE match_id=?1 AND id>?2 ORDER BY id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = statement
+            .query_map(params![match_id, last_id], |row| {
+                Ok((row.get::<_, i64>(0)?, row.get::<_, Vec<u8>>(1)?))
+            })
+            .map_err(|e| e.to_string())?;
+        for row in rows {
+            let (id, bytes) = row.map_err(|e| e.to_string())?;
+            let operation: CapturedOperation =
+                serde_json::from_slice(&gunzip(&bytes)?).map_err(|e| e.to_string())?;
+            access.observe(&operation);
+            last_id = id;
+        }
+        if last_id > 0 {
+            connection.execute("INSERT INTO match_access(match_id,last_operation_id,payload_json) VALUES(?1,?2,?3) ON CONFLICT(match_id) DO UPDATE SET last_operation_id=excluded.last_operation_id,payload_json=excluded.payload_json",
+                params![match_id, last_id, serde_json::to_string(&access).map_err(|e| e.to_string())?]).map_err(|e| e.to_string())?;
+        }
+        Ok(access)
+    }
+
+    pub fn match_access(&self, match_id: &str) -> Result<MatchAccess, String> {
+        let mut connection = self.connection()?;
+        let transaction = connection
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+            .map_err(|e| e.to_string())?;
+        let access = Self::refresh_match_access(&transaction, match_id)?;
+        transaction.commit().map_err(|e| e.to_string())?;
+        Ok(access)
+    }
+
+    /// Reattach only captured native inventories; projected UI data cannot erase or forge them.
+    pub fn review_for_storage(&self, mut review: Value) -> Result<Value, String> {
+        let id = review
+            .get("id")
+            .and_then(Value::as_str)
+            .ok_or("Missing match id")?;
+        let access = self.match_access(id)?;
+        if !access.decks.is_empty() {
+            review["decklists"] = Value::Array(access.decks);
+        } else if let Some(object) = review.as_object_mut() {
+            object.remove("decklists");
+        }
+        review["matchCompleted"] = Value::Bool(access.completed);
+        Ok(review)
+    }
+
+    pub fn project_summary(&self, mut summary: MatchSummary) -> Result<MatchSummary, String> {
+        let access = self.match_access(&summary.id)?;
+        summary.decklists = Some(access.own_decks());
+        if let Some(snapshot) = summary.final_snapshot.as_mut() {
+            crate::deck_access::project_summary_snapshot(
+                snapshot,
+                access.local_player_name.as_deref(),
+            );
+        }
+        Ok(summary)
     }
 
     pub fn import_legacy_jsonl(&self, path: &Path) -> Result<i64, String> {
@@ -791,8 +885,8 @@ impl MatchStorage {
             .flatten();
         bytes
             .map(|compressed| {
-                let json = String::from_utf8(gunzip(&compressed)?)
-                    .map_err(|error| error.to_string())?;
+                let json =
+                    String::from_utf8(gunzip(&compressed)?).map_err(|error| error.to_string())?;
                 // Validate corrupt archives without allocating a serde Value
                 // for every repeated card/snapshot before the IPC transfer.
                 serde_json::from_str::<serde::de::IgnoredAny>(&json)
@@ -924,9 +1018,18 @@ mod tests {
             "localPlayer": "You", "opponent": "Them", "turns": []});
         storage.persist_review(&review, 17).unwrap();
         let connection = storage.connection().unwrap();
-        for payload in [gzip(b"{broken").unwrap(), gzip(b"{} trailing").unwrap(),
-            gzip(&[0xff]).unwrap(), vec![0]] {
-            connection.execute("UPDATE matches SET review_gzip=?1 WHERE id='corrupt-test'", [payload]).unwrap();
+        for payload in [
+            gzip(b"{broken").unwrap(),
+            gzip(b"{} trailing").unwrap(),
+            gzip(&[0xff]).unwrap(),
+            vec![0],
+        ] {
+            connection
+                .execute(
+                    "UPDATE matches SET review_gzip=?1 WHERE id='corrupt-test'",
+                    [payload],
+                )
+                .unwrap();
             assert!(storage.load_review_json("corrupt-test").is_err());
         }
         drop(connection);
@@ -1019,7 +1122,10 @@ mod tests {
         let summaries = storage.list_summaries(0, 50).unwrap();
         assert_eq!(summaries.len(), 1);
         assert_eq!(summaries[0].duration_seconds, Some(95));
-        assert_eq!(storage.load_review("live-match-1").unwrap(), Some(review.clone()));
+        assert_eq!(
+            storage.load_review("live-match-1").unwrap(),
+            Some(review.clone())
+        );
         let raw = storage.load_review_json("live-match-1").unwrap().unwrap();
         assert_eq!(serde_json::from_str::<Value>(&raw).unwrap(), review);
         assert!(storage.load_review_json("missing").unwrap().is_none());
@@ -1174,6 +1280,55 @@ mod tests {
         assert!(queued[0].summary.is_none());
         assert_eq!(storage.cloud_sync_counts().unwrap(), (1, 0));
 
+        fs::remove_dir_all(directory).unwrap();
+    }
+    #[test]
+    fn native_access_index_preserves_private_inventory_and_rejects_ui_completion() {
+        let (directory, storage) = temporary_storage();
+        let mut start = operation();
+        start.operation = json!({"players":[
+            {"playerId":"local","playerName":"You","deckInfo":{"cards":{"own_card":60}}},
+            {"playerId":"other","playerName":"Opponent","deckInfo":{"cards":{"secret_card":60}}}
+        ]});
+        storage.record_operation(&start).unwrap();
+        let forged = json!({"id":"live-match-1", "localPlayer":"Opponent", "opponent":"You", "winner":"Opponent", "matchCompleted":true, "turns":[],"decklists":[]});
+        let internal = storage.review_for_storage(forged).unwrap();
+        assert_eq!(internal["matchCompleted"], false);
+        assert!(internal.to_string().contains("secret_card"));
+        let summary = storage.persist_review(&internal, 18).unwrap();
+        assert!(
+            !serde_json::to_string(&storage.project_summary(summary).unwrap())
+                .unwrap()
+                .contains("secret_card")
+        );
+        assert!(storage
+            .match_access("live-match-1")
+            .unwrap()
+            .opponent_deck()
+            .is_err());
+        assert!(storage
+            .match_access("missing")
+            .unwrap()
+            .opponent_deck()
+            .is_err());
+        // The index can be rebuilt from native raw operations for old installations.
+        storage
+            .connection()
+            .unwrap()
+            .execute("DELETE FROM match_access", [])
+            .unwrap();
+        assert_eq!(storage.match_access("live-match-1").unwrap().decks.len(), 2);
+        let mut end = operation();
+        end.message_index = Some(8);
+        end.operation = json!({"modifications":[{"$type":"EndGameModification","winner":1}]});
+        storage.record_operation(&end).unwrap();
+        assert!(storage
+            .match_access("live-match-1")
+            .unwrap()
+            .opponent_deck()
+            .unwrap()
+            .to_string()
+            .contains("secret_card"));
         fs::remove_dir_all(directory).unwrap();
     }
 }

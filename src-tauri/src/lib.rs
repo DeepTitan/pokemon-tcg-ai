@@ -7,6 +7,8 @@ mod capture;
 mod capture_hosts;
 mod cards;
 mod cloud_sync;
+mod deck_access;
+mod membership;
 #[cfg(target_os = "macos")]
 mod privileged;
 #[cfg(target_os = "windows")]
@@ -206,8 +208,22 @@ fn capture_status(app: tauri::AppHandle) -> CaptureStatus {
 }
 
 #[tauri::command]
-fn recent_match_operations(app: tauri::AppHandle) -> Vec<wire::CapturedOperation> {
+fn recent_match_operations(
+    app: tauri::AppHandle,
+    membership: tauri::State<'_, membership::Membership>,
+    storage: tauri::State<'_, storage::MatchStorage>,
+) -> Result<Vec<wire::CapturedOperation>, String> {
+    membership.require_trace()?;
     capture::recent_operations(&app)
+        .into_iter()
+        .map(|operation| {
+            let id = format!(
+                "live-{}",
+                operation.match_id.as_deref().unwrap_or(&operation.game_id)
+            );
+            Ok(storage.match_access(&id)?.project_operation(operation))
+        })
+        .collect()
 }
 
 #[tauri::command]
@@ -231,26 +247,43 @@ async fn initialize_tracker_storage(
 
 #[tauri::command]
 async fn list_match_summaries(
+    membership: tauri::State<'_, membership::Membership>,
     storage: tauri::State<'_, storage::MatchStorage>,
     offset: i64,
     limit: i64,
 ) -> Result<Vec<storage::MatchSummary>, String> {
+    membership.require_trace()?;
     let storage = storage.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || storage.list_summaries(offset, limit))
-        .await
-        .map_err(|error| error.to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        storage
+            .list_summaries(offset, limit)?
+            .into_iter()
+            .map(|summary| storage.project_summary(summary))
+            .collect::<Result<Vec<_>, String>>()
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
 async fn load_match_review(
+    membership: tauri::State<'_, membership::Membership>,
     storage: tauri::State<'_, storage::MatchStorage>,
     match_id: String,
 ) -> Result<tauri::ipc::Response, String> {
+    membership.require_trace()?;
     let storage = storage.inner().clone();
-    let json = tauri::async_runtime::spawn_blocking(move || storage.load_review_json(&match_id))
-        .await
-        .map_err(|error| error.to_string())??;
-    Ok(tauri::ipc::Response::new(json.unwrap_or_else(|| "null".into())))
+    let json = tauri::async_runtime::spawn_blocking(move || -> Result<String, String> {
+        let access = storage.match_access(&match_id)?;
+        let value = storage
+            .load_review(&match_id)?
+            .map(|review| access.project_review(review))
+            .unwrap_or(Value::Null);
+        serde_json::to_string(&value).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    Ok(tauri::ipc::Response::new(json))
 }
 
 #[tauri::command]
@@ -263,7 +296,9 @@ async fn persist_match_review(
     let storage = storage.inner().clone();
     let storage_for_persist = storage.clone();
     let summary = tauri::async_runtime::spawn_blocking(move || {
-        storage_for_persist.persist_review(&review, reducer_version)
+        let review = storage_for_persist.review_for_storage(review)?;
+        let summary = storage_for_persist.persist_review(&review, reducer_version)?;
+        storage_for_persist.project_summary(summary)
     })
     .await
     .map_err(|error| error.to_string())??;
@@ -276,15 +311,18 @@ async fn persist_match_review(
 
 #[tauri::command]
 async fn share_match(
+    membership: tauri::State<'_, membership::Membership>,
     storage: tauri::State<'_, storage::MatchStorage>,
     cloud_sync: tauri::State<'_, cloud_sync::CloudSync>,
     review: Value,
     reducer_version: i64,
 ) -> Result<cloud_sync::ShareLink, String> {
-    let stored_review = review.clone();
+    membership.require_trace()?;
     let storage = storage.inner().clone();
-    let summary = tauri::async_runtime::spawn_blocking(move || {
-        storage.persist_review(&stored_review, reducer_version)
+    let (review, summary) = tauri::async_runtime::spawn_blocking(move || -> Result<_, String> {
+        let review = storage.review_for_storage(review)?;
+        let summary = storage.persist_review(&review, reducer_version)?;
+        Ok((review, summary))
     })
     .await
     .map_err(|error| error.to_string())??;
@@ -295,22 +333,33 @@ async fn share_match(
 
 #[tauri::command]
 async fn load_match_operations(
+    membership: tauri::State<'_, membership::Membership>,
     storage: tauri::State<'_, storage::MatchStorage>,
     match_id: String,
 ) -> Result<Vec<wire::CapturedOperation>, String> {
+    membership.require_trace()?;
     let storage = storage.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || storage.load_operations(&match_id))
-        .await
-        .map_err(|error| error.to_string())?
+    tauri::async_runtime::spawn_blocking(move || -> Result<Vec<_>, String> {
+        let access = storage.match_access(&match_id)?;
+        Ok(storage
+            .load_operations(&match_id)?
+            .into_iter()
+            .map(|operation| access.project_operation(operation))
+            .collect())
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
 async fn list_raw_match_ids(
+    membership: tauri::State<'_, membership::Membership>,
     storage: tauri::State<'_, storage::MatchStorage>,
     pending_only: bool,
     reducer_version: i64,
     limit: i64,
 ) -> Result<Vec<String>, String> {
+    membership.require_trace()?;
     let storage = storage.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         storage.raw_match_ids(pending_only, reducer_version, limit)
@@ -327,8 +376,95 @@ async fn request_capture_permission(app: tauri::AppHandle) -> Result<CaptureStat
 }
 
 #[tauri::command]
-async fn start_tracking(app: tauri::AppHandle) -> Result<CaptureStatus, String> {
+async fn start_tracking(
+    app: tauri::AppHandle,
+    membership: tauri::State<'_, membership::Membership>,
+    cloud_sync: tauri::State<'_, cloud_sync::CloudSync>,
+) -> Result<CaptureStatus, String> {
+    membership.refresh(&cloud_sync).await;
+    membership.require_trace()?;
     capture::start(app).await
+}
+
+#[tauri::command]
+async fn open_membership_account() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        open_account_url("https://victoryroad.app/trace/account")
+    })
+    .await
+    .map_err(|_| "Could not open your account.")?
+}
+
+#[tauri::command]
+async fn membership_status(
+    membership: tauri::State<'_, membership::Membership>,
+    cloud_sync: tauri::State<'_, cloud_sync::CloudSync>,
+) -> Result<membership::MembershipStatus, String> {
+    Ok(membership.refresh(&cloud_sync).await)
+}
+
+#[tauri::command]
+async fn membership_link(
+    membership: tauri::State<'_, membership::Membership>,
+    cloud_sync: tauri::State<'_, cloud_sync::CloudSync>,
+) -> Result<membership::MembershipLink, String> {
+    let link = membership.link(&cloud_sync).await?;
+    let url = link.verification_url.clone();
+    tauri::async_runtime::spawn_blocking(move || open_account_url(&url))
+        .await
+        .map_err(|_| "Could not open account linking.")??;
+    Ok(link)
+}
+
+fn open_account_url(url: &str) -> Result<(), String> {
+    // The only caller passes a link validated against a fixed HTTPS origin/path.
+    #[cfg(target_os = "macos")]
+    let output = Command::new("/usr/bin/open").arg(url).output();
+    #[cfg(target_os = "windows")]
+    let output = hidden_windows_command("rundll32.exe")
+        .args(["url.dll,FileProtocolHandler", url])
+        .output();
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    return output
+        .map_err(|_| "Could not open your browser.".to_owned())
+        .and_then(|v| {
+            if v.status.success() {
+                Ok(())
+            } else {
+                Err("Could not open your browser.".into())
+            }
+        });
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        let _ = url;
+        Err("Account linking is not supported on this platform.".into())
+    }
+}
+
+#[tauri::command]
+async fn membership_unlink(
+    membership: tauri::State<'_, membership::Membership>,
+    cloud_sync: tauri::State<'_, cloud_sync::CloudSync>,
+) -> Result<membership::MembershipStatus, String> {
+    membership.unlink(&cloud_sync).await
+}
+
+#[tauri::command]
+async fn load_opponent_decklist(
+    membership: tauri::State<'_, membership::Membership>,
+    cloud_sync: tauri::State<'_, cloud_sync::CloudSync>,
+    storage: tauri::State<'_, storage::MatchStorage>,
+    match_id: String,
+) -> Result<Value, String> {
+    if !membership.refresh(&cloud_sync).await.opponent_decklists {
+        return Err(
+            "An active Supporters Club membership is required to view opponent decklists.".into(),
+        );
+    }
+    let storage = storage.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || storage.match_access(&match_id)?.opponent_deck())
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -424,6 +560,15 @@ pub fn run() {
             let cloud_sync = cloud_sync::CloudSync::new(cloud_sync_path);
             app.manage(storage.clone());
             app.manage(cloud_sync.clone());
+            let membership = membership::Membership::new();
+            app.manage(membership.clone());
+            let membership_cloud = cloud_sync.clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    membership.refresh(&membership_cloud).await;
+                    tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                }
+            });
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                 loop {
@@ -440,6 +585,11 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             open_leaderboard,
+            membership_status,
+            open_membership_account,
+            membership_link,
+            membership_unlink,
+            load_opponent_decklist,
             tracker_environment,
             capture_status,
             recent_match_operations,
