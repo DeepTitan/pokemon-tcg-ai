@@ -1,6 +1,18 @@
+import { randomBytes } from 'node:crypto';
 // Browser session boundary for Trace membership. Tokens are never sent to page JS.
 export const ACCESS_COOKIE = '__Host-trace-member-access';
 export const REFRESH_COOKIE = '__Host-trace-member-refresh';
+export const CHECKOUT_COOKIE = '__Host-trace-checkout';
+const GUEST_ACTIONS = new Set(['checkout/guest', 'checkout/status', 'checkout/claim']);
+const validCheckoutToken = (value) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+const pendingCookies = new WeakMap();
+const resolvedSessions = new WeakMap();
+function writeCookies(response, values) {
+  const pending = pendingCookies.get(response) || new Map();
+  for (const value of values) pending.set(value.slice(0, value.indexOf('=')), value);
+  pendingCookies.set(response, pending);
+  response.setHeader('Set-Cookie', [...pending.values()]);
+}
 export const DOWNLOADS = Object.freeze({
   mac: 'https://github.com/DeepTitan/pokemon-tcg-ai/releases/latest/download/Trace_aarch64.dmg',
   windows: 'https://github.com/DeepTitan/pokemon-tcg-ai/releases/latest/download/Trace_x64-setup.exe',
@@ -10,6 +22,7 @@ const ACTIONS = new Map([
   ['auth/refresh', 'POST'], ['auth/recover', 'POST'], ['auth/reset', 'POST'],
   ['auth/logout', 'POST'], ['account', 'GET'], ['checkout', 'POST'],
   ['portal', 'POST'], ['devices/link/approve', 'POST'],
+  ['checkout/prepare', 'POST'], ['checkout/guest', 'POST'], ['checkout/status', 'POST'], ['checkout/claim', 'POST'],
 ]);
 const PUBLIC_ACTIONS = new Set(['auth/signup', 'auth/resend', 'auth/confirm', 'auth/login', 'auth/recover', 'auth/reset']);
 const cookie = (name, value, age) => `${name}=${value}; Path=/; Max-Age=${age}; Secure; HttpOnly; SameSite=Lax`;
@@ -73,6 +86,14 @@ export function publicAccount(value) {
   };
 }
 
+function publicPurchase(value) {
+  if (!object(value)) return null;
+  const { state, plan, expiresAt } = value;
+  return ['none', 'open', 'processing', 'paid', 'expired', 'claimed'].includes(state) && ['none', 'trace', 'supporter'].includes(plan) &&
+    (expiresAt === null || (typeof expiresAt === 'string' && Number.isFinite(Date.parse(expiresAt))))
+    ? { state, plan, expiresAt, ...(value.reason === 'purchase_not_active' ? { reason: 'purchase_not_active' } : {}) } : null;
+}
+
 function inputFor(action, raw) {
   const body = typeof raw === 'string' ? JSON.parse(raw) : raw ?? {};
   if (!object(body) || JSON.stringify(body).length > 8192) throw new Error('input');
@@ -88,7 +109,7 @@ function inputFor(action, raw) {
   if (action === 'auth/confirm') return { email, code };
   if (action === 'auth/recover' || action === 'auth/resend') return { email };
   if (action === 'auth/reset') return { email, code, password };
-  if (action === 'checkout') {
+  if (action === 'checkout' || action === 'checkout/guest') {
     if (!['trace', 'supporter'].includes(body.plan)) throw new Error('input');
     return { plan: body.plan };
   }
@@ -111,20 +132,30 @@ function failure(response, status, action, body) {
     410: 'This code has expired. Request a new code and try again.',
     429: 'Too many attempts. Wait a moment, then try again.',
   };
-  const codes = new Set(['invalid_request', 'invalid_email', 'invalid_password', 'invalid_code', 'unauthorized', 'invalid_credentials', 'email_not_verified', 'device_already_linked', 'billing_busy', 'subscription_exists', 'rate_limited', 'billing_unavailable', 'service_unavailable']);
+  const codes = new Set(['invalid_request', 'invalid_email', 'invalid_password', 'invalid_code', 'unauthorized', 'invalid_credentials', 'email_not_verified', 'device_already_linked', 'billing_busy', 'subscription_exists', 'rate_limited', 'billing_unavailable', 'service_unavailable', 'checkout_expired', 'payment_processing', 'payment_already_completed', 'purchase_already_claimed', 'checkout_email_mismatch', 'checkout_not_found', 'purchase_not_active']);
   const code = codes.has(body?.error) ? body.error : undefined;
   const explanation = code === 'invalid_password' ? 'Use 12–128 characters, with uppercase and lowercase letters, a number, and a symbol.' : code === 'invalid_code' ? 'That code is invalid or expired. Check the code and try again.' : code === 'subscription_exists' ? 'You already have a subscription. Use Manage billing to change your plan.' : null;
-  return send(response, known[status] ? status : 503, { error: explanation || known[status] || 'Membership services are temporarily unavailable. Please try again.', ...(code ? { code } : {}) });
+  const purchaseExplanation = ({
+    purchase_not_active: 'This purchase no longer has an active membership. Check Manage billing or contact support before paying again.',
+    checkout_not_found: 'We could not find this purchase. Open the browser you used at checkout, or sign in if you already linked it.',
+    checkout_expired: 'This checkout link has expired. If you already paid, sign in or contact support before paying again.',
+    payment_processing: 'Your payment is still being confirmed. Please wait a moment, then try again.',
+    payment_already_completed: 'Your payment is complete. Open My account to finish setting up your membership.',
+    purchase_already_claimed: 'This purchase is already linked to an account. Sign in with the email you used at checkout.',
+    checkout_email_mismatch: 'Sign in with the same email you entered at Stripe checkout to link this purchase.',
+  })[code];
+  return send(response, known[status] ? status : 503, { error: purchaseExplanation || explanation || known[status] || 'Membership services are temporarily unavailable. Please try again.', ...(code ? { code } : {}) });
 }
 
-export function createMembershipService({ upstream = process.env.TRACE_MEMBERSHIP_API_URL, fetcher = fetch } = {}) {
+export function createMembershipService({ upstream = process.env.TRACE_MEMBERSHIP_API_URL, proxySecret = process.env.TRACE_MEMBERSHIP_PROXY_SECRET, fetcher = fetch } = {}) {
   const base = membershipUpstream(upstream);
+  const guestConfigured = Boolean(base && typeof proxySecret === 'string' && proxySecret.length >= 43 && proxySecret.length <= 512 && !/[\r\n]/.test(proxySecret));
   return {
-    configured: Boolean(base),
+    configured: Boolean(base), guestConfigured,
     async call(action, { method = 'POST', body, accessToken } = {}) {
-      if (!base) return { status: 503, body: {} };
+      if (!base || (GUEST_ACTIONS.has(action) && !guestConfigured)) return { status: 503, body: {} };
       const response = await fetcher(`${base}/v1/${action}`, {
-        method, headers: { 'Content-Type': 'application/json', ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) },
+        method, headers: { 'Content-Type': 'application/json', ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}), ...(GUEST_ACTIONS.has(action) ? { 'x-trace-proxy-key': proxySecret } : {}) },
         ...(method === 'POST' ? { body: JSON.stringify(body ?? {}) } : {}),
         redirect: 'error', cache: 'no-store', signal: AbortSignal.timeout(15000),
       });
@@ -141,7 +172,7 @@ function rememberSession(response, value, previousRefresh) {
   const refreshToken = value?.refreshToken ?? previousRefresh;
   if (!validToken(value?.accessToken) || !validToken(refreshToken) || !Number.isInteger(value?.expiresIn) ||
       value.expiresIn < 30 || value.expiresIn > 86400) return null;
-  response.setHeader('Set-Cookie', [
+  writeCookies(response, [
     cookie(ACCESS_COOKIE, value.accessToken, value.expiresIn),
     cookie(REFRESH_COOKIE, refreshToken, 30 * 86400),
   ]);
@@ -150,7 +181,7 @@ function rememberSession(response, value, previousRefresh) {
 
 async function withSession(request, response, service, action, method, body) {
   const cookies = readCookies(request.headers?.cookie);
-  let accessToken = validToken(cookies[ACCESS_COOKIE]) ? cookies[ACCESS_COOKIE] : null;
+  let accessToken = resolvedSessions.get(request) || (validToken(cookies[ACCESS_COOKIE]) ? cookies[ACCESS_COOKIE] : null);
   const refreshToken = validToken(cookies[REFRESH_COOKIE]) ? cookies[REFRESH_COOKIE] : null;
   let result = accessToken ? await service.call(action, { method, body, accessToken }) : { status: 401, body: {} };
   if (result.status === 401 && refreshToken) {
@@ -161,11 +192,12 @@ async function withSession(request, response, service, action, method, body) {
       result = await service.call(action, { method, body, accessToken });
     } else result = refreshed;
   }
-  if (result.status === 401) response.setHeader('Set-Cookie', clearCookies());
+  if (result.status === 401) { resolvedSessions.delete(request); writeCookies(response, clearCookies()); }
+  else if (accessToken && result.status >= 200 && result.status < 300) resolvedSessions.set(request, accessToken);
   return result;
 }
 
-export function createMembershipHandler({ service = createMembershipService(), origin = process.env.TRACE_WEB_ORIGIN || 'https://victoryroad.app' } = {}) {
+export function createMembershipHandler({ service = createMembershipService(), origin = process.env.TRACE_WEB_ORIGIN || 'https://victoryroad.app', newCheckoutToken = () => randomBytes(32).toString('hex') } = {}) {
   const allowedOrigin = membershipOrigin(origin);
   return async function membership(request, response) {
     setPrivateHeaders(response);
@@ -187,7 +219,7 @@ export function createMembershipHandler({ service = createMembershipService(), o
       try { body = inputFor(action, request.body); } catch { return send(response, 400, { error: 'Check the details and try again.' }); }
       if (action === 'auth/logout') {
         const cookies = readCookies(request.headers?.cookie);
-        response.setHeader('Set-Cookie', clearCookies());
+        writeCookies(response, clearCookies());
         if (service.configured) {
           try {
             let signedOut = false;
@@ -206,6 +238,84 @@ export function createMembershipHandler({ service = createMembershipService(), o
         return send(response, 200, { signedOut: true });
       }
       if (!service.configured) return send(response, 503, { error: 'Memberships are not available yet. Please check back soon.' });
+      // Establish proof before any payment side effect. The page serializes prepare +
+      // checkout with Web Locks, including across tabs. Lost prepare responses are harmless.
+      if (action === 'checkout/prepare') {
+        if (!service.guestConfigured) return send(response, 503, { error: 'Checkout is not available yet. Please check back soon.' });
+        const existingToken = readCookies(request.headers?.cookie)[CHECKOUT_COOKIE];
+        if (!validCheckoutToken(existingToken)) {
+          const checkoutToken = newCheckoutToken();
+          if (!validCheckoutToken(checkoutToken)) return send(response, 503, { error: 'We could not start a secure checkout. Please try again.' });
+          writeCookies(response, [cookie(CHECKOUT_COOKIE, checkoutToken, 30 * 86400)]);
+        }
+        return send(response, 200, { ready: true });
+      }
+      // Guest checkout proof is browser-bound and server-only. Caller JSON cannot supply it.
+      if (GUEST_ACTIONS.has(action)) {
+        const checkoutCookies = readCookies(request.headers?.cookie);
+        let checkoutToken = validCheckoutToken(checkoutCookies[CHECKOUT_COOKIE]) ? checkoutCookies[CHECKOUT_COOKIE] : null;
+        if (action === 'checkout/status' && !checkoutToken) return send(response, 200, { state: 'none', plan: 'none', expiresAt: null });
+        if (action === 'checkout/guest') {
+          const existing = await withSession(request, response, service, 'account', 'GET');
+          let account = null;
+          if (existing.status === 200) {
+            account = publicAccount(existing.body);
+            if (!account) return send(response, 503, { error: 'We could not confirm your membership. Please try again.' });
+            if (account.admin || account.traceAccess || account.plan !== 'none') return send(response, 200, { accountRequired: true });
+          } else if (existing.status !== 401) return failure(response, existing.status, 'account', existing.body);
+          let openGuest = false;
+          if (checkoutToken) {
+            if (!service.guestConfigured) return send(response, 503, { error: 'We could not confirm your previous checkout. Please try again before paying.' });
+            const status = await service.call('checkout/status', { body: { checkoutToken } });
+            if (status.status !== 200) return failure(response, status.status, 'checkout/status', status.body);
+            const purchase = publicPurchase(status.body);
+            if (!purchase) return send(response, 503, { error: 'We could not confirm your previous checkout. Please try again.' });
+            if (['paid', 'processing', 'claimed'].includes(purchase.state)) return send(response, 200, { accountRequired: true });
+            if (purchase.state === 'open' || purchase.state === 'expired') {
+              openGuest = true;
+            }
+          }
+          if (account && !openGuest) {
+            const checkout = await withSession(request, response, service, 'checkout', 'POST', body);
+            if (checkout.status < 200 || checkout.status >= 300) return failure(response, checkout.status, 'checkout', checkout.body);
+            const target = safeBillingUrl(checkout.body.url, 'checkout');
+            return target ? send(response, 200, { url: target }) : send(response, 503, { error: 'We could not open secure billing. Please try again.' });
+          }
+          if (!service.guestConfigured) return send(response, 503, { error: 'Checkout is not available yet. Please check back soon.' });
+          if (!checkoutToken) return send(response, 400, { error: 'Please allow cookies for Victory Road and try again. No checkout has been started.' });
+          // Existing open guest checkouts are resumed, including after sign-in.
+          // The backend rechecks paid/expired state under its purchase lock.
+          const checkout = await service.call(action, { body: { plan: body.plan, checkoutToken } });
+          if (checkout.status < 200 || checkout.status >= 300) return failure(response, checkout.status, action, checkout.body);
+          const target = safeBillingUrl(checkout.body.url, 'checkout');
+          return target ? send(response, 200, { url: target }) : send(response, 503, { error: 'We could not open secure billing. Please try again.' });
+        }
+        if (!checkoutToken) return send(response, 410, { error: 'Open this page in the browser you used to pay. If you already linked your purchase, sign in.', code: 'checkout_expired' });
+        if (!service.guestConfigured) return send(response, 503, { error: 'Purchase confirmation is temporarily unavailable. Please try again.' });
+        const result = action === 'checkout/claim'
+          ? await withSession(request, response, service, action, 'POST', { checkoutToken })
+          : await service.call(action, { body: { checkoutToken } });
+        if (result.status < 200 || result.status >= 300) return failure(response, result.status, action, result.body);
+        if (action === 'checkout/claim') {
+          if (result.body.claimed !== true) return send(response, 503, { error: 'We could not link your purchase. Please try again.' });
+          writeCookies(response, [cookie(CHECKOUT_COOKIE, '', 0)]);
+          return send(response, 200, { claimed: true });
+        }
+        const purchase = publicPurchase(result.body);
+        return purchase ? send(response, 200, purchase) : send(response, 503, { error: 'We could not confirm this purchase. Please try again.' });
+      }
+      // Account-page checkout must not bypass an unclaimed or still-open guest purchase.
+      if (action === 'checkout') {
+        const checkoutToken = readCookies(request.headers?.cookie)[CHECKOUT_COOKIE];
+        if (validCheckoutToken(checkoutToken)) {
+          if (!service.guestConfigured) return send(response, 503, { error: 'We could not confirm your previous checkout. Please try again before paying.' });
+          const status = await service.call('checkout/status', { body: { checkoutToken } });
+          if (status.status !== 200) return failure(response, status.status, 'checkout/status', status.body);
+          const purchase = publicPurchase(status.body);
+          if (!purchase) return send(response, 503, { error: 'We could not confirm your previous checkout. Please try again.' });
+          if (['open', 'expired', 'claimed', 'processing', 'paid'].includes(purchase.state)) return send(response, 200, { accountRequired: true });
+        }
+      }
       let result;
       if (action === 'auth/refresh') {
         const refreshToken = readCookies(request.headers?.cookie)[REFRESH_COOKIE];
@@ -215,7 +325,7 @@ export function createMembershipHandler({ service = createMembershipService(), o
           if (rememberSession(response, result.body, refreshToken)) return send(response, 200, { authenticated: true });
           return send(response, 503, { error: 'We could not refresh your session. Please sign in again.' });
         }
-        if (result.status === 401) response.setHeader('Set-Cookie', clearCookies());
+        if (result.status === 401) writeCookies(response, clearCookies());
       } else if (PUBLIC_ACTIONS.has(action)) {
         result = await service.call(action, { body });
       } else result = await withSession(request, response, service, action, method, body);

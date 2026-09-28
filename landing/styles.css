@@ -895,3 +895,24 @@ h3 {
   opacity:.6;
   cursor:wait;
 }
+.checkout-note {
+  text-align:center;
+  font-size:12px;
+  line-height:1.6;
+  color:var(--muted);
+  margin:22px 0 0;
+}
+.checkout-message {
+  margin:22px 0 0;
+}
+.claim-actions {
+  display:grid;
+  gap:12px;
+  margin-top:24px;
+}
+.claim-summary {
+  padding:14px 0;
+  margin-bottom:20px;
+  border-block:1px solid var(--line);
+  font-weight:800;
+}

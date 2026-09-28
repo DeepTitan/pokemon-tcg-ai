@@ -11,7 +11,8 @@ function context() {
   const code = (params.get('userCode') || params.get('code') || '').replace(/[\s-]/g, '').toUpperCase();
   const userCode = /^[A-Z2-7]{10}$/.test(code) ? code : null;
   const download = ['mac', 'windows'].includes(params.get('download')) ? params.get('download') : null;
-  return { plan, userCode, download };
+  const setup = params.get('setup') === 'payment' ? 'payment' : null;
+  return { plan, userCode, download, setup };
 }
 function route(name, extra = {}) {
   const params = new URLSearchParams();
@@ -79,8 +80,8 @@ function authCard(title, intro, fields, button, links, extra = '') {
 const link = (name, label) => `<a data-route href="${esc(route(name))}">${label}</a>`;
 function renderAuth(name) {
   if (name === 'signup') {
-    const { plan } = context();
-    const intro = plan ? `Create an account to join ${planNames[plan]}. You’ll review your monthly subscription at checkout.` : 'Create an account, then choose the plan that fits you.';
+    const { plan, setup } = context();
+    const intro = setup ? 'Use the same email you entered at Stripe checkout. Then we’ll connect your membership to Trace.' : plan ? `Create your Trace account. You can manage ${planNames[plan]} here.` : 'Create an account to download Trace and manage your membership.';
     const form = authCard('Get started.', intro, emailField() + passwordField(true), 'Create account', link('login', 'Already have an account? Sign in'));
     form.addEventListener('submit', (event) => { event.preventDefault(); void submitForm(form, 'Creating account…', async (data) => {
       email = data.get('email').trim();
@@ -116,7 +117,7 @@ function renderAuth(name) {
       navigate('login'); notice('Password saved. Sign in with your new password.');
     }); });
   } else {
-    const form = authCard('Welcome back.', context().userCode ? 'Sign in to link your Trace app.' : 'Sign in to download Trace and manage your membership.', emailField() + passwordField(false), 'Sign in', `${link('recover', 'Forgot password?')}${link('signup', 'Create account')}`, `<p class="form-links">${link('confirm', 'Have an email confirmation code?')}</p>`);
+    const form = authCard('Welcome back.', context().setup ? 'Sign in with the same email you used at Stripe checkout.' : context().userCode ? 'Sign in to link your Trace app.' : 'Sign in to download Trace and manage your membership.', emailField() + passwordField(false), 'Sign in', `${link('recover', 'Forgot password?')}${link('signup', 'Create account')}`, `<p class="form-links">${link('confirm', 'Have an email confirmation code?')}</p>`);
     form.addEventListener('submit', (event) => { event.preventDefault(); void submitForm(form, 'Signing in…', async (data) => {
       email = data.get('email').trim();
       try { await api('auth/login', { email, password: data.get('password') }); }
@@ -139,9 +140,14 @@ async function billing(action, button, data = {}) {
   if (button.disabled) return;
   const previous = button.textContent; button.disabled = true; button.textContent = 'Opening secure billing…'; notice('');
   try {
-    const result = await api(action, data);
+    let result;
+    if (action.startsWith('checkout')) {
+      if (!navigator.locks?.request) throw new Error('Secure checkout needs an up-to-date browser. Please update your browser and try again.');
+      result = await navigator.locks.request('trace-checkout', () => api(action, data));
+    } else result = await api(action, data);
+    if (result.accountRequired === true) { navigate('account'); return; }
     const url = new URL(result.url);
-    const host = action === 'checkout' ? 'https://checkout.stripe.com' : 'https://billing.stripe.com';
+    const host = action.startsWith('checkout') ? 'https://checkout.stripe.com' : 'https://billing.stripe.com';
     if (url.origin !== host || url.username || url.password) throw new Error('We could not open secure billing. Please try again.');
     location.assign(url.href);
   } catch (error) {
@@ -204,6 +210,51 @@ function renderConnect(account) {
     mount(`<section class="auth-card"><h1>You’re connected.</h1><p class="intro">Return to Trace. ${account.traceAccess ? 'Your membership is ready to use.' : 'Choose a plan to start using your membership.'}</p><a class="button primary" data-route href="/trace/account">My account</a></section>`, 'App connected');
   }); });
 }
+function renderPurchase(account, purchase) {
+  const plan = planNames[purchase.plan] || 'Trace';
+  if (purchase.state === 'paid') {
+    const intro = account
+      ? `Connect your ${plan} membership to <strong>${esc(account.email)}</strong>. This must be the email you used at Stripe checkout.`
+      : `Your ${plan} payment is confirmed. Create an account or sign in with the same email you used at checkout.`;
+    mount(`<section class="auth-card"><h1>Let’s get you set up.</h1><p class="intro">${intro}</p>${messageSlot()}${account
+      ? '<button class="button primary" type="button" id="activate-membership">Activate membership</button><button class="text-button" type="button" id="switch-account">Use a different account</button>'
+      : `<div class="claim-actions"><a class="button primary" data-route href="${esc(route('signup', { setup: 'payment' }))}">Create account</a><a class="button" data-route href="${esc(route('login', { setup: 'payment' }))}">Sign in</a></div>`}<p class="small-note">Already paid? There’s no need to check out again.</p></section>`, 'Set up Trace');
+    document.getElementById('activate-membership')?.addEventListener('click', async (event) => {
+      const button = event.currentTarget; button.disabled = true; button.textContent = 'Activating…'; notice('');
+      try {
+        const result = await api('checkout/claim', {});
+        if (result.claimed !== true) throw new Error('We could not activate your membership. Please try again.');
+        history.replaceState({}, '', '/trace/account?checkout=success');
+        await render();
+      } catch (error) { notice(error.message, true); button.disabled = false; button.textContent = 'Activate membership'; }
+    });
+    document.getElementById('switch-account')?.addEventListener('click', async (event) => {
+      const button = event.currentTarget; button.disabled = true;
+      try { await api('auth/logout', {}); email = ''; navigate('login', { setup: 'payment' }); }
+      catch (error) { notice(error.message, true); button.disabled = false; }
+    });
+    return;
+  }
+  if (purchase.state === 'open' || (purchase.state === 'expired' && purchase.plan !== 'none')) {
+    mount(`<section class="auth-card"><h1>${purchase.state === 'expired' ? 'Your checkout expired.' : 'Finish checkout.'}</h1><p class="intro">${purchase.state === 'expired' ? `This ${plan} checkout was not completed. You can open a new checkout with Stripe.` : `Your ${plan} checkout is still open. Continue with Stripe to finish, or return to Trace.`}</p>${messageSlot()}<button class="button primary" type="button" id="resume-checkout">Continue to Stripe</button><a class="back-link" href="/trace">Back to Trace</a><p class="small-note">If you already paid, <button class="text-button" id="refresh-purchase" type="button">check your payment</button> before trying again.</p></section>`, 'Finish checkout');
+    document.getElementById('resume-checkout').addEventListener('click', (event) => void billing('checkout/guest', event.currentTarget, { plan: purchase.plan }));
+    document.getElementById('refresh-purchase').addEventListener('click', () => void render());
+    return;
+  }
+  if (purchase.reason === 'purchase_not_active') {
+    mount(`<section class="auth-card"><h1>Your membership needs attention.</h1><p class="intro">We found your purchase, but its subscription is no longer active. Please check your billing or contact support before paying again.</p>${messageSlot()}${account && account.plan !== 'none' && !account.admin ? '<button class="button primary" type="button" id="purchase-billing">Manage billing</button>' : `<a class="button primary" data-route href="${esc(route('login', { setup: 'payment' }))}">Sign in with your checkout email</a>`}<a class="back-link" href="/discord">Get help with my purchase</a></section>`, 'Membership help');
+    document.getElementById('purchase-billing')?.addEventListener('click', (event) => void billing('portal', event.currentTarget));
+    return;
+  }
+  if (purchase.state === 'processing') {
+    mount(`<section class="auth-card"><h1>Confirming your payment.</h1><p class="intro">This can take a moment. Keep this page open, and please don’t pay again.</p>${messageSlot()}<button class="button primary" type="button" id="check-purchase">Check again</button><a class="back-link" href="/discord">Need help? Contact support</a></section>`, 'Confirming payment');
+    document.getElementById('check-purchase').addEventListener('click', () => void render());
+    if (settling < 6) { settling += 1; const version = renderVersion; setTimeout(() => { if (version === renderVersion) void render(); }, 3000); }
+    return;
+  }
+  // A URL, cookie, or old paid checkout is never enough to grant access.
+  mount(`<section class="auth-card"><h1>Finish setting up Trace.</h1><p class="intro">${purchase.state === 'claimed' ? 'This purchase is already connected to an account. Sign in with the email you used at checkout.' : 'We couldn’t find a completed purchase in this browser. If you already paid, use the same browser and email you used at checkout. Please don’t pay again.'}</p>${messageSlot()}<div class="claim-actions"><a class="button primary" data-route href="${esc(route('login', { setup: 'payment' }))}">Sign in</a><a class="button" href="/discord">Get help with my purchase</a></div><a class="back-link" href="/trace">Back to Trace</a></section>`, 'Set up Trace');
+}
 async function render() {
   const version = ++renderVersion;
   const name = viewName();
@@ -211,14 +262,25 @@ async function render() {
   root.setAttribute('aria-busy', 'true');
   root.innerHTML = '<p class="loading">Loading your account…</p>';
   try {
-    const account = await api('account');
+    let account = null;
+    try { account = await api('account'); } catch (error) { if (error.status !== 401) throw error; }
     if (version !== renderVersion) return;
+    let purchase = { state: 'none', plan: 'none', expiresAt: null };
+    if (name === 'account') {
+      try { purchase = await api('checkout/status', {}); }
+      catch (error) { if (!account?.traceAccess) throw error; }
+      if (version !== renderVersion) return;
+      const returned = new URLSearchParams(location.search).get('checkout') === 'success' || context().setup === 'payment';
+      if (['paid', 'processing'].includes(purchase.state) || (!account?.traceAccess && ['open', 'expired', 'claimed'].includes(purchase.state)) || (!account?.traceAccess && returned && ['none', 'expired', 'claimed'].includes(purchase.state))) {
+        renderPurchase(account, purchase); return;
+      }
+    }
+    if (!account) { history.replaceState({}, '', route('login')); renderAuth('login'); return; }
     email = account.email;
     if (name === 'connect') renderConnect(account); else renderAccount(account);
   } catch (error) {
     if (version !== renderVersion) return;
-    if (error.status === 401) { history.replaceState({}, '', route('login')); renderAuth('login'); return; }
-    mount(`<section class="auth-card"><h1>One moment.</h1><p class="intro">We couldn’t load your membership.</p>${messageSlot()}<button class="button primary" id="retry" type="button">Try again</button><a class="back-link" href="/trace">Back to Trace</a></section>`, 'My account');
+    mount(`<section class="auth-card"><h1>One moment.</h1><p class="intro">We couldn’t load your membership. If you already paid, please don’t pay again.</p>${messageSlot()}<button class="button primary" id="retry" type="button">Try again</button><a class="back-link" href="/discord">Contact support</a><a class="back-link" href="/trace">Back to Trace</a></section>`, 'My account');
     notice(error.message, true);
     document.getElementById('retry').addEventListener('click', () => void render());
   }

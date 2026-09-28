@@ -16,13 +16,29 @@ http.createServer(async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     if (url.pathname === '/__fixture') {
       const role = ['admin', 'supporter', 'trace', 'none', 'anonymous', 'unconfigured'].includes(url.searchParams.get('role')) ? url.searchParams.get('role') : 'anonymous';
-      res.setHeader('Set-Cookie', `trace-preview-role=${role}; Path=/; SameSite=Lax`);
+      res.setHeader('Set-Cookie', [`trace-preview-role=${role}; Path=/; SameSite=Lax`, 'trace-preview-purchase=none; Path=/; SameSite=Lax']);
       res.statusCode = 303; res.setHeader('Location', '/trace/account'); return res.end();
+    }
+    if (url.pathname === '/__purchase') {
+      const state = ['paid', 'open', 'processing', 'expired', 'claimed', 'inactive', 'none'].includes(url.searchParams.get('state')) ? url.searchParams.get('state') : 'none';
+      const role = ['anonymous', 'none', 'supporter', 'trace', 'admin'].includes(url.searchParams.get('role')) ? url.searchParams.get('role') : 'anonymous';
+      res.setHeader('Set-Cookie', [`trace-preview-purchase=${state}; Path=/; SameSite=Lax`, `trace-preview-role=${role}; Path=/; SameSite=Lax`]);
+      res.statusCode = 303; res.setHeader('Location', '/trace/account?checkout=success'); return res.end();
     }
     if (url.pathname.startsWith('/trace/api/')) {
       const action = url.pathname.slice('/trace/api/'.length);
       const role = /trace-preview-role=(admin|supporter|trace|none|anonymous|unconfigured)/.exec(req.headers.cookie || '')?.[1] || 'anonymous';
       if (role === 'unconfigured') return send(503, { error: 'Memberships are not available yet. Please check back soon.' });
+      const purchase = /trace-preview-purchase=(paid|open|processing|expired|claimed|inactive|none)/.exec(req.headers.cookie || '')?.[1] || 'none';
+      if (action === 'checkout/prepare') return send(200, { ready: true });
+      if (action === 'checkout/status') return send(200, { state: purchase === 'inactive' ? 'processing' : purchase, plan: purchase === 'none' ? 'none' : 'supporter', expiresAt: ['open', 'expired'].includes(purchase) ? '2099-10-27T08:00:00Z' : null, ...(purchase === 'inactive' ? { reason: 'purchase_not_active' } : {}) });
+      if (action === 'checkout/claim') {
+        if (role === 'anonymous') return send(401, { error: 'Sign in to continue.' });
+        if (purchase !== 'paid') return send(409, { error: 'Local preview: this fixture does not have a paid purchase to activate.' });
+        res.setHeader('Set-Cookie', ['trace-preview-role=supporter; Path=/; SameSite=Lax', 'trace-preview-purchase=none; Path=/; SameSite=Lax']);
+        return send(200, { claimed: true });
+      }
+      if (action === 'checkout/guest' && (['admin', 'supporter', 'trace'].includes(role) || ['paid', 'processing', 'inactive'].includes(purchase))) return send(200, { accountRequired: true });
       if (action === 'account') {
         if (role === 'anonymous') return send(401, { error: 'Sign in to continue.' });
         return send(200, { ...account, ...(role === 'admin' ? { plan: 'supporter', status: 'admin', admin: true, expiresAt: null } : role === 'trace' ? { plan: 'trace', opponentDecklists: false } : role === 'none' ? { plan: 'none', status: 'none', traceAccess: false, opponentDecklists: false, expiresAt: null } : {}) });
@@ -31,7 +47,7 @@ http.createServer(async (req, res) => {
       if (action === 'auth/logout') { res.setHeader('Set-Cookie', 'trace-preview-role=anonymous; Path=/; SameSite=Lax'); return send(200, { signedOut: true }); }
       if (['auth/signup', 'auth/resend', 'auth/confirm', 'auth/recover', 'auth/reset'].includes(action)) return send(200, { ok: true });
       if (action === 'devices/link/approve' && req.method === 'POST') return send(200, { linked: true });
-      if (action === 'checkout' || action === 'portal') return send(503, { error: 'Local preview: billing is disabled. No payment has been started.' });
+      if (action === 'checkout' || action === 'checkout/guest' || action === 'portal') return send(503, { error: 'Local preview: billing is disabled. No payment has been started.' });
       return send(404, { error: 'Not part of this offline preview.' });
     }
     if (url.pathname === '/trace/access') return send(503, { error: 'Local preview: installer downloads are disabled.' });

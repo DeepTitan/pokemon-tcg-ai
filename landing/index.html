@@ -27,7 +27,7 @@
       <div class="hero-copy"><p class="eyebrow">For Pokémon TCG Live</p>
         <h1 id="hero-title">Review the spot.<br /><span>Find the line.</span></h1>
         <p class="hero-description">Replay your matches, revisit the tricky turns, and see where the game changed.</p>
-        <a class="button primary" href="#plans">Get Trace <span aria-hidden="true">→</span></a>
+        <a class="button primary" href="#plans">See plans <span aria-hidden="true">→</span></a>
         <p class="compatibility">macOS Apple silicon · Windows 64-bit</p>
       </div>
       <div class="replay-frame"><img src="/trace-assets/trace-match-dragapult-alakazam.png" alt="Trace match review showing the board, match history, and turn controls" width="1800" height="1125" /></div>
@@ -38,20 +38,23 @@
         <article class="plan"><div class="plan-heading"><h3>Trace</h3><p>Go back. See the play.</p></div>
           <p class="price">$14.99<span>/ month</span></p>
           <ul class="benefits"><li>Access to the Trace desktop app</li><li>Record and review your matches</li><li>Step through the game, turn by turn</li></ul>
-          <a class="button secondary" href="/trace/signup?plan=trace">Get Trace <span aria-hidden="true">→</span></a>
+          <button class="button secondary" type="button" data-plan="trace">Get Trace <span aria-hidden="true">→</span></button>
         </article>
         <article class="plan supporter"><div class="plan-heading"><h3>Supporters Club</h3><p>See the other side of the match.</p></div>
           <p class="price">$39.99<span>/ month</span></p>
           <ul class="benefits"><li>Everything in Trace</li><li>Opponent decklists after the match ends</li></ul>
           <p class="plan-note">Decklists unlock only when Trace records the end of a match. Never during play.</p>
-          <a class="button primary" href="/trace/signup?plan=supporter">Join Supporters Club <span aria-hidden="true">→</span></a>
+          <button class="button primary" type="button" data-plan="supporter">Join Supporters Club <span aria-hidden="true">→</span></button>
         </article>
       </div>
+      <p id="checkout-message" class="message error checkout-message" role="alert" hidden></p>
+      <p class="checkout-note">Pay securely with Stripe. Set up Trace after checkout.</p>
+      <noscript><p class="checkout-note">Enable JavaScript to open secure checkout.</p></noscript>
       <p class="existing-account">Already a member? <a href="/trace/login">Sign in to download Trace or manage your plan.</a></p>
     </section>
     <section class="faq-section" aria-labelledby="faq-title"><h2 id="faq-title">Good to know.</h2><div class="faq-list">
       <details><summary>When can I see my opponent’s decklist?</summary><p>Supporters Club members can view it after Trace has recorded that the match ended. It stays locked while a match is in progress, even if you close the game.</p></details>
-      <details><summary>How do I connect my membership to Trace?</summary><p>Create your account, choose a plan, then download Trace. In the app, select Link account. Sign in on Victory Road and confirm the code shown in Trace.</p></details>
+      <details><summary>How do I connect my membership to Trace?</summary><p>Choose your plan and pay with Stripe. Then create an account or sign in with the same email you used at checkout, and download Trace. In the app, select Link account. Sign in on Victory Road and confirm the code shown in Trace.</p></details>
       <details><summary>How do I change or cancel my plan?</summary><p>Open My account and choose Manage billing. You can change your plan or cancel there. After canceling, your access continues until the end of your paid period.</p></details>
     </div></section>
   </main>
