@@ -125,6 +125,19 @@ test('callback and native link aliases route before public share catch-all', () 
       const index = config.rewrites.findIndex((r) => r.source === source);
       assert(index >= 0 && index < config.rewrites.findIndex((r) => r.source === '/trace/:shareId'));
     }
-    assert(config.headers.some((entry) => entry.source.includes('|link)')));
+    const accountHeaders = config.headers.find((entry) => entry.source.includes('|link)'));
+    assert(accountHeaders);
+    const csp = accountHeaders.headers.find(({ key }) => key === 'Content-Security-Policy')?.value;
+    // Chromium applies form-action to the server's redirect after the same-origin POST.
+    const directives = Object.fromEntries(csp.split(';').map((part) => {
+      const [name, ...sources] = part.trim().split(/\s+/);
+      return [name, sources];
+    }));
+    assert.deepEqual(directives, {
+      'default-src': ["'self'"], 'script-src': ["'self'"], 'style-src': ["'self'"],
+      'img-src': ["'self'"], 'font-src': ["'self'"], 'connect-src': ["'self'"],
+      'frame-ancestors': ["'none'"], 'base-uri': ["'none'"],
+      'form-action': ["'self'", 'https://discord.com'],
+    });
   }
 });
