@@ -1,8 +1,8 @@
 # Trace transactional email setup
 
-Checkpoint: September 29, 2026, with public DNS verified at 05:24 UTC and SES domain/DKIM verification confirmed at 05:35:28 UTC. The owner previously received the staging Cognito verification email in Gmail's Spam folder and completed the normal user confirmation flow. That message used `COGNITO_DEFAULT`, with sender `no-reply@verificationemail.com`. The staging SES sender deployment has now completed: Cognito reads back `EmailSendingAccount:DEVELOPER`, the `victoryroad.app` SES source ARN and `From:no-reply@victoryroad.app`. The normal recovery form has requested the owner's branded recovery email; receipt and recovery completion remain pending. The earlier message proves account confirmation, not inbox placement or a spam fix.
+Checkpoint: September 29, 2026, with public DNS verified at 05:24 UTC and SES domain/DKIM verification confirmed at 05:35:28 UTC. The owner previously received the staging Cognito verification email in Gmail's Spam folder and completed the normal user confirmation flow. That message used `COGNITO_DEFAULT`, with sender `no-reply@verificationemail.com`. The staging SES sender deployment has now completed: Cognito reads back `EmailSendingAccount:DEVELOPER`, the `victoryroad.app` SES source ARN and `From:no-reply@victoryroad.app`. The normal recovery form has requested the owner's branded recovery email; the user confirmed the resent message arrived in Spam and marked it Not spam. Recovery completion remains pending; no password was changed. The earlier message proves account confirmation, not inbox placement or a spam fix.
 
-AWS account `108241940679`, region `us-east-1`: the SES domain identity `victoryroad.app` now reports identity and DKIM `SUCCESS`, with `VerifiedForSendingStatus:true`. All three public DKIM CNAME answers match the required targets. The operator made one SES v1 `verify_domain_dkim` request before the successful read-back; the existing tokens and RSA-2048 settings did not change. SES remains in sandbox mode: sending enabled, 200 messages/day and one message/second. No SES production-access request has been submitted and no branded delivery has been verified. The owner's SNS subscription is confirmed and both domain feedback topics are attached with passing read-back; notification delivery testing remains pending.
+AWS account `108241940679`, region `us-east-1`: the SES domain identity `victoryroad.app` now reports identity and DKIM `SUCCESS`, with `VerifiedForSendingStatus:true`. All three public DKIM CNAME answers match the required targets. The operator made one SES v1 `verify_domain_dkim` request before the successful read-back; the existing tokens and RSA-2048 settings did not change. SES remains in sandbox mode: sending enabled, 200 messages/day and one message/second. No SES production-access request has been submitted and branded receipt is now confirmed in Gmail Spam; inbox delivery and received-message authentication remain unverified. The owner's SNS subscription is confirmed and both domain feedback topics are attached with passing read-back; notification delivery testing remains pending.
 
 ## DKIM records published in GoDaddy
 
@@ -36,7 +36,7 @@ Public DNS, AWS verification and the staging sender deployment now pass. Do not 
 
 Cognito confirmation and SES recipient verification are separate. The owner has now followed the AWS verification link, and the exact test recipient's SES identity reports `VerificationStatus:SUCCESS` and `VerifiedForSendingStatus:true`. With the template's `DEVELOPER` email configuration, SES sandbox sending requires a verified recipient address or domain; this verifies only that recipient, not arbitrary Gmail addresses. The `victoryroad.app` sender domain is also verified. [Cognito email settings](https://docs.aws.amazon.com/cognito/latest/developerguide/user-pool-email.html), [SES sandbox restrictions](https://docs.aws.amazon.com/ses/latest/dg/request-production-access.html).
 
-The first recipient-helper attempt stopped on an exception-class mismatch before identity creation. After correcting that handler, the authorized retry requested one AWS recipient-verification email. The user received it and completed the verification link; AWS read-back confirms success. This clears the exact recipient's sandbox requirement. The staging sender is deployed and a recovery email has been requested through the normal UI, but branded receipt, authentication and inbox/spam placement have not yet been confirmed.
+The first recipient-helper attempt stopped on an exception-class mismatch before identity creation. After correcting that handler, the authorized retry requested one AWS recipient-verification email. The user received it and completed the verification link; AWS read-back confirms success. This clears the exact recipient's sandbox requirement. The staging sender is deployed and a recovery email has been requested through the normal UI, but the user confirmed branded receipt in Spam. They marked it Not spam. Received-message authentication remains unverified, and this mailbox action does not establish inbox delivery for other users.
 
 After authorized DNS publication and successful DKIM verification:
 
@@ -86,5 +86,25 @@ acknowledged a second request to the confirmed owner account. No password or
 code was entered. AWS showed the SNS subscription already confirmed, so no
 subscription confirmation was resent. The guarded feedback helper then attached
 Bounce and Complaint notifications to the reviewed topic and passed read-back.
-The owner's recovery receipt/Inbox-versus-Spam report and actual alert delivery
-remain pending. Evidence: [recovery resend acknowledgment](../artifacts/membership/branded-recovery-resent-20260929.png).
+The owner confirmed recovery receipt in Spam and marked it Not spam. Gmail's
+SPF/DKIM/DMARC results and actual alert delivery remain pending. Evidence: [recovery resend acknowledgment](../artifacts/membership/branded-recovery-resent-20260929.png).
+
+## Spam investigation after the resend
+
+The resent branded recovery email arrived in Gmail Spam. The user marked it
+Not spam. Read-only AWS checks confirmed `SigningEnabled:true`, DKIM `SUCCESS`,
+and RSA-2048; the current MAIL FROM uses SES defaults. Public DNS retains
+`p=quarantine; adkim=r; aspf=r` DMARC. No DNS policy was weakened or changed.
+SES default MAIL FROM can authenticate with SPF; aligned DKIM can satisfy
+DMARC. Missing apex SPF alone does not prove this SES message failed. Actual
+Gmail SPF/DKIM/DMARC results were requested and remain pending.
+
+The shared Cognito verification template also supplies password-recovery email.
+The signup-specific subject was changed to `Your Trace code`, with neutral
+verification/recovery instructions and an ignore-if-unrequested sentence.
+The configured sender adds the display name Trace while preserving the exact
+address and SES identity. This improves recognition and clarity; it is not
+evidence of a spam fix. Staging deployment completed and AWS read-back confirms
+`From: Trace <no-reply@victoryroad.app>`, subject `Your Trace code`, and the
+reviewed body. All 116 backend tests passed. No additional email was sent after
+this copy change, so its received rendering has not yet been tested.

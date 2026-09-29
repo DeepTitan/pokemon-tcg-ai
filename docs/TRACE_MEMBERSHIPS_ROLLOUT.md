@@ -38,7 +38,8 @@
 - Domain DKIM and the exact SES test recipient are verified. Staging Cognito
   uses `DEVELOPER` email from `no-reply@victoryroad.app`. The recovery UI requested
   a branded email; SES reports one attempt and no bounce, complaint or reject,
-  but the user's Inbox/Spam response and recovery completion remain pending.
+  and the owner confirmed the resent email arrived in Spam and marked it Not
+  spam. Actual Gmail authentication results and recovery completion are pending.
   No password was changed. See [sender evidence](TRACE_MEMBERSHIPS_EMAIL_SETUP.md).
 - The five-resource email operations stack reached `CREATE_COMPLETE`. SNS
   subscription is now confirmed. The guarded feedback helper attached both

@@ -163,7 +163,7 @@ Resources:
         - HasSesIdentity
         - EmailSendingAccount: DEVELOPER
           SourceArn: !Sub 'arn:${AWS::Partition}:ses:${SesRegion}:${AWS::AccountId}:identity/${SesIdentity}'
-          From: !Ref SesFromEmail
+          From: !Sub 'Trace <${SesFromEmail}>'
         - EmailSendingAccount: COGNITO_DEFAULT
       UserAttributeUpdateSettings:
         AttributesRequireVerificationBeforeUpdate: [email]
@@ -173,8 +173,13 @@ Resources:
             Priority: 1
       VerificationMessageTemplate:
         DefaultEmailOption: CONFIRM_WITH_CODE
-        EmailSubject: Verify your Trace account
-        EmailMessage: 'Your Trace verification code is {####}.'
+        EmailSubject: Your Trace code
+        EmailMessage: >-
+          <p>Use this code to verify your email or reset your Trace password:</p>
+          <p><strong>{####}</strong></p>
+          <p>Enter it on the Trace account page you opened.
+          If you did not request this code, you can ignore this email.</p>
+          <p>Trace &middot; Victory Road</p>
       Policies:
         PasswordPolicy:
           MinimumLength: 8
