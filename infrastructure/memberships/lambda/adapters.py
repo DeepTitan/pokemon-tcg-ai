@@ -25,6 +25,7 @@ def log_stripe_http_error(method, path, error):
     # Fixed categories keep resource IDs and query/customer inputs out of logs.
     routes = ((r'/v1/prices/[^/]+', 'prices_retrieve'),
               (r'/v1/customers', 'customers'), (r'/v1/subscriptions', 'subscriptions'),
+              (r'/v1/invoices', 'invoices'),
               (r'/v1/checkout/sessions', 'checkout_sessions'),
               (r'/v1/checkout/sessions/[^/]+', 'checkout_session_retrieve'),
               (r'/v1/checkout/sessions/[^/]+/expire', 'checkout_session_expire'),
@@ -420,6 +421,16 @@ class Stripe:
                                                           'expand[]': 'data.latest_invoice'})
         if result.get('has_more') or not isinstance(result.get('data'), list):
             raise ApiError(503, 'billing_unavailable')
+        return result['data']
+
+    def paid_invoices(self, customer, subscription):
+        result = self.request('GET', '/v1/invoices', {
+            'customer': customer, 'subscription': subscription, 'status': 'paid', 'limit': 100,
+        })
+        if not isinstance(result.get('data'), list) or type(result.get('has_more')) is not bool:
+            raise ApiError(503, 'billing_unavailable')
+        # Each candidate is independently bound and checked for full current-period
+        # coverage. Older omitted invoices cannot strengthen insufficient evidence.
         return result['data']
 
     def checkout(self, customer, price, subject, key, expires):

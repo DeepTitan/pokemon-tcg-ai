@@ -59,6 +59,17 @@ class AdapterTests(unittest.TestCase):
         adapters.boto3.client.reset_mock()
         adapters.boto3.resource.reset_mock()
 
+    def test_paid_invoice_lookup_is_read_only_and_exactly_scoped(self):
+        stripe = adapters.Stripe('secret-arn', 'bpc_fixture', False)
+        stripe.request = Mock(return_value={'data': [{'id': 'in_paid'}], 'has_more': True})
+        self.assertEqual(stripe.paid_invoices('cus_fixture', 'sub_fixture'), [{'id': 'in_paid'}])
+        stripe.request.assert_called_once_with('GET', '/v1/invoices', {
+            'customer': 'cus_fixture', 'subscription': 'sub_fixture', 'status': 'paid', 'limit': 100})
+        for malformed in ({}, {'data': [], 'has_more': None}, {'data': 'invalid', 'has_more': False}):
+            stripe.request.return_value = malformed
+            with self.assertRaises(ApiError):
+                stripe.paid_invoices('cus_fixture', 'sub_fixture')
+
     def test_stripe_redirect_rejected_without_following_location(self):
         policy = adapters.NoRedirect()
         request = urllib.request.Request('https://api.stripe.com/v1/prices/price_fixture',

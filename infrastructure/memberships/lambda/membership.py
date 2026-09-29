@@ -14,7 +14,7 @@ from urllib.parse import urlencode
 ACCOUNT_URL = 'https://victoryroad.app/trace/account'
 LINK_URL = 'https://victoryroad.app/trace/link'
 PRICE_AMOUNTS = {'trace': 1499, 'supporter': 3999}
-PAID_EVIDENCE_VERSION = 1
+PAID_EVIDENCE_VERSION = 2
 DEVICE_ID = re.compile(r'^[A-Za-z0-9._-]{16,128}$')
 SUBJECT = re.compile(r'^[A-Za-z0-9_-]{1,128}$')
 # Cognito subjects are UUIDs; pattern also permits synthetic nonproduction test subjects.
@@ -185,7 +185,7 @@ def price_plan(price, config, require_active=False):
     return plan
 
 
-def invoice_covers_current_plan(sub, item, plan, config, now):
+def invoice_covers_current_plan(sub, item, plan, config, now, invoice=None):
     """Require paid current-tier service, not merely an older paid invoice (API 2024-06-20)."""
     def identifier(value):
         return value.get('id') if isinstance(value, dict) else value
@@ -193,7 +193,7 @@ def invoice_covers_current_plan(sub, item, plan, config, now):
     def integer(value):
         return isinstance(value, int) and not isinstance(value, bool)
 
-    invoice = sub.get('latest_invoice')
+    invoice = sub.get('latest_invoice') if invoice is None else invoice
     if not isinstance(invoice, dict) or invoice.get('paid') is not True or invoice.get('status') != 'paid':
         return False
     if (not sub.get('id') or not sub.get('customer') or not item.get('id')
@@ -235,7 +235,22 @@ def invoice_covers_current_plan(sub, item, plan, config, now):
     return False
 
 
-def subscription_snapshot(subscriptions, config, now):
+def unpaid_pro_update(sub, item, config, now):
+    """Only an unpaid update of an otherwise active, unchanged Pro period may fall back."""
+    invoice = sub.get('latest_invoice')
+    start, end = sub.get('current_period_start'), sub.get('current_period_end')
+    return bool(sub.get('status') == 'active' and sub.get('collection_method') == 'charge_automatically'
+                and sub.get('pause_collection') is None and sub.get('livemode') is config.stripe_live
+                and sub.get('id') and sub.get('customer') and item.get('id')
+                and price_plan(item.get('price'), config) == 'trace' and type(item.get('quantity')) is int
+                and item['quantity'] == 1 and type(start) is int and type(end) is int and 0 <= start <= now < end
+                and isinstance(invoice, dict) and invoice.get('id') and invoice.get('paid') is False
+                and invoice.get('status') in {'open', 'void'} and invoice.get('billing_reason') == 'subscription_update'
+                and invoice.get('customer') == sub.get('customer') and invoice.get('subscription') == sub.get('id')
+                and invoice.get('livemode') is config.stripe_live and invoice.get('currency') == 'usd')
+
+
+def subscription_snapshot(subscriptions, config, now, paid_invoices=()):
     """Unknown/multiple membership subscriptions fail closed, including malformed active prices."""
     candidates = []
     for sub in subscriptions:
@@ -261,7 +276,15 @@ def subscription_snapshot(subscriptions, config, now):
         return {**snapshot, 'status': 'invalid_subscription'}
     status = str(sub.get('status', 'none'))
     if status == 'active' and not invoice_covers_current_plan(sub, items[0], plan, config, now):
-        status = 'payment_pending'
+        # Pending updates leave Pro in place when an upgrade fails. A fresh paid
+        # invoice can preserve only that exact current item and period, never the
+        # proposed tier. Voided updates need the same proof after pending_update disappears.
+        preserved = unpaid_pro_update(sub, items[0], config, now) and any(
+            isinstance(invoice, dict) and invoice.get('id') and invoice['id'] != sub['latest_invoice']['id']
+            and invoice_covers_current_plan(sub, items[0], plan, config, now, invoice)
+            for invoice in paid_invoices)
+        if not preserved:
+            status = 'payment_pending'
     return {**snapshot, 'plan': plan, 'status': status, 'expiresAt': period_end,
             'cancelAtPeriodEnd': sub.get('cancel_at_period_end') is True,
             'subscriptionId': sub.get('id')}
@@ -351,9 +374,22 @@ class MembershipService:
         subscriptions = self.stripe.subscriptions(account['customerId'])
         if any(sub.get('customer') != account['customerId'] for sub in subscriptions):
             raise ApiError(503, 'billing_unavailable')
-        snapshot = subscription_snapshot(subscriptions, self.config, self.now())
+        snapshot = self.paid_snapshot(subscriptions)
         self.store.save_account(subject, {'snapshot': snapshot}, lease, self.now())
         return snapshot
+
+    def paid_snapshot(self, subscriptions):
+        """Read prior paid evidence only for the narrow failed-Pro-update case."""
+        now = self.now()
+        snapshot = subscription_snapshot(subscriptions, self.config, now)
+        if snapshot['status'] != 'payment_pending' or snapshot['plan'] != 'trace':
+            return snapshot
+        sub = next(sub for sub in subscriptions if sub.get('id') == snapshot['subscriptionId'])
+        item = sub['items']['data'][0]
+        if not unpaid_pro_update(sub, item, self.config, now):
+            return snapshot
+        invoices = self.stripe.paid_invoices(sub['customer'], sub['id'])
+        return subscription_snapshot(subscriptions, self.config, now, invoices)
 
     def completed_checkout_ended(self, session, subject, customer):
         """Only the exact freshly expanded subscription can release a completed checkout."""
@@ -504,7 +540,7 @@ class MembershipService:
                 or (subscription.get('metadata') or {}).get('trace_guest') != proof
                 or (subscription.get('metadata') or {}).get('trace_reservation') != record['key']):
             raise ApiError(503, 'billing_unavailable')
-        snapshot = subscription_snapshot([subscription], self.config, self.now())
+        snapshot = self.paid_snapshot([subscription])
         if snapshot['plan'] != record['plan'] or snapshot['status'] != 'active' or snapshot['expiresAt'] <= self.now():
             raise ApiError(409, 'purchase_not_active')
         return snapshot
@@ -613,7 +649,7 @@ class MembershipService:
                 subscriptions = self.stripe.subscriptions(record['customerId'])
                 if any(sub.get('customer') != record['customerId'] for sub in subscriptions):
                     raise ApiError(503, 'billing_unavailable')
-                current = subscription_snapshot(subscriptions, self.config, self.now())
+                current = self.paid_snapshot(subscriptions)
                 if (current.get('subscriptionId') != snapshot.get('subscriptionId') or current['status'] != 'active'
                         or current['plan'] != record['plan'] or current['expiresAt'] <= self.now()):
                     raise ApiError(409, 'purchase_not_active')
