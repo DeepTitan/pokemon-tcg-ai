@@ -52,3 +52,18 @@ class PasswordlessTests(unittest.TestCase):
     def test_unexpected_password_challenge_is_not_an_authenticated_session(self):
         self.auth.client.initiate_auth.return_value = {'ChallengeName': 'PASSWORD', 'Session': 'x'}
         with self.assertRaises(ApiError): self.auth.email_start('player@example.test')
+
+class PasswordlessRouteTests(unittest.TestCase):
+    def test_email_auth_requires_proxy_proof_but_not_enabled_billing(self):
+        import json
+        from membership import MembershipService
+        store, cognito, stripe = Mock(), Mock(), Mock()
+        stripe.proxy_secret.return_value = 'proxy-proof'
+        cognito.email_start.return_value = {'kind':'signin','email':'player@example.test','session':'private'}
+        service = MembershipService(Config('pool','client','us-east-1',billing_enabled=False),store,cognito,stripe)
+        event = {'rawPath':'/v1/auth/email-start','requestContext':{'http':{'method':'POST'}},'headers':{},'body':json.dumps({'email':'player@example.test'})}
+        with self.assertRaises(ApiError): service.handle(event)
+        cognito.email_start.assert_not_called()
+        event['headers']['x-trace-proxy-key']='proxy-proof'
+        self.assertEqual(service.handle(event)['challenge']['kind'],'signin')
+        self.assertTrue(any(c.args[1:3] == (1,60) for c in store.limit.call_args_list))

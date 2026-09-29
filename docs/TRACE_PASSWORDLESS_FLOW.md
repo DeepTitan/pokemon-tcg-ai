@@ -46,11 +46,12 @@ Enable website `TRACE_GOOGLE_COGNITO_DOMAIN` and `TRACE_GOOGLE_CLIENT_ID` only a
 
 ## Verification / rollout status
 
-- Backend offline suite: 124 tests passed (including new/existing/incomplete account paths and Google identity guards).
+- Backend offline suite: 125 tests passed (including new/existing/incomplete account paths and Google identity guards).
 - Website auth and purchase suites: 52 tests passed (including encrypted state, PKCE/state, context restrictions and unchanged checkout locks).
 - Website build passed.
 - Browser-only demo verified email entry, invalid code and successful Free-account screen. It cannot send email, start games, charge, or grant real access.
 - Staging stack updated successfully. A new SES simulator account received a real signup challenge/session and was deleted after the test. Existing owner staging account completed a real EMAIL_OTP challenge and received access/refresh tokens; tokens were not printed or persisted.
+- Protected website preview `victoryroad-at154lox0-deeptitan-6729s-projects.vercel.app` is deployed at the existing staging alias. Hosted Vercel → AWS signup, HttpOnly cookie, wrong-code rejection, and resend throttling passed with an SES simulator address; the temporary user was removed. Production was not promoted.
 - Google OAuth app setup and full Google browser round trip remain pending.
 - Production authentication has not been switched to this flow. Verify hosted cookie/browser paths and Google first, then deploy coordinated backend and website changes. Preserve current live billing, owner switch, users, and subjects.
 
