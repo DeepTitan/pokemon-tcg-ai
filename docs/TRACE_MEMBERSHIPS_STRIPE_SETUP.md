@@ -1,6 +1,6 @@
 # Trace Stripe sandbox setup
 
-Prepared September 28, 2026. The user authorized the existing Victory Road Stripe account for separate Trace plans, webhook configuration and test-mode checkout. No existing film secret is needed or accessed by this setup. Both products/prices, sandbox portal, webhook and explicitly approved restricted application key now exist; see [verified rollout state](TRACE_MEMBERSHIPS_ROLLOUT.md#verified-stripe-sandbox-catalog) before taking any action. The generator below only proposes requests; never replay completed creation steps. AWS secret ingestion, billing enablement and the paid provider journey are still pending.
+Prepared September 28, 2026. The user authorized the existing Victory Road Stripe account for separate Trace plans, webhook configuration and test-mode checkout. No existing film secret is needed or accessed by this setup. Both products/prices, sandbox portal, webhook and explicitly approved restricted application key now exist; see [verified rollout state](TRACE_MEMBERSHIPS_ROLLOUT.md#verified-stripe-sandbox-catalog) before taking any action. The generator below only proposes requests; never replay completed creation steps. AWS secret ingestion and test-only staging billing deployment are complete. The paid provider journey and actual Stripe API permission checks are still pending.
 
 ## Isolation and compatibility
 
