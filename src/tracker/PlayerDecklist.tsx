@@ -50,7 +50,7 @@ export function PlayerDecklist({ name, deck: suppliedDeck, catalog, loadDeck, un
   const close = () => { cancelClose(); isOpen.current = false; fetchGeneration.current++; setPrivateDeck(undefined); setLoadState('idle'); setCopyState('idle'); copyAttempt.current++; setOpen(false); };
   const show = () => {
     cancelClose();
-    if (isOpen.current) return;
+    if ((!available && !onUpgrade) || isOpen.current) return;
     isOpen.current = true;
     cancelClose(); const rect = button.current?.getBoundingClientRect();
     if (rect) setPosition({ left: Math.max(12, Math.min(rect.left, window.innerWidth - 612)),
@@ -105,7 +105,7 @@ export function PlayerDecklist({ name, deck: suppliedDeck, catalog, loadDeck, un
     <span className="player-decklist-control">
     <button ref={button} type="button" className="player-decklist-trigger" aria-label={`${name} decklist`}
       aria-disabled={!available && !onUpgrade} aria-describedby={!available ? `${id}-unavailable` : undefined}
-      aria-expanded={open} aria-controls={open ? id : undefined} aria-haspopup="dialog"
+      aria-expanded={available || onUpgrade ? open : undefined} aria-controls={open ? id : undefined} aria-haspopup={available || onUpgrade ? 'dialog' : undefined}
       onMouseEnter={show} onMouseLeave={leave} onFocus={() => { if (!suppressFocus.current) show(); }} onBlur={leave}
       onClick={show} onKeyDown={event => { if (event.key === 'ArrowDown') { event.preventDefault(); show(); setTimeout(() => panel.current?.focus(), 0); } }}>
       <CardsThree size={18} />
