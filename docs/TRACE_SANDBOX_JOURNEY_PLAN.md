@@ -2,7 +2,9 @@
 
 Prepared September 28, 2026; execution evidence updated September 29. The
 companion's first authorized Pro adapter attempt created a synthetic account and
-Stripe customer, then stopped on a Checkout HTTP 503; that fixture is retained.
+Stripe customer, then stopped on a Checkout HTTP 503. The two failed-attempt
+fixtures are undergoing separate guarded cleanup; that cleanup remains pending
+at this checkpoint.
 A separate prepare/status probe passed without starting Checkout.
 
 The root operator then used a separate `--browser-fixture` account to verify
@@ -18,18 +20,28 @@ the initial $39.99 Supporters browser purchase, explicit activation and exact
 capability check with no owner override. Canceling that checkout before payment
 and resuming reused the same Stripe session. After backend `d9c4a94`, the failed
 Supporters upgrade retained exact Pro capabilities and the original expiry,
-including after the operator voided only its unpaid upgrade invoice. The real
+including after the operator voided only its unpaid upgrade invoice. A subsequent
+paid portal upgrade succeeded: $24.99 prorated test charge, paid invoice and
+current $39.99/month Supporters plan. The helper confirmed exact non-admin
+Supporters capabilities with the October 29 expiry unchanged. The real
 staging installation/API check passed Free → explicitly approved Supporters →
 unlink to Free, followed by fixture cleanup. Its browser approval uses the
 helper's staging `/trace/connect` URL. The packaged native app's canonical
 `victoryroad.app/trace/link` handoff, release endpoint pairing and isolated-data
 checks remain separate and unverified.
 
+Both successful purchase subscriptions were then canceled immediately and
+verified as canceled sandbox objects. Fresh provider reconciliation preceded
+each helper's guarded removal of only its own membership rows and synthetic
+account; both cleanup events were acknowledged. The browser returned to Free.
+Stripe audit objects and the user's real owner account were preserved.
+
 Separately, the user's real confirmation email arrived in Spam and the normal
 Trace form accepted the supplied code. This proves receipt and confirmation,
 not reliable inbox placement or password recovery. Real-owner login and
-privileged binding, actual expiry, and successful paid portal upgrades remain
-unverified at this checkpoint. No production release or DNS change is implied.
+privileged binding and actual period-end expiry remain unverified at this
+checkpoint. Immediate cancellation does not prove time-based expiry. No
+production release or DNS change is implied.
 See the
 [dated browser evidence and limits](TRACE_MEMBERSHIPS_DRY_RUN_20260928.md#protected-staging-browser-check--september-29-2026).
 
@@ -194,8 +206,8 @@ webhook signature or copy a full event payload into a report.
 Use the Pro fixture's portal upgrade to exercise Supporters selection, displayed
 proration, and the resulting paid invoice before granting the higher tier.
 A failed upgrade must not grant unpaid Supporters access or remove the existing
-paid Pro period. The failed-upgrade case is now verified in the dated evidence;
-successful paid upgrades remain pending. Expired sessions, missing proof,
+paid Pro period. Both failed-upgrade protection and a subsequent paid upgrade
+are verified in the dated evidence. Expired sessions, missing proof,
 delayed/out-of-order events and password recovery should be reported separately,
 not implied by the happy path or the separate confirmation-email check.
 
@@ -242,5 +254,7 @@ fixed sandbox guards, URL validation, credential transport, FIFO permissions,
 acknowledgment retention, browser-only fixture preparation, and refusal to
 delete on stale or active billing state. The dated evidence above records both
 initial browser purchases, actual signed webhook delivery/retry, failed-upgrade
-protection, device linking and real confirmation-email receipt. Password
-recovery, actual expiry and successful paid upgrades remain separate checks.
+protection, a paid upgrade, cancellation and successful-fixture cleanup, staging
+device linking and real confirmation-email receipt. Password recovery, reliable
+inbox placement, actual period-end expiry and the packaged native release remain
+separate checks.

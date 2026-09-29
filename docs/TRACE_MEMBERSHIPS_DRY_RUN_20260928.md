@@ -1,6 +1,6 @@
 # Trace launch dry run — September 28, 2026
 
-**Status: both initial sandbox purchases, Pro cancellation, failed-upgrade protection, app linking and real email confirmation passed. Remaining provider checks and production release are pending.**
+**Status: both initial sandbox purchases, paid upgrade, failed-upgrade protection, cancellation, staging app linking and real email confirmation passed. Both successful purchase fixtures were cleaned up. Native release, remaining email checks and production rollout are pending.**
 
 This release spans the public Trace website, a new membership API, capture service enforcement, and a desktop update newer than v0.1.88. Publishing the pricing HTML alone would send people into missing account routes and sell features the current desktop release cannot unlock.
 
@@ -52,11 +52,18 @@ The same browser fixture then completed the real sandbox Pro flow:
   access, and its original expiry. The operator voided only the unpaid sandbox
   upgrade invoice. Stripe then showed `pending_update:null`, active Pro and the
   same Pro price; the helper again confirmed the exact Pro capabilities. No
-  unpaid Supporters access was granted. A successful paid upgrade is still a
-  separate pending check.
+  unpaid Supporters access was granted.
+- After restoring the default sandbox test card, the portal successfully
+  upgraded that Pro subscription to Supporters. It displayed an immediate
+  **$24.99 prorated test charge**, a paid invoice and the **$39.99/month** plan.
+  A fresh helper read confirmed `plan:supporter`, `status:active`, `admin:false`,
+  full history, expanded sharing and opponent deck-study access. The expiry
+  remained October 29. This paid-upgrade check is separate from the earlier
+  failed-upgrade protection check.
 
 Evidence: [Pro account browser screenshot](../artifacts/pro-account-browser-20260929.png)
 and [period-end cancellation screenshot](../artifacts/pro-cancel-period-end-20260929.png),
+[paid upgrade screenshot](../artifacts/pro-upgrade-paid-browser-20260929.png),
 plus the root operator's [sanitized browser checkpoint](../artifacts/browser-membership-evidence-20260929.md).
 No provider URL containing a secret or account credential is retained here.
 
@@ -72,7 +79,17 @@ An independent synthetic account then completed the Supporters browser flow:
   does not replace the capture/tracker tests that enforce the match-end boundary.
 
 Evidence: [Supporters account browser screenshot](../artifacts/supporter-account-browser-20260929.png).
-The restricted fixture inventory is retained separately for scoped cleanup.
+The restricted fixture inventory is retained separately as a cleanup record.
+
+Both successful purchase subscriptions were then canceled immediately in the
+dedicated Stripe sandbox and verified canceled with `livemode:false`. After
+fresh provider reconciliation, each helper confirmed inactive billing, removed
+only its owned membership rows and synthetic Cognito account, and received the
+cleanup acknowledgment. The browser showed Free access after cancellation.
+Stripe audit objects were preserved. The user's real owner account was also
+preserved; it was not part of either cleanup.
+
+Evidence: [Free account after cancellation](../artifacts/supporter-canceled-free-browser-20260929.png).
 
 The synthetic staging installation/API smoke also passed: the unlinked device
 started Free, explicit browser approval linked it to the expected Supporters
@@ -97,11 +114,13 @@ Evidence: [Staging email confirmation](../artifacts/owner-email-confirmed-stagin
 
 Separately, the first Pro API-adapter attempt reached customer creation but
 Checkout returned HTTP 503. That earlier failed fixture remains separate from
-the successful browser purchase and is retained for diagnosis and cleanup.
+the successful browser purchase. The two failed-attempt fixtures are undergoing
+separate guarded cleanup; completion is not yet recorded in this checkpoint.
 
 **Still unverified:** password-recovery delivery and completion, reliable inbox
-placement, real-owner login and privileged binding, actual subscription expiry,
-successful paid portal upgrades, and production rollout. The synthetic purchase
+placement, real-owner login and privileged binding, actual period-end expiry,
+the packaged native release workflow, and production rollout. Immediate
+cancellation and return to Free do not establish time-based expiry. The synthetic purchase
 fixtures do not establish email delivery; the separate real-address check above
 does. The production
 observations and original provider checklist below retain their September 28
