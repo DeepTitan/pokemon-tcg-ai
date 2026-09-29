@@ -16,9 +16,21 @@ The portal's end-of-period cancellation was independently confirmed with
 `cancelAtPeriodEnd:true` while Pro remained active. A separate account completed
 the initial $39.99 Supporters browser purchase, explicit activation and exact
 capability check with no owner override. Canceling that checkout before payment
-and resuming reused the same Stripe session. Actual expiry, portal upgrades,
-failed-upgrade behavior and real email delivery remain unverified at this
-checkpoint. See the
+and resuming reused the same Stripe session. After backend `d9c4a94`, the failed
+Supporters upgrade retained exact Pro capabilities and the original expiry,
+including after the operator voided only its unpaid upgrade invoice. The real
+staging installation/API check passed Free → explicitly approved Supporters →
+unlink to Free, followed by fixture cleanup. Its browser approval uses the
+helper's staging `/trace/connect` URL. The packaged native app's canonical
+`victoryroad.app/trace/link` handoff, release endpoint pairing and isolated-data
+checks remain separate and unverified.
+
+Separately, the user's real confirmation email arrived in Spam and the normal
+Trace form accepted the supplied code. This proves receipt and confirmation,
+not reliable inbox placement or password recovery. Real-owner login and
+privileged binding, actual expiry, and successful paid portal upgrades remain
+unverified at this checkpoint. No production release or DNS change is implied.
+See the
 [dated browser evidence and limits](TRACE_MEMBERSHIPS_DRY_RUN_20260928.md#protected-staging-browser-check--september-29-2026).
 
 ## Scope and starting point
@@ -181,10 +193,11 @@ webhook signature or copy a full event payload into a report.
 
 Use the Pro fixture's portal upgrade to exercise Supporters selection, displayed
 proration, and the resulting paid invoice before granting the higher tier.
-A failed upgrade must not grant unpaid Supporters access. This is an additional
-provider case, not established by the initial two purchases. Deliberate failed
-payments, expired sessions, missing proof, delayed/out-of-order events, and real
-email delivery should be reported separately, not implied by the happy path.
+A failed upgrade must not grant unpaid Supporters access or remove the existing
+paid Pro period. The failed-upgrade case is now verified in the dated evidence;
+successful paid upgrades remain pending. Expired sessions, missing proof,
+delayed/out-of-order events and password recovery should be reported separately,
+not implied by the happy path or the separate confirmation-email check.
 
 ## Cleanup and abort behavior
 
@@ -228,5 +241,6 @@ ownership checks and cleanup. Its thirteen offline tests include no-execute beha
 fixed sandbox guards, URL validation, credential transport, FIFO permissions,
 acknowledgment retention, browser-only fixture preparation, and refusal to
 delete on stale or active billing state. The dated evidence above records both
-initial browser purchases and actual signed webhook delivery/retry. Real email
-delivery, actual expiry and portal upgrade behavior remain separate checks.
+initial browser purchases, actual signed webhook delivery/retry, failed-upgrade
+protection, device linking and real confirmation-email receipt. Password
+recovery, actual expiry and successful paid upgrades remain separate checks.

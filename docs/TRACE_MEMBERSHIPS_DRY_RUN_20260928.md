@@ -1,6 +1,6 @@
 # Trace launch dry run — September 28, 2026
 
-**Status: local checks and both initial sandbox purchases passed. Pro cancellation and portal access passed. Remaining provider checks and production release are pending.**
+**Status: both initial sandbox purchases, Pro cancellation, failed-upgrade protection, app linking and real email confirmation passed. Remaining provider checks and production release are pending.**
 
 This release spans the public Trace website, a new membership API, capture service enforcement, and a desktop update newer than v0.1.88. Publishing the pricing HTML alone would send people into missing account routes and sell features the current desktop release cannot unlock.
 
@@ -45,9 +45,15 @@ The same browser fixture then completed the real sandbox Pro flow:
 - The portal accepted end-of-period cancellation and displayed service ending
   October 29. The helper's `verify-cancellation` check passed: Pro stayed active
   and `cancelAtPeriodEnd` was true. This proves the cancellation flag and retained
-  paid access, not that the period ended or access expired. The operator is
-  restoring renewal before the next upgrade test; that later change is not yet
-  recorded as verified here.
+  paid access, not that the period ended or access expired.
+- A failed Supporters upgrade exposed a paid-access regression. After deploying
+  backend `d9c4a94`, a fresh helper check confirmed the existing Pro subscription
+  remained active with full history and expanded sharing, no opponent deck-study
+  access, and its original expiry. The operator voided only the unpaid sandbox
+  upgrade invoice. Stripe then showed `pending_update:null`, active Pro and the
+  same Pro price; the helper again confirmed the exact Pro capabilities. No
+  unpaid Supporters access was granted. A successful paid upgrade is still a
+  separate pending check.
 
 Evidence: [Pro account browser screenshot](../artifacts/pro-account-browser-20260929.png)
 and [period-end cancellation screenshot](../artifacts/pro-cancel-period-end-20260929.png),
@@ -68,14 +74,36 @@ An independent synthetic account then completed the Supporters browser flow:
 Evidence: [Supporters account browser screenshot](../artifacts/supporter-account-browser-20260929.png).
 The restricted fixture inventory is retained separately for scoped cleanup.
 
+The synthetic staging installation/API smoke also passed: the unlinked device
+started Free, explicit browser approval linked it to the expected Supporters
+account, and unlinking restored Free capabilities. Fixture cleanup completed
+with `cleanupRequired:false`. The helper constructed the staging
+`/trace/connect` URL; the packaged native app instead opens the canonical
+`https://victoryroad.app/trace/link` URL. This verifies the staging API and browser
+approval path, not a packaged native workflow. Native release endpoint pairing
+and isolated-data checks remain pending. No native app or game was launched.
+
+Evidence: [Supporters app-link confirmation](../artifacts/supporter-app-linked-browser-20260929.png).
+
+The owner's real Gmail confirmation email arrived in **Spam**. The user supplied
+the code, and Trace's normal confirmation form displayed **Email confirmed.
+Sign in to continue.** This proves staging delivery and confirmation for that
+address. It does not establish reliable inbox placement, password recovery,
+real-owner login, or a production owner grant. No email address or code is
+retained in this report, and no DNS changes have been made; exact GoDaddy
+approval remains pending.
+
+Evidence: [Staging email confirmation](../artifacts/owner-email-confirmed-staging-20260929.png).
+
 Separately, the first Pro API-adapter attempt reached customer creation but
 Checkout returned HTTP 503. That earlier failed fixture remains separate from
 the successful browser purchase and is retained for diagnosis and cleanup.
 
-**Still unverified:** delivered signup/confirmation and recovery emails,
-actual subscription expiry, portal upgrades and
-failed-upgrade behavior, verified owner binding, and production rollout.
-Admin-confirming the fixture does not verify email delivery. The production
+**Still unverified:** password-recovery delivery and completion, reliable inbox
+placement, real-owner login and privileged binding, actual subscription expiry,
+successful paid portal upgrades, and production rollout. The synthetic purchase
+fixtures do not establish email delivery; the separate real-address check above
+does. The production
 observations and original provider checklist below retain their September 28
 baseline date; they are not a fresh production-state audit.
 
@@ -111,9 +139,10 @@ The unit suites exercise mocked providers. Their passing results are not proof o
   returns 200/private no-store. Sandbox membership configuration is installed.
   Production aliases, environment values and apex routing remain unchanged.
 - Signup and password reset accept 8–128 characters without composition rules.
-  The deployed Cognito policy matches. An unfinished signup now offers code
-  entry, resend and sign-in recovery instead of a generic error. The provider
-  accepted a confirmation resend, but receipt of that email is not yet confirmed.
+  The deployed Cognito policy has minimum length 8 and all composition flags
+  false. An unfinished signup now offers code entry, resend and sign-in recovery
+  instead of a generic error. The user received the real confirmation email in
+  Spam and confirmed it through the normal UI; inbox placement is not fixed.
 
 ## Production baseline — September 28, 2026
 
