@@ -3004,3 +3004,19 @@ button.stadium-marker:focus-visible {
  :root .player-decklist-trigger, .player-decklist-unavailable { transition: none; }
  .player-decklist-unavailable { transform: none; }
 }
+
+/* A glimpse of the locked list, consistent with deck/prize study. No card data. */
+.player-decklist-panel.decklist-locked-preview { width: 340px; padding: 0; overflow: hidden; box-shadow: 0 8px 28px #22365324; }
+.decklist-locked-preview > header { margin: 0; padding: 12px 14px 4px; }
+.decklist-locked-preview header strong { color: #223653; font-size: 13px; }
+.decklist-locked-body { position: relative; height: 216px; overflow: hidden; }
+.decklist-locked-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; padding: 8px 16px; filter: blur(5px); opacity: .5; pointer-events: none; user-select: none; }
+.decklist-locked-grid .study-card-placeholder { padding: 3px; border-width: 3px; }
+.decklist-locked-grid .study-card-placeholder i { margin: 3px 0 5px; }
+.decklist-locked-body::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at center, #faf8f2fa 5%, #faf8f2d9 36%, #faf8f200 90%); }
+.decklist-locked-unlock { position: absolute; z-index: 1; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; color: #223653; }
+.decklist-plan-label { display: inline-flex; align-items: center; gap: 5px; color: #766333; font-size: 9px; font-weight: 800; letter-spacing: .09em; }
+.decklist-locked-unlock p { margin: 0; font-size: 16px; font-weight: 800; }
+.decklist-locked-unlock button { border: 1px solid #d9bc64; border-radius: 6px; background: #fff0b5; color: #524018; padding: 8px 12px; font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; transition: background .16s ease; }
+.decklist-locked-unlock button:hover { background: #ffe58b; }
+.decklist-locked-unlock button:focus-visible { outline: 2px solid #427da8; outline-offset: 3px; }
