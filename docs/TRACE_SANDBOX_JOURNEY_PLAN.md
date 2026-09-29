@@ -2,9 +2,11 @@
 
 Prepared September 28, 2026; execution evidence updated September 29. The
 companion's first authorized Pro adapter attempt created a synthetic account and
-Stripe customer, then stopped on a Checkout HTTP 503. The two failed-attempt
-fixtures are undergoing separate guarded cleanup; that cleanup remains pending
-at this checkpoint.
+Stripe customer, then stopped on a Checkout HTTP 503. Separate guarded cleanup
+of the two failed-attempt fixtures completed with exit 0: four guest-mapping rows
+were atomically deleted, the two matching synthetic users were deleted, owned
+guest locks were released, and the expected absences were verified. Stripe
+objects, paid fixtures and the real owner account were untouched by that cleanup.
 A separate prepare/status probe passed without starting Checkout.
 
 The root operator then used a separate `--browser-fixture` account to verify

@@ -114,8 +114,13 @@ Evidence: [Staging email confirmation](../artifacts/owner-email-confirmed-stagin
 
 Separately, the first Pro API-adapter attempt reached customer creation but
 Checkout returned HTTP 503. That earlier failed fixture remains separate from
-the successful browser purchase. The two failed-attempt fixtures are undergoing
-separate guarded cleanup; completion is not yet recorded in this checkpoint.
+the successful browser purchase. Separate guarded cleanup of both failed-attempt
+fixtures completed with exit 0: exactly four guest-mapping rows were deleted
+atomically, the two matching synthetic Cognito users were deleted, and owned
+guest locks were released. Identity, mapping, account and customer absences were
+verified. Stripe objects, the paid fixtures and the owner account were untouched
+by this cleanup. The backend checkout retains the sanitized execution evidence
+at `artifacts/membership/failed-checkout-cleanup-20260929.json`.
 
 **Still unverified:** password-recovery delivery and completion, reliable inbox
 placement, real-owner login and privileged binding, actual period-end expiry,
