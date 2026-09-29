@@ -1,8 +1,8 @@
-# Trace email operations — deployed, confirmation pending
+# Trace email operations — attached, delivery test pending
 
-September 29, 2026. This deployment is limited to account `108241940679`, region `us-east-1`, and transactional Trace email from the existing `victoryroad.app` SES identity. The five-resource `trace-email-operations` stack reached `CREATE_COMPLETE`. AWS template validation passed and the exact resource names were checked absent before creation. The SNS confirmation email was requested for the owner's address; the user's confirmation is still pending. The feedback helper's read-only preflight stopped at `exact_owner_subscription_must_be_confirmed`, as intended. Bounce/Complaint feedback topics have not been attached and monitoring is not yet operational. No production-access request has been submitted.
+September 29, 2026. This deployment is limited to account `108241940679`, region `us-east-1`, and transactional Trace email from the existing `victoryroad.app` SES identity. The five-resource `trace-email-operations` stack reached `CREATE_COMPLETE`. AWS template validation passed and the exact resource names were checked absent before creation. The exact owner SNS subscription is now confirmed. The guarded feedback helper completed `--execute` and read-back passed for both domain Bounce and Complaint topics. Existing forwarding and BOUNCE/COMPLAINT suppression were preserved. Actual alert delivery has not yet been tested. No production-access request has been submitted.
 
-The domain identity and DKIM are verified, and the exact owner test recipient is SES-verified. Staging Cognito now uses `EmailSendingAccount=DEVELOPER`, the `victoryroad.app` source identity and `From=no-reply@victoryroad.app`. The normal recovery UI requested a branded email. SES statistics show one delivery attempt and zero bounces, complaints or rejects, but the user's Inbox/Spam response remains pending and no password has been changed. These counters do not establish receipt or healthy ongoing delivery. See [sender setup](TRACE_MEMBERSHIPS_EMAIL_SETUP.md) for the detailed checkpoint.
+The domain identity and DKIM are verified, and the exact owner test recipient is SES-verified. Staging Cognito now uses `EmailSendingAccount=DEVELOPER`, the `victoryroad.app` source identity and `From=no-reply@victoryroad.app`. The normal recovery UI requested a branded email. At the user's request, another recovery email was requested through the same UI; it acknowledged the request. The AWS subscription resend was unnecessary because the subscription was already confirmed. SES statistics show one delivery attempt and zero bounces, complaints or rejects, but the user's Inbox/Spam response remains pending and no password has been changed. These counters do not establish receipt or healthy ongoing delivery. See [sender setup](TRACE_MEMBERSHIPS_EMAIL_SETUP.md) for the detailed checkpoint.
 
 ## Deployed resources
 
@@ -25,9 +25,9 @@ There are no IAM roles, Lambda functions, additional domains, marketing resource
 
 ## Review and deployment sequence
 
-The deployment steps below are retained as the reviewed procedure. Steps 1–3
-are complete; do not create another stack or subscription. Owner confirmation
-and the feedback attachment remain pending. SES recipient verification is
+The deployment steps below are retained as the reviewed procedure. Steps 1–6
+are complete; do not create another stack or subscription. Actual notification
+delivery remains pending. SES recipient verification is
 separate from confirming an SNS subscription; the earlier verification does not
 confirm this subscription.
 

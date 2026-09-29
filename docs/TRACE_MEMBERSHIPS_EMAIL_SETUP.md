@@ -2,7 +2,7 @@
 
 Checkpoint: September 29, 2026, with public DNS verified at 05:24 UTC and SES domain/DKIM verification confirmed at 05:35:28 UTC. The owner previously received the staging Cognito verification email in Gmail's Spam folder and completed the normal user confirmation flow. That message used `COGNITO_DEFAULT`, with sender `no-reply@verificationemail.com`. The staging SES sender deployment has now completed: Cognito reads back `EmailSendingAccount:DEVELOPER`, the `victoryroad.app` SES source ARN and `From:no-reply@victoryroad.app`. The normal recovery form has requested the owner's branded recovery email; receipt and recovery completion remain pending. The earlier message proves account confirmation, not inbox placement or a spam fix.
 
-AWS account `108241940679`, region `us-east-1`: the SES domain identity `victoryroad.app` now reports identity and DKIM `SUCCESS`, with `VerifiedForSendingStatus:true`. All three public DKIM CNAME answers match the required targets. The operator made one SES v1 `verify_domain_dkim` request before the successful read-back; the existing tokens and RSA-2048 settings did not change. SES remains in sandbox mode: sending enabled, 200 messages/day and one message/second. No SES production-access request has been submitted and no branded delivery has been verified. Delivery-failure, bounce and complaint monitoring is not operational yet.
+AWS account `108241940679`, region `us-east-1`: the SES domain identity `victoryroad.app` now reports identity and DKIM `SUCCESS`, with `VerifiedForSendingStatus:true`. All three public DKIM CNAME answers match the required targets. The operator made one SES v1 `verify_domain_dkim` request before the successful read-back; the existing tokens and RSA-2048 settings did not change. SES remains in sandbox mode: sending enabled, 200 messages/day and one message/second. No SES production-access request has been submitted and no branded delivery has been verified. The owner's SNS subscription is confirmed and both domain feedback topics are attached with passing read-back; notification delivery testing remains pending.
 
 ## DKIM records published in GoDaddy
 
@@ -78,3 +78,13 @@ The single [review draft and operator prerequisites](TRACE_EMAIL_OPERATIONS.md#t
 ## After verification and approval
 
 Configure `SesIdentity=victoryroad.app`, `SesRegion=us-east-1`, and the reviewed `SesFromEmail` together in the membership deployment config. Keep the existing staging/production separation and trusted `WebOrigin`. Production validation requires SES configuration, but configuration alone does not prove deliverability. Refer to [the rollout checklist](TRACE_MEMBERSHIPS_ROLLOUT.md) before enabling public onboarding.
+
+## Recovery resend and alert attachment
+
+On September 29, the user requested another email. The normal Trace recovery UI
+acknowledged a second request to the confirmed owner account. No password or
+code was entered. AWS showed the SNS subscription already confirmed, so no
+subscription confirmation was resent. The guarded feedback helper then attached
+Bounce and Complaint notifications to the reviewed topic and passed read-back.
+The owner's recovery receipt/Inbox-versus-Spam report and actual alert delivery
+remain pending. Evidence: [recovery resend acknowledgment](../artifacts/membership/branded-recovery-resent-20260929.png).

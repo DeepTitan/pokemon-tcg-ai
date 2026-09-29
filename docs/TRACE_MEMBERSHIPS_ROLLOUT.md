@@ -41,12 +41,12 @@
   but the user's Inbox/Spam response and recovery completion remain pending.
   No password was changed. See [sender evidence](TRACE_MEMBERSHIPS_EMAIL_SETUP.md).
 - The five-resource email operations stack reached `CREATE_COMPLETE`. SNS
-  confirmation is pending, so the feedback helper correctly refuses attachment;
-  Bounce/Complaint topics are not attached and monitoring is not operational.
+  subscription is now confirmed. The guarded feedback helper attached both
+  Bounce/Complaint topics and passed read-back; actual alert delivery is pending.
   SES production access has not been requested. See [operations status](TRACE_EMAIL_OPERATIONS.md).
 
 Remaining release work includes confirming branded email receipt/recovery and
-the SNS subscription, attaching and verifying email feedback, obtaining SES
+actual email-alert receipt, obtaining SES
 public sending access, production owner binding, separate live Stripe setup,
 the packaged native release checks, and coordinated production deployment.
 No sandbox result alone establishes that production is shipped.
