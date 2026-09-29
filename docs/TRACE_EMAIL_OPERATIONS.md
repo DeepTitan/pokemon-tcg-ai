@@ -1,6 +1,6 @@
 # Trace email operations — feedback routing verified
 
-September 29, 2026. This deployment is limited to account `108241940679`, region `us-east-1`, and transactional Trace email from the existing `victoryroad.app` SES identity. The five-resource `trace-email-operations` stack reached `CREATE_COMPLETE`. AWS template validation passed and the exact resource names were checked absent before creation. The exact owner SNS subscription is confirmed. The guarded feedback helper completed `--execute` and read-back passed for both domain Bounce and Complaint topics. Existing forwarding and BOUNCE/COMPLAINT suppression were preserved. One authorized simulator bounce and one complaint reached the owner-addressed operations notifications in Gmail, matched to their accepted SES message IDs. Feedback routing is operational; reputation-alarm firing was not exercised. SES production access was requested once at 06:17:57 UTC; AWS accepted the request and reports review `PENDING`, with `ProductionAccessEnabled:false`.
+September 29, 2026. This deployment is limited to account `108241940679`, region `us-east-1`, and transactional Trace email from the existing `victoryroad.app` SES identity. The five-resource `trace-email-operations` stack reached `CREATE_COMPLETE`. AWS template validation passed and the exact resource names were checked absent before creation. The exact owner SNS subscription is confirmed. The guarded feedback helper completed `--execute` and read-back passed for both domain Bounce and Complaint topics. Existing forwarding and BOUNCE/COMPLAINT suppression were preserved. One authorized simulator bounce and one complaint reached the owner-addressed operations notifications in Gmail, matched to their accepted SES message IDs. Feedback routing is operational; reputation-alarm firing was not exercised. SES production access was requested once at 06:17:57 UTC, initially read back as `PENDING`, and was confirmed `GRANTED` around 06:20 UTC with `ProductionAccessEnabled:true`. Public SES sending is approved for this account and region; the production application and live billing have not been deployed.
 
 The domain identity and DKIM are verified, and the exact owner test recipient is SES-verified. Staging Cognito uses `EmailSendingAccount=DEVELOPER`, the `victoryroad.app` source identity and `From: Trace <no-reply@victoryroad.app>`. A fresh normal-UI recovery message displayed September 29 at 1:19 AM appeared unread with an Inbox label before opening. Its Trace sender, `Your Trace code` subject and neutral body matched the deployed template; Gmail Show original reported SPF, DKIM and DMARC PASS. The earlier recovery message also passed authentication, but the user reported its initial Spam placement and marked it Not spam. The fresh result establishes delivery to this mailbox after that feedback, not a guarantee for other recipients or proof that the copy change fixed spam classification. No password has been changed. See the [fresh authentication summary](../artifacts/membership/gmail-fresh-trace-code-pass-20260929.png) and [sender setup](TRACE_MEMBERSHIPS_EMAIL_SETUP.md).
 
@@ -62,7 +62,7 @@ The [SES notification documentation](https://docs.aws.amazon.com/ses/latest/dg/c
 
 - Stack completed with the exact topic, policy, two alarms and confirmed owner subscription; helper read-back passed for both SES feedback topics. Suppression is still `BOUNCE` plus `COMPLAINT`, and feedback forwarding is still enabled.
 - **Verified:** one authorized SES mailbox-simulator bounce and one complaint were accepted at 06:15:33 and 06:15:34 UTC on September 29. The visible owner-addressed Gmail notifications matched each accepted SES `messageId`, notification kind and exact simulator destination. [Sanitized simulator evidence](../artifacts/membership/ses-feedback-simulator-20260929.json) records the matches without private headers. This establishes SES → SNS → operations-mailbox routing for both kinds. No real customer received either test message, and no mailbox rules were changed.
-- **Verified for the fresh recovery message:** it appeared unread in Inbox before opening, rendered the deployed Trace sender and neutral subject/body, and passed Gmail SPF/DKIM/DMARC. Earlier mail had been marked Not spam by the user, so this mailbox result does not guarantee placement elsewhere. Password-recovery completion and SES production approval remain pending.
+- **Verified for the fresh recovery message:** it appeared unread in Inbox before opening, rendered the deployed Trace sender and neutral subject/body, and passed Gmail SPF/DKIM/DMARC. Earlier mail had been marked Not spam by the user, so this mailbox result does not guarantee placement elsewhere. Password-recovery completion remains pending; SES production access is granted.
 
 The [AWS mailbox simulator](https://docs.aws.amazon.com/ses/latest/dg/send-an-email-from-console.html)
 does not affect reputation rates. These two tests therefore did not fire or
@@ -75,14 +75,18 @@ The operator response described in the submitted production-access request is to
 
 Before deleting this stack, inspect and detach only feedback settings that still point to this exact topic, retaining email feedback forwarding and suppression. Then remove the stack and verify its resources/subscription are gone. Do not delete the SES domain identity or a replacement notification destination.
 
-## SES production-access request — pending review
+## SES production access — granted
 
 The authorized request was submitted once at **06:17:57 UTC on September 29,
 2026**, after checking that no review was already in progress. AWS returned HTTP
 200. Immediate `GetAccount` read-back showed `ReviewDetails.Status:PENDING` and
 `ProductionAccessEnabled:false`; no case ID was returned at that checkpoint.
-The account remains in the SES sandbox. Request acceptance is not production
-approval, and no production application or live billing was deployed.
+That was the historical pending-review state. Around **06:20 UTC**, a later
+authoritative read-back returned `ProductionAccessEnabled:true` and
+`Details.ReviewDetails.Status:GRANTED`, with case ID `179066268400340`.
+SES public sending is approved in this account and region; recipient SES
+verification is no longer required. No production application or live billing
+was deployed by this approval.
 
 Submitted values: mail type **Transactional**, region `us-east-1`, website
 `https://victoryroad.app/trace`, language `EN`, and owner contact
@@ -91,12 +95,12 @@ verification, resend and password-recovery messages from
 `Trace <no-reply@victoryroad.app>`. It records verified authentication and feedback
 routing, retained suppression/forwarding, configured reputation alarms, the
 human response process above, and the early Spam-placement observation without
-promising inbox placement. Public onboarding through this identity remains
-gated on SES approval and the remaining application checks.
+promising inbox placement. SES approval is complete; public application
+onboarding still depends on the remaining application and release checks.
 
 The exact [submitted request](../artifacts/membership/ses-production-access-request.ready.json)
-and [accepted request/read-back evidence](../artifacts/membership/ses-production-access-submission-20260929.json)
-are saved in ignored local artifacts. Do not resubmit while review is pending.
+and [submission/read-back evidence](../artifacts/membership/ses-production-access-submission-20260929.json)
+are saved in ignored local artifacts. Do not resubmit the granted request.
 A precise daily-volume forecast is not a required field in
 [PutAccountDetails](https://docs.aws.amazon.com/ses/latest/APIReference-V2/API_PutAccountDetails.html)
 and was not invented for this request. Follow the

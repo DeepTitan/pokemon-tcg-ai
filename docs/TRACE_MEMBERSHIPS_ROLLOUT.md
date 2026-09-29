@@ -32,7 +32,9 @@
 - The synthetic staging installation/API and explicit browser approval passed
   Free → Supporters → unlink to Free. This did **not** test the packaged native
   app's canonical `/trace/link` handoff, release endpoint pairing or isolated-data
-  behavior. Those native release checks remain pending.
+  behavior. A subsequent native readiness check passed 26 Rust tests and three
+  frontend suites. No packaged app was launched; production endpoint pairing
+  and testing an isolated packaged app remain open.
 - The real owner account is confirmed in staging, after the original Cognito
   email arrived in Spam. It has no production subject binding or owner override.
 - Domain DKIM and the exact SES test recipient are verified. Staging Cognito
@@ -51,12 +53,14 @@
   complaint reached the owner-addressed Gmail notifications, matched by SES
   message ID and exact simulator destination. Feedback routing is verified;
   these tests did not fire the CloudWatch reputation-rate alarms.
-  SES production access was requested once at 06:17:57 UTC. AWS accepted the
-  request and reports review `PENDING`; production access remains false and SES
-  remains sandboxed. See [operations status](TRACE_EMAIL_OPERATIONS.md).
+  SES production access was requested once at 06:17:57 UTC and initially read
+  back `PENDING`. Around 06:20 UTC, AWS confirmed `ProductionAccessEnabled:true`
+  and review `GRANTED`, case `179066268400340`. SES public sending is approved
+  for this account and region. The production application and live billing
+  remain undeployed. See [operations status](TRACE_EMAIL_OPERATIONS.md).
 
-Remaining release work includes completing password recovery, obtaining SES
-production approval, production owner binding, separate live Stripe setup,
+Remaining release work includes completing password recovery,
+production owner binding, separate live Stripe setup,
 the packaged native release checks, and coordinated production deployment.
 No sandbox result alone establishes that production is shipped.
 
