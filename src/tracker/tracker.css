@@ -2974,10 +2974,7 @@ button.stadium-marker:focus-visible {
 
 /* Locked study previews use decorative placeholders, never protected card data. */
 .study-upgrade-modal { width: min(720px, calc(100vw - 32px)); padding: 0; overflow: hidden; text-align: left; }
-.study-locked-header { display: flex; align-items: center; gap: 12px; padding: 22px 54px 20px 24px; border-bottom: 1px solid #ded8cc; }
-.study-locked-header h2 { margin: 0; font-size: 22px; }
-.study-locked-header > span { color: #715313; background: #fff0b8; border: 1px solid #dbc477; padding: 3px 7px; border-radius: 4px; font-size: 10px; font-weight: 900; letter-spacing: .08em; }
-.study-locked-cards { display: grid; grid-template-columns: repeat(6, 1fr); gap: 15px; padding: 28px; height: 370px; overflow: hidden; filter: blur(9px); opacity: .48; pointer-events: none; user-select: none; }
+.study-locked-cards { display: grid; grid-template-columns: repeat(6, 1fr); gap: 15px; padding: 28px; height: 400px; overflow: hidden; filter: blur(9px); opacity: .55; pointer-events: none; user-select: none; }
 .study-locked-cards.is-prizes { grid-template-columns: repeat(3, 1fr); gap: 16px; padding: 24px 125px; }
 .study-card-placeholder { aspect-ratio: 5 / 7; border: 6px solid #b6aea0; border-radius: 7px; background: #d5dfc6; padding: 8px; }
 .study-card-placeholder:nth-child(3n+2) { background: #c6dce9; }
@@ -2985,9 +2982,11 @@ button.stadium-marker:focus-visible {
 .study-card-placeholder i { display: block; height: 50%; margin: 7px 0 13px; background: linear-gradient(140deg, #6a9382, #c4c98b 55%, #728fa4); }
 .study-card-placeholder b, .study-card-placeholder em { display: block; height: 6px; background: #74806f; margin: 8px 0; }
 .study-card-placeholder em:last-child { width: 65%; }
-.study-locked-message { position: absolute; top: 54%; left: 50%; transform: translate(-50%, -50%); width: min(350px, calc(100% - 48px)); box-sizing: border-box; padding: 22px; text-align: center; border: 1px solid #d8cdb9; border-radius: 12px; background: #fffdf7f5; box-shadow: 0 8px 32px #2236531c; }
+.study-locked-message { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(350px, calc(100% - 48px)); box-sizing: border-box; padding: 22px; text-align: center; border: 0; background: transparent; }
 .study-locked-message h2 { font-size: 23px; }
 .study-locked-message p { margin-bottom: 18px; }
+.study-upgrade-modal::after { content: ""; position: absolute; inset: 0; background: radial-gradient(ellipse at center, #fffdf7f5 12%, #fffdf7d9 38%, #fffdf700 75%); pointer-events: none; }
+.study-locked-message { z-index: 1; }
 .study-upgrade-modal .archive-upgrade-close { z-index: 2; }
 @media (max-width: 540px) {
  .study-locked-cards { grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 18px; }

@@ -22,7 +22,7 @@ export function ArchiveUpgradeModal({ onClose, onLink, feature = 'archive', stud
       if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) onClose();
     }}>
     <button className="archive-upgrade-close" onClick={onClose} aria-label="Close upgrade prompt"><X size={20} /></button>
-    {feature === 'study' && <><header className="study-locked-header"><h2>{studyTitle}</h2><span>PRO</span></header><div className={`study-locked-cards ${studyZone === 'prizes' ? 'is-prizes' : ''}`} aria-hidden="true">{Array.from({ length: studyZone === 'prizes' ? 6 : 12 }, (_, index) => <div className="study-card-placeholder" key={index}><i /><b /><em /><em /></div>)}</div></>}
+    {feature === 'study' && <><div className={`study-locked-cards ${studyZone === 'prizes' ? 'is-prizes' : ''}`} aria-hidden="true">{Array.from({ length: studyZone === 'prizes' ? 6 : 12 }, (_, index) => <div className="study-card-placeholder" key={index}><i /><b /><em /><em /></div>)}</div></>}
     <section className={feature === 'study' ? 'study-locked-message' : undefined}>
     <span className="archive-upgrade-icon"><LockSimple size={24} weight="duotone" /></span>
     <h2 id="archive-upgrade-title">{feature === 'study' ? studyZone === 'decklist' ? 'Your decklist is locked' : `${studyTitle} are locked` : 'Your match is saved.'}</h2>
