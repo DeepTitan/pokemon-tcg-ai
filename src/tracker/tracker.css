@@ -3035,3 +3035,28 @@ button.decklist-card-art:disabled { cursor: default; }
  .review-card .card-inspector-layout { grid-template-columns: minmax(0, 1fr); }
  .review-card .inspector-art { position: static; width: min(100%, 420px); margin: 0 auto; }
 }
+
+/* Card inspection keeps the printing itself as the entire interface. */
+.card-lightbox-backdrop {
+  position: fixed; inset: 0; z-index: 10050;
+  display: grid; place-items: center; padding: 24px;
+  background: rgba(18, 27, 39, .68); backdrop-filter: blur(6px);
+  animation: review-dialog-in .16s ease-out;
+}
+.card-lightbox { position: relative; line-height: 0; }
+.card-lightbox-art {
+  display: block; width: auto; height: auto;
+  max-width: calc(100vw - 48px); max-height: calc(100dvh - 48px);
+  border-radius: 3.5%; object-fit: contain;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, .4);
+}
+.card-lightbox-close {
+  position: absolute; top: 8px; right: -46px;
+  width: 34px; height: 34px; display: grid; place-items: center;
+  border: 1px solid rgba(255,255,255,.3); border-radius: 50%;
+  background: rgba(26,36,49,.75); color: #fff; cursor: pointer;
+}
+.card-lightbox-close:hover { background: #26374c; }
+.card-lightbox-close:focus-visible { outline: 2px solid #ffce44; outline-offset: 3px; }
+@media (max-width: 700px) { .card-lightbox-close { right: 8px; } }
+@media (prefers-reduced-motion: reduce) { .card-lightbox-backdrop { animation: none; } }

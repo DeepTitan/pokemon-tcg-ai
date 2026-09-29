@@ -1,22 +1,14 @@
 import { createContext, useContext, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { CardsThree } from '@phosphor-icons/react/CardsThree';
 import { CheckCircle } from '@phosphor-icons/react/CheckCircle';
 import { LockKey } from '@phosphor-icons/react/LockKey';
 import { MagnifyingGlass } from '@phosphor-icons/react/MagnifyingGlass';
 import { X } from '@phosphor-icons/react/X';
-import {
-  CardType,
-  type EnergyType,
-  type Card,
-  type EnergyCard,
-  type PokemonCard,
-  type PokemonInPlay,
-  type TrainerCard,
-} from '../engine/types.js';
-import { cardInfoToEngineCard, cardRulesText, cardSourceIdFromReviewCard } from './card-adapter.js';
+import type { Card, PokemonInPlay } from '../engine/types.js';
+import { cardSourceIdFromReviewCard } from './card-adapter.js';
 import { sortCardsForDisplay } from './card-order-model.js';
-import { countEnergyTypes, EnergyBadge, energyTypeLabel } from './EnergyBadge.js';
-import { resolvedCardArt, showCardBackOnError } from './card-art.js';
+import { publicCardArtUrl, resolvedCardArt, showCardBackOnError } from './card-art.js';
 import type { CardInfo, ReviewAppliedEffect, ReviewCardVisibility, ReviewSelection } from './types.js';
 
 export type ReviewInspector =
@@ -44,62 +36,24 @@ function CardImage({ card, hidden = false }: { card: Card; hidden?: boolean }) {
   return <img src={resolvedCardArt(sourceId, card.imageUrl || resolved?.imageDataUrl)} data-card-id={sourceId} alt={resolved?.name || card.name} onError={showCardBackOnError} />;
 }
 
-function EnergyPips({ types }: { types: EnergyType[] }) {
-  if (!types.length) return <span className="free-cost">Free</span>;
-  return <span className="energy-pips">{countEnergyTypes(types).map(({ type, count }) => <EnergyBadge key={type} type={type} count={count} />)}</span>;
-}
-
-function EnergyDetails({ card, rules }: { card: EnergyCard; rules: string }) {
-  const provided = countEnergyTypes(card.provides.length ? card.provides : [card.energyType]);
-  const description = provided.map(({ type, count }) => `${count > 1 ? `${count} ` : ''}${energyTypeLabel(type)}`).join(' + ');
-  return <>
-    <section className="energy-card-summary">
-      <div className="energy-card-types">{provided.map(({ type, count }) => <EnergyBadge key={type} type={type} count={count} />)}</div>
-      <div><small>{card.energySubtype} Energy</small><strong>Provides {description} Energy</strong></div>
-    </section>
-    {rules && <section className="rules-copy"><span>Card text</span><p>{rules}</p></section>}
-  </>;
-}
-
-function PokemonDetails({ pokemon, onInspectCard }: { pokemon: PokemonInPlay; onInspectCard: (card: Card, pokemon?: PokemonInPlay) => void }) {
-  const card = pokemon.card;
-  const previousStages: PokemonInPlay[] = [];
-  let previous = pokemon.previousStage;
-  while (previous) { previousStages.unshift(previous); previous = previous.previousStage; }
-  const attachments = [
-    ...previousStages.map((stage) => ({ label: 'Evolution', card: stage.card })),
-    ...pokemon.attachedEnergy.map((energy) => ({ label: 'Energy', card: energy })),
-    ...pokemon.attachedTools.map((tool) => ({ label: 'Tool', card: tool })),
-  ];
-  return <>
-    <div className="pokemon-vitals"><span><b>{pokemon.currentHp}</b> / {card.hp} HP</span><span>{pokemon.damageCounters * 10} damage</span><span>{card.stage}</span></div>
-    {card.ability && <section className="card-action ability-action"><span>Ability</span><div><strong>{card.ability.name}</strong><p>{card.ability.description || 'No additional rules text.'}</p></div></section>}
-    {card.attacks.map((attack) => <section className="card-action" key={attack.name}><EnergyPips types={attack.cost} /><div><strong>{attack.name}<b>{attack.damage || ''}</b></strong><p>{attack.description || 'No additional effect.'}</p></div></section>)}
-    <div className="card-stats"><span><small>Weakness</small><b>{card.weakness || '—'}</b></span><span><small>Resistance</small><b>{card.resistance ? `${card.resistance} ${card.resistanceValue || ''}` : '—'}</b></span><span><small>Retreat</small><b>{card.retreatCost}</b></span></div>
-    {(attachments.length > 0 || pokemon.statusConditions.length > 0) && <section className="attachment-section"><div><span>Attached & underneath</span><small>{attachments.length} cards</small></div><div className="attachment-list">{attachments.map(({ label, card: attachedCard }) => <button type="button" key={`${label}-${attachedCard.id}`} onClick={() => onInspectCard(attachedCard)}><CardImage card={attachedCard} /><span><small>{label}</small><strong>{attachedCard.name}</strong></span></button>)}</div>{pokemon.statusConditions.length > 0 && <div className="status-list">{pokemon.statusConditions.map((status) => <span key={status}>{status}</span>)}</div>}</section>}
-  </>;
-}
-
-function CardInspector({ card, pokemon, effects = [], catalog, onInspectCard }: { card: Card; pokemon?: PokemonInPlay; effects?: ReviewAppliedEffect[]; catalog: ReadonlyMap<string, CardInfo>; onInspectCard: (card: Card, pokemon?: PokemonInPlay) => void }) {
+function CardInspector({ card }: { card: Card }) {
+  const catalog = useContext(CardCatalogContext);
   const sourceId = cardSourceIdFromReviewCard(card);
-  const catalogCard = catalogCardFor(card, catalog) || [...catalog.values()].find((candidate) => candidate.name === card.name);
-  const detailCard = !pokemon && catalogCard ? cardInfoToEngineCard(catalogCard, card.id, card.name, sourceId) : card;
-  const rules = cardRulesText(detailCard, catalogCard);
-  return <div className="card-inspector-layout">
-    <div className="inspector-art"><CardImage card={card} /><span>{detailCard.cardNumber || 'Captured card'}</span></div>
-    <div className="inspector-card-copy">
-      <div className="inspector-eyebrow">{detailCard.cardType === CardType.Pokemon ? (detailCard as PokemonCard).stage : detailCard.cardType === CardType.Trainer ? (detailCard as TrainerCard).trainerType : (detailCard as EnergyCard).energySubtype}</div>
-      <h2>{catalogCard?.name || detailCard.name}</h2>
-      {detailCard.cardType === CardType.Pokemon && pokemon
-        ? <PokemonDetails pokemon={pokemon} onInspectCard={onInspectCard} />
-        : detailCard.cardType === CardType.Pokemon
-          ? <><div className="pokemon-vitals"><span><b>{(detailCard as PokemonCard).hp}</b> HP</span><span>{(detailCard as PokemonCard).stage}</span></div>{(detailCard as PokemonCard).ability && <section className="card-action ability-action"><span>Ability</span><div><strong>{(detailCard as PokemonCard).ability!.name}</strong><p>{(detailCard as PokemonCard).ability!.description}</p></div></section>}{(detailCard as PokemonCard).attacks.map((attack) => <section className="card-action" key={attack.name}><EnergyPips types={attack.cost} /><div><strong>{attack.name}<b>{attack.damage || ''}</b></strong><p>{attack.description}</p></div></section>)}</>
-          : detailCard.cardType === CardType.Energy
-            ? <EnergyDetails card={detailCard as EnergyCard} rules={rules} />
-            : <section className="rules-copy"><span>Card text</span><p>{rules || 'The local card database did not include additional rules text for this printing.'}</p></section>}
-      {effects.length > 0 && <section className="captured-effects"><div><span>Effects on this card</span><small>at this action</small></div>{effects.map((effect) => <article key={effect.id} className={effect.enabled ? '' : 'disabled'}><i /><span><strong>{effect.name}</strong><small>{effect.effectType || 'Rule effect'}{effect.remainingDuration != null && effect.remainingDuration >= 0 ? ` · ${effect.remainingDuration} remaining` : ''}</small></span></article>)}</section>}
-    </div>
-  </div>;
+  const resolved = catalogCardFor(card, catalog);
+  const fallback = resolvedCardArt(sourceId, card.imageUrl || resolved?.imageDataUrl);
+  const publicArt = publicCardArtUrl(sourceId);
+  // The public Pokémon catalog provides a full-resolution printing alongside
+  // its small grid image. Limitless LG assets are already full size.
+  const artwork = publicArt?.includes('images.pokemontcg.io/')
+    ? publicArt.replace(/\.png$/, '_hires.png') : publicArt || fallback;
+  return <img className="card-lightbox-art" src={artwork} alt={resolved?.name || card.name}
+    data-card-id={sourceId} onError={(event) => {
+      const image = event.currentTarget;
+      if (!image.dataset.localFallbackTried) {
+        image.dataset.localFallbackTried = 'true';
+        image.src = fallback;
+      } else showCardBackOnError(event);
+    }} />;
 }
 
 function ZoneInspector({ inspector, onInspectCard }: { inspector: Extract<ReviewInspector, { kind: 'zone' }>; onInspectCard: (card: Card) => void }) {
@@ -160,6 +114,15 @@ export function ReviewOverlay({ inspector, catalog, onClose, onInspectCard }: { 
     return () => window.removeEventListener('keydown', close);
   }, [inspector, onClose]);
   if (!inspector) return null;
-  const title = inspector.kind === 'card' ? inspector.title || 'Card details' : inspector.kind === 'zone' ? inspector.title : 'Search replay';
-  return <CardCatalogContext.Provider value={catalog}><div className="review-overlay-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><article className={`review-overlay review-${inspector.kind}`} role="dialog" aria-modal="true" aria-label={title}><header><div>{inspector.kind !== 'zone' && <span>{inspector.kind === 'selection' ? 'Exact captured choice' : 'Match card'}</span>}<h2>{title}</h2></div><button type="button" onClick={onClose} aria-label="Close inspector"><X size={21} weight="bold" /></button></header><div className="review-overlay-body">{inspector.kind === 'card' && <CardInspector card={inspector.card} pokemon={inspector.pokemon} effects={inspector.effects} catalog={catalog} onInspectCard={onInspectCard} />}{inspector.kind === 'zone' && <ZoneInspector inspector={inspector} onInspectCard={onInspectCard} />}{inspector.kind === 'selection' && <SelectionInspector selection={inspector.selection} sourceName={inspector.sourceName} onInspectCard={onInspectCard} />}</div></article></div></CardCatalogContext.Provider>;
+  if (inspector.kind === 'card') return createPortal(
+    <CardCatalogContext.Provider value={catalog}>
+      <div className="card-lightbox-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+        <div className="card-lightbox" role="dialog" aria-modal="true" aria-label={catalogCardFor(inspector.card, catalog)?.name || inspector.card.name}>
+          <CardInspector key={inspector.card.id} card={inspector.card} />
+          <button className="card-lightbox-close" type="button" onClick={onClose} aria-label="Close card" autoFocus><X size={20} weight="bold" /></button>
+        </div>
+      </div>
+    </CardCatalogContext.Provider>, document.body);
+  const title = inspector.kind === 'zone' ? inspector.title : 'Search replay';
+  return <CardCatalogContext.Provider value={catalog}><div className="review-overlay-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><article className={`review-overlay review-${inspector.kind}`} role="dialog" aria-modal="true" aria-label={title}><header><div>{inspector.kind !== 'zone' && <span>{inspector.kind === 'selection' ? 'Exact captured choice' : 'Match card'}</span>}<h2>{title}</h2></div><button type="button" onClick={onClose} aria-label="Close inspector"><X size={21} weight="bold" /></button></header><div className="review-overlay-body">{inspector.kind === 'zone' && <ZoneInspector inspector={inspector} onInspectCard={onInspectCard} />}{inspector.kind === 'selection' && <SelectionInspector selection={inspector.selection} sourceName={inspector.sourceName} onInspectCard={onInspectCard} />}</div></article></div></CardCatalogContext.Provider>;
 }
