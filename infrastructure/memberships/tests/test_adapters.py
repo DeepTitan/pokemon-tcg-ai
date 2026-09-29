@@ -188,6 +188,7 @@ class AdapterTests(unittest.TestCase):
         self.assertEqual(fields['success_url'], 'https://victoryroad.app/trace/account?checkout=success')
         self.assertEqual(fields['cancel_url'], 'https://victoryroad.app/trace/account?checkout=cancel')
         self.assertEqual(fields['payment_method_types[0]'], 'card')
+        self.assertEqual(fields['managed_payments[enabled]'], 'false')
         self.assertEqual(fields['line_items[0][quantity]'], 1)
         self.assertNotIn('allow_promotion_codes', fields)
 
@@ -286,6 +287,7 @@ class AdapterTests(unittest.TestCase):
         stripe.guest_checkout('cus_guest', 'price_supporter', 'hashed-proof', 'reservation', 1234)
         fields = stripe.request.call_args.args[2]
         self.assertEqual(fields['customer'], 'cus_guest')
+        self.assertEqual(fields['managed_payments[enabled]'], 'false')
         self.assertEqual(fields['metadata[trace_guest]'], 'hashed-proof')
         self.assertEqual(fields['subscription_data[metadata][trace_guest]'], 'hashed-proof')
         self.assertEqual(fields['subscription_data[metadata][trace_reservation]'], 'reservation')

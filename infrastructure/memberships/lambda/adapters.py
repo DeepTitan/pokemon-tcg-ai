@@ -425,6 +425,7 @@ class Stripe:
     def checkout(self, customer, price, subject, key, expires):
         return self.request('POST', '/v1/checkout/sessions', {
             'mode': 'subscription', 'customer': customer, 'client_reference_id': subject,
+            'managed_payments[enabled]': 'false',
             'line_items[0][price]': price, 'line_items[0][quantity]': 1,
             'payment_method_types[0]': 'card', 'subscription_data[metadata][trace_subject]': subject,
             'success_url': self.account_url + '?checkout=success', 'cancel_url': self.account_url + '?checkout=cancel',
@@ -438,6 +439,7 @@ class Stripe:
     def guest_checkout(self, customer, price, proof, key, expires):
         return self.request('POST', '/v1/checkout/sessions', {
             'mode': 'subscription', 'customer': customer, 'client_reference_id': 'guest_' + proof,
+            'managed_payments[enabled]': 'false',
             'line_items[0][price]': price, 'line_items[0][quantity]': 1, 'payment_method_types[0]': 'card',
             'metadata[trace_guest]': proof, 'metadata[trace_reservation]': key,
             'subscription_data[metadata][trace_guest]': proof, 'subscription_data[metadata][trace_reservation]': key,
