@@ -140,7 +140,7 @@ export function PlayerDecklist({ name, deck: suppliedDeck, catalog, loadDeck, un
       {loadState === 'failed' && <p role="alert" className="decklist-empty">{loadError}</p>}
       {!available && (onUpgrade ? <div className="decklist-locked-body">
         <div className="decklist-locked-grid" aria-hidden="true">{Array.from({ length: 10 }, (_, index) => <div className="study-card-placeholder" key={index}><i /><b /><em /></div>)}</div>
-        <div className="decklist-locked-unlock"><span className="decklist-plan-label"><LockSimple size={13} />{upgradeLabel?.includes('Supporters') ? 'SUPPORTERS CLUB' : 'PRO'}</span><p>See the full decklist</p><button type="button" onClick={onUpgrade}>{upgradeLabel?.includes('Supporters') ? 'Unlock with Supporters' : 'Unlock with Pro'}<span aria-hidden="true"> →</span></button></div>
+        <div className="decklist-locked-unlock"><span className="decklist-plan-label"><LockSimple size={13} />{upgradeLabel?.includes('Supporters') ? 'SUPPORTERS CLUB' : 'PRO'}</span><p>{upgradeLabel?.includes('Supporters') ? 'Post-match deck study' : 'See the full decklist'}</p>{upgradeLabel?.includes('Supporters') && <small>Available after the match</small>}<button type="button" onClick={onUpgrade}>{upgradeLabel?.includes('Supporters') ? 'Unlock with Supporters' : 'Unlock with Pro'}<span aria-hidden="true"> →</span></button></div>
       </div> : <div className="decklist-empty"><p>{unavailableReason || 'No decklist was saved for this match.'}</p></div>)}
       {deck ? <>{exported.error && <p className="decklist-copy-error">{exported.error}</p>}
         <div className="player-decklist-grid">{entries.map(entry => {

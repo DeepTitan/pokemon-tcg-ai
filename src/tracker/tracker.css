@@ -3020,3 +3020,5 @@ button.stadium-marker:focus-visible {
 .decklist-locked-unlock button { border: 1px solid #d9bc64; border-radius: 6px; background: #fff0b5; color: #524018; padding: 8px 12px; font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; transition: background .16s ease; }
 .decklist-locked-unlock button:hover { background: #ffe58b; }
 .decklist-locked-unlock button:focus-visible { outline: 2px solid #427da8; outline-offset: 3px; }
+
+.decklist-locked-unlock > small { font-size: 11px; color: #73796f; }
