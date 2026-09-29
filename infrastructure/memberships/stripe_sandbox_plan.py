@@ -53,6 +53,8 @@ def build_plan(ids):
            for i, plan in enumerate(names)},
         **{f'features[subscription_update][products][{i}][prices][0]': ids.get(plan + '_price') or '<' + plan + '-price.id>'
            for i, plan in enumerate(names)},
+        **{f'features[subscription_update][products][{i}][adjustable_quantity][enabled]': 'false'
+           for i, plan in enumerate(names)},
     })
     add('webhook', '/v1/webhook_endpoints', {
         'url': WEBHOOK, 'api_version': '2024-06-20', 'connect': 'false',
