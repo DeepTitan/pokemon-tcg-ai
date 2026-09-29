@@ -1,0 +1,50 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Trace staging Cognito notification errors only; separate opt-in stack, seven-day retention.",
+  "Conditions": {
+    "ExactStagingAccountAndRegion": {
+      "Fn::And": [
+        {"Fn::Equals": [{"Ref": "AWS::AccountId"}, "108241940679"]},
+        {"Fn::Equals": [{"Ref": "AWS::Region"}, "us-east-1"]}
+      ]
+    }
+  },
+  "Resources": {
+    "NotificationErrors": {
+      "Type": "AWS::Logs::LogGroup",
+      "Condition": "ExactStagingAccountAndRegion",
+      "Properties": {
+        "LogGroupName": "/aws/vendedlogs/cognito/trace-memberships-staging/user-notification-errors",
+        "RetentionInDays": 7
+      }
+    },
+    "NotificationDelivery": {
+      "Type": "AWS::Cognito::LogDeliveryConfiguration",
+      "Condition": "ExactStagingAccountAndRegion",
+      "Properties": {
+        "UserPoolId": "us-east-1_ELXorHpct",
+        "LogConfigurations": [
+          {
+            "EventSource": "userNotification",
+            "LogLevel": "ERROR",
+            "CloudWatchLogsConfiguration": {
+              "LogGroupArn": {
+                "Fn::Sub": "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${NotificationErrors}"
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "Outputs": {
+    "UserPoolId": {
+      "Condition": "ExactStagingAccountAndRegion",
+      "Value": "us-east-1_ELXorHpct"
+    },
+    "LogGroupName": {
+      "Condition": "ExactStagingAccountAndRegion",
+      "Value": {"Ref": "NotificationErrors"}
+    }
+  }
+}

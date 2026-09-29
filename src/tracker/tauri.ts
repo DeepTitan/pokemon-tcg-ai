@@ -5,7 +5,7 @@ import { compactStoredReview } from './review-memory.js';
 import { sharedReplayIdFromPath } from './share-replay.js';
 import { resolveSharedCardSources } from './shared-card-sources.js';
 import type {
-  CapturedOperation, CaptureStatus, CardInfo, MatchReview, MatchSummary, StorageStatus, TrackerEnvironment,
+  CapturedDecklist, CapturedOperation, CaptureStatus, CardInfo, MatchReview, MatchSummary, MembershipStatus, MembershipLink, StorageStatus, TrackerEnvironment,
 } from './types.js';
 
 declare global {
@@ -115,6 +115,11 @@ export async function initializeTrackerStorage(): Promise<StorageStatus> {
   return invoke<StorageStatus>('initialize_tracker_storage');
 }
 
+export async function importLegacyReviews(reviews: MatchReview[], reducerVersion: number): Promise<void> {
+  if (!isTauri()) return;
+  return invoke<void>('import_legacy_reviews', { reviews, reducerVersion });
+}
+
 export async function listMatchSummaries(offset = 0, limit = 50): Promise<MatchSummary[]> {
   if (!isTauri()) return [];
   return invoke<MatchSummary[]>('list_match_summaries', { offset, limit });
@@ -149,4 +154,21 @@ export async function loadMatchOperations(matchId: string): Promise<CapturedOper
 export async function listRawMatchIds(pendingOnly: boolean, limit = 5_000, reducerVersion = 0): Promise<string[]> {
   if (!isTauri()) return [];
   return invoke<string[]>('list_raw_match_ids', { pendingOnly, reducerVersion, limit });
+}
+
+export async function getMembershipStatus(): Promise<MembershipStatus> {
+  return invoke<MembershipStatus>('membership_status');
+}
+export async function linkMembership(): Promise<MembershipLink> {
+  return invoke<MembershipLink>('membership_link');
+}
+export async function unlinkMembership(): Promise<MembershipStatus> {
+  return invoke<MembershipStatus>('membership_unlink');
+}
+export async function loadOpponentDecklist(matchId: string): Promise<CapturedDecklist> {
+  return invoke<CapturedDecklist>('load_opponent_decklist', { matchId });
+}
+
+export async function openMembershipAccount(): Promise<void> {
+  return invoke<void>('open_membership_account');
 }

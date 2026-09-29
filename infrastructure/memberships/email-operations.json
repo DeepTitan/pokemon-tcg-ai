@@ -1,0 +1,126 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Trace transactional email operations only. Deployment sends one SNS subscription confirmation to the owner; review before deployment.",
+  "Conditions": {
+    "ExactAccountAndRegion": {
+      "Fn::And": [
+        {"Fn::Equals": [{"Ref": "AWS::AccountId"}, "108241940679"]},
+        {"Fn::Equals": [{"Ref": "AWS::Region"}, "us-east-1"]}
+      ]
+    }
+  },
+  "Resources": {
+    "EmailOperations": {
+      "Type": "AWS::SNS::Topic",
+      "Condition": "ExactAccountAndRegion",
+      "Properties": {
+        "TopicName": "trace-email-operations",
+        "DisplayName": "Trace email operations",
+        "FifoTopic": false,
+        "Tags": [
+          {"Key": "application", "Value": "trace"},
+          {"Key": "purpose", "Value": "transactional-email-operations"}
+        ]
+      }
+    },
+    "OwnerSubscription": {
+      "Type": "AWS::SNS::Subscription",
+      "Condition": "ExactAccountAndRegion",
+      "Properties": {
+        "TopicArn": {"Ref": "EmailOperations"},
+        "Protocol": "email",
+        "Endpoint": "williamsbyronik@gmail.com"
+      }
+    },
+    "EmailOperationsPolicy": {
+      "Type": "AWS::SNS::TopicPolicy",
+      "Condition": "ExactAccountAndRegion",
+      "Properties": {
+        "Topics": [{"Ref": "EmailOperations"}],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "OnlyVictoryRoadSesFeedback",
+              "Effect": "Allow",
+              "Principal": {"Service": "ses.amazonaws.com"},
+              "Action": "sns:Publish",
+              "Resource": {"Ref": "EmailOperations"},
+              "Condition": {
+                "StringEquals": {
+                  "AWS:SourceAccount": "108241940679",
+                  "AWS:SourceArn": "arn:aws:ses:us-east-1:108241940679:identity/victoryroad.app"
+                }
+              }
+            },
+            {
+              "Sid": "OnlyTraceReputationAlarms",
+              "Effect": "Allow",
+              "Principal": {"Service": "cloudwatch.amazonaws.com"},
+              "Action": "sns:Publish",
+              "Resource": {"Ref": "EmailOperations"},
+              "Condition": {
+                "StringEquals": {"AWS:SourceAccount": "108241940679"},
+                "ArnEquals": {
+                  "AWS:SourceArn": [
+                    "arn:aws:cloudwatch:us-east-1:108241940679:alarm:trace-email-reputation-bounce",
+                    "arn:aws:cloudwatch:us-east-1:108241940679:alarm:trace-email-reputation-complaint"
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "BounceRate": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Condition": "ExactAccountAndRegion",
+      "DependsOn": "EmailOperationsPolicy",
+      "Properties": {
+        "AlarmName": "trace-email-reputation-bounce",
+        "AlarmDescription": "SES account-wide reputation bounce rate is at least 5%. Review Trace feedback and other SES traffic in us-east-1; this is an alert, not an automatic sending pause.",
+        "Namespace": "AWS/SES",
+        "MetricName": "Reputation.BounceRate",
+        "Statistic": "Average",
+        "Period": 300,
+        "EvaluationPeriods": 1,
+        "DatapointsToAlarm": 1,
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "Threshold": 0.05,
+        "TreatMissingData": "ignore",
+        "ActionsEnabled": true,
+        "AlarmActions": [{"Ref": "EmailOperations"}],
+        "OKActions": [],
+        "InsufficientDataActions": []
+      }
+    },
+    "ComplaintRate": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Condition": "ExactAccountAndRegion",
+      "DependsOn": "EmailOperationsPolicy",
+      "Properties": {
+        "AlarmName": "trace-email-reputation-complaint",
+        "AlarmDescription": "SES account-wide reputation complaint rate is at least 0.1%. Review Trace feedback and other SES traffic in us-east-1; this is an alert, not an automatic sending pause.",
+        "Namespace": "AWS/SES",
+        "MetricName": "Reputation.ComplaintRate",
+        "Statistic": "Average",
+        "Period": 300,
+        "EvaluationPeriods": 1,
+        "DatapointsToAlarm": 1,
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "Threshold": 0.001,
+        "TreatMissingData": "ignore",
+        "ActionsEnabled": true,
+        "AlarmActions": [{"Ref": "EmailOperations"}],
+        "OKActions": [],
+        "InsufficientDataActions": []
+      }
+    }
+  },
+  "Outputs": {
+    "TopicArn": {"Condition": "ExactAccountAndRegion", "Value": {"Ref": "EmailOperations"}},
+    "IdentityArn": {"Condition": "ExactAccountAndRegion", "Value": "arn:aws:ses:us-east-1:108241940679:identity/victoryroad.app"},
+    "OwnerConfirmationRequired": {"Condition": "ExactAccountAndRegion", "Value": "Confirm the SNS email subscription before attaching SES feedback; stack completion alone is not delivery proof."}
+  }
+}

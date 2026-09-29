@@ -1,0 +1,278 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Isolated Trace memberships. Billing disabled until explicitly configured and approved.
+Parameters:
+  Environment:
+    Type: String
+    Default: staging
+    AllowedPattern: '[a-z0-9-]+'
+  CaptureDevicesTableName:
+    Type: String
+    AllowedPattern: '[A-Za-z0-9_.-]{3,255}'
+  ReservedConcurrency:
+    Type: Number
+    Default: 0
+    MinValue: 0
+    MaxValue: 1000
+    Description: Zero omits a reservation (does not disable Lambda). Set a positive value only after checking regional concurrency quota.
+  SesIdentity:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^[A-Za-z0-9._+@-]{1,254}$'
+    Description: Existing verified SES domain or email identity in this AWS account. Blank uses Cognito test-only email limits.
+  SesFromEmail:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^[A-Za-z0-9._+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'
+    Description: Sender address covered by SesIdentity, for example trace@example.com. No display name.
+  SesRegion:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^[a-z]{2}-[a-z]+(-[a-z]+)?-[0-9]+$'
+    Description: Region of the verified SES identity, supported by the Cognito pool region and out of SES sandbox for production.
+  WebOrigin:
+    Type: String
+    Default: https://victoryroad.app
+    AllowedPattern: '^https://(victoryroad\.app|[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.vercel\.app)$'
+    Description: Fixed trusted return origin. Staging may use a stable protected Vercel alias; production/live billing must use victoryroad.app.
+  BillingEnabled:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['false', 'true']
+  StripeMode:
+    Type: String
+    Default: test
+    AllowedValues: [test, live]
+  StripeSecretArn:
+    Type: String
+    Default: ''
+    Description: Secrets Manager JSON with secretKey, webhookSecret and webProxySecret. Never pass secret values as parameters.
+    AllowedPattern: '^$|^arn:aws:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+$'
+  TracePriceId:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^price_[A-Za-z0-9]+$'
+  SupporterPriceId:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^price_[A-Za-z0-9]+$'
+  StripePortalConfigId:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^bpc_[A-Za-z0-9]+$'
+  OwnerSubject:
+    Type: String
+    Default: ''
+    Description: Verified owner's immutable Cognito sub, pinned by operator after identity verification. Blank disables override.
+    AllowedPattern: '^$|^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$'
+Conditions:
+  HasStripeSecret: !Not [!Equals [!Ref StripeSecretArn, '']]
+  HasReservedConcurrency: !Not [!Equals [!Ref ReservedConcurrency, 0]]
+  HasSesIdentity: !Not [!Equals [!Ref SesIdentity, '']]
+Rules:
+  ProductionRedirect:
+    RuleCondition: !Or [!Equals [!Ref Environment, production], !Equals [!Ref StripeMode, live]]
+    Assertions:
+      - Assert: !Equals [!Ref WebOrigin, 'https://victoryroad.app']
+        AssertDescription: Production and live billing must return only to victoryroad.app.
+  SesConfigurationComplete:
+    RuleCondition: !Or
+      - !Not [!Equals [!Ref SesIdentity, '']]
+      - !Not [!Equals [!Ref SesFromEmail, '']]
+      - !Not [!Equals [!Ref SesRegion, '']]
+    Assertions:
+      - Assert: !And
+          - !Not [!Equals [!Ref SesIdentity, '']]
+          - !Not [!Equals [!Ref SesFromEmail, '']]
+          - !Not [!Equals [!Ref SesRegion, '']]
+        AssertDescription: Configure SES identity, sender and region together.
+  ProductionRequiresSes:
+    RuleCondition: !Equals [!Ref Environment, production]
+    Assertions:
+      - Assert: !Not [!Equals [!Ref SesIdentity, '']]
+        AssertDescription: Production requires configured SES delivery; the Cognito default sender is for development only.
+  BillingRequiresConfiguration:
+    RuleCondition: !Equals [!Ref BillingEnabled, 'true']
+    Assertions:
+      - Assert: !Not [!Equals [!Ref StripeSecretArn, '']]
+        AssertDescription: Billing needs a Stripe secret ARN.
+      - Assert: !Not [!Equals [!Ref TracePriceId, '']]
+        AssertDescription: Billing needs the Trace price ID.
+      - Assert: !Not [!Equals [!Ref SupporterPriceId, '']]
+        AssertDescription: Billing needs the Supporters price ID.
+      - Assert: !Not [!Equals [!Ref TracePriceId, !Ref SupporterPriceId]]
+        AssertDescription: Plans must have different prices.
+      - Assert: !Not [!Equals [!Ref StripePortalConfigId, '']]
+        AssertDescription: Billing needs an isolated portal configuration.
+Resources:
+  MembershipApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: '$default'
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 30
+        ThrottlingRateLimit: 15
+      # Browser calls go through same-origin HttpOnly-cookie proxy, never direct CORS.
+  Accounts:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+  OwnerSwitches:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: ownerSubject
+          AttributeType: S
+      KeySchema:
+        - AttributeName: ownerSubject
+          KeyType: HASH
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      UserPoolName: !Sub 'trace-memberships-${Environment}'
+      DeletionProtection: ACTIVE
+      UsernameAttributes: [email]
+      UsernameConfiguration:
+        CaseSensitive: false
+      AutoVerifiedAttributes: [email]
+      EmailConfiguration: !If
+        - HasSesIdentity
+        - EmailSendingAccount: DEVELOPER
+          SourceArn: !Sub 'arn:${AWS::Partition}:ses:${SesRegion}:${AWS::AccountId}:identity/${SesIdentity}'
+          From: !Sub 'Trace <${SesFromEmail}>'
+        - EmailSendingAccount: COGNITO_DEFAULT
+      UserAttributeUpdateSettings:
+        AttributesRequireVerificationBeforeUpdate: [email]
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      VerificationMessageTemplate:
+        DefaultEmailOption: CONFIRM_WITH_CODE
+        EmailSubject: Your Trace code
+        EmailMessage: >-
+          <p>Use this code to verify your email or reset your Trace password:</p>
+          <p><strong>{####}</strong></p>
+          <p>Enter it on the Trace account page you opened.
+          If you did not request this code, you can ignore this email.</p>
+          <p>Trace &middot; Victory Road</p>
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: false
+          RequireUppercase: false
+          RequireNumbers: false
+          RequireSymbols: false
+          TemporaryPasswordValidityDays: 1
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientName: trace-memberships-web
+      GenerateSecret: false
+      ExplicitAuthFlows: [ALLOW_USER_PASSWORD_AUTH, ALLOW_REFRESH_TOKEN_AUTH]
+      PreventUserExistenceErrors: ENABLED
+      EnableTokenRevocation: true
+      ReadAttributes: [sub, email, email_verified]
+      WriteAttributes: [email]
+      AccessTokenValidity: 60
+      IdTokenValidity: 60
+      RefreshTokenValidity: 30
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+        RefreshToken: days
+  MembershipFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambda/
+      Handler: app.handler
+      Runtime: python3.13
+      Architectures: [arm64]
+      MemorySize: 256
+      Timeout: 29
+      ReservedConcurrentExecutions: !If [HasReservedConcurrency, !Ref ReservedConcurrency, !Ref 'AWS::NoValue']
+      Environment:
+        Variables:
+          MEMBERSHIPS_TABLE: !Ref Accounts
+          OWNER_SWITCH_TABLE: !Ref OwnerSwitches
+          CAPTURE_DEVICES_TABLE: !Ref CaptureDevicesTableName
+          USER_POOL_ID: !Ref UserPool
+          USER_POOL_CLIENT_ID: !Ref UserPoolClient
+          OWNER_SUBJECT: !Ref OwnerSubject
+          BILLING_ENABLED: !Ref BillingEnabled
+          STRIPE_MODE: !Ref StripeMode
+          STRIPE_SECRET_ARN: !Ref StripeSecretArn
+          TRACE_PRICE_ID: !Ref TracePriceId
+          SUPPORTER_PRICE_ID: !Ref SupporterPriceId
+          STRIPE_PORTAL_CONFIG_ID: !Ref StripePortalConfigId
+          WEB_ORIGIN: !Ref WebOrigin
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:DeleteItem', 'dynamodb:ConditionCheckItem']
+              Resource: !GetAtt Accounts.Arn
+            - Effect: Allow
+              Action: ['dynamodb:GetItem']
+              Resource: !GetAtt OwnerSwitches.Arn
+            - Effect: Allow
+              Action: ['dynamodb:GetItem', 'dynamodb:ConditionCheckItem']
+              Resource: !Sub 'arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${CaptureDevicesTableName}'
+            - !If
+              - HasStripeSecret
+              - Effect: Allow
+                Action: ['secretsmanager:GetSecretValue']
+                Resource: !Ref StripeSecretArn
+              - !Ref AWS::NoValue
+      Events:
+        MembershipRoutes:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref MembershipApi
+            Path: /v1/{proxy+}
+            Method: ANY
+  MembershipLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${MembershipFunction}'
+      RetentionInDays: 30
+Outputs:
+  MembershipApiUrl:
+    Value: !Sub 'https://${MembershipApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}'
+  MembershipsTableName:
+    Value: !Ref Accounts
+  OwnerSwitchTableName:
+    Value: !Ref OwnerSwitches
+  UserPoolId:
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Value: !Ref UserPoolClient

@@ -67,19 +67,23 @@ function writeGitHubOutput(values) {
   appendFileSync(process.env.GITHUB_OUTPUT, `${lines.join('\n')}\n`);
 }
 
-export function checkpoint() {
-  const commitSha = git(['rev-parse', 'HEAD']);
-  const subject = git(['log', '-1', '--pretty=%s']);
-  const body = git(['log', '-1', '--pretty=%B']);
-  const releaseLevel = readMarker(body);
-  const headVersion = readHeadVersion();
-  const baseVersion = headVersion ?? readLatestVersion();
+export function planRelease({ commitSha, subject, body, headVersion = null, latestVersion,
+  manualLevel, publish = false, expectedSha } = {}) {
+  if (expectedSha !== undefined && (!/^[a-f0-9]{40}$/.test(expectedSha) || commitSha !== expectedSha)) {
+    throw new Error('Release source does not match the requested commit.');
+  }
+  if (manualLevel !== undefined && !MARKERS.includes(manualLevel)) throw new Error('Invalid manual release level.');
+  const manual = manualLevel !== undefined;
+  const releaseLevel = manual ? manualLevel : readMarker(body);
+  const baseVersion = headVersion ?? latestVersion;
   const version = releaseLevel ? headVersion ?? bumpVersion(baseVersion, releaseLevel) : baseVersion;
   const tag = `v${version}`;
   const releaseNote = stripMarkers(subject) || `Trace ${version}`;
 
   return {
     shouldRelease: Boolean(releaseLevel),
+    shouldPublish: Boolean(releaseLevel) && (!manual || publish === true),
+    manualRelease: manual,
     releaseLevel: releaseLevel ?? '',
     version,
     baseVersion,
@@ -90,9 +94,28 @@ export function checkpoint() {
   };
 }
 
+export function checkpoint(options = {}) {
+  return planRelease({
+    commitSha: git(['rev-parse', 'HEAD']),
+    subject: git(['log', '-1', '--pretty=%s']),
+    body: git(['log', '-1', '--pretty=%B']),
+    headVersion: readHeadVersion(),
+    latestVersion: readLatestVersion(),
+    ...options,
+  });
+}
+
 const isMain = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
-  const result = checkpoint();
+  const argv = process.argv.slice(2);
+  const levelIndex = argv.indexOf('--release-level');
+  const shaIndex = argv.indexOf('--expected-sha');
+  if (args.has('--publish') && levelIndex === -1) throw new Error('--publish requires an explicit manual release level.');
+  const result = checkpoint({
+    ...(levelIndex !== -1 ? { manualLevel: argv[levelIndex + 1] ?? '' } : {}),
+    publish: args.has('--publish'),
+    ...(shaIndex !== -1 ? { expectedSha: argv[shaIndex + 1] ?? 'missing-sha' } : {}),
+  });
   if (args.has('--github-output')) writeGitHubOutput(result);
   if (args.has('--json') || !args.has('--github-output')) {
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);

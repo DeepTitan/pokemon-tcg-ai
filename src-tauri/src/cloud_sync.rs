@@ -9,6 +9,25 @@ use uuid::Uuid;
 
 const MAX_REVIEWS_PER_SWEEP: usize = 16;
 
+fn share_failure_message(status: StatusCode, body: &Value) -> String {
+    match (status, body.get("error").and_then(Value::as_str)) {
+        (StatusCode::FORBIDDEN, Some("share_limit_reached")) => {
+            let next = body.get("nextShareAt").and_then(Value::as_str)
+                .filter(|value| value.len() >= 20 && value.len() <= 32 && value.ends_with('Z')
+                    && value.bytes().all(|c| c.is_ascii_digit() || b"-:TZ.".contains(&c)))
+                .map(|value| format!(" Next free share: {} UTC.", value[..16].replace('T', " ")))
+                .unwrap_or_default();
+            format!("Your free replay share is used for this 7-day period.{next} Trace Pro includes unlimited sharing.")
+        }
+        (StatusCode::FORBIDDEN, Some("history_membership_required")) =>
+            "Trace Pro is needed to create a new share link for a replay older than 7 days. Your match is still saved.".into(),
+        (StatusCode::SERVICE_UNAVAILABLE, Some("membership_unavailable")) =>
+            "Couldn’t verify paid sharing access. Try again shortly; your match is still saved.".into(),
+        _ => format!("Could not create a share link ({status})."),
+    }
+}
+
+
 #[derive(Clone)]
 pub struct CloudSync {
     endpoint: Option<Url>,
@@ -16,6 +35,7 @@ pub struct CloudSync {
     client: Client,
     config: Arc<Mutex<CloudSyncConfig>>,
     sweep_lock: Arc<Mutex<()>>,
+    registration_lock: Arc<Mutex<()>>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -87,6 +107,7 @@ impl CloudSync {
             client,
             config: Arc::new(Mutex::new(config)),
             sweep_lock: Arc::new(Mutex::new(())),
+            registration_lock: Arc::new(Mutex::new(())),
         };
         // Cloud configuration must never prevent the local archive from
         // opening. A failed write simply means registration will retry later.
@@ -200,7 +221,11 @@ impl CloudSync {
             if response.status() == StatusCode::UNAUTHORIZED && !retried_auth {
                 {
                     let mut config = self.config.lock().await;
-                    config.token = None;
+                    if config.device_id == device_id
+                        && config.token.as_deref() == Some(token.as_str())
+                    {
+                        config.token = None;
+                    }
                 }
                 let _ = self.save_config_blocking();
                 retried_auth = true;
@@ -283,7 +308,11 @@ impl CloudSync {
             if response.status() == StatusCode::UNAUTHORIZED && !retried_auth {
                 {
                     let mut config = self.config.lock().await;
-                    config.token = None;
+                    if config.device_id == device_id
+                        && config.token.as_deref() == Some(token.as_str())
+                    {
+                        config.token = None;
+                    }
                 }
                 let _ = self.save_config_blocking();
                 retried_auth = true;
@@ -293,10 +322,9 @@ impl CloudSync {
                 return Ok(None);
             }
             if !response.status().is_success() {
-                return Err(format!(
-                    "Could not create a share link ({}).",
-                    response.status()
-                ));
+                let status = response.status();
+                let body = response.json::<Value>().await.unwrap_or(Value::Null);
+                return Err(share_failure_message(status, &body));
             }
             let share = response
                 .json::<ShareLink>()
@@ -309,50 +337,92 @@ impl CloudSync {
         }
     }
 
-    async fn ensure_registration(&self) -> Result<(String, String), SyncFailure> {
-        let current = self.config.lock().await.clone();
-        if let Some(token) = current.token {
-            return Ok((current.device_id, token));
-        }
-
-        let mut url = self
-            .endpoint
-            .clone()
-            .ok_or_else(|| SyncFailure::global("Cloud backup is not configured."))?;
-        url.path_segments_mut()
-            .map_err(|_| SyncFailure::global("Cloud backup URL cannot accept path segments."))?
-            .extend(["v1", "register"]);
-        let response = self
-            .client
-            .post(url)
-            .json(&json!({ "deviceId": current.device_id }))
-            .send()
-            .await
-            .map_err(|error| {
-                SyncFailure::global(format!("Cloud backup registration failed: {error}"))
-            })?;
-        if !response.status().is_success() {
-            return Err(SyncFailure::global(format!(
-                "Cloud backup registration returned {}.",
-                response.status()
-            )));
-        }
-        let registration = response.json::<Registration>().await.map_err(|error| {
-            SyncFailure::global(format!("Cloud backup registration was unreadable: {error}"))
-        })?;
-        if registration.token.is_empty() {
-            return Err(SyncFailure::global(
-                "Cloud backup registration returned an empty token.",
-            ));
-        }
-        {
+    /// A late 401 may refer to credentials replaced by another request. Only clear
+    /// the exact attempted pair, serialized against new registration and persistence.
+    pub(crate) async fn reject_membership_credentials(&self, device: &str, token: &str) {
+        let _registration = self.registration_lock.lock().await;
+        let cleared = {
             let mut config = self.config.lock().await;
-            config.token = Some(registration.token.clone());
+            if config.device_id == device && config.token.as_deref() == Some(token) {
+                config.token = None;
+                true
+            } else { false }
+        };
+        if cleared { let _ = self.save_config_blocking(); }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_test_endpoint(config_path: PathBuf, endpoint: Url) -> Self {
+        let mut cloud = Self::new(config_path);
+        cloud.endpoint = Some(endpoint);
+        cloud
+    }
+
+    pub(crate) async fn membership_credentials(&self) -> Result<(String, String), String> {
+        self.ensure_registration()
+            .await
+            .map_err(|_| "Could not authenticate this Trace installation.".to_owned())
+    }
+
+    async fn ensure_registration(&self) -> Result<(String, String), SyncFailure> {
+        // Sync, sharing and membership polling can all register at startup.
+        let _registration = self.registration_lock.lock().await;
+        for attempt in 0..2 {
+            let current = self.config.lock().await.clone();
+            if let Some(token) = current.token {
+                return Ok((current.device_id, token));
+            }
+            let mut url = self
+                .endpoint
+                .clone()
+                .ok_or_else(|| SyncFailure::global("Cloud backup is not configured."))?;
+            url.path_segments_mut()
+                .map_err(|_| SyncFailure::global("Cloud backup URL cannot accept path segments."))?
+                .extend(["v1", "register"]);
+            let response = self
+                .client
+                .post(url)
+                .json(&json!({ "deviceId": current.device_id }))
+                .send()
+                .await
+                .map_err(|_| SyncFailure::global("Cloud backup registration could not connect."))?;
+            if response.status() == StatusCode::CONFLICT && attempt == 0 {
+                // A lost registration reply leaves an ID with no usable token.
+                // Never overwrite server ownership or rotate a stored credential.
+                {
+                    let mut config = self.config.lock().await;
+                    if config.token.is_none() && config.device_id == current.device_id {
+                        config.device_id = Uuid::new_v4().to_string();
+                    }
+                }
+                self.save_config_blocking().map_err(SyncFailure::global)?;
+                continue;
+            }
+            if !response.status().is_success() {
+                return Err(SyncFailure::global(format!(
+                    "Cloud backup registration returned {}.",
+                    response.status()
+                )));
+            }
+            let registration = response
+                .json::<Registration>()
+                .await
+                .map_err(|_| SyncFailure::global("Cloud backup registration was unreadable."))?;
+            if registration.token.is_empty() {
+                return Err(SyncFailure::global(
+                    "Cloud backup registration returned an empty token.",
+                ));
+            }
+            {
+                let mut config = self.config.lock().await;
+                config.token = Some(registration.token.clone());
+            }
+            let _ = self.save_config_blocking();
+            return Ok((current.device_id, registration.token));
         }
-        // The current process can still upload if this persistence attempt
-        // fails. A later launch will register again and drain the same outbox.
-        let _ = self.save_config_blocking();
-        Ok((current.device_id, registration.token))
+        Err(SyncFailure::global(
+            "This installation could not register. Please retry.",
+        ))
     }
 
     fn save_config_blocking(&self) -> Result<(), String> {
@@ -382,6 +452,14 @@ impl CloudSync {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn sharing_limits_explain_recovery_without_echoing_untrusted_errors() {
+        use super::*;
+        assert!(share_failure_message(StatusCode::FORBIDDEN, &json!({"error":"share_limit_reached", "nextShareAt":"2026-10-05T15:30:00Z"})).contains("2026-10-05 15:30 UTC"));
+        assert!(share_failure_message(StatusCode::FORBIDDEN, &json!({"error":"history_membership_required"})).contains("still saved"));
+        assert!(share_failure_message(StatusCode::SERVICE_UNAVAILABLE, &json!({"error":"membership_unavailable"})).contains("Try again"));
+        assert!(!share_failure_message(StatusCode::FORBIDDEN, &json!({"error":"secret trace", "nextShareAt":"secret"})).contains("secret"));
+    }
     use super::*;
 
     #[test]
@@ -406,6 +484,89 @@ mod tests {
         let persisted = fs::read_to_string(config_path).unwrap();
         assert!(!persisted.contains("enabled"));
 
+        fs::remove_dir_all(directory).unwrap();
+    }
+    #[tokio::test]
+    async fn late_membership_401_cannot_clear_newer_device_or_token() {
+        let directory = std::env::temp_dir().join(format!("trace-stale-token-{}", Uuid::new_v4()));
+        let cloud = CloudSync::new(directory.join("cloud-sync.json"));
+        {
+            let mut config = cloud.config.lock().await;
+            config.device_id = "new-device".into();
+            config.token = Some("new-token".into());
+        }
+        cloud.reject_membership_credentials("old-device", "old-token").await;
+        cloud.reject_membership_credentials("new-device", "old-token").await;
+        assert_eq!(cloud.membership_credentials().await.unwrap(), ("new-device".into(), "new-token".into()));
+        cloud.reject_membership_credentials("new-device", "new-token").await;
+        assert!(cloud.config.lock().await.token.is_none());
+        let saved: CloudSyncConfig = serde_json::from_slice(&fs::read(directory.join("cloud-sync.json")).unwrap()).unwrap();
+        assert_eq!(saved.device_id, "new-device");
+        assert!(saved.token.is_none());
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[tokio::test]
+    async fn registration_conflict_recovers_once_and_concurrent_callers_share_credentials() {
+        use std::io::{Read, Write};
+        let directory =
+            std::env::temp_dir().join(format!("trace-register-offline-{}", Uuid::new_v4()));
+        fs::create_dir_all(&directory).unwrap();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let mut ids = Vec::new();
+            for status in [409, 201] {
+                let (mut stream, _) = listener.accept().unwrap();
+                stream
+                    .set_read_timeout(Some(Duration::from_secs(5)))
+                    .unwrap();
+                let mut data = Vec::new();
+                let mut chunk = [0u8; 2048];
+                loop {
+                    let count = stream.read(&mut chunk).unwrap();
+                    assert!(count > 0);
+                    data.extend_from_slice(&chunk[..count]);
+                    if let Some(offset) = data.windows(4).position(|v| v == b"\r\n\r\n") {
+                        let headers = String::from_utf8_lossy(&data[..offset]).to_lowercase();
+                        let size = headers
+                            .lines()
+                            .find_map(|line| {
+                                line.strip_prefix("content-length:")
+                                    .and_then(|v| v.trim().parse::<usize>().ok())
+                            })
+                            .unwrap();
+                        if data.len() >= offset + 4 + size {
+                            let body: Value =
+                                serde_json::from_slice(&data[offset + 4..offset + 4 + size])
+                                    .unwrap();
+                            ids.push(body["deviceId"].as_str().unwrap().to_owned());
+                            break;
+                        }
+                    }
+                }
+                let body = if status == 409 {
+                    r#"{"error":"device_exists"}"#
+                } else {
+                    r#"{"token":"offline-test-token"}"#
+                };
+                write!(stream, "HTTP/1.1 {status} Test\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len()).unwrap();
+            }
+            ids
+        });
+        let mut sync = CloudSync::new(directory.join("cloud-sync.json"));
+        sync.endpoint = Some(Url::parse(&endpoint).unwrap());
+        let original = sync.config.lock().await.device_id.clone();
+        let (first, second) = tokio::join!(sync.ensure_registration(), sync.ensure_registration());
+        let first = first.unwrap();
+        assert_eq!(first, second.unwrap());
+        assert_ne!(first.0, original);
+        let ids = server.join().unwrap();
+        assert_eq!(ids, vec![original, first.0.clone()]);
+        // No server exists now; a valid stored token must never be re-registered.
+        assert_eq!(sync.ensure_registration().await.unwrap(), first);
+        let restored = CloudSync::new(directory.join("cloud-sync.json"));
+        assert_eq!(restored.ensure_registration().await.unwrap(), first);
         fs::remove_dir_all(directory).unwrap();
     }
 }

@@ -1,6 +1,21 @@
 name: Trace release checkpoint
 
 on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Reviewed full commit SHA that the selected branch or tag must resolve to
+        type: string
+        required: true
+      release_level:
+        description: Version increment for this exact source commit
+        type: choice
+        options: [PATCH, MINOR, MAJOR]
+        default: PATCH
+      publish:
+        description: Publish after verification (false holds a signed draft candidate)
+        type: boolean
+        default: false
   push:
     branches:
       - main
@@ -9,7 +24,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ (contains(github.event.head_commit.message, '[MAJOR]') || contains(github.event.head_commit.message, '[MINOR]') || contains(github.event.head_commit.message, '[PATCH]')) && 'trace-release' || github.run_id }}
+  group: ${{ (github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[MAJOR]') || contains(github.event.head_commit.message, '[MINOR]') || contains(github.event.head_commit.message, '[PATCH]')) && 'trace-release' || github.run_id }}
   cancel-in-progress: false
 
 jobs:
@@ -17,6 +32,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       shouldRelease: ${{ steps.release.outputs.shouldRelease }}
+      shouldPublish: ${{ steps.release.outputs.shouldPublish }}
+      manualRelease: ${{ steps.release.outputs.manualRelease }}
       releaseLevel: ${{ steps.release.outputs.releaseLevel }}
       version: ${{ steps.release.outputs.version }}
       tag: ${{ steps.release.outputs.tag }}
@@ -27,10 +44,31 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
 
       - name: Read release marker
         id: release
-        run: node scripts/release/trace-release-checkpoint.mjs --github-output --json
+        env:
+          RELEASE_EVENT: ${{ github.event_name }}
+          RELEASE_LEVEL: ${{ inputs.release_level }}
+          RELEASE_PUBLISH: ${{ inputs.publish }}
+          RELEASE_SOURCE_SHA: ${{ github.sha }}
+          RELEASE_EXPECTED_SHA: ${{ inputs.source_sha }}
+        run: |
+          args=(--github-output --json)
+          if [[ "$RELEASE_EVENT" == 'workflow_dispatch' ]]; then
+            args+=(--release-level "$RELEASE_LEVEL" --expected-sha "$RELEASE_EXPECTED_SHA")
+            if [[ "$RELEASE_PUBLISH" == 'true' ]]; then
+              args+=(--publish)
+            fi
+          else
+            args+=(--expected-sha "$RELEASE_SOURCE_SHA")
+          fi
+          node scripts/release/trace-release-checkpoint.mjs "${args[@]}"
 
       - name: Validate release tag
         if: steps.release.outputs.shouldRelease == 'true'
@@ -53,12 +91,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
-        run: |
-          if release_json="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft 2>/dev/null)"; then
-            echo "releaseDraft=$(jq -r .isDraft <<< "$release_json")" >> "$GITHUB_OUTPUT"
-          else
-            echo "releaseDraft=true" >> "$GITHUB_OUTPUT"
-          fi
+          RELEASE_SHA: ${{ steps.release.outputs.commitSha }}
+          RELEASE_MANUAL: ${{ steps.release.outputs.manualRelease }}
+        run: node scripts/release/trace-release-state.mjs --github-output
 
       - name: Skip ordinary commit
         if: steps.release.outputs.shouldRelease != 'true'
@@ -85,10 +120,15 @@ jobs:
             rustTargets: x86_64-pc-windows-msvc
             args: --target x86_64-pc-windows-msvc --bundles nsis
     runs-on: ${{ matrix.platform }}
+    env:
+      RELEASE_TAG: ${{ needs.checkpoint.outputs.tag }}
+      RELEASE_SHA: ${{ needs.checkpoint.outputs.commitSha }}
+      RELEASE_MANUAL: ${{ needs.checkpoint.outputs.manualRelease }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: ${{ needs.checkpoint.outputs.commitSha }}
 
       - uses: actions/setup-node@v4
         with:
@@ -107,6 +147,12 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci --ignore-scripts
 
+      - name: Verify pinned build source and release helpers
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          node scripts/release/trace-release-checkpoint.test.mjs
+
       - name: Run tracker regression tests
         run: |
           npm run tracker:test-setup
@@ -119,6 +165,11 @@ jobs:
         env:
           TRACE_SYNC_API_URL: ${{ vars.TRACE_SYNC_API_URL }}
         run: node -e "const value=process.env.TRACE_SYNC_API_URL; if (!value || new URL(value).protocol !== 'https:') throw new Error('TRACE_SYNC_API_URL must be a configured HTTPS endpoint')"
+
+      - name: Require membership endpoint
+        env:
+          TRACE_MEMBERSHIP_API_URL: ${{ vars.TRACE_MEMBERSHIP_API_URL }}
+        run: node -e "const value=process.env.TRACE_MEMBERSHIP_API_URL; if (!value || new URL(value).protocol !== 'https:') throw new Error('TRACE_MEMBERSHIP_API_URL must be configured before publishing paid access')"
 
       - name: Run Windows capture integration tests
         if: matrix.platform == 'windows-latest'
@@ -318,6 +369,12 @@ jobs:
           }
           echo "APPLE_SIGNING_IDENTITY=$signing_identity" >> "$GITHUB_ENV"
 
+      - name: Recheck release target before signed asset upload
+        id: upload-state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release/trace-release-state.mjs --github-output
+
       - name: Build and upload signed update
         uses: tauri-apps/tauri-action@v1
         env:
@@ -326,6 +383,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           TRACE_SYNC_API_URL: ${{ vars.TRACE_SYNC_API_URL }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          TRACE_MEMBERSHIP_API_URL: ${{ vars.TRACE_MEMBERSHIP_API_URL }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -333,13 +391,14 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tagName: v__VERSION__
+          releaseCommitish: ${{ needs.checkpoint.outputs.commitSha }}
           releaseName: Trace v__VERSION__
           releaseBody: |
             ${{ needs.checkpoint.outputs.releaseNote }}
 
             Release level: ${{ needs.checkpoint.outputs.releaseLevel }}
             Commit: ${{ needs.checkpoint.outputs.commitSha }}
-          releaseDraft: ${{ needs.checkpoint.outputs.releaseDraft }}
+          releaseDraft: ${{ needs.checkpoint.outputs.shouldPublish != 'true' || steps.upload-state.outputs.releaseDraft == 'true' }}
           prerelease: false
           uploadUpdaterJson: false
           uploadUpdaterSignatures: false
@@ -442,6 +501,8 @@ jobs:
           xcrun stapler validate "$dmg_path"
           codesign --verify --strict --verbose=2 "$dmg_path"
 
+          node scripts/release/trace-release-state.mjs --require-existing
+
           published_dmg="$RUNNER_TEMP/Trace_aarch64.dmg"
           ditto "$dmg_path" "$published_dmg"
           gh release upload "$RELEASE_TAG" "$published_dmg" \
@@ -452,6 +513,7 @@ jobs:
         if: matrix.platform == 'macos-latest'
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          VERIFY_APP_LAUNCH: ${{ needs.checkpoint.outputs.shouldPublish }}
         run: |
           bundle_root="src-tauri/target/${{ matrix.rustTargets }}/release/bundle"
           app_path="$bundle_root/macos/Trace.app"
@@ -498,21 +560,22 @@ jobs:
             "$fresh_app"
           spctl -a -vv -t exec "$fresh_app"
 
-          executable_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' \
-            "$fresh_app/Contents/Info.plist")"
-          executable_path="$fresh_app/Contents/MacOS/$executable_name"
-          "$executable_path" >"$fresh_root/trace-launch.log" 2>&1 &
-          trace_pid=$!
-          sleep 5
-          if ! kill -0 "$trace_pid" 2>/dev/null; then
-            cat "$fresh_root/trace-launch.log"
-            echo "::error::Trace did not remain running after a clean DMG install."
-            exit 1
+          if [[ "$VERIFY_APP_LAUNCH" == 'true' ]]; then
+            executable_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' \
+              "$fresh_app/Contents/Info.plist")"
+            executable_path="$fresh_app/Contents/MacOS/$executable_name"
+            "$executable_path" >"$fresh_root/trace-launch.log" 2>&1 &
+            trace_pid=$!
+            sleep 5
+            if ! kill -0 "$trace_pid" 2>/dev/null; then
+              cat "$fresh_root/trace-launch.log"
+              echo "::error::Trace did not remain running after a clean DMG install."
+              exit 1
+            fi
+            kill "$trace_pid"
+            wait "$trace_pid" || true
+            scripts/release/verify-macos-helper-bundle.sh "$fresh_app"
           fi
-          kill "$trace_pid"
-          wait "$trace_pid" || true
-
-          scripts/release/verify-macos-helper-bundle.sh "$fresh_app"
 
           {
             echo '### macOS distribution verification'
@@ -521,8 +584,12 @@ jobs:
             echo '- Apple notarization ticket: stapled and valid'
             echo '- Quarantined DMG: accepted by Gatekeeper'
             echo '- Freshly copied app: accepted by Gatekeeper'
-            echo '- Freshly copied app: launched successfully'
-            echo '- Relocated local capture helper: signature valid and executable'
+            if [[ "$VERIFY_APP_LAUNCH" == 'true' ]]; then
+              echo '- Freshly copied app: launched successfully'
+              echo '- Relocated local capture helper: signature valid and executable'
+            else
+              echo '- App and capture helper execution: skipped for held candidate'
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove temporary signing keychain
@@ -532,13 +599,20 @@ jobs:
           rm -f "$RUNNER_TEMP/trace-signing-certificate.p12"
 
   publish:
+    name: Prepare signed updater and optionally publish
     needs: [checkpoint, build]
     if: needs.checkpoint.outputs.shouldRelease == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      RELEASE_TAG: ${{ needs.checkpoint.outputs.tag }}
+      RELEASE_SHA: ${{ needs.checkpoint.outputs.commitSha }}
+      RELEASE_MANUAL: ${{ needs.checkpoint.outputs.manualRelease }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.checkpoint.outputs.commitSha }}
 
       - uses: actions/setup-node@v4
         with:
@@ -550,6 +624,13 @@ jobs:
           npm ci --ignore-scripts
           sudo apt-get update
           sudo apt-get install --yes minisign
+
+      - name: Verify source and release target before updater asset upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          node scripts/release/trace-release-state.mjs --require-existing
 
       - name: Sign uploaded assets and assemble network update manifest
         env:
@@ -597,6 +678,8 @@ jobs:
             -p updater-assets/trace-updater.pub \
             -x "updater-assets/$windows_signature_asset.minisig"
 
+          node scripts/release/trace-release-state.mjs --require-existing
+
           gh release upload "$RELEASE_TAG" \
             "updater-assets/$mac_signature_asset" \
             "updater-assets/$windows_signature_asset" \
@@ -637,13 +720,32 @@ jobs:
             latest.json >/dev/null
           gh release upload "$RELEASE_TAG" latest.json --repo "$GITHUB_REPOSITORY" --clobber
 
+      - name: Confirm held candidate
+        if: needs.checkpoint.outputs.shouldPublish != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node scripts/release/trace-release-state.mjs --require-existing
+          {
+            echo '### Signed candidate held for review'
+            echo
+            echo "- Draft: $RELEASE_TAG"
+            echo "- Source: $RELEASE_SHA"
+            echo '- Signed installers, updater signatures and latest.json are attached to the draft.'
+            echo '- Publication and app/helper launch checks were not performed.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Publish verified release
+        if: needs.checkpoint.outputs.shouldPublish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ needs.checkpoint.outputs.tag }}
-        run: gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+        run: |
+          node scripts/release/trace-release-state.mjs --require-existing
+          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
 
       - name: Verify network update manifest
+        if: needs.checkpoint.outputs.shouldPublish == 'true'
         env:
           RELEASE_TAG: ${{ needs.checkpoint.outputs.tag }}
           RELEASE_VERSION: ${{ needs.checkpoint.outputs.version }}

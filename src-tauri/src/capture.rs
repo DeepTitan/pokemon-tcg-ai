@@ -126,6 +126,11 @@ impl Recorder {
     }
 
     fn record(&self, operation: CapturedOperation) {
+        let match_id = format!(
+            "live-{}",
+            operation.match_id.as_deref().unwrap_or(&operation.game_id)
+        );
+        // Recording is free and must not depend on account linkage or network leases.
         self.state.operation_count.fetch_add(1, Ordering::Relaxed);
         let stored = self
             .app
@@ -148,7 +153,14 @@ impl Recorder {
                 }
             }
         }
-        let _ = self.app.emit("match-operation", &operation);
+        // Full starting inventories stay in native storage. Never send opponent lists to JS.
+        let access = self
+            .app
+            .try_state::<crate::storage::MatchStorage>()
+            .and_then(|storage| storage.match_access(&match_id).ok())
+            .unwrap_or_default();
+        let projected = access.project_operation(operation);
+        let _ = self.app.emit("match-operation", &projected);
     }
 
     fn record_error(&self, error: &str) {
