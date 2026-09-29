@@ -87,10 +87,9 @@ export function publicAccount(value) {
   const supplied = object(value.capabilities) ? value.capabilities : {};
   const knownStatus = ['none', 'active', 'trialing', 'past_due', 'unpaid', 'paused', 'incomplete', 'incomplete_expired', 'canceled', 'payment_pending', 'subscription_conflict', 'invalid_subscription'].includes(value.status) || admin;
   const recordMatches = knownStatus && supplied.recordMatches === true;
-  const supporter = traceAccess && value.plan === 'supporter';
   return {
     email: value.email, plan: value.plan, status: value.status.slice(0, 40), admin,
-    traceAccess, opponentDecklists: traceAccess && (value.plan === 'supporter' || admin) && value.opponentDecklists === true,
+    traceAccess, opponentDecklists: traceAccess && admin && value.opponentDecklists === true,
     expiresAt: typeof value.expiresAt === 'string' && Number.isFinite(Date.parse(value.expiresAt)) ? value.expiresAt : null,
     cancelAtPeriodEnd: value.cancelAtPeriodEnd === true,
     capabilities: {
@@ -98,7 +97,7 @@ export function publicAccount(value) {
       recentReplayDays: recordMatches && supplied.recentReplayDays === 7 ? 7 : 0,
       fullHistory: traceAccess && supplied.fullHistory === true,
       expandedSharing: traceAccess && supplied.expandedSharing === true,
-      opponentDecklists: supporter && supplied.opponentDecklists === true,
+      opponentDecklists: traceAccess && admin && supplied.opponentDecklists === true,
       freeSharesPerWindow: recordMatches && supplied.freeSharesPerWindow === 1 ? 1 : 0,
       shareWindowDays: recordMatches && supplied.shareWindowDays === 7 ? 7 : 0,
     },

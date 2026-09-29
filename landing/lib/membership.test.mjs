@@ -80,12 +80,14 @@ test('public action response redaction and field allowlists apply even to succes
   assert.deepEqual(sent, { email: 'member@example.test', password: 'SafeTestPassword!2' });
   assert.deepEqual(parsed(result), { ok: true });
   const details = await invoke('account', { service: { configured: true, call: async () => ({ status: 200, body: { ...account, accessToken: 'secret', stripeCustomerId: 'private', userId: 'private' } }) } });
-  assert.deepEqual(parsed(details), account);
+  assert.deepEqual(parsed(details), { ...account, opponentDecklists: false, capabilities: { ...account.capabilities, opponentDecklists: false } });
 });
 
 test('missing, malformed and unknown permissions fail closed', () => {
   for (const value of [null, {}, { ...account, plan: 'super-admin' }, { ...account, status: undefined }]) assert.equal(publicAccount(value), null);
   for (const override of [{ plan: 'none' }, { status: 'trialing' }, { status: 'past_due' }, { status: 'unknown' }, { expiresAt: null }, { expiresAt: '2020-01-01T00:00:00Z' }, { status: 'admin', admin: true, plan: 'trace' }, { traceAccess: 'true' }, { status: 'active', admin: true, plan: 'none' }]) assert.equal(publicAccount({ ...account, ...override }).traceAccess, false);
+  assert.equal(publicAccount(account).opponentDecklists, false);
+  assert.equal(publicAccount(account).capabilities.opponentDecklists, false);
   assert.equal(publicAccount({ ...account, plan: 'trace' }).opponentDecklists, false);
   assert.equal(publicAccount({ ...account, opponentDecklists: 'true' }).opponentDecklists, false);
   assert.deepEqual(publicAccount({ ...account, status: 'admin', admin: true, expiresAt: null }), { ...account, status: 'admin', admin: true, expiresAt: null });
