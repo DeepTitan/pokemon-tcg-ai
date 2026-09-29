@@ -27,9 +27,9 @@ function DecklistCard({ cardId, count, card }: { cardId: string; count: number; 
   </figure>;
 }
 
-export function PlayerDecklist({ name, deck: suppliedDeck, catalog, loadDeck, unavailableReason, accessKey }: {
+export function PlayerDecklist({ name, deck: suppliedDeck, catalog, loadDeck, unavailableReason, accessKey, onUpgrade, upgradeLabel }: {
   name: string; deck?: CapturedDecklist; catalog: ReadonlyMap<string, CardInfo>;
-  loadDeck?: () => Promise<CapturedDecklist>; unavailableReason?: string; accessKey?: string;
+  loadDeck?: () => Promise<CapturedDecklist>; unavailableReason?: string; accessKey?: string; onUpgrade?: () => void; upgradeLabel?: string;
 }) {
   const [privateDeck, setPrivateDeck] = useState<CapturedDecklist>();
   const [loadState, setLoadState] = useState<'idle' | 'loading' | 'failed'>('idle');
@@ -50,7 +50,7 @@ export function PlayerDecklist({ name, deck: suppliedDeck, catalog, loadDeck, un
   const close = () => { cancelClose(); isOpen.current = false; fetchGeneration.current++; setPrivateDeck(undefined); setLoadState('idle'); setCopyState('idle'); copyAttempt.current++; setOpen(false); };
   const show = () => {
     cancelClose();
-    if (!available || isOpen.current) return;
+    if (isOpen.current) return;
     isOpen.current = true;
     cancelClose(); const rect = button.current?.getBoundingClientRect();
     if (rect) setPosition({ left: Math.max(12, Math.min(rect.left, window.innerWidth - 612)),
@@ -104,15 +104,15 @@ export function PlayerDecklist({ name, deck: suppliedDeck, catalog, loadDeck, un
   return <>
     <span className="player-decklist-control">
     <button ref={button} type="button" className="player-decklist-trigger" aria-label={`${name} decklist`}
-      aria-disabled={!available} aria-describedby={!available ? `${id}-unavailable` : undefined}
-      aria-expanded={available ? open : undefined} aria-controls={available && open ? id : undefined} aria-haspopup={available ? 'dialog' : undefined}
+      aria-disabled={!available && !onUpgrade} aria-describedby={!available ? `${id}-unavailable` : undefined}
+      aria-expanded={open} aria-controls={open ? id : undefined} aria-haspopup="dialog"
       onMouseEnter={show} onMouseLeave={leave} onFocus={() => { if (!suppressFocus.current) show(); }} onBlur={leave}
-      onClick={show} onKeyDown={event => { if (event.key === 'ArrowDown') { event.preventDefault(); if (!available) return; show(); setTimeout(() => panel.current?.focus(), 0); } }}>
+      onClick={show} onKeyDown={event => { if (event.key === 'ArrowDown') { event.preventDefault(); show(); setTimeout(() => panel.current?.focus(), 0); } }}>
       <CardsThree size={18} />
     </button>
-    {!available && <span id={`${id}-unavailable`} role="tooltip" className="player-decklist-unavailable">{unavailableReason || 'Decklist not available'}</span>}
+    {!available && !open && <span id={`${id}-unavailable`} role="tooltip" className="player-decklist-unavailable">{unavailableReason || 'Decklist not available'}</span>}
     </span>
-    {open && available && createPortal(<div ref={panel} id={id} role="dialog" aria-label={`${name} captured decklist`}
+    {open && createPortal(<div ref={panel} id={id} role="dialog" aria-label={`${name} captured decklist`}
       tabIndex={-1} className="player-decklist-panel" style={position} onMouseEnter={cancelClose} onMouseLeave={leave}
       onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) leave(); }}>
       <header><div className="decklist-heading"><strong>{name}’s decklist</strong>
@@ -127,10 +127,11 @@ export function PlayerDecklist({ name, deck: suppliedDeck, catalog, loadDeck, un
       {copyState === 'failed' && <p className="decklist-copy-error" role="alert">Couldn’t access the clipboard. Please try Copy again.</p>}
       {loadState === 'loading' && <p role="status" className="decklist-empty">Checking membership and match result…</p>}
       {loadState === 'failed' && <p role="alert" className="decklist-empty">{loadError}</p>}
+      {!available && <div className="decklist-empty"><p>{unavailableReason || 'No decklist was saved for this match.'}</p>{onUpgrade && <button type="button" className="archive-upgrade-primary" onClick={onUpgrade}>{upgradeLabel || 'Get Trace Pro'}</button>}</div>}
       {deck ? <>{exported.error && <p className="decklist-copy-error">{exported.error}</p>}
         <div className="player-decklist-grid">{entries.map(entry => {
           return <DecklistCard key={entry.cardId} cardId={entry.cardId} count={entry.count} card={catalog.get(entry.cardId)} />;
-        })}</div></> : loadState === 'idle' ? <p className="decklist-empty">This match has no complete starting list saved.</p> : null}
+        })}</div></> : available && loadState === 'idle' ? <p className="decklist-empty">This match has no complete starting list saved.</p> : null}
     </div>, document.body)}
   </>;
 }

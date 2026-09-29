@@ -294,8 +294,12 @@ def get_match(device_id, match_id, event=None):
         if denied:
             return denied
     review = stored_review(item)
+    try:
+        private_study = has_paid_capability(device_membership(event or {}), "fullHistory")
+    except Exception:
+        private_study = False
     return compressed_response(200, {
-        "review": visible_review(review),
+        "review": visible_review(review, private_study=private_study),
         "reducerVersion": int(item.get("reducerVersion", 0)),
         "updatedAt": item.get("updatedAt"),
     })
@@ -435,7 +439,7 @@ def stored_review(item):
     return json.loads(gzip.decompress(stored))
 
 
-def visible_review(review, public=False):
+def visible_review(review, public=False, private_study=True):
     """Project a replay without the protected starting opponent inventory.
 
     Stored captures remain intact. Full lists are never a public-share feature;
@@ -446,6 +450,22 @@ def visible_review(review, public=False):
         return {}
     result = copy.deepcopy(review)
     local = result.get("localPlayer")
+    if not private_study or public:
+        def mask_inventory(value):
+            if isinstance(value, list):
+                for child in value:
+                    mask_inventory(child)
+            elif isinstance(value, dict):
+                for key in ("deck", "prizes", "deckCards", "prizeCards"):
+                    if isinstance(value.get(key), list):
+                        value[key] = [{"id": card.get("id", "hidden"), "name": "Hidden card",
+                                       "cardType": "Trainer", "trainerType": "Item", "cardNumber": "",
+                                       "imageUrl": "/tracker-assets/pokemon-card-back.jpg"}
+                                      for card in value[key] if isinstance(card, dict)]
+                for child in value.values():
+                    mask_inventory(child)
+        mask_inventory(result)
+        result.pop("decklists", None)
     if public or not isinstance(local, str) or not local:
         result.pop("decklists", None)
     elif isinstance(result.get("decklists"), list):

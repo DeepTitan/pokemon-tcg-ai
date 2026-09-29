@@ -26,7 +26,7 @@ import { ArchiveUpgradeModal } from './ArchiveUpgradeModal.js';
 import { InfiniteArchiveList } from './InfiniteArchiveList.js';
 import { CaptureSetupModal } from './CaptureSetupModal.js';
 import {
-  getMembershipStatus, loadOpponentDecklist, getRecentMatchOperations, getTraceVersion, getTrackerEnvironment, initializeTrackerStorage, isTauri, listMatchSummaries,
+  getMembershipStatus, openMembershipAccount, loadOpponentDecklist, getRecentMatchOperations, getTraceVersion, getTrackerEnvironment, initializeTrackerStorage, isTauri, listMatchSummaries,
   importLegacyReviews, listRawMatchIds, loadMatchOperations, loadMatchReview, onMatchOperation, persistMatchReview,
   resolveCardSources, shareMatch, startTracking, stopTracking, LEADERBOARD_URL, openLeaderboard,
 } from './tauri.js';
@@ -510,7 +510,7 @@ function OpponentHandSummary({ boardName, count, onOpen }: { boardName: string; 
   );
 }
 
-export function PlayerField({ board, decklist, deckAccess, canonical, pendingCards, visibility, catalog, choiceFrames, currentReviewIndex, turnNumber, status, handoff, stadiumCard, stadiumName, stadiumOwner, localPlayerName, opponentName, defeatedIds, defeatedNames, damageChanges, positionChanges, attackerId, opponent = false, avatar, onOpenPokemon, onOpenChoice, onOpenCard, onOpenZone }: { board: TrackedPlayerBoard; decklist?: CapturedDecklist; deckAccess?: { loadDeck?: () => Promise<CapturedDecklist>; unavailableReason: string; accessKey: string }; canonical: PlayerState; pendingCards?: Card[]; visibility: Record<string, ReviewCardVisibility>; catalog: ReadonlyMap<string, CardInfo>; choiceFrames: TurnChoiceFrame[]; currentReviewIndex: number; turnNumber: number; status: PlayerTurnStatus; handoff?: TurnHandoffRole; stadiumCard: Card | null; stadiumName?: string; stadiumOwner?: string; localPlayerName: string; opponentName: string; defeatedIds: ReadonlySet<string>; defeatedNames: ReadonlySet<string>; damageChanges: ReadonlyMap<string, PokemonDamageChange>; positionChanges: ReadonlyMap<string, PokemonPositionChange>; attackerId?: string; opponent?: boolean; avatar: string; onOpenPokemon: (id: string) => void; onOpenChoice: (card: TrackedCard) => void; onOpenCard: (card: Card) => void; onOpenZone: (title: string, subtitle: string, cards: Card[], visibility: Record<string, ReviewCardVisibility>) => void }) {
+export function PlayerField({ board, decklist, deckAccess, canonical, pendingCards, visibility, catalog, choiceFrames, currentReviewIndex, turnNumber, status, handoff, stadiumCard, stadiumName, stadiumOwner, localPlayerName, opponentName, defeatedIds, defeatedNames, damageChanges, positionChanges, attackerId, opponent = false, avatar, onOpenPokemon, onOpenChoice, onOpenCard, onOpenZone }: { board: TrackedPlayerBoard; decklist?: CapturedDecklist; deckAccess?: { onUpgrade?: () => void; upgradeLabel?: string; loadDeck?: () => Promise<CapturedDecklist>; unavailableReason: string; accessKey: string }; canonical: PlayerState; pendingCards?: Card[]; visibility: Record<string, ReviewCardVisibility>; catalog: ReadonlyMap<string, CardInfo>; choiceFrames: TurnChoiceFrame[]; currentReviewIndex: number; turnNumber: number; status: PlayerTurnStatus; handoff?: TurnHandoffRole; stadiumCard: Card | null; stadiumName?: string; stadiumOwner?: string; localPlayerName: string; opponentName: string; defeatedIds: ReadonlySet<string>; defeatedNames: ReadonlySet<string>; damageChanges: ReadonlyMap<string, PokemonDamageChange>; positionChanges: ReadonlyMap<string, PokemonPositionChange>; attackerId?: string; opponent?: boolean; avatar: string; onOpenPokemon: (id: string) => void; onOpenChoice: (card: TrackedCard) => void; onOpenCard: (card: Card) => void; onOpenZone: (title: string, subtitle: string, cards: Card[], visibility: Record<string, ReviewCardVisibility>) => void }) {
   const benches = [...board.bench, ...Array.from({ length: Math.max(0, 5 - board.bench.length) }, () => null)].slice(0, 5);
   const tone = opponent ? 'coral' : 'blue';
   const isDefeated = (pokemon: TrackedPokemon | null) => Boolean(pokemon && (defeatedIds.has(pokemon.id) || defeatedNames.has(pokemon.name)));
@@ -677,6 +677,7 @@ export default function TrackerApp() {
   const [safetyDismissed, setSafetyDismissed] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showArchiveUpgrade, setShowArchiveUpgrade] = useState(false);
+  const [showStudyUpgrade, setShowStudyUpgrade] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
   const [membership, setMembership] = useState<MembershipStatus | null>(null);
   const refreshMembership = useCallback(async () => {
@@ -1349,7 +1350,7 @@ export default function TrackerApp() {
   }, [selectedEventKey, selectedReview?.id, timeline.entries.length]);
 
   useEffect(() => {
-    if (!selectedReview || showSetup || showSettings || showArchiveUpgrade || inspector || restoringReview || environment.capture.waitingForMatchEnd) return undefined;
+    if (!selectedReview || showSetup || showSettings || showArchiveUpgrade || showStudyUpgrade || inspector || restoringReview || environment.capture.waitingForMatchEnd) return undefined;
 
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target instanceof HTMLElement ? event.target : null;
@@ -1366,7 +1367,7 @@ export default function TrackerApp() {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [environment.capture.waitingForMatchEnd, inspector, keyMoments, navigateToFrame, selectedReview, showSetup, showSettings, showArchiveUpgrade, restoringReview]);
+  }, [environment.capture.waitingForMatchEnd, inspector, keyMoments, navigateToFrame, selectedReview, showSetup, showSettings, showArchiveUpgrade, showStudyUpgrade, restoringReview]);
 
   useEffect(() => {
     if (environment.capture.waitingForMatchEnd) setPlaying(false);
@@ -1427,8 +1428,9 @@ export default function TrackerApp() {
   }, [cardCatalog, openCard]);
 
   const openZone = useCallback((title: string, subtitle: string, cards: Card[], visibility: Record<string, ReviewCardVisibility>) => {
+    if (!sharedMode && !membership?.traceAccess && / · (Deck|Prize cards)$/.test(title)) { setShowStudyUpgrade(true); return; }
     setInspector({ kind: 'zone', title, subtitle, cards, visibility });
-  }, []);
+  }, [sharedMode, membership?.traceAccess]);
 
   const openSelection = useCallback((selection = selectedCanonical?.selection) => {
     if (!selection) return;
@@ -1541,7 +1543,11 @@ export default function TrackerApp() {
     await resolveCardsForPayload(deck);
     return deck;
   }, [selectedReview?.id, resolveCardsForPayload]);
+  useEffect(() => { setInspector(null); }, [membership?.traceAccess, membership?.opponentDecklists]);
+  const openStudyUpgrade = () => setShowStudyUpgrade(true);
   const opponentDeckAccess = {
+    onUpgrade: !sharedMode && !membership?.opponentDecklists ? () => { void openMembershipAccount().catch(() => setError('Couldn’t open your browser. Visit victoryroad.app/trace/account to upgrade.')); } : undefined,
+    upgradeLabel: 'Join Supporters Club',
     loadDeck: isTauri() && !sharedMode && membership?.opponentDecklists && selectedReview?.matchCompleted ? loadSelectedOpponentDeck : undefined,
     unavailableReason: sharedMode ? 'Opponent decklists are available to Supporters Club members in Trace.'
       : !selectedReview?.matchCompleted ? selectedReview?.winner ? 'This capture is missing a verified match result.' : 'Available after Trace records the match result.'
@@ -1602,7 +1608,7 @@ export default function TrackerApp() {
               <div className="reconstructed-chip"><CheckCircle size={18} weight="fill" />Board reconstructed</div>
               <PlayerField deckAccess={opponentDeckAccess} board={opponentBoard} canonical={opponentCanonicalPlayer} pendingCards={selectedCanonical.pendingCards?.[selectedCanonical.localPlayerIndex === 0 ? 1 : 0]} visibility={selectedCanonical.visibility} catalog={cardCatalog} choiceFrames={turnChoiceFrames.filter((frame) => frame.actor === opponentBoard.name)} currentReviewIndex={turnIndex} turnNumber={selectedCanonical.state.turnNumber} status={turnStatus.players[opponentBoard.name]} handoff={turnPass ? turnPass.passer === opponentBoard.name ? turnPass.reason === 'timeout' ? 'timed-out' : 'passing' : 'receiving' : undefined} stadiumCard={selectedCanonical.state.stadium} stadiumName={turnStatus.stadiumName} stadiumOwner={turnStatus.stadiumOwner} localPlayerName={localBoard.name} opponentName={opponentBoard.name} defeatedIds={defeatedIds} defeatedNames={defeatedNames} damageChanges={damageChanges} positionChanges={positionChanges} attackerId={attackResolution?.sourceId} opponent avatar={TRAINER_ART[0]} onOpenPokemon={openPokemon} onOpenChoice={openChoiceCard} onOpenCard={openCard} onOpenZone={openZone} />
               <div className="midline"><span /></div>
-              <PlayerField decklist={selectedReview.decklists?.find(deck => deck.playerName === localBoard.name)} board={localBoard} canonical={localCanonicalPlayer} pendingCards={selectedCanonical.pendingCards?.[selectedCanonical.localPlayerIndex]} visibility={selectedCanonical.visibility} catalog={cardCatalog} choiceFrames={turnChoiceFrames.filter((frame) => frame.actor === localBoard.name)} currentReviewIndex={turnIndex} turnNumber={selectedCanonical.state.turnNumber} status={turnStatus.players[localBoard.name]} handoff={turnPass ? turnPass.passer === localBoard.name ? turnPass.reason === 'timeout' ? 'timed-out' : 'passing' : 'receiving' : undefined} stadiumCard={selectedCanonical.state.stadium} stadiumName={turnStatus.stadiumName} stadiumOwner={turnStatus.stadiumOwner} localPlayerName={localBoard.name} opponentName={opponentBoard.name} defeatedIds={defeatedIds} defeatedNames={defeatedNames} damageChanges={damageChanges} positionChanges={positionChanges} attackerId={attackResolution?.sourceId} avatar={TRAINER_ART[2]} onOpenPokemon={openPokemon} onOpenChoice={openChoiceCard} onOpenCard={openCard} onOpenZone={openZone} />
+              <PlayerField deckAccess={!sharedMode && !membership?.traceAccess ? { unavailableReason: 'Your decklist, deck contents, and prize cards are included with Trace Pro.', accessKey: 'free-study', onUpgrade: openStudyUpgrade, upgradeLabel: 'Get Trace Pro' } : undefined} decklist={membership?.traceAccess ? selectedReview.decklists?.find(deck => deck.playerName === localBoard.name) : undefined} board={localBoard} canonical={localCanonicalPlayer} pendingCards={selectedCanonical.pendingCards?.[selectedCanonical.localPlayerIndex]} visibility={selectedCanonical.visibility} catalog={cardCatalog} choiceFrames={turnChoiceFrames.filter((frame) => frame.actor === localBoard.name)} currentReviewIndex={turnIndex} turnNumber={selectedCanonical.state.turnNumber} status={turnStatus.players[localBoard.name]} handoff={turnPass ? turnPass.passer === localBoard.name ? turnPass.reason === 'timeout' ? 'timed-out' : 'passing' : 'receiving' : undefined} stadiumCard={selectedCanonical.state.stadium} stadiumName={turnStatus.stadiumName} stadiumOwner={turnStatus.stadiumOwner} localPlayerName={localBoard.name} opponentName={opponentBoard.name} defeatedIds={defeatedIds} defeatedNames={defeatedNames} damageChanges={damageChanges} positionChanges={positionChanges} attackerId={attackResolution?.sourceId} avatar={TRAINER_ART[2]} onOpenPokemon={openPokemon} onOpenChoice={openChoiceCard} onOpenCard={openCard} onOpenZone={openZone} />
               {frameAnimations && !frameScrubbing && attackResolution && <AttackRoute key={`${selectedReview.id}:${turnIndex}:${attackResolution.sourceId || attackResolution.source}`} resolution={attackResolution} opponentAttacking={attackResolution.attacker === opponentBoard.name} hasImpact={attackResolution.hits.length > 0 || [...damageChanges.values()].some((change) => change.delta > 0)} />}
             </div>
             </BoardZoomViewport><div className="turn-controls">
@@ -1685,6 +1691,7 @@ export default function TrackerApp() {
 
       {!sharedMode && environment.capture.waitingForMatchEnd && !safetyDismissed && !showSetup && !showSettings && <div className="capture-safety-backdrop"><section className="capture-safety-dialog" role="alertdialog" aria-modal="true" aria-labelledby="capture-safety-title" aria-describedby="capture-safety-description"><div className="capture-safety-icon" aria-hidden="true"><ShieldCheck size={33} weight="fill" /><i /></div><span>Safe connection</span><h2 id="capture-safety-title">TCG Live is already connected</h2><p id="capture-safety-description">Trace can’t safely tell whether a match is active. It won’t interrupt your connection or install an update.</p><div className="capture-safety-waiting"><i aria-hidden="true" /><span><strong>In a match? Finish playing first.</strong><small>Already on Home? Quit TCG Live, leave Trace open until it says Ready, then reopen TCG Live.</small></span></div><div className="modal-actions"><button type="button" onClick={() => setSafetyDismissed(true)}>Continue reviewing</button><button type="button" onClick={openSettings}>Open Settings</button></div></section></div>}
       {!sharedMode && showSetup && <CaptureSetupModal onClose={closeSetup} onCapture={capture => setEnvironment(current => ({ ...current, capture }))} />}
+      {!sharedMode && showStudyUpgrade && <ArchiveUpgradeModal feature="study" onClose={() => setShowStudyUpgrade(false)} onLink={() => { setShowStudyUpgrade(false); openSettings(); }} />}
       {!sharedMode && showArchiveUpgrade && <ArchiveUpgradeModal onClose={() => setShowArchiveUpgrade(false)} onLink={() => { setShowArchiveUpgrade(false); openSettings(); }} />}
       {!sharedMode && showSettings && <UpdateSettingsModal onClose={() => setShowSettings(false)} version={appVersion}>{isTauri() && accountSettings}</UpdateSettingsModal>}
       {shareUrl && <div className="modal-backdrop share-modal-backdrop"><div className="share-modal" role="dialog" aria-modal="true" aria-labelledby="share-match-title"><div className="modal-title"><div><span>Ready to send</span><h2 id="share-match-title">Share this match</h2></div><button type="button" onClick={() => setShareUrl(null)} aria-label="Close share dialog"><X size={21} weight="bold" /></button></div><p>Anyone with this link can click through the replay in their browser.</p><div className="share-link-row"><input value={shareUrl} readOnly aria-label="Share link" onFocus={(event) => event.currentTarget.select()} /><button className="primary" type="button" onClick={() => void copyShareUrl(shareUrl)}><Copy size={16} weight="bold" />Copy link</button></div></div></div>}

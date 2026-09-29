@@ -159,7 +159,9 @@ impl Recorder {
             .try_state::<crate::storage::MatchStorage>()
             .and_then(|storage| storage.match_access(&match_id).ok())
             .unwrap_or_default();
-        let projected = access.project_operation(operation);
+        let pro = self.app.try_state::<crate::membership::Membership>()
+            .is_some_and(|membership| membership.has_full_history());
+        let projected = access.project_operation_for_plan(operation, pro);
         let _ = self.app.emit("match-operation", &projected);
     }
 

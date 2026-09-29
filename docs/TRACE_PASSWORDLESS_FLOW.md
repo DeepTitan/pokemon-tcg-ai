@@ -2,7 +2,7 @@
 
 ## Player flow
 
-One entry screen serves `/trace/login`, `/trace/signup`, and the old recovery entry point. It offers Google (only after configuration) and email codes. A password fallback remains for existing accounts.
+One entry screen serves `/trace/login`, `/trace/signup`, and the old recovery entry point. It offers Google (only after configuration) and email codes. The sign-in page has no password option; existing accounts can also use email codes. Legacy password API compatibility remains.
 
 ```mermaid
 flowchart TD
@@ -46,13 +46,16 @@ Enable website `TRACE_GOOGLE_COGNITO_DOMAIN` and `TRACE_GOOGLE_CLIENT_ID` only a
 
 ## Verification / rollout status
 
-- Backend offline suite: 125 tests passed (including new/existing/incomplete account paths and Google identity guards).
+- Backend offline suite: 129 tests passed (including new/existing/incomplete account paths and Google identity guards).
 - Website auth and purchase suites: 52 tests passed (including encrypted state, PKCE/state, context restrictions and unchanged checkout locks).
 - Website build passed.
 - Browser-only demo verified email entry, invalid code and successful Free-account screen. It cannot send email, start games, charge, or grant real access.
 - Staging stack updated successfully. A new SES simulator account received a real signup challenge/session and was deleted after the test. Existing owner staging account completed a real EMAIL_OTP challenge and received access/refresh tokens; tokens were not printed or persisted.
 - Protected website preview `victoryroad-at154lox0-deeptitan-6729s-projects.vercel.app` is deployed at the existing staging alias. Hosted Vercel → AWS signup, HttpOnly cookie, wrong-code rejection, and resend throttling passed with an SES simulator address; the temporary user was removed. Production was not promoted.
-- Google OAuth app setup and full Google browser round trip remain pending.
-- Production authentication has not been switched to this flow. Verify hosted cookie/browser paths and Google first, then deploy coordinated backend and website changes. Preserve current live billing, owner switch, users, and subjects.
+- Google Cloud project `trace-sign-in` created under `quantumtalent.io`, with external Trace app and staging web client. Credentials are stored only in AWS Secrets Manager. Google accepted `isaiah@quantumtalent.io` as a test user; the supplied Gmail address was rejected as an ineligible test account.
+- Optional stack `trace-memberships-google-staging` deployed; existing staging client has Google enabled and the exact staging website callback. Provider domain: `https://trace-victoryroad-staging.auth.us-east-1.amazoncognito.com`.
+- Google-enabled preview `victoryroad-rehaidd21-deeptitan-6729s-projects.vercel.app` is assigned to the staging alias. `/trace/api/auth/options` verifies both emailCode and google are true. Google configuration is scoped to this deployment, not all preview branches.
+- Real Google browser round trip succeeded with the user-selected Zelk Labs account; account page shows the correct email and Free plan. Fixed nested native PreSignUp handling, eliminated unnecessary SDK client initialization for native callbacks, raised linking Lambda memory to 512 MB, and made retries of an already-linked identity idempotent. The first live test exposed the five-second Cognito trigger deadline; the corrected staging stack is UPDATE_COMPLETE. Public Google publication remains disabled pending completion of branding (public privacy policy). Production Google enablement remains pending.
+- Production email-code flow deployed September 29: membership stack updated with the existing production configuration and user pool; website `victoryroad-c1mz2sgk1-deeptitan-6729s-projects.vercel.app` now serves through `victoryroad-lovat.vercel.app` and the unchanged apex routes. Canonical options report emailCode=true/google=false; login and leaderboard return 200, signed-out account returns 401, all with no-store. The real owner-email browser login completed successfully on the canonical production site. The latest Trace email was found in the inbox, its code was submitted through the browser, and the account page displayed the requested email and active Free plan. Codes and session tokens are not retained in release evidence. Google production client is prepared pending credential-creation approval. Billing, owner switch, users, and subjects are preserved.
 
 Sources: [Cognito passwordless auth](https://docs.aws.amazon.com/cognito/latest/developerguide/authentication.html), [signup and session continuation](https://docs.aws.amazon.com/cognito/latest/developerguide/signing-up-users-in-your-app.html), [identity linking](https://docs.aws.amazon.com/cognito/latest/developerguide/cognito-user-pools-identity-federation-consolidate-users.html).

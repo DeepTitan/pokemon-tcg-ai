@@ -41,3 +41,26 @@ class GoogleLinkTests(unittest.TestCase):
         for override in [{'userPoolId':'other'},{'userName':'Unknown_123'},{'request':{'userAttributes':{'email':'x@gmail.com','email_verified':'false'}}}]:
             with self.assertRaises(ValueError): module.link({**self.event,**override},self.client,'pool')
         self.client.admin_link_provider_for_user.assert_not_called()
+
+    def test_native_signup_and_nested_admin_creation_pass_through_without_elevation(self):
+        for source in ('PreSignUp_SignUp', 'PreSignUp_AdminCreateUser'):
+            event = {'triggerSource': source, 'userPoolId': 'pool', 'response': {}}
+            self.assertIs(module.link(event, self.client, 'pool'), event)
+            self.assertEqual(event['response'], {})
+            with self.assertRaises(ValueError):
+                module.link(event, self.client, 'other-pool')
+        self.assertEqual(self.client.mock_calls, [])
+
+    def test_unknown_trigger_rejected(self):
+        with self.assertRaises(ValueError):
+            module.link({**self.event, 'triggerSource': 'Unknown'}, self.client, 'pool')
+
+    def test_retry_of_already_linked_identity_is_idempotent(self):
+        self.user['UserAttributes'].append({'Name': 'identities', 'Value': '[{"providerName":"Google","userId":"123"}]'})
+        self.assertIs(module.link(self.event, self.client, 'pool'), self.event)
+        self.client.admin_link_provider_for_user.assert_not_called()
+
+    def test_other_google_identity_does_not_skip_link(self):
+        self.user['UserAttributes'].append({'Name': 'identities', 'Value': '[{"providerName":"Google","userId":"456"}]'})
+        module.link(self.event, self.client, 'pool')
+        self.client.admin_link_provider_for_user.assert_called_once()

@@ -223,7 +223,7 @@ fn recent_match_operations(
             if storage.replay_requires_pro(&id)? && !membership.has_full_history() {
                 return Ok(None);
             }
-            Ok(Some(storage.match_access(&id)?.project_operation(operation)))
+            Ok(Some(storage.match_access(&id)?.project_operation_for_plan(operation, membership.has_full_history())))
         })
         .filter_map(|result| result.transpose())
         .collect()
@@ -298,12 +298,13 @@ async fn load_match_review(
     match_id: String,
 ) -> Result<tauri::ipc::Response, String> {
     verify_replay_access(&storage, &membership, &cloud_sync, &match_id).await?;
+    let pro = membership.has_full_history();
     let storage = storage.inner().clone();
     let json = tauri::async_runtime::spawn_blocking(move || -> Result<String, String> {
         let access = storage.match_access(&match_id)?;
         let value = storage
             .load_review(&match_id)?
-            .map(|review| access.project_review(review))
+            .map(|review| access.project_review_for_plan(review, pro))
             .unwrap_or(Value::Null);
         serde_json::to_string(&value).map_err(|e| e.to_string())
     })
@@ -363,13 +364,14 @@ async fn load_match_operations(
     match_id: String,
 ) -> Result<Vec<wire::CapturedOperation>, String> {
     verify_replay_access(&storage, &membership, &cloud_sync, &match_id).await?;
+    let pro = membership.has_full_history();
     let storage = storage.inner().clone();
     tauri::async_runtime::spawn_blocking(move || -> Result<Vec<_>, String> {
         let access = storage.match_access(&match_id)?;
         Ok(storage
             .load_operations(&match_id)?
             .into_iter()
-            .map(|operation| access.project_operation(operation))
+            .map(|operation| access.project_operation_for_plan(operation, pro))
             .collect())
     })
     .await

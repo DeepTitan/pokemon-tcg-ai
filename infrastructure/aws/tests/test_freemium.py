@@ -42,12 +42,27 @@ class FreemiumTests(unittest.TestCase):
         self.review = {**self.review, 'id': self.match}
         self.upload()
 
-    def test_recent_private_replay_does_not_contact_billing(self):
+    def test_recent_replay_remains_available_when_membership_is_offline(self):
         self.membership.side_effect = OSError('offline')
         result = app.get_match(self.device, self.match, {})
         self.assertEqual(result['statusCode'], 200)
-        self.assertEqual(decode(result)['review'], app.visible_review(self.review))
-        self.membership.assert_not_called()
+        self.assertEqual(decode(result)['review'], app.visible_review(self.review, private_study=False))
+        self.membership.assert_called_once()
+
+    def test_own_inventory_requires_pro_while_hand_remains_free(self):
+        self.review['decklists'] = [{'playerName': self.review['localPlayer'], 'cards': [], 'total': 60}]
+        self.review['turns'][0]['canonical'] = {'playerNames': [self.review['localPlayer']], 'state': {'players': [{'deck': [{'id': 'd', 'name': 'Deck secret'}], 'prizes': [{'id': 'p', 'name': 'Prize secret'}], 'hand': [{'id': 'h', 'name': 'My hand'}]}]}}
+        self.upload()
+        free = decode(app.get_match(self.device, self.match, {}))['review']
+        self.assertNotIn('decklists', free)
+        self.assertNotIn('Deck secret', json.dumps(free))
+        self.assertNotIn('Prize secret', json.dumps(free))
+        self.assertIn('My hand', json.dumps(free))
+        self.membership.return_value = paid()
+        pro = decode(app.get_match(self.device, self.match, {}))['review']
+        self.assertIn('Deck secret', json.dumps(pro))
+        self.assertIn('Prize secret', json.dumps(pro))
+        self.assertEqual(pro['decklists'], self.review['decklists'])
 
     def test_old_replay_denied_before_payload_read_but_original_retained(self):
         self.age()
