@@ -187,6 +187,7 @@ class FakeStripe:
         self.failure = False
         self.catalog = {plan: price(plan) for plan in ('trace', 'supporter')}
         self.after_checkout = None
+        self.scan_empty = False
 
     def subscriptions(self, customer):
         self.calls.append('subscriptions')
@@ -208,10 +209,16 @@ class FakeStripe:
         if key not in self.sessions:
             self.calls.append('create_checkout')
             self.sessions[key] = {'id': 'cs_' + str(len(self.sessions)), 'status': 'open',
+                                   'customer': customer, 'client_reference_id': subject,
+                                   'mode': 'subscription', 'livemode': False,
                                    'url': 'https://checkout.stripe.com/c/pay/fixture', 'expires_at': expires}
         if self.after_checkout:
             self.after_checkout()
         return deepcopy(self.sessions[key])
+
+    def checkout_sessions(self, customer):
+        self.calls.append('checkout_sessions')
+        return [] if self.scan_empty else deepcopy([s for s in self.sessions.values() if s['customer'] == customer])
 
     def retrieve_checkout(self, identifier):
         self.calls.append('retrieve_checkout')
@@ -399,6 +406,116 @@ class MembershipTests(unittest.TestCase):
         self.store.fail_save = False
         self.stripe.after_checkout = None
         self.service.checkout(USER, 'member@example.test', 'trace')
+        self.assertEqual(self.stripe.calls.count('create_checkout'), 1)
+
+    def test_unresolved_checkout_waits_through_unsafe_creation_window_then_retries_at_expiry(self):
+        self.stripe.current = []
+        pending = {'key': 'original-reservation', 'plan': 'trace', 'expiresAt': NOW + 3600}
+        self.store.accounts[USER]['checkout'] = deepcopy(pending)
+        for seconds in (29 * 60, 31 * 60, 59 * 60):
+            self.clock = NOW + seconds
+            self.assert_error('billing_busy', lambda: self.service.checkout(USER, 'member@example.test', 'trace'))
+            self.assertEqual(self.store.accounts[USER]['checkout'], pending)
+            self.assertNotIn('create_checkout', self.stripe.calls)
+        self.clock = pending['expiresAt']
+        self.service.checkout(USER, 'member@example.test', 'trace')
+        replacement = self.store.accounts[USER]['checkout']
+        self.assertNotEqual(replacement['key'], pending['key'])
+        self.assertEqual(replacement['expiresAt'], self.clock + 3600)
+        self.assertEqual(self.stripe.calls.count('create_checkout'), 1)
+
+    def test_lost_checkout_id_is_recovered_without_creating_with_short_expiry(self):
+        self.stripe.current = []
+        first = self.service.checkout(USER, 'member@example.test', 'trace')
+        pending = self.store.accounts[USER]['checkout']
+        identifier = pending.pop('sessionId')
+        self.clock = NOW + 31 * 60
+        self.stripe.scan_empty = True
+        self.assert_error('billing_busy', lambda: self.service.checkout(USER, 'member@example.test', 'trace'))
+        self.assertNotIn('sessionId', self.store.accounts[USER]['checkout'])
+        self.stripe.scan_empty = False
+        self.clock = NOW + 59 * 60
+        self.assertEqual(self.service.checkout(USER, 'member@example.test', 'trace'), first)
+        self.assertEqual(self.store.accounts[USER]['checkout']['sessionId'], identifier)
+        self.assertEqual(self.stripe.calls.count('create_checkout'), 1)
+
+    def test_known_open_checkout_remains_reusable_near_expiry(self):
+        self.stripe.current = []
+        first = self.service.checkout(USER, 'member@example.test', 'trace')
+        self.clock = NOW + 3599
+        self.assertEqual(self.service.checkout(USER, 'member@example.test', 'trace'), first)
+        self.assertEqual(self.stripe.calls.count('create_checkout'), 1)
+
+    def test_completed_checkout_with_lost_id_is_recovered_after_reservation_expiry(self):
+        self.stripe.current = []
+        self.service.checkout(USER, 'member@example.test', 'trace')
+        self.store.accounts[USER]['checkout'].pop('sessionId')
+        next(iter(self.stripe.sessions.values()))['status'] = 'complete'
+        self.clock = NOW + 3600
+        self.assert_error('payment_processing', lambda: self.service.checkout(USER, 'member@example.test', 'trace'))
+        self.assertEqual(self.stripe.calls.count('create_checkout'), 1)
+
+    def test_completed_checkout_allows_repurchase_after_its_exact_subscription_ended(self):
+        for terminal in ('canceled', 'incomplete_expired'):
+            for lost_id in (False, True):
+                with self.subTest(terminal=terminal, lost_id=lost_id):
+                    self.setUp()
+                    self.stripe.current = []
+                    self.service.checkout(USER, 'member@example.test', 'trace')
+                    original = next(iter(self.stripe.sessions.values()))
+                    ended = subscription('trace', status=terminal, metadata={'trace_subject': USER})
+                    original.update(status='complete', subscription=deepcopy(ended))
+                    self.stripe.current = [ended]
+                    if lost_id:
+                        self.store.accounts[USER]['checkout'].pop('sessionId')
+                    self.clock = NOW + 31 * 86400
+                    self.service.checkout(USER, 'member@example.test', 'supporter')
+                    self.assertEqual(self.stripe.calls.count('create_checkout'), 2)
+                    self.assertNotEqual(self.store.accounts[USER]['checkout']['sessionId'], original['id'])
+
+    def test_completed_checkout_does_not_assume_missing_or_unbound_subscription_ended(self):
+        ended = subscription('trace', status='canceled', metadata={'trace_subject': USER})
+        for supplied in (None, 'sub_fixture', {**ended, 'customer': 'cus_foreign'},
+                         {**ended, 'metadata': {'trace_subject': OWNER}}, {**ended, 'livemode': True},
+                         {**ended, 'status': 'incomplete'}, {**ended, 'id': ''},
+                         {**ended, 'items': {'data': []}}):
+            with self.subTest(subscription=supplied):
+                self.setUp()
+                self.stripe.current = []
+                self.service.checkout(USER, 'member@example.test', 'trace')
+                next(iter(self.stripe.sessions.values())).update(status='complete', subscription=supplied)
+                self.clock = NOW + 3600
+                self.assert_error('payment_processing', lambda: self.service.checkout(USER, 'member@example.test', 'trace'))
+                self.assertEqual(self.stripe.calls.count('create_checkout'), 1)
+
+    def test_lost_checkout_id_recovery_rejects_wrong_bindings_and_ambiguous_matches(self):
+        for field, value in (('customer', 'cus_foreign'), ('client_reference_id', OWNER),
+                             ('mode', 'payment'), ('livemode', True), ('expires_at', NOW + 7200)):
+            with self.subTest(field=field):
+                self.setUp()
+                self.stripe.current = []
+                self.service.checkout(USER, 'member@example.test', 'trace')
+                self.store.accounts[USER]['checkout'].pop('sessionId')
+                next(iter(self.stripe.sessions.values()))[field] = value
+                self.clock = NOW + 31 * 60
+                self.assert_error('billing_busy', lambda: self.service.checkout(USER, 'member@example.test', 'trace'))
+                self.assertNotIn('sessionId', self.store.accounts[USER]['checkout'])
+                self.assertEqual(self.stripe.calls.count('create_checkout'), 1)
+        self.setUp()
+        self.stripe.current = []
+        self.service.checkout(USER, 'member@example.test', 'trace')
+        self.store.accounts[USER]['checkout'].pop('sessionId')
+        self.stripe.sessions['duplicate'] = {**deepcopy(next(iter(self.stripe.sessions.values()))), 'id': 'cs_other'}
+        self.clock = NOW + 31 * 60
+        self.assert_error('billing_unavailable', lambda: self.service.checkout(USER, 'member@example.test', 'trace'))
+        self.assertNotIn('sessionId', self.store.accounts[USER]['checkout'])
+        self.assertEqual(self.stripe.calls.count('create_checkout'), 1)
+
+    def test_saved_checkout_id_is_also_bound_before_returning_its_url(self):
+        self.stripe.current = []
+        self.service.checkout(USER, 'member@example.test', 'trace')
+        next(iter(self.stripe.sessions.values()))['client_reference_id'] = OWNER
+        self.assert_error('billing_unavailable', lambda: self.service.checkout(USER, 'member@example.test', 'trace'))
         self.assertEqual(self.stripe.calls.count('create_checkout'), 1)
 
     def test_duplicate_subscription_rejected(self):

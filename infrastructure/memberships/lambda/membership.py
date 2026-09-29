@@ -20,6 +20,8 @@ SUBJECT = re.compile(r'^[A-Za-z0-9_-]{1,128}$')
 # Cognito subjects are UUIDs; pattern also permits synthetic nonproduction test subjects.
 CHECKOUT_TOKEN = re.compile(r'^[A-Za-z0-9_-]{43,128}$')
 GUEST_RETENTION_SECONDS = 90 * 86400
+# Stripe requires 30 minutes at creation; allow one minute for provider/network latency.
+CHECKOUT_CREATION_HEADROOM = 31 * 60
 LINK_CODE = re.compile(r'^[A-Z2-7]{10}$')
 EVENT_TYPES = frozenset({
     'checkout.session.completed', 'checkout.session.async_payment_succeeded',
@@ -355,6 +357,19 @@ class MembershipService:
         self.store.save_account(subject, {'snapshot': snapshot}, lease, self.now())
         return snapshot
 
+    def completed_checkout_ended(self, session, subject, customer):
+        """Only the exact freshly expanded subscription can release a completed checkout."""
+        sub = session.get('subscription')
+        if not isinstance(sub, dict):
+            return False
+        items = (sub.get('items') or {}).get('data') or []
+        return bool(sub.get('id') and sub.get('customer') == customer
+                    and (sub.get('metadata') or {}).get('trace_subject') == subject
+                    and sub.get('livemode') is self.config.stripe_live
+                    and sub.get('status') in {'canceled', 'incomplete_expired'}
+                    and len(items) == 1 and items[0].get('quantity') == 1
+                    and price_plan(items[0].get('price'), self.config))
+
     def checkout(self, subject, email, plan):
         self.require_billing()
         if plan not in PRICE_AMOUNTS:
@@ -373,23 +388,47 @@ class MembershipService:
             if snapshot['status'] not in {'none', 'canceled', 'incomplete_expired'}:
                 raise ApiError(409, 'subscription_exists')
             pending = account.get('checkout')
-            if pending and int(pending.get('expiresAt', 0)) > self.now():
-                # Repeating the exact original idempotency request also recovers a lost
-                # Stripe response before the session ID was saved locally.
+            if pending:
                 identifier = pending.get('sessionId')
                 if not identifier:
-                    recovered = self.stripe.checkout(account['customerId'], self.config.prices[pending['plan']], subject,
-                                                     pending['key'], pending['expiresAt'])
-                    identifier = recovered['id']
-                    pending = {**pending, 'sessionId': identifier}
-                    self.store.save_account(subject, {'checkout': pending}, lease, self.now())
-                session = self.stripe.retrieve_checkout(identifier)
-                if session.get('status') == 'open':
-                    if pending['plan'] == plan and int(session.get('expires_at', 0)) > self.now():
-                        return {'url': self.stripe.checkout_url(session)}
-                    self.stripe.expire_checkout(session['id'])
-                if session.get('status') == 'complete':
-                    raise ApiError(409, 'payment_processing')
+                    # Recover first: an existing session remains reusable even with
+                    # less than Stripe's minimum creation window left. The original
+                    # server-set expiry and account reference also bind legacy sessions.
+                    matches = [session for session in self.stripe.checkout_sessions(account['customerId'])
+                               if session.get('customer') == account['customerId']
+                               and session.get('client_reference_id') == subject
+                               and session.get('mode') == 'subscription'
+                               and session.get('livemode') is self.config.stripe_live
+                               and int(session.get('expires_at', 0)) == int(pending['expiresAt'])]
+                    if len(matches) > 1:
+                        raise ApiError(503, 'billing_unavailable')
+                    if matches:
+                        identifier = matches[0]['id']
+                    elif int(pending['expiresAt']) > self.now():
+                        if int(pending['expiresAt']) - self.now() <= CHECKOUT_CREATION_HEADROOM:
+                            # Never rotate an unresolved key while its session could
+                            # still be payable, or mutate its idempotent parameters.
+                            raise ApiError(409, 'billing_busy')
+                        recovered = self.stripe.checkout(account['customerId'], self.config.prices[pending['plan']], subject,
+                                                         pending['key'], pending['expiresAt'])
+                        identifier = recovered['id']
+                    if identifier:
+                        pending = {**pending, 'sessionId': identifier}
+                        self.store.save_account(subject, {'checkout': pending}, lease, self.now())
+                if identifier:
+                    session = self.stripe.retrieve_checkout(identifier)
+                    if (session.get('id') != identifier or session.get('customer') != account['customerId']
+                            or session.get('client_reference_id') != subject or session.get('mode') != 'subscription'
+                            or session.get('livemode') is not self.config.stripe_live
+                            or int(session.get('expires_at', 0)) != int(pending['expiresAt'])):
+                        raise ApiError(503, 'billing_unavailable')
+                    if session.get('status') == 'open':
+                        if pending['plan'] == plan and int(session.get('expires_at', 0)) > self.now():
+                            return {'url': self.stripe.checkout_url(session)}
+                        self.stripe.expire_checkout(session['id'])
+                    if session.get('status') == 'complete' and not self.completed_checkout_ended(
+                            session, subject, account['customerId']):
+                        raise ApiError(409, 'payment_processing')
             pending = {'key': secrets.token_urlsafe(24), 'plan': plan, 'expiresAt': self.now() + 3600}
             self.store.save_account(subject, {'checkout': pending}, lease, self.now())
             session = self.stripe.checkout(account['customerId'], self.config.prices[plan], subject,
@@ -428,6 +467,10 @@ class MembershipService:
             if matches:
                 identifier = matches[0]['id']
             elif create and int(record['expiresAt']) > self.now():
+                if int(record['expiresAt']) - self.now() <= CHECKOUT_CREATION_HEADROOM:
+                    # Preserve the unresolved key until its old session cannot be
+                    # payable; changing expiry under that key violates idempotency.
+                    raise ApiError(409, 'billing_busy')
                 session = self.stripe.guest_checkout(record['customerId'], self.config.prices[record['plan']],
                                                      proof, record['key'], int(record['expiresAt']))
                 identifier = session['id']

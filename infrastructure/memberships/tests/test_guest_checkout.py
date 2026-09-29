@@ -192,6 +192,41 @@ class GuestCheckoutTests(unittest.TestCase):
         self.assertTrue(result['url'].startswith('https://checkout.stripe.com/'))
         self.assertEqual(self.stripe.calls.count('create_guest_customer'), 0)
 
+    def test_unresolved_guest_waits_through_unsafe_creation_window_then_retries_at_expiry(self):
+        original = {'customerId': 'cus_guest0', 'createdAt': NOW, 'claimExpiresAt': NOW + 90 * 86400,
+                    'key': 'original-reservation', 'plan': 'trace', 'expiresAt': NOW + 3600}
+        self.store.guests[self.proof] = deepcopy(original)
+        for seconds in (29 * 60, 31 * 60, 59 * 60):
+            self.now = NOW + seconds
+            self.assert_error('billing_busy', lambda: self.service.guest_checkout('trace', TOKEN))
+            self.assertEqual(self.store.guests[self.proof], original)
+            self.assertNotIn('create_guest_checkout', self.stripe.calls)
+        self.now = original['expiresAt']
+        self.service.guest_checkout('trace', TOKEN)
+        replacement = self.store.guests[self.proof]
+        self.assertNotEqual(replacement['key'], original['key'])
+        self.assertEqual(replacement['expiresAt'], self.now + 3600)
+        self.assertEqual(self.stripe.calls.count('create_guest_checkout'), 1)
+
+    def test_lost_guest_id_recovers_open_session_even_with_short_remaining_expiry(self):
+        first = self.service.guest_checkout('trace', TOKEN)
+        identifier = self.store.guests[self.proof].pop('sessionId')
+        self.now = NOW + 31 * 60
+        self.stripe.scan_empty = True
+        self.assert_error('billing_busy', lambda: self.service.guest_checkout('trace', TOKEN))
+        self.assertNotIn('sessionId', self.store.guests[self.proof])
+        self.stripe.scan_empty = False
+        self.now = NOW + 59 * 60
+        self.assertEqual(self.service.guest_checkout('trace', TOKEN), first)
+        self.assertEqual(self.store.guests[self.proof]['sessionId'], identifier)
+        self.assertEqual(self.stripe.calls.count('create_guest_checkout'), 1)
+
+    def test_known_open_guest_session_remains_reusable_near_expiry(self):
+        first = self.service.guest_checkout('trace', TOKEN)
+        self.now = NOW + 3599
+        self.assertEqual(self.service.guest_checkout('trace', TOKEN), first)
+        self.assertEqual(self.stripe.calls.count('create_guest_checkout'), 1)
+
     def test_lost_session_id_recovers_paid_session_after_checkout_and_idempotency_expiry(self):
         self.buy()
         self.store.guests[self.proof].pop('sessionId')
