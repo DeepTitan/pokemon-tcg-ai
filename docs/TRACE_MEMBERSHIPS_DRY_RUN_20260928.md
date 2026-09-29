@@ -1,6 +1,6 @@
 # Trace launch dry run — September 28, 2026
 
-**Status: local release checks passed; provider end-to-end verification and production release are pending.**
+**Status: local checks and the sandbox Pro purchase/claim/portal-open journey passed. Remaining provider checks and production release are pending.**
 
 This release spans the public Trace website, a new membership API, capture service enforcement, and a desktop update newer than v0.1.88. Publishing the pricing HTML alone would send people into missing account routes and sell features the current desktop release cannot unlock.
 
@@ -20,19 +20,44 @@ The root operator verified the normal website flow in Chrome against
 - The normal **Sign out** action returned to the **Welcome back** login screen.
 
 Evidence: [Free account browser screenshot](../artifacts/free-account-browser-20260929.png).
-The browser fixture remains available for the later Pro purchase check. Its
-helper is waiting for `browser-complete`; no checkout has been started for this
-fixture, and it must not be treated as a completed paid journey.
+
+The same browser fixture then completed the real sandbox Pro flow:
+
+- Signed-out pricing → **Get Pro** opened Stripe-hosted Checkout for **$14.99/month**.
+  The public Stripe test card completed payment and the return page showed
+  **Your Pro payment is confirmed**.
+- Normal Trace sign-in followed by explicit **Activate membership** reached
+  **My account**, showing **Pro · Active**, $14.99 USD per month and renewal on
+  October 28, 2026. The success URL alone did not activate the account.
+- The guarded helper independently confirmed the exact Pro capabilities:
+  full archive and expanded sharing, with no owner override or opponent deck study.
+- Actual signed `invoice.paid`, `customer.subscription.created` and
+  `customer.subscription.updated` deliveries returned HTTP 200. The completed
+  Checkout event initially received `409 billing_busy` during concurrent
+  reconciliation; Stripe's automatic retry returned `200 received:true` at
+  04:25:45 UTC. Manually resending that same event returned `200 received:true`
+  at 04:33:43 UTC. This is real delivery/retry evidence, beyond account-state polling.
+- **Manage billing** exposed a URL-compatibility defect: Stripe created the
+  portal successfully, but the website rejected the newer query-based URL.
+  After the scoped validator fix, the normal button opened Stripe's hosted
+  sandbox portal with the exact Pro subscription, $14.99 price and configured
+  management controls.
+
+Evidence: [Pro account browser screenshot](../artifacts/pro-account-browser-20260929.png)
+and the root operator's [sanitized browser checkpoint](../artifacts/browser-membership-evidence-20260929.md).
+No provider URL containing a secret or account credential is retained here.
 
 Separately, the first Pro API-adapter attempt reached customer creation but
-Checkout returned HTTP 503. No successful payment or entitlement claim is
-established. That failed fixture is retained for diagnosis and cleanup.
+Checkout returned HTTP 503. That earlier failed fixture remains separate from
+the successful browser purchase and is retained for diagnosis and cleanup.
 
-**Still unverified:** delivered signup/confirmation and recovery emails, a paid
-Checkout return and claim in the browser, portal changes, and signed webhook
-delivery. Admin-confirming the fixture does not verify email delivery. The
-deployment observations and provider checklist below record the earlier
-September 28 baseline; they are not a fresh production-state audit.
+**Still unverified:** delivered signup/confirmation and recovery emails,
+independent Supporters purchase, cancellation state/expiry, portal upgrades and
+failed-upgrade behavior, verified owner binding, and production rollout.
+Submitting a cancellation request is not yet recorded as confirmed cancellation.
+Admin-confirming the fixture does not verify email delivery. The production
+observations and original provider checklist below retain their September 28
+baseline date; they are not a fresh production-state audit.
 
 ## Verified locally
 
@@ -52,15 +77,20 @@ September 28 baseline; they are not a fresh production-state audit.
 
 The unit suites exercise mocked providers. Their passing results are not proof of a working Stripe, Cognito, or production email connection.
 
-## Protected deployment
+## Protected deployment — September 29, 2026
 
-- Source commit: `874a8c6` in the website checkout.
-- Preview: https://victoryroad-6wqa66sww-deeptitan-6729s-projects.vercel.app/trace
-- Deployment: `dpl_FypKfULrZ5YDpbxrDMAP9CtnFVRh`.
-- Verified through authenticated Vercel CLI requests; production aliases and apex routing remain unchanged.
-- The account API correctly returns HTTP 503 with a non-cacheable unavailable response because membership provider configuration is not installed. This is an incomplete provider setup, not a successful end-to-end launch.
+- Source commit: `d52302944cfcbdda13db4a48159bed04df5fffa4` in the website checkout.
+- Stable preview: https://trace-memberships-staging-deeptitan-6729s-projects.vercel.app/trace
+- Deployment: `dpl_5HBWXX9gXmYpvejkbEjyu6js9jDa`.
+- Built from a clean Git archive; the unrelated working-tree dashboard change
+  was excluded. The exact Vercel build passed. Focused validation passed
+  44 web tests and 13 purchase-helper tests.
+- Post-alias checks confirmed an unauthenticated request redirects to Vercel
+  sign-in, the signed-out account API returns 401/private no-store, and signup
+  returns 200/private no-store. Sandbox membership configuration is installed.
+  Production aliases, environment values and apex routing remain unchanged.
 
-## Current production observations
+## Production baseline — September 28, 2026
 
 Read-only check: `node scripts/verify-trace-memberships-http.mjs https://victoryroad.app`.
 
@@ -75,7 +105,7 @@ Read-only check: `node scripts/verify-trace-memberships-http.mjs https://victory
 
 Actual apex production is the `prize-map` Vercel project. Its existing project routing rules proxy Trace to `victoryroad-lovat.vercel.app`. Scoped additive rules can support the membership API and member script without rebuilding the unrelated film app. Preserve the existing rules/version for rollback.
 
-## Required provider checks before launch
+## Original provider checklist — September 28, 2026
 
 1. Restore AWS sign-in. Both existing AWS profiles currently return an expired-session error.
 2. Inspect the deployed capture stack and preserve its device table, tokens, data, and leaderboard stream. Deploy the isolated member stack with billing disabled first.

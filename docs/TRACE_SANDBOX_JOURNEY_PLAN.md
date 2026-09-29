@@ -3,12 +3,17 @@
 Prepared September 28, 2026; execution evidence updated September 29. The
 companion's first authorized Pro adapter attempt created a synthetic account and
 Stripe customer, then stopped on a Checkout HTTP 503; that fixture is retained.
-A separate prepare/status probe passed without starting Checkout. No successful
-paid session, payment or claim has been established.
+A separate prepare/status probe passed without starting Checkout.
 
-The root operator also ran `--browser-fixture` and verified normal browser login,
-the Free account view, and sign-out in the protected staging preview. That
-separate fixture remains waiting for its browser purchase. See the
+The root operator then used a separate `--browser-fixture` account to verify
+Free login/account/logout, signed-out pricing → hosted $14.99 Pro test payment →
+return → sign-in → explicit claim, and the resulting active Pro account. The
+helper independently confirmed exact Pro capabilities without owner or opponent
+deck-study access. Actual signed webhook deliveries and automatic/manual retry
+of the same completed-checkout event returned 200. After fixing the website's
+portal URL allowlist, normal Manage billing opened the correct sandbox portal.
+Cancellation, upgrades, an independent Supporters purchase and real email
+delivery remain unverified at this checkpoint. See the
 [dated browser evidence and limits](TRACE_MEMBERSHIPS_DRY_RUN_20260928.md#protected-staging-browser-check--september-29-2026).
 
 ## Scope and starting point
