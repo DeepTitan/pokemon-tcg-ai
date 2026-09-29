@@ -104,11 +104,75 @@ or game. The endpoint helper's 17 generated-metadata tests pass separately:
 python3 -m unittest discover -s scripts/aws -p 'test_check_trace_endpoint_pair.py' -v
 ```
 
-The release workflow already builds/signs platform packages and briefly
-launches the copied macOS package to check that its process stays alive.
-It does not assert the account UI or native IPC transitions. Windows E2E
-currently tests native/reducer behavior and privileged route-cleanup commands,
-not the GUI. No workflow is changed or dispatched by this preflight work.
+The full `tracker:test-setup`, `tracker:test` (including its prerequisite suites)
+and `tracker:build` subsequently passed on the membership release source.
+No concrete native/frontend source blocker was found in the release diff
+against `9bda5aa`. This does not establish successful package signing or a
+packaged browser-link journey.
+
+## Signed draft candidate
+
+The release checkpoint workflow now accepts `workflow_dispatch` with
+`release_level: PATCH` and **`publish: false` by default**. It uses the existing
+version calculation; with latest tag `v0.1.88`, an untagged candidate source
+calculates `v0.1.89`. It does not accept an arbitrary tag. A tagged source keeps
+its existing version, and a manual run refuses to overwrite a public release.
+
+After the workflow is available remotely, the operator can dispatch the exact
+reviewed branch/ref with publishing disabled and the required `source_sha`
+input set to its reviewed full commit SHA. A moved or incorrect ref fails
+before build/signing. Do not add a release marker to a
+`main` commit just to obtain a candidate: normal `[PATCH]`, `[MINOR]` and
+`[MAJOR]` pushes retain automatic publication. The branch/ref must resolve to
+the reviewed source; each build/finalization job checks out the immutable SHA
+recorded by the checkpoint.
+
+GitHub requires the dispatch-enabled workflow to exist on the default branch
+before manual runs are available. Bootstrap it with a reviewed commit whose
+message has no release marker, then dispatch the reviewed ref with the exact
+`source_sha`. A local-only workflow change cannot be dispatched. See
+[GitHub's manual workflow requirements](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow).
+
+The candidate path builds the normal signed/notarized macOS and Windows
+packages and verifies publisher signatures, Gatekeeper acceptance and updater
+signatures. It attaches installers, updater archives, detached signatures and
+`latest.json` to a **draft** release. It skips execution of both the macOS app
+and relocated capture-helper fixture, and skips publication and public update
+feed verification. No native fixture feature is required for these checks.
+
+Manual and automatic releases share one concurrency group. Existing tags must
+resolve to the source SHA. Before uploads, the helper lists release metadata
+with the authenticated repository token and checks the draft's exact source.
+Failed lookups never imply absence. An existing draft whose target is a mutable
+branch name or a different SHA fails closed, including historical automatic
+retries; resolve that draft's source before retrying. Final candidate verification
+confirms it is still a draft. Signing or verification failures leave a draft
+for inspection and do not publish it.
+
+Publishing requires a later, deliberate dispatch of the **same candidate
+source** with `publish: true`, which rebuilds/verifies before publication, or a
+normal reviewed marker release on `main`. Do not dispatch changed source over
+the held candidate's version. The source/tag guards reject that conflict.
+Publication retains the existing macOS launch/helper smoke checks and then
+verifies the public update manifest. These launch checks do not start the game.
+
+Offline workflow validation:
+
+```sh
+npm run release:test
+node scripts/release/trace-release-checkpoint.mjs --release-level PATCH --json
+```
+
+The second command is a read-only local calculation, not a dispatch. Its
+`shouldPublish` must be false. No signing workflow was dispatched as part of
+these changes. Actual signer availability, package checks and the canonical
+browser approval remain to be observed during the coordinated release.
+
+## Optional deeper packaged UI coverage
+
+The normal release path's copied macOS app launch checks only that its process
+stays alive. Windows E2E currently tests native/reducer behavior and privileged
+route-cleanup commands, not the GUI.
 
 Hosted runners can isolate fixture tests from the owner's installed Trace,
 but a deterministic packaged fixture harness is still needed. Startup opens
@@ -117,7 +181,7 @@ and starts cloud sync. A fresh profile enters onboarding that cannot be
 dismissed before capture setup succeeds. Browser-only mocks therefore do not
 isolate native side effects or make the account controls reachable.
 
-The next implementation is a separate, nonpublishing hosted macOS/Windows
+Deeper UI automation would use a separate, nonpublishing hosted macOS/Windows
 fixture job with no provider or signing secrets, an optional native fixture
 feature and a separate Tauri identifier. Its startup should use synthetic
 storage and local service fixtures, bypass privileged capture setup and route
