@@ -17,12 +17,13 @@
 
 ## Readiness and configuration
 
-### Current checkpoint — September 29, 2026
+### Staging and email checkpoint — September 29, 2026
 
 - The protected website preview uses source `03834b2`, deployment
   `dpl_DtTEKuUfGUSGFNKVMh87KrxZoYuN`, at
   `https://trace-memberships-staging-deeptitan-6729s-projects.vercel.app`.
-  Production aliases and public billing remain unchanged.
+  Production aliases and public billing were unchanged at that checkpoint;
+  the production progress below supersedes that status.
 - Both initial sandbox purchases, explicit claims, portal access, paid Pro →
   Supporters upgrade, failed-upgrade preservation, cancellation and signed
   webhook delivery/retry passed. All successful and failed synthetic purchase
@@ -59,59 +60,129 @@
   and review `GRANTED`, case `179066268400340`. SES public sending is approved
   for this account and region. See [operations status](TRACE_EMAIL_OPERATIONS.md).
 
-### Production infrastructure checkpoint — September 29, 2026
+### Current production checkpoint — September 29, 2026
 
-- New isolated `trace-memberships-production` reached `CREATE_COMPLETE` at
-  `https://kg0vg9dnk0.execute-api.us-east-1.amazonaws.com`. Its Cognito pool is
-  `us-east-1_FhL6gNP11`, client `6hq47mf56i6grejr3bs3gnraci`. The Accounts table is
-  `trace-memberships-production-Accounts-1MC7VRDW6OLXV`; the separate owner switch
-  table is `trace-memberships-production-OwnerSwitches-10KAUO5WKZ1VM`.
-  Branded SES sender, the eight-character/no-composition password policy and
-  unauthenticated account 401 were verified. Billing and owner override are off.
-- Production capture reached `UPDATE_COMPLETE` with the new membership API and
-  `RequireMembership=false`. All 65 offline capture tests passed. The executed
-  change set modified only Lambda code/environment and the API definition.
-  All storage identities, stack tags and the exact KEYS_ONLY leaderboard stream
-  ARN remained unchanged. Private APIs rejected unsigned requests. No synthetic
-  game, app launch or existing installation credential change was used.
+The public membership website, live billing backend and signed desktop update
+are deployed, with replay and sharing limits enabled. Production owner
+signup/binding and the final account-link and recovery checks remain pending.
+
+- Isolated `trace-memberships-production` reached `UPDATE_COMPLETE` with
+  `BillingEnabled=true`, `StripeMode=live` and the canonical web origin
+  `https://victoryroad.app`. Its endpoint is
+  `https://kg0vg9dnk0.execute-api.us-east-1.amazonaws.com`; Cognito pool
+  `us-east-1_FhL6gNP11`, client `6hq47mf56i6grejr3bs3gnraci`, Accounts table
+  `trace-memberships-production-Accounts-1MC7VRDW6OLXV` and owner switch table
+  `trace-memberships-production-OwnerSwitches-10KAUO5WKZ1VM` are preserved.
+  Branded SES sending, the eight-character password policy with no composition
+  requirements and signed-out account 401 were verified. The read-only billing
+  readiness audit passed all 25 recorded checks. Owner override remains off.
+- Dedicated live Trace prices are `price_1UKuvY3qgXndaKhC01dmcmd0` (Pro,
+  USD $14.99/month) and `price_1UKv0K3qgXndaKhCwDLKwIFe` (Supporters Club,
+  USD $39.99/month). Portal `bpc_1UKvSh3qgXndaKhCohNHB9Li` contains only those
+  two Trace plans, with quantity one, price-only updates, `always_invoice`
+  proration and cancellation at period end. The existing film portal remains
+  the default. Dedicated webhook `we_1UKvWE3qgXndaKhCD2Aom9hw` targets the new
+  production `/v1/webhook`, with API version `2024-06-20` and the backend's
+  exact 11 event types.
+- The dedicated restricted live runtime key has only Customers Write,
+  Customer Portal Write, Checkout Sessions Write, Prices Read, Subscriptions
+  Read and Invoices Read. Temporary Webhook Endpoints Write was removed after
+  setup. The initial key was rotated immediately and its rejection was
+  confirmed with HTTP 401. The replacement key and webhook signing secret are
+  stored with the existing web proxy secret in the dedicated production AWS
+  secret. No credential value belongs in source or release evidence. Existing
+  film products and credentials are unchanged.
+- Clean website source `110789d00e59b0b126db2891ddc1f105d1003a35`, deployment
+  `dpl_FU7u55HPXzfw5hJNhxuPgLdSTfcw`, is public through stable upstream
+  `victoryroad-lovat.vercel.app` and canonical `https://victoryroad.app/trace`.
+  The unrelated dirty dashboard edit was excluded from the clean source build.
+  Apex route version `578c870d-ca80-414b-bb6e-40d37084ec3e` is live with exactly
+  11 rules and no staged version. All nine original film/public routes retain
+  their definitions and relative order. The membership API and account script
+  are the only added routes.
+- The initial API project rule used `:action*` in its destination, which
+  produced proxy JSON 404 responses. Changing only that destination capture to
+  `$1` restored dispatch; no runtime code or `vercel.json` change was needed.
+  Canonical HTTP smoke passed 7/7: pricing, signup, desktop link, account
+  script, account 401/no-store, signed-out download redirect and leaderboard.
+  Three harmless login POST checks also passed: an empty body with canonical
+  Origin returns 400; wrong or missing Origin returns 403. The same input and
+  Origin checks passed on the protected routing alias before promotion.
+- A separate production session smoke passed using one temporary synthetic
+  account with email delivery suppressed. It verified canonical login,
+  Secure/HttpOnly/host-only cookies, exact Free capabilities, CSRF rejection,
+  refresh, logout and rejection of revoked credentials. The synthetic user and
+  account row were removed; token-derived rate counters were left for their
+  normal short TTL (logical expiry no later than 08:15:51 UTC) rather than
+  scanning production for them. This did not exercise the owner's signup or
+  email delivery and did not touch Stripe, devices or captures.
+- Normal browser flows reached live Stripe Checkout showing Pro at
+  $14.99/month and Supporters Club at $39.99/month. Canceling returned to the
+  canonical Trace account page. No payment details or payment were submitted.
+  Scoped cleanup passed: both sessions are expired and unpaid, have no payment
+  associations, and their single guest customer has no subscriptions or invoices.
+  Only the second session required expiration; switching plans had expired the
+  first. These checks establish checkout presentation and cancel
+  routing, not a live purchase, paid entitlement, claim or portal journey.
+- The owner's staging account is confirmed, but production signup, email
+  verification, immutable subject binding and the database owner switch are
+  still pending. Staging confirmation does not establish a production identity.
+- Production capture is `UPDATE_COMPLETE`, paired with the new membership API,
+  with `RequireMembership=true` after the signed desktop release became public.
+  All 65 offline capture tests passed.
+  The earlier deployment preserved storage identities, stack tags and the exact
+  `KEYS_ONLY` leaderboard stream ARN. A later enforcement change set,
+  `trace-membership-enforcement-7eb64863feea885f43face3a`, was executed after
+  rechecking the exact reviewed artifact and deployed baseline. Post-update
+  verification passed: only the membership flag changed, with unchanged code,
+  other environment values, IAM role, tags, storage and leaderboard stream.
+  CloudFormation reused the exact previous processed SAM tree as its Original
+  template; the processed tree is unchanged. Free capture, summaries and
+  leaderboard contributions remain available for linked and unlinked devices.
 - The read-only [endpoint preflight](TRACE_NATIVE_RELEASE_PREFLIGHT.md) passed
-  against actual production CloudFormation ownership in both directions. Its
-  17 offline guard tests passed. GitHub's `TRACE_MEMBERSHIP_API_URL` now points
-  at the new production API; `TRACE_SYNC_API_URL` retains the existing capture
-  endpoint. This verifies build configuration, not a packaged app's behavior.
-- Website production endpoint/origin variables and a dedicated sensitive proxy
-  secret are configured. The same proxy value exists in a dedicated AWS secret,
-  whose metadata is recorded in ignored `production-secret-metadata.json`.
-  That secret has no live Stripe key/webhook secret yet and is not wired into
-  the billing-disabled production Lambda. No secret value was logged or saved
-  in source. Existing film credentials are unchanged.
-- Clean website source `110789d` built as production deployment
-  `dpl_FU7u55HPXzfw5hJNhxuPgLdSTfcw` at
-  `https://victoryroad-bugzfkp5s-deeptitan-6729s-projects.vercel.app`, with
-  `--skip-domain`. Vercel assigned its generated project alias, but the stable
-  `victoryroad-lovat.vercel.app` used by the public apex still resolves to
-  `dpl_8fUT6j7aMK3WxQStFtRVyZNWP35C`. Apex routes are not promoted. The unrelated
-  dirty dashboard file was excluded from the clean archive/build. All seven
-  protected HTTP smoke checks passed through authenticated Vercel CLI requests:
-  pricing, signup, link, script, account 401/no-store, download redirect and
-  leaderboard. Plain requests encountered the expected SSO redirect; protection
-  remains enabled. These are artifact checks, not proof of public promotion.
-- Stripe Dashboard sign-in expired before live setup. An external Chrome
-  sign-in tab is awaiting the user. Sandbox billing is verified; live products,
-  runtime key and webhook remain unconfigured. Do not enable paid access or
-  promote checkout until these and the native release are ready.
+  against actual production CloudFormation ownership in both directions; its
+  17 offline guard tests passed. GitHub's membership endpoint points at the new
+  production API, and the capture endpoint retains its existing identity.
+  The native build from merged `main` commit `8be41e2d` passed GitHub run
+  `36540773920` and is published as `v0.1.89`. All six public assets download
+  anonymously and match their GitHub hashes. Both updater signatures verify;
+  the public manifest matches the release and all four platform entries point
+  to the expected assets. Mac signing, notarization, stapling and hosted startup
+  checks passed. Windows passed all 50 Rust tests and verified the publisher
+  signatures on both installer and extracted app. Both app binaries contain
+  the exact production API pair and no staging endpoints. A prior build exposed
+  a Windows-only test socket race, fixed by setting the accepted fixture socket to blocking mode;
+  all seven focused membership tests passed. The post-enforcement endpoint
+  preflight also passed with `RequireMembership=true`. This does not establish
+  that a packaged app has completed the canonical account-link flow. No local
+  app or game was launched, and no game was recorded for these checks.
 
-Ignored evidence: `membership-production-stack.json`,
-`capture-production-changeset-20260929.json`,
-`capture-production-after-20260929.json`, and
-`production-endpoint-pair-20260929.json`; website preparation/build evidence is
-in the sibling checkout's `artifacts/membership/production-preflight-20260929/`.
+Evidence is saved under ignored `artifacts/membership/`, including
+`production-stripe-catalog-20260929.json`,
+`production-billing-readiness-20260929.json`,
+`production-pro-checkout-20260929.png`,
+`production-supporters-checkout-20260929.png`,
+`production-capture-enforcement-reviewed-20260929.json`,
+`production-capture-enforcement-executed-20260929.json`,
+`production-capture-enforcement-verified-20260929.json`,
+`native-release-v0.1.89-verification.json` and
+`production-endpoint-pair-20260929.json`. Some earlier catalog booleans describe
+pre-promotion state; the checkpoint above reflects the later browser and routing
+results. Website promotion and correction evidence is in the sibling checkout's
+`artifacts/membership/production-promotion-20260929/` and
+`artifacts/membership/production-route-correction-20260929/`; the reviewed route
+plan and guard correction are committed there as `8ad12ba`.
+The final canonical read-only check passed 7/7 at 08:29:50 UTC, including
+pricing, signup, linking, account script, leaderboard, signed-out account 401
+with no-store and the signed-out download redirect. Its sanitized evidence is
+in the website checkout's `artifacts/membership/production-final-http-20260929/`.
 
-Remaining release work includes completing password recovery, production owner
-binding, separate live Stripe setup, the packaged native release checks,
-public website routing/promotion, and enabling capture policy in coordination.
-No sandbox or infrastructure result alone establishes that memberships are
-publicly launched.
+Remaining work is production owner signup and binding,
+password recovery completion and a packaged native account-link check.
+The production owner account was still absent at the final September 29 check;
+its signup remains handed off to the user, and no owner override is enabled.
+Sandbox purchases and unpaid live checkout screens do not establish a complete
+live paid-entitlement journey or a finished freemium rollout.
 
 ### Historical setup snapshot — September 28, 2026
 
