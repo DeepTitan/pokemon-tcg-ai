@@ -4,6 +4,36 @@
 
 This release spans the public Trace website, a new membership API, capture service enforcement, and a desktop update newer than v0.1.88. Publishing the pricing HTML alone would send people into missing account routes and sell features the current desktop release cannot unlock.
 
+## Protected staging browser check — September 29, 2026
+
+The root operator verified the normal website flow in Chrome against
+`https://trace-memberships-staging-deeptitan-6729s-projects.vercel.app`:
+
+- The protected preview opened using the operator's existing Vercel session,
+  without redirecting to SSO. Protection was not disabled.
+- The `--browser-fixture` helper created one disposable, admin-confirmed Cognito
+  account with its invitation suppressed. Credentials stayed in the private
+  handoff; no real signup or confirmation email was sent.
+- Entering those credentials in Trace's normal login form reached **My account**.
+  It showed **Free · Active**, no subscription, and the expected download, app-link
+  and upgrade actions. This check did not download or link an actual device.
+- The normal **Sign out** action returned to the **Welcome back** login screen.
+
+Evidence: [Free account browser screenshot](../artifacts/free-account-browser-20260929.png).
+The browser fixture remains available for the later Pro purchase check. Its
+helper is waiting for `browser-complete`; no checkout has been started for this
+fixture, and it must not be treated as a completed paid journey.
+
+Separately, the first Pro API-adapter attempt reached customer creation but
+Checkout returned HTTP 503. No successful payment or entitlement claim is
+established. That failed fixture is retained for diagnosis and cleanup.
+
+**Still unverified:** delivered signup/confirmation and recovery emails, a paid
+Checkout return and claim in the browser, portal changes, and signed webhook
+delivery. Admin-confirming the fixture does not verify email delivery. The
+deployment observations and provider checklist below record the earlier
+September 28 baseline; they are not a fresh production-state audit.
+
 ## Verified locally
 
 - Free recording is independent of account/payment/network admission.

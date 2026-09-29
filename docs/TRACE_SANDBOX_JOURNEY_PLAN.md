@@ -1,8 +1,15 @@
 # Trace sandbox checkout journey
 
-Prepared September 28, 2026. The companion is implemented and tested offline;
-it has not created an account or payment session. A separate authorized staging
-probe confirmed prepare/status wiring without starting Checkout.
+Prepared September 28, 2026; execution evidence updated September 29. The
+companion's first authorized Pro adapter attempt created a synthetic account and
+Stripe customer, then stopped on a Checkout HTTP 503; that fixture is retained.
+A separate prepare/status probe passed without starting Checkout. No successful
+paid session, payment or claim has been established.
+
+The root operator also ran `--browser-fixture` and verified normal browser login,
+the Free account view, and sign-out in the protected staging preview. That
+separate fixture remains waiting for its browser purchase. See the
+[dated browser evidence and limits](TRACE_MEMBERSHIPS_DRY_RUN_20260928.md#protected-staging-browser-check--september-29-2026).
 
 ## Scope and starting point
 
