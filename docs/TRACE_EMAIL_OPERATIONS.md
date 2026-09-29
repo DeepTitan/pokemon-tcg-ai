@@ -1,8 +1,8 @@
-# Trace email operations — attached, delivery test pending
+# Trace email operations — feedback routing verified
 
-September 29, 2026. This deployment is limited to account `108241940679`, region `us-east-1`, and transactional Trace email from the existing `victoryroad.app` SES identity. The five-resource `trace-email-operations` stack reached `CREATE_COMPLETE`. AWS template validation passed and the exact resource names were checked absent before creation. The exact owner SNS subscription is now confirmed. The guarded feedback helper completed `--execute` and read-back passed for both domain Bounce and Complaint topics. Existing forwarding and BOUNCE/COMPLAINT suppression were preserved. Actual alert delivery has not yet been tested. No production-access request has been submitted.
+September 29, 2026. This deployment is limited to account `108241940679`, region `us-east-1`, and transactional Trace email from the existing `victoryroad.app` SES identity. The five-resource `trace-email-operations` stack reached `CREATE_COMPLETE`. AWS template validation passed and the exact resource names were checked absent before creation. The exact owner SNS subscription is confirmed. The guarded feedback helper completed `--execute` and read-back passed for both domain Bounce and Complaint topics. Existing forwarding and BOUNCE/COMPLAINT suppression were preserved. One authorized simulator bounce and one complaint reached the owner-addressed operations notifications in Gmail, matched to their accepted SES message IDs. Feedback routing is operational; reputation-alarm firing was not exercised. SES production access was requested once at 06:17:57 UTC; AWS accepted the request and reports review `PENDING`, with `ProductionAccessEnabled:false`.
 
-The domain identity and DKIM are verified, and the exact owner test recipient is SES-verified. Staging Cognito now uses `EmailSendingAccount=DEVELOPER`, the `victoryroad.app` source identity and `From=no-reply@victoryroad.app`. The normal recovery UI requested a branded email. At the user's request, another recovery email was requested through the same UI; it acknowledged the request. The AWS subscription resend was unnecessary because the subscription was already confirmed. SES statistics show one delivery attempt and zero bounces, complaints or rejects, but the user reports that the resent recovery email arrived in Spam and was marked Not spam. No password has been changed, and actual Gmail authentication results remain pending. These counters do not establish receipt or healthy ongoing delivery. See [sender setup](TRACE_MEMBERSHIPS_EMAIL_SETUP.md) for the detailed checkpoint.
+The domain identity and DKIM are verified, and the exact owner test recipient is SES-verified. Staging Cognito uses `EmailSendingAccount=DEVELOPER`, the `victoryroad.app` source identity and `From: Trace <no-reply@victoryroad.app>`. A fresh normal-UI recovery message displayed September 29 at 1:19 AM appeared unread with an Inbox label before opening. Its Trace sender, `Your Trace code` subject and neutral body matched the deployed template; Gmail Show original reported SPF, DKIM and DMARC PASS. The earlier recovery message also passed authentication, but the user reported its initial Spam placement and marked it Not spam. The fresh result establishes delivery to this mailbox after that feedback, not a guarantee for other recipients or proof that the copy change fixed spam classification. No password has been changed. See the [fresh authentication summary](../artifacts/membership/gmail-fresh-trace-code-pass-20260929.png) and [sender setup](TRACE_MEMBERSHIPS_EMAIL_SETUP.md).
 
 ## Deployed resources
 
@@ -26,8 +26,8 @@ There are no IAM roles, Lambda functions, additional domains, marketing resource
 ## Review and deployment sequence
 
 The deployment steps below are retained as the reviewed procedure. Steps 1–6
-are complete; do not create another stack or subscription. Actual notification
-delivery remains pending. SES recipient verification is
+and the subsequent simulator notification-delivery checks are complete; do not
+create another stack or subscription. SES recipient verification is
 separate from confirming an SNS subscription; the earlier verification does not
 confirm this subscription.
 
@@ -61,28 +61,47 @@ The [SES notification documentation](https://docs.aws.amazon.com/ses/latest/dg/c
 ## Evidence required before calling this operational
 
 - Stack completed with the exact topic, policy, two alarms and confirmed owner subscription; helper read-back passed for both SES feedback topics. Suppression is still `BOUNCE` plus `COMPLAINT`, and feedback forwarding is still enabled.
-- Owner-approved notification delivery test reached the operations mailbox. A later approved SES mailbox-simulator test can verify actual bounce/complaint routing without using a real customer's mailbox. No such test has been run by this preparation task.
-- Branded verification/recovery delivery and sender authentication were tested separately. Receiving a message in Spam establishes receipt, not inbox placement. SES production access and sender verification remain separate gates.
+- **Verified:** one authorized SES mailbox-simulator bounce and one complaint were accepted at 06:15:33 and 06:15:34 UTC on September 29. The visible owner-addressed Gmail notifications matched each accepted SES `messageId`, notification kind and exact simulator destination. [Sanitized simulator evidence](../artifacts/membership/ses-feedback-simulator-20260929.json) records the matches without private headers. This establishes SES → SNS → operations-mailbox routing for both kinds. No real customer received either test message, and no mailbox rules were changed.
+- **Verified for the fresh recovery message:** it appeared unread in Inbox before opening, rendered the deployed Trace sender and neutral subject/body, and passed Gmail SPF/DKIM/DMARC. Earlier mail had been marked Not spam by the user, so this mailbox result does not guarantee placement elsewhere. Password-recovery completion and SES production approval remain pending.
+
+The [AWS mailbox simulator](https://docs.aws.amazon.com/ses/latest/dg/send-an-email-from-console.html)
+does not affect reputation rates. These two tests therefore did not fire or
+verify the CloudWatch reputation-threshold alarms. Their deployed configuration
+and passing read-back remain the available alarm evidence.
 
 SNS feedback can contain recipient addresses and provider details even when original headers are off. Keep it in the owner-controlled mailbox; do not copy raw notifications into public logs or issue reports. Record only non-sensitive evidence such as test time, notification kind and delivery confirmation. Alarm actions are a notification mechanism, not proof anyone reviewed an alert.
 
-The proposed operator response is to inspect each bounce/complaint, retain SES suppression, avoid manually retrying suppressed recipients, and investigate unexpected sending before resuming affected traffic. At a reputation alarm, the owner reviews Trace and any other SES traffic in the region and decides whether to pause new sending while investigating. This human process must be accepted by the owner; it is not implemented as an automatic pause. Current auth endpoints enforce a shared limit of 30 requests per normalized email per five-minute bucket, plus HTTP API limits of 15 requests/second and burst 30. This is not a daily email budget or an individual resend cooldown.
+The operator response described in the submitted production-access request is to inspect each bounce/complaint, retain SES suppression, avoid manually retrying suppressed recipients, and investigate unexpected sending before resuming affected traffic. At a reputation alarm, the owner reviews Trace and any other SES traffic in the region and decides whether to pause new sending while investigating. This is a human process, not an automatic pause. Current auth endpoints enforce a shared limit of 30 requests per normalized email per five-minute bucket, plus HTTP API limits of 15 requests/second and burst 30. This is not a daily email budget or an individual resend cooldown.
 
 Before deleting this stack, inspect and detach only feedback settings that still point to this exact topic, retaining email feedback forwarding and suppression. Then remove the stack and verify its resources/subscription are gone. Do not delete the SES domain identity or a replacement notification destination.
 
-## Truthful SES production-access request draft — not submitted
+## SES production-access request — pending review
 
-This is the canonical request draft; the sender setup document links here to avoid divergent copies. Mail type: **Transactional**. Region: `us-east-1`. Website: `https://victoryroad.app/trace`. Responsible contact proposed by the user: `williamsbyronik@gmail.com`. The deployed staging From address is `no-reply@victoryroad.app`; confirm its use for public sending before submission. A precise daily-volume forecast is not a required field in [PutAccountDetails](https://docs.aws.amazon.com/ses/latest/APIReference-V2/API_PutAccountDetails.html), so it is not an added launch gate here. Do not invent a forecast or represent pending controls as operational.
+The authorized request was submitted once at **06:17:57 UTC on September 29,
+2026**, after checking that no review was already in progress. AWS returned HTTP
+200. Immediate `GetAccount` read-back showed `ReviewDetails.Status:PENDING` and
+`ProductionAccessEnabled:false`; no case ID was returned at that checkpoint.
+The account remains in the SES sandbox. Request acceptance is not production
+approval, and no production application or live billing was deployed.
 
-> We request Amazon SES production access in us-east-1 for Trace, a Pokémon TCG match-recording application on Victory Road. We will use SES through Amazon Cognito for account-verification codes, user-requested verification resends, and password-recovery codes only.
->
-> Recipients enter an email address when signing up or requesting account recovery. We require verification before granting account access. We do not use purchased or imported recipient lists, newsletters, marketing campaigns, or unsolicited invitations. Our membership API limits authentication requests per email address, and the HTTP API also has request-rate limits.
->
-> SES account suppression for hard bounces and complaints is already enabled. The domain and DKIM are verified, and the isolated staging Cognito pool uses the branded no-reply@victoryroad.app sender. A normal password-recovery request has reached one SES delivery attempt; receipt and recovery completion are not yet confirmed. The dedicated notification topic, owner subscription and SES reputation alarms are deployed. The owner subscription still needs confirmation, and Bounce/Complaint feedback attachment is blocked until then. Monitoring is not yet operational. Before submission, the owner must accept the monitoring responsibility and confirm how delivery problems will be handled.
->
-> This is a small launch of user-triggered transactional email, not bulk sending. Before enabling public onboarding, we will confirm and test the operations notification channel, validate branded account-verification and recovery delivery, and stay within the approved sending quota. We will confirm the public From address before submission.
+Submitted values: mail type **Transactional**, region `us-east-1`, website
+`https://victoryroad.app/trace`, language `EN`, and owner contact
+`williamsbyronik@gmail.com`. The request describes only user-requested Cognito
+verification, resend and password-recovery messages from
+`Trace <no-reply@victoryroad.app>`. It records verified authentication and feedback
+routing, retained suppression/forwarding, configured reputation alarms, the
+human response process above, and the early Spam-placement observation without
+promising inbox placement. Public onboarding through this identity remains
+gated on SES approval and the remaining application checks.
 
-Before submitting, replace the pending statements only with observed evidence and confirm the owner's monitoring responsibility. The [SES production-access process](https://docs.aws.amazon.com/ses/latest/dg/request-production-access.html) requires truthful acknowledgment of a bounce/complaint process. A prepared template is not that process in operation. No request has been submitted by this task.
+The exact [submitted request](../artifacts/membership/ses-production-access-request.ready.json)
+and [accepted request/read-back evidence](../artifacts/membership/ses-production-access-submission-20260929.json)
+are saved in ignored local artifacts. Do not resubmit while review is pending.
+A precise daily-volume forecast is not a required field in
+[PutAccountDetails](https://docs.aws.amazon.com/ses/latest/APIReference-V2/API_PutAccountDetails.html)
+and was not invented for this request. Follow the
+[SES production-access process](https://docs.aws.amazon.com/ses/latest/dg/request-production-access.html)
+for the review outcome and any AWS follow-up.
 
 ## Offline validation
 
@@ -91,4 +110,4 @@ python3 -m unittest discover -s scripts/aws -p test_configure_trace_email_feedba
 python3 scripts/aws/configure-trace-email-feedback.py
 ```
 
-All 12 offline tests passed, and peer review approved the scoped implementation. They cover wrong-account refusal, unconfirmed/wrong recipient, pending DKIM, missing suppression, an existing other topic, broader permissions, disabled alarms, partial-update drift, exact two-write scope and retry idempotency. They do not establish notification delivery. The separate AWS deployment and blocked preflight evidence above establish only those stated checkpoints. No AWS call is required for the offline tests.
+All 12 offline tests passed, and peer review approved the scoped implementation. They cover wrong-account refusal, unconfirmed/wrong recipient, pending DKIM, missing suppression, an existing other topic, broader permissions, disabled alarms, partial-update drift, exact two-write scope and retry idempotency. They do not establish notification delivery. Separate AWS deployment and passing attachment read-back establish only those stated checkpoints. No AWS call is required for the offline tests.

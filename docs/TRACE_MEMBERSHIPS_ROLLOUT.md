@@ -36,19 +36,27 @@
 - The real owner account is confirmed in staging, after the original Cognito
   email arrived in Spam. It has no production subject binding or owner override.
 - Domain DKIM and the exact SES test recipient are verified. Staging Cognito
-  uses `DEVELOPER` email from `no-reply@victoryroad.app`. The recovery UI requested
-  a branded email; SES reports one attempt and no bounce, complaint or reject,
-  and the owner confirmed the resent email arrived in Spam and marked it Not
-  spam. Actual Gmail authentication results and recovery completion are pending.
-  No password was changed. See [sender evidence](TRACE_MEMBERSHIPS_EMAIL_SETUP.md).
+  uses `DEVELOPER` email with `From: Trace <no-reply@victoryroad.app>` and subject
+  `Your Trace code`. A fresh normal-UI recovery email displayed September 29 at
+  1:19 AM appeared unread in Inbox before opening, rendered the deployed sender
+  and neutral body, and passed Gmail SPF, DKIM and DMARC. The earlier recovery
+  email also passed authentication, but the owner reported its initial Spam
+  placement and marked it Not spam. The fresh mailbox result does not guarantee
+  inbox placement for others or prove why earlier messages went to Spam.
+  Password-recovery completion remains pending; no password was changed.
+  See [sender evidence](TRACE_MEMBERSHIPS_EMAIL_SETUP.md).
 - The five-resource email operations stack reached `CREATE_COMPLETE`. SNS
   subscription is now confirmed. The guarded feedback helper attached both
-  Bounce/Complaint topics and passed read-back; actual alert delivery is pending.
-  SES production access has not been requested. See [operations status](TRACE_EMAIL_OPERATIONS.md).
+  Bounce/Complaint topics and passed read-back. One simulator bounce and one
+  complaint reached the owner-addressed Gmail notifications, matched by SES
+  message ID and exact simulator destination. Feedback routing is verified;
+  these tests did not fire the CloudWatch reputation-rate alarms.
+  SES production access was requested once at 06:17:57 UTC. AWS accepted the
+  request and reports review `PENDING`; production access remains false and SES
+  remains sandboxed. See [operations status](TRACE_EMAIL_OPERATIONS.md).
 
-Remaining release work includes confirming branded email receipt/recovery and
-actual email-alert receipt, obtaining SES
-public sending access, production owner binding, separate live Stripe setup,
+Remaining release work includes completing password recovery, obtaining SES
+production approval, production owner binding, separate live Stripe setup,
 the packaged native release checks, and coordinated production deployment.
 No sandbox result alone establishes that production is shipped.
 
