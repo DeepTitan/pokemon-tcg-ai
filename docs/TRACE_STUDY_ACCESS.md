@@ -8,4 +8,8 @@ Native IPC and capture events use the validated membership lease to project inve
 
 Verification: browser-only fixture at /study-access-preview.html; tracker production build; native deck_access tests; cloud privacy/freemium tests. No Pokémon client or capture process launched.
 
-Not released: these changed study access rules require a coordinated signed desktop release and cloud deployment. Google production OAuth remains a separate unfinished launch item. Existing production email authentication is live.
+Production cloud access controls deployed successfully on September 29, 2026 (`trace-production`, UPDATE_COMPLETE). Production Google OAuth is published for external users and enabled at victoryroad.app; both email-code login and Google login completed in the production browser. Existing signed-in users redirect from the login route to their account. Google requests only sign-in profile/email scopes.
+
+Desktop publication is in progress: source `35acb2e52b21ba6e18094a15ed04cf9eca7f2a6c`, release workflow run `36620191493`, intended version 0.1.91. Do not describe desktop gates as shipped until the signed installers and public updater manifest are verified.
+
+Validation: full tracker setup/regression suite passed; native library tests 59 passed/1 ignored; cloud tests 66 passed; website membership tests 30 passed. Production capture and membership endpoints remain paired to their existing stacks. No game client was launched.
