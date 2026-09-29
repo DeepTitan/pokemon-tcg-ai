@@ -678,6 +678,7 @@ export default function TrackerApp() {
   const [showSettings, setShowSettings] = useState(false);
   const [showArchiveUpgrade, setShowArchiveUpgrade] = useState(false);
   const [showStudyUpgrade, setShowStudyUpgrade] = useState(false);
+  const [studyZone, setStudyZone] = useState<'decklist' | 'deck' | 'prizes'>('decklist');
   const [showSetup, setShowSetup] = useState(false);
   const [membership, setMembership] = useState<MembershipStatus | null>(null);
   const refreshMembership = useCallback(async () => {
@@ -1428,7 +1429,7 @@ export default function TrackerApp() {
   }, [cardCatalog, openCard]);
 
   const openZone = useCallback((title: string, subtitle: string, cards: Card[], visibility: Record<string, ReviewCardVisibility>) => {
-    if (!sharedMode && !membership?.traceAccess && / · (Deck|Prize cards)$/.test(title)) { setShowStudyUpgrade(true); return; }
+    if (!sharedMode && !membership?.traceAccess && / · (Deck|Prize cards)$/.test(title)) { setStudyZone(title.endsWith('Prize cards') ? 'prizes' : 'deck'); setShowStudyUpgrade(true); return; }
     setInspector({ kind: 'zone', title, subtitle, cards, visibility });
   }, [sharedMode, membership?.traceAccess]);
 
@@ -1544,7 +1545,7 @@ export default function TrackerApp() {
     return deck;
   }, [selectedReview?.id, resolveCardsForPayload]);
   useEffect(() => { setInspector(null); }, [membership?.traceAccess, membership?.opponentDecklists]);
-  const openStudyUpgrade = () => setShowStudyUpgrade(true);
+  const openStudyUpgrade = () => { setStudyZone('decklist'); setShowStudyUpgrade(true); };
   const opponentDeckAccess = {
     onUpgrade: !sharedMode && !membership?.opponentDecklists ? () => { void openMembershipAccount().catch(() => setError('Couldn’t open your browser. Visit victoryroad.app/trace/account to upgrade.')); } : undefined,
     upgradeLabel: 'Join Supporters Club',
@@ -1691,7 +1692,7 @@ export default function TrackerApp() {
 
       {!sharedMode && environment.capture.waitingForMatchEnd && !safetyDismissed && !showSetup && !showSettings && <div className="capture-safety-backdrop"><section className="capture-safety-dialog" role="alertdialog" aria-modal="true" aria-labelledby="capture-safety-title" aria-describedby="capture-safety-description"><div className="capture-safety-icon" aria-hidden="true"><ShieldCheck size={33} weight="fill" /><i /></div><span>Safe connection</span><h2 id="capture-safety-title">TCG Live is already connected</h2><p id="capture-safety-description">Trace can’t safely tell whether a match is active. It won’t interrupt your connection or install an update.</p><div className="capture-safety-waiting"><i aria-hidden="true" /><span><strong>In a match? Finish playing first.</strong><small>Already on Home? Quit TCG Live, leave Trace open until it says Ready, then reopen TCG Live.</small></span></div><div className="modal-actions"><button type="button" onClick={() => setSafetyDismissed(true)}>Continue reviewing</button><button type="button" onClick={openSettings}>Open Settings</button></div></section></div>}
       {!sharedMode && showSetup && <CaptureSetupModal onClose={closeSetup} onCapture={capture => setEnvironment(current => ({ ...current, capture }))} />}
-      {!sharedMode && showStudyUpgrade && <ArchiveUpgradeModal feature="study" onClose={() => setShowStudyUpgrade(false)} onLink={() => { setShowStudyUpgrade(false); openSettings(); }} />}
+      {!sharedMode && showStudyUpgrade && <ArchiveUpgradeModal feature="study" studyZone={studyZone} onClose={() => setShowStudyUpgrade(false)} onLink={() => { setShowStudyUpgrade(false); openSettings(); }} />}
       {!sharedMode && showArchiveUpgrade && <ArchiveUpgradeModal onClose={() => setShowArchiveUpgrade(false)} onLink={() => { setShowArchiveUpgrade(false); openSettings(); }} />}
       {!sharedMode && showSettings && <UpdateSettingsModal onClose={() => setShowSettings(false)} version={appVersion}>{isTauri() && accountSettings}</UpdateSettingsModal>}
       {shareUrl && <div className="modal-backdrop share-modal-backdrop"><div className="share-modal" role="dialog" aria-modal="true" aria-labelledby="share-match-title"><div className="modal-title"><div><span>Ready to send</span><h2 id="share-match-title">Share this match</h2></div><button type="button" onClick={() => setShareUrl(null)} aria-label="Close share dialog"><X size={21} weight="bold" /></button></div><p>Anyone with this link can click through the replay in their browser.</p><div className="share-link-row"><input value={shareUrl} readOnly aria-label="Share link" onFocus={(event) => event.currentTarget.select()} /><button className="primary" type="button" onClick={() => void copyShareUrl(shareUrl)}><Copy size={16} weight="bold" />Copy link</button></div></div></div>}
