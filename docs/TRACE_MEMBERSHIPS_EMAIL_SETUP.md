@@ -1,8 +1,8 @@
 # Trace transactional email setup
 
-Checkpoint: September 29, 2026, with public DNS verified at 05:24 UTC and SES status checked at 05:27:39 UTC. The owner received the staging Cognito verification email in Gmail's Spam folder and completed the normal user confirmation flow. Staging still uses `COGNITO_DEFAULT`, with sender `no-reply@verificationemail.com`. This proves delivery and account confirmation for that message; it does not prove inbox placement, branded-sender readiness or a spam fix.
+Checkpoint: September 29, 2026, with public DNS verified at 05:24 UTC and SES domain/DKIM verification confirmed at 05:35:28 UTC. The owner previously received the staging Cognito verification email in Gmail's Spam folder and completed the normal user confirmation flow. That message used `COGNITO_DEFAULT`, with sender `no-reply@verificationemail.com`. The staging SES sender deployment has now completed: Cognito reads back `EmailSendingAccount:DEVELOPER`, the `victoryroad.app` SES source ARN and `From:no-reply@victoryroad.app`. The normal recovery form has requested the owner's branded recovery email; receipt and recovery completion remain pending. The earlier message proves account confirmation, not inbox placement or a spam fix.
 
-AWS account `108241940679`, region `us-east-1`: the SES domain identity `victoryroad.app` exists with RSA-2048 DKIM. All three public DKIM CNAME answers now match the required targets, but SES still reports `PENDING` and `VerifiedForSendingStatus:false` at 05:27:39 UTC. It is not yet verified for sending. SES remains in sandbox mode: sending enabled, 200 messages/day and one message/second. No SES production-access request has been submitted, no branded sender configuration has been deployed, and no branded email has been sent through this identity. Delivery-failure, bounce and complaint monitoring is not operational yet.
+AWS account `108241940679`, region `us-east-1`: the SES domain identity `victoryroad.app` now reports identity and DKIM `SUCCESS`, with `VerifiedForSendingStatus:true`. All three public DKIM CNAME answers match the required targets. The operator made one SES v1 `verify_domain_dkim` request before the successful read-back; the existing tokens and RSA-2048 settings did not change. SES remains in sandbox mode: sending enabled, 200 messages/day and one message/second. No SES production-access request has been submitted and no branded delivery has been verified. Delivery-failure, bounce and complaint monitoring is not operational yet.
 
 ## DKIM records published in GoDaddy
 
@@ -30,36 +30,50 @@ aws sesv2 get-email-identity --profile default --region us-east-1 \
   --output json
 ```
 
-Do not mark email ready until all three public CNAME answers match, AWS reports successful verification, and the authorized delivery/recovery tests pass. SES production access is an additional gate for public onboarding. Current staging uses Cognito's development sender; that does not prove readiness of the new SES sender.
+Public DNS, AWS verification and the staging sender deployment now pass. Do not mark email ready until the authorized delivery/recovery tests also pass. SES production access is an additional gate for public onboarding; the earlier delivery through Cognito's development sender does not prove readiness of the new SES sender.
 
 ## Branded-email test while SES remains in the sandbox
 
-Cognito confirmation and SES recipient verification are separate. The confirmed owner's email has not been verified as an SES identity. With the template's `DEVELOPER` email configuration, SES sandbox sending requires a verified recipient address or domain; verifying only the `victoryroad.app` sender does not allow delivery to arbitrary Gmail recipients. [Cognito email settings](https://docs.aws.amazon.com/cognito/latest/developerguide/user-pool-email.html), [SES sandbox restrictions](https://docs.aws.amazon.com/ses/latest/dg/request-production-access.html).
+Cognito confirmation and SES recipient verification are separate. The owner has now followed the AWS verification link, and the exact test recipient's SES identity reports `VerificationStatus:SUCCESS` and `VerifiedForSendingStatus:true`. With the template's `DEVELOPER` email configuration, SES sandbox sending requires a verified recipient address or domain; this verifies only that recipient, not arbitrary Gmail addresses. The `victoryroad.app` sender domain is also verified. [Cognito email settings](https://docs.aws.amazon.com/cognito/latest/developerguide/user-pool-email.html), [SES sandbox restrictions](https://docs.aws.amazon.com/ses/latest/dg/request-production-access.html).
 
-The first recipient-helper attempt stopped on an exception-class mismatch before identity creation. After correcting that handler, the authorized retry succeeded with `verificationRequested:true` and `verified:false`: one AWS recipient-verification email was requested for the owner's supplied address. The user has been asked to follow its verification link. Receipt and completion are still pending; this request does not establish a verified recipient or branded sending readiness.
+The first recipient-helper attempt stopped on an exception-class mismatch before identity creation. After correcting that handler, the authorized retry requested one AWS recipient-verification email. The user received it and completed the verification link; AWS read-back confirms success. This clears the exact recipient's sandbox requirement. The staging sender is deployed and a recovery email has been requested through the normal UI, but branded receipt, authentication and inbox/spam placement have not yet been confirmed.
 
 After authorized DNS publication and successful DKIM verification:
 
-1. With explicit authorization for the verification email, create an SES email identity for the exact test recipient in `us-east-1`. The recipient must follow the AWS verification link. This is a test-only SES requirement, not a new signup step for future production users.
-2. Select the actual From address on `victoryroad.app`, then set staging `SesIdentity=victoryroad.app`, `SesRegion=us-east-1`, and `SesFromEmail` together. Deploy only staging and verify the pool reads back `EmailSendingAccount=DEVELOPER` with the expected identity and sender. Cognito may create its SES service-linked role.
+1. **Completed for the exact owner test recipient:** the authorized SES verification email was requested and its link confirmed in `us-east-1`. This is a test-only SES requirement, not a new signup step for future production users. Other test recipients still require separate verification while SES remains in the sandbox.
+2. **Completed in staging:** `SesIdentity=victoryroad.app`, `SesRegion=us-east-1`, and `SesFromEmail=no-reply@victoryroad.app` are deployed. The pool reads back `EmailSendingAccount=DEVELOPER` with the expected source identity and From address. Production is unchanged.
 3. Use a user-requested password-recovery flow to test the confirmed owner's branded email without deleting, recreating or administratively resetting the account. Have the user inspect the From address, DKIM authentication and inbox/spam placement, then enter the code privately if completing recovery. Do not record codes or passwords.
 4. For new-signup delivery proof, use a separate exact SES-verified test address. Do not assume a plus-address inherits recipient verification, and do not reuse the confirmed owner as a fresh signup.
 
 Neither DKIM verification nor an accepted API response guarantees inbox placement. Public onboarding still requires SES production access; then recipients no longer need SES identity verification. The optional [notification-error logging draft](TRACE_MEMBERSHIPS_NOTIFICATION_LOGGING.md) remains undeployed and can help diagnose provider errors. It does not fix spam filtering or prove inbox delivery.
 
-## Draft SES production-access request — not submitted
+The reviewed staging deployment changed only the three SES parameters above and
+completed successfully. The backend's 116 tests passed before deployment.
+Neither that test result nor successful deployment establishes email receipt.
 
-Region: `us-east-1`. Mail type: **Transactional**. Website: `https://victoryroad.app/trace`. The responsible contact email, exact From address and expected daily volume must be supplied and reviewed before submission; none is inferred from the owner's game username. Verify the domain and decide how delivery failures and complaints will be monitored before presenting those controls as operational.
+After the normal recovery UI request, SES statistics showed one delivery attempt
+and zero bounces, complaints or rejects. The user's Inbox/Spam response remains
+pending. No password has been changed. These provider counters are evidence of
+an attempted send, not receipt, successful recovery or reliable inbox placement.
+The separate five-resource [email operations stack](TRACE_EMAIL_OPERATIONS.md)
+reached `CREATE_COMPLETE`. Its SNS confirmation email was requested, but the
+owner's confirmation is pending. The read-only attachment check correctly
+stopped at `exact_owner_subscription_must_be_confirmed`; Bounce/Complaint topics
+are not yet attached and monitoring is not operational.
 
-> We request Amazon SES production access in us-east-1 for Trace, a Pokémon TCG match-recording application on Victory Road. SES will be used through Amazon Cognito for transactional account email verification, user-requested verification-code resends and password-reset codes only.
->
-> Recipients provide their own email address when creating a Trace account or requesting account recovery. Verification codes establish control of the address before account access is granted. The membership API rate-limits signup, resend and recovery requests. This request does not cover marketing, newsletters, imported address lists or unsolicited invitations.
->
-> The application and an isolated staging Cognito pool are implemented. The victoryroad.app SES domain identity has been created with RSA-2048 DKIM and all three required CNAME records are publicly visible, but SES verification is still pending. Public production onboarding has not launched through this identity. We will confirm DKIM verification and complete real email-delivery and account-recovery tests before enabling public sending.
->
-> Before submission, we will provide the responsible contact, selected sender address, realistic initial daily volume, and the confirmed process for monitoring delivery failures, bounces and complaints. We will not use this sender for promotional email. Public sending will begin only after those controls are in place and SES production access is approved.
+The recovery-request screenshot captured an older account-page JavaScript
+instance that still displayed the former 12-character/composition rule. Reloading
+the same reset route showed the correct deployed copy: **8–128 characters. No
+numbers or symbols required.** No code or password was entered during that
+check. Source and existing signup/reset regressions already used the current
+rule; this was a stale open tab, not a new reset validation defect. No runtime
+patch or redeployment was needed.
 
-This is a review draft, not evidence that a request was sent or approved. Replace its outstanding implementation statements with verified facts before submission; do not invent deliverability controls or volume estimates. Separate sandbox Stripe configuration and the owner's normal staging Cognito confirmation do not establish production billing readiness or a production owner subject. There is no Discord prerequisite.
+Evidence: [branded recovery requested, before tab reload](../artifacts/membership/branded-recovery-requested-20260929.png).
+
+## SES production-access request — not submitted
+
+The single [review draft and operator prerequisites](TRACE_EMAIL_OPERATIONS.md#truthful-ses-production-access-request-draft--not-submitted) live in the email operations document. Confirm the public From address and the owner's monitoring responsibility before submission. A precise daily-volume forecast is not an added requirement; do not invent one. Replace pending statements only with observed evidence, and do not present deployed but unconfirmed alert resources as operational. Separate sandbox Stripe configuration and the owner's normal staging Cognito confirmation do not establish production billing readiness or a production owner subject. There is no Discord prerequisite.
 
 ## After verification and approval
 
