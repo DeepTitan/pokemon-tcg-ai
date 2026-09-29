@@ -3022,3 +3022,16 @@ button.stadium-marker:focus-visible {
 .decklist-locked-unlock button:focus-visible { outline: 2px solid #427da8; outline-offset: 3px; }
 
 .decklist-locked-unlock > small { font-size: 11px; color: #73796f; }
+
+.hand-fan { cursor: default; }
+button.hand-fan-card { padding: 0; cursor: pointer; }
+.hand-fan-card:focus-visible { outline: 3px solid #427da8; outline-offset: 3px; z-index: 13; transform: translateY(-27px) scale(1.1); }
+button.decklist-card-art { display: block; padding: 0; border: 0; background: transparent; cursor: pointer; }
+button.decklist-card-art:focus-visible { outline: 2px solid #427da8; outline-offset: 2px; }
+button.decklist-card-art:disabled { cursor: default; }
+.review-card .card-inspector-layout { grid-template-columns: minmax(0, 1.35fr) minmax(180px, 1fr); }
+.review-card .inspector-art > img { max-height: min(720px, calc(100dvh - 145px)); }
+@media (max-width: 700px) {
+ .review-card .card-inspector-layout { grid-template-columns: minmax(0, 1fr); }
+ .review-card .inspector-art { position: static; width: min(100%, 420px); margin: 0 auto; }
+}

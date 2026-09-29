@@ -9,26 +9,27 @@ import type { CapturedDecklist, CardInfo } from './types.js';
 import { cardArtUsesAlternate, resolvedCardArt, showCardBackOnError } from './card-art.js';
 import { exportDecklist } from './decklist-export.js';
 
-function DecklistCard({ cardId, count, card }: { cardId: string; count: number; card?: CardInfo }) {
+function DecklistCard({ cardId, count, card, onInspect }: { onInspect?: () => void; cardId: string; count: number; card?: CardInfo }) {
   const [unavailable, setUnavailable] = useState(false);
   const [localFailed, setLocalFailed] = useState(false);
   const label = card?.name || cardId;
   useEffect(() => { setUnavailable(false); setLocalFailed(false); }, [cardId, card?.imageDataUrl]);
   return <figure title={`${count} × ${label} · ${cardId}`}>
-    <div className="decklist-card-art">
+    <button type="button" className="decklist-card-art" onClick={onInspect} aria-label={`View ${label}`} disabled={!onInspect}>
     {unavailable ? <div className="decklist-art-unavailable" role="img" aria-label={`${label}: artwork unavailable`}>
       <strong>{label}</strong><small>{card?.setCode || cardId.split('_')[0]} · {card?.number || cardId.split('_')[1]}</small>
       {card?.hp && <span>{card.hp} HP</span>}<small>Artwork unavailable</small>
     </div> : <img key={`${cardId}:${card?.imageDataUrl || ''}`} data-card-id={cardId}
       src={resolvedCardArt(cardId, card?.imageDataUrl)} alt={label} loading="eager"
       onError={event => { setLocalFailed(true); showCardBackOnError(event); if (event.currentTarget.src.endsWith('/tracker-assets/pokemon-card-back.jpg')) setUnavailable(true); }} />}
-    <b aria-label={`${count} copies`}>×{count}</b></div><figcaption>{label}</figcaption>
+    <b aria-label={`${count} copies`}>×{count}</b></button><figcaption>{label}</figcaption>
       {!unavailable && (!card?.imageDataUrl || localFailed) && cardArtUsesAlternate(cardId)
         && <small className="decklist-art-note" title="The captured printing is preserved; artwork shows a version with the same gameplay text.">Alternate artwork</small>}
   </figure>;
 }
 
-export function PlayerDecklist({ name, deck: suppliedDeck, catalog, loadDeck, unavailableReason, accessKey, onUpgrade, upgradeLabel }: {
+export function PlayerDecklist({ name, deck: suppliedDeck, catalog, loadDeck, unavailableReason, accessKey, onUpgrade, upgradeLabel, onInspectCard }: {
+  onInspectCard?: (cardId: string) => void;
   name: string; deck?: CapturedDecklist; catalog: ReadonlyMap<string, CardInfo>;
   loadDeck?: () => Promise<CapturedDecklist>; unavailableReason?: string; accessKey?: string; onUpgrade?: () => void; upgradeLabel?: string;
 }) {
@@ -144,7 +145,7 @@ export function PlayerDecklist({ name, deck: suppliedDeck, catalog, loadDeck, un
       </div> : <div className="decklist-empty"><p>{unavailableReason || 'No decklist was saved for this match.'}</p></div>)}
       {deck ? <>{exported.error && <p className="decklist-copy-error">{exported.error}</p>}
         <div className="player-decklist-grid">{entries.map(entry => {
-          return <DecklistCard key={entry.cardId} cardId={entry.cardId} count={entry.count} card={catalog.get(entry.cardId)} />;
+          return <DecklistCard key={entry.cardId} cardId={entry.cardId} count={entry.count} card={catalog.get(entry.cardId)} onInspect={onInspectCard ? () => { close(); onInspectCard(entry.cardId); } : undefined} />;
         })}</div></> : available && loadState === 'idle' ? <p className="decklist-empty">This match has no complete starting list saved.</p> : null}
     </div>, document.body)}
   </>;

@@ -472,7 +472,7 @@ function reviewCardImage(card: Card, catalog: ReadonlyMap<string, CardInfo>): st
   return resolvedCardArt(sourceId, card.imageUrl || info?.imageDataUrl);
 }
 
-function HandFan({ boardName, cards, count, visibility, catalog, opponent, onOpen }: { boardName: string; cards: Card[]; count: number; visibility: Record<string, ReviewCardVisibility>; catalog: ReadonlyMap<string, CardInfo>; opponent: boolean; onOpen: () => void }) {
+function HandFan({ boardName, cards, count, visibility, catalog, opponent, onOpen }: { boardName: string; cards: Card[]; count: number; visibility: Record<string, ReviewCardVisibility>; catalog: ReadonlyMap<string, CardInfo>; opponent: boolean; onOpen: (card: Card) => void }) {
   const total = Math.max(cards.length, count);
   const displayed = handFanCardCount(total);
   const orderedCards = sortCardsForDisplay(cards, (card) => {
@@ -482,18 +482,18 @@ function HandFan({ boardName, cards, count, visibility, catalog, opponent, onOpe
   const fanState = displayed === 0 ? 'empty' : displayed === 1 ? 'single' : '';
   const fanStyle = { '--hand-gap-count': Math.max(1, displayed - 1) } as CSSProperties;
   return (
-    <button type="button" className={`hand-fan ${opponent ? 'opponent-hand' : 'local-hand'}`} onClick={onOpen} title={`Open ${boardName}'s hand`} aria-label={`${boardName} hand, ${total} card${total === 1 ? '' : 's'}`}>
-      <span className={`hand-fan-cards ${fanState}`} style={fanStyle} aria-hidden="true">
+    <div role="group" className={`hand-fan ${opponent ? 'opponent-hand' : 'local-hand'}`} aria-label={`${boardName} hand, ${total} card${total === 1 ? '' : 's'}`}>
+      <span className={`hand-fan-cards ${fanState}`} style={fanStyle}>
         {Array.from({ length: displayed }, (_, index) => {
           const card = orderedCards[index];
           const hidden = opponent || !card;
           return hidden
             ? <span className="hand-fan-card hidden" key={card?.id || `hidden-${index}`}><img src="/tracker-assets/pokemon-card-back.jpg" alt="" /></span>
-            : <span className="hand-fan-card known" style={cardTransitionStyle(card.id)} key={card.id} title={card.name}><img src={reviewCardImage(card, catalog)} data-card-id={cardSourceIdFromReviewCard(card)} alt="" onError={showCardBackOnError} /></span>;
+            : <button type="button" onClick={() => onOpen(card)} aria-label={`View ${card.name}`} className="hand-fan-card known" style={cardTransitionStyle(card.id)} key={card.id} title={card.name}><img src={reviewCardImage(card, catalog)} data-card-id={cardSourceIdFromReviewCard(card)} alt="" onError={showCardBackOnError} /></button>;
         })}
       </span>
       <span className="hand-fan-label"><Hand size={14} weight="duotone" /><span>{opponent ? 'Opponent hand' : 'Your hand'}</span><b>{total}</b></span>
-    </button>
+    </div>
   );
 }
 
@@ -535,7 +535,7 @@ export function PlayerField({ board, decklist, deckAccess, canonical, pendingCar
     <section className={`player-field ${opponent ? 'opponent' : 'local'} ${status.isCurrentTurn && !handoff ? 'current-turn' : ''} ${handoff ? `turn-${handoff}` : ''} ${status.itemLocked ? 'item-locked' : ''}`}>
       <div className="player-strip">
         {handoff && handoff !== 'receiving' && <div key={`pass-impact:${currentReviewIndex}:${handoff}`} className={`pass-impact ${handoff}`} aria-hidden="true"><span className="pass-impact-streak" /><b>{handoff === 'timed-out' ? 'TIME EXPIRED' : 'TURN PASSED'}</b><span className="pass-impact-arrow">{opponent ? '↓' : '↑'}</span></div>}
-        <div className="player-identity"><img src={avatar} alt="" /><div><span>{opponent ? 'Opponent' : 'You'}</span><strong key={`${currentReviewIndex}:${handoff || 'normal'}`} className={handoff ? `header-handoff ${handoff}` : undefined}><span className="header-player-name">{board.name}</span>{handoff && <span className="header-handoff-message" role="status">{handoff === 'receiving' ? opponent ? 'Opponent’s turn next' : 'Your turn next' : handoff === 'timed-out' ? 'Time expired →' : 'Passed turn →'}</span>}</strong></div><PlayerDecklist name={board.name} deck={decklist} catalog={catalog} {...deckAccess} />{opponent && <OpponentHandSummary boardName={board.name} count={handCount} onOpen={openHand} />}</div>
+        <div className="player-identity"><img src={avatar} alt="" /><div><span>{opponent ? 'Opponent' : 'You'}</span><strong key={`${currentReviewIndex}:${handoff || 'normal'}`} className={handoff ? `header-handoff ${handoff}` : undefined}><span className="header-player-name">{board.name}</span>{handoff && <span className="header-handoff-message" role="status">{handoff === 'receiving' ? opponent ? 'Opponent’s turn next' : 'Your turn next' : handoff === 'timed-out' ? 'Time expired →' : 'Passed turn →'}</span>}</strong></div><PlayerDecklist name={board.name} deck={decklist} catalog={catalog} {...deckAccess} onInspectCard={(cardId) => { const info = catalog.get(cardId); onOpenCard(cardInfoToEngineCard(info, cardId, info?.name || cardId, cardId)); }} />{opponent && <OpponentHandSummary boardName={board.name} count={handCount} onOpen={openHand} />}</div>
         <div className="turn-statuses" aria-label={`${board.name} turn status`}>
           <span className="status-slot turn-slot">{handoff === 'passing' || handoff === 'timed-out'
             ? <span className={`status-pill turn-handoff-pill ${handoff}`} aria-label={`Turn ${turnNumber} ${handoff === 'timed-out' ? 'ended when the timer expired' : 'ended without an attack'}`}><span>Turn {turnNumber}</span><b>{handoff === 'timed-out' ? 'Timed out' : 'Passed'}</b></span>
@@ -549,7 +549,7 @@ export function PlayerField({ board, decklist, deckAccess, canonical, pendingCar
         <div className="strip-zones"><div className="prize-summary"><span>Prize</span><b>{canonical.prizes.length || prizesRemaining(board)}</b>{Array.from({ length: canonical.prizes.length || prizesRemaining(board) }, (_, index) => <i key={index} className="remaining" />)}</div></div>
       </div>
       <div className="field-layout"><PrizeFan count={canonical.prizes.length || prizesRemaining(board)} cards={canonical.prizes} tone={tone} inferred={prizeKnowledge.kind === 'inferred'} onOpen={openPrizes} /><div className="battle-lanes">{opponent ? <>{bench}{active}</> : <>{active}{bench}</>}</div><div className="side-piles"><ZoneStack label="Deck" count={displayedDeckCount(board, canonical.deck.length)} tone={tone} onOpen={() => openZone('Deck', canonical.deck, 'The deck remains face-down outside captured search effects.')} /><ZoneCards label="Discard" cards={board.discardCards || []} catalog={catalog} onOpen={() => openZone('Discard pile', canonical.discard, 'Public discarded cards at this exact action.')} />{canonical.lostZone.length > 0 && <button type="button" className="lost-zone-button" onClick={() => openZone('Lost Zone', canonical.lostZone, 'Cards sent to the Lost Zone are public and cannot be recovered.')}><Sparkle size={13} weight="fill" />Lost Zone <b>{canonical.lostZone.length}</b></button>}</div></div>
-      {!opponent && <div className="hand-dock"><HandFan boardName={board.name} cards={canonical.hand} count={handCount} visibility={visibility} catalog={catalog} opponent={false} onOpen={openHand} /></div>}
+      {!opponent && <div className="hand-dock"><HandFan boardName={board.name} cards={canonical.hand} count={handCount} visibility={visibility} catalog={catalog} opponent={false} onOpen={onOpenCard} /></div>}
     </section>
   );
 }
