@@ -1,10 +1,12 @@
 # Trace transactional email setup
 
-Checkpoint: September 28, 2026. AWS account `108241940679`, region `us-east-1`. The SES domain identity `victoryroad.app` exists with RSA-2048 DKIM; identity and DKIM status are `PENDING`, and it is not verified for sending. SES is in sandbox mode: sending enabled, 200 messages/day and one message/second. No production-access request has been submitted and no email has been sent as part of this setup.
+Checkpoint: September 29, 2026, including the public DNS check at 05:13 UTC. The owner received the staging Cognito verification email in Gmail's Spam folder and completed the normal user confirmation flow. Staging still uses `COGNITO_DEFAULT`, with sender `no-reply@verificationemail.com`. This proves delivery and account confirmation for that message; it does not prove inbox placement, branded-sender readiness or a spam fix.
+
+AWS account `108241940679`, region `us-east-1`: the SES domain identity `victoryroad.app` exists with RSA-2048 DKIM, but identity and DKIM status remain `PENDING` and the public DKIM CNAME answers are missing. It is not verified for sending. SES remains in sandbox mode: sending enabled, 200 messages/day and one message/second. No SES production-access request has been submitted and no branded email has been sent through this identity.
 
 ## Add these records in GoDaddy
 
-Public NS and SOA answers identify `ns09.domaincontrol.com` and `ns10.domaincontrol.com` as the domain's nameservers. `_domainkey` is not delegated to Vercel. Vercel's visible default DNS zone is not authoritative for this domain, so publishing only there will not verify SES. **No records have been added yet.**
+Public NS and SOA answers identify `ns09.domaincontrol.com` and `ns10.domaincontrol.com` as the domain's nameservers. `_domainkey` is not delegated to Vercel. Vercel's visible default DNS zone is not authoritative for this domain, so publishing only there will not verify SES. **No records have been added and no GoDaddy settings have been changed. Explicit GoDaddy access approval is pending.**
 
 In GoDaddy's `victoryroad.app` DNS zone, add these three CNAME records. The Host values below are relative to that zone; do not append the domain twice. Use the provider's default TTL. Preserve every existing record and the current nameservers, including MX, SPF and DMARC.
 
@@ -28,6 +30,19 @@ aws sesv2 get-email-identity --profile default --region us-east-1 \
 
 Do not mark email ready until all three public CNAME answers match, AWS reports successful verification, and the authorized delivery/recovery tests pass. SES production access is an additional gate for public onboarding. Current staging uses Cognito's development sender; that does not prove readiness of the new SES sender.
 
+## Branded-email test while SES remains in the sandbox
+
+Cognito confirmation and SES recipient verification are separate. The confirmed owner's email has not been verified as an SES identity. With the template's `DEVELOPER` email configuration, SES sandbox sending requires a verified recipient address or domain; verifying only the `victoryroad.app` sender does not allow delivery to arbitrary Gmail recipients. [Cognito email settings](https://docs.aws.amazon.com/cognito/latest/developerguide/user-pool-email.html), [SES sandbox restrictions](https://docs.aws.amazon.com/ses/latest/dg/request-production-access.html).
+
+After authorized DNS publication and successful DKIM verification:
+
+1. With explicit authorization for the verification email, create an SES email identity for the exact test recipient in `us-east-1`. The recipient must follow the AWS verification link. This is a test-only SES requirement, not a new signup step for future production users.
+2. Select the actual From address on `victoryroad.app`, then set staging `SesIdentity=victoryroad.app`, `SesRegion=us-east-1`, and `SesFromEmail` together. Deploy only staging and verify the pool reads back `EmailSendingAccount=DEVELOPER` with the expected identity and sender. Cognito may create its SES service-linked role.
+3. Use a user-requested password-recovery flow to test the confirmed owner's branded email without deleting, recreating or administratively resetting the account. Have the user inspect the From address, DKIM authentication and inbox/spam placement, then enter the code privately if completing recovery. Do not record codes or passwords.
+4. For new-signup delivery proof, use a separate exact SES-verified test address. Do not assume a plus-address inherits recipient verification, and do not reuse the confirmed owner as a fresh signup.
+
+Neither DKIM verification nor an accepted API response guarantees inbox placement. Public onboarding still requires SES production access; then recipients no longer need SES identity verification. The optional [notification-error logging draft](TRACE_MEMBERSHIPS_NOTIFICATION_LOGGING.md) remains undeployed and can help diagnose provider errors. It does not fix spam filtering or prove inbox delivery.
+
 ## Draft SES production-access request — not submitted
 
 Region: `us-east-1`. Mail type: **Transactional**. Website: `https://victoryroad.app/trace`. The responsible contact email, exact From address and expected daily volume must be supplied and reviewed before submission; none is inferred from the owner's game username. Verify the domain and decide how delivery failures and complaints will be monitored before presenting those controls as operational.
@@ -40,7 +55,7 @@ Region: `us-east-1`. Mail type: **Transactional**. Website: `https://victoryroad
 >
 > Before submission, we will provide the responsible contact, selected sender address, realistic initial daily volume, and the confirmed process for monitoring delivery failures, bounces and complaints. We will not use this sender for promotional email. Public sending will begin only after those controls are in place and SES production access is approved.
 
-This is a review draft, not evidence that a request was sent or approved. Replace its outstanding implementation statements with verified facts before submission; do not invent deliverability controls or volume estimates. Stripe credential permission and the owner's verified email/subject remain separate rollout dependencies. There is no Discord prerequisite.
+This is a review draft, not evidence that a request was sent or approved. Replace its outstanding implementation statements with verified facts before submission; do not invent deliverability controls or volume estimates. Separate sandbox Stripe configuration and the owner's normal staging Cognito confirmation do not establish production billing readiness or a production owner subject. There is no Discord prerequisite.
 
 ## After verification and approval
 
