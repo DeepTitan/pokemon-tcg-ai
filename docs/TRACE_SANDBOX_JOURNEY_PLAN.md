@@ -21,7 +21,8 @@ Stripe customer. **Do not turn off those guards to reuse it for a paid test.**
 
 The separate companion, `scripts/smoke-trace-member-purchase-staging.py`, has
 its own paid-test preflight, private request transport, state machine and cleanup.
-It is deliberately limited to an initial Pro purchase. It needs no Stripe runtime key:
+The API-adapter purchase remains Pro; browser-only fixtures can verify either
+paid tier. It needs no Stripe runtime key:
 all customer-facing requests use the website proxy. Provider inspection and
 cleanup are separate scoped operator steps in the dedicated sandbox.
 
@@ -79,7 +80,7 @@ JSON lines written to `commands`.
 | `payment-complete` command | Continue the adapter's paid-state, wrong-email, missing-proof, claim, entitlement and retry assertions. |
 | `portal-ready` event | Contains the private portal URL and fixture inventory. Root verifies the portal UI. |
 | `inspect-account` command | Returns an `account-state` event with plan/status/capabilities, without requiring the original Pro tier; useful during a portal upgrade. |
-| `verify-cancellation` command | Checks that a period-end cancellation keeps the original active Pro access. |
+| `verify-cancellation` command | Checks that a period-end cancellation keeps access to the original expected paid tier. |
 | `cleanup-confirmed` command | Use only after actual immediate provider cancellation. Waits up to 315 seconds for fresh backend reconciliation, then removes only the owned fixture rows and user. |
 | `finish` command | Retain the paid fixture and emit `operator-cleanup-required`. |
 | `abort` command | Stop assertions and emit private cleanup inventory. |
@@ -90,11 +91,16 @@ controller's private memory before acknowledging it; acknowledgment means the
 operator has enough information for cleanup. A command timeout is a failure,
 never proof that payment or cleanup succeeded.
 
-Optional `--browser-fixture` creates only the suppressed Pro test login and emits
+Optional `--browser-fixture` creates only the suppressed test login and emits
 `browser-fixture-ready`, with no guest request or purchase cookie. The operator
 starts Checkout, pays, signs in and claims in the same browser, then sends
 `browser-complete`. The companion verifies the resulting account independently;
 it cannot itself prove which UI steps the browser performed.
+Pro remains the default expected tier. To verify an independent Supporters Club
+browser purchase, add `--expected-tier supporter`; the private ready event
+includes `expectedTier`. This option changes assertions only, never pricing,
+checkout selection or account entitlements. It is rejected without
+`--browser-fixture`, so the API-adapter purchase cannot silently switch plans.
 
 Offline verification:
 
@@ -133,7 +139,7 @@ even though navigating to their allowlisted hosts is expected product behavior.
 | 11 | `GET /trace/api/account` | Active purchased plan, future expiry, `admin:false`, paid flags/capabilities exactly as below. |
 | 12 | Retry claim using the retained pre-response cookie in the API harness only | Same account may safely recover a lost successful response. Another account cannot take ownership. The normal browser remains without the cleared proof. |
 | 13 | Attempt another purchase after activation | Pricing guest route returns account action; account checkout returns `subscription_exists`. No duplicate subscription. |
-| 14 | `POST /trace/api/portal` | URL on `https://billing.stripe.com/p/session/...`; operator verifies bound fixture customer and dedicated portal configuration. Never print the full URL. |
+| 14 | `POST /trace/api/portal` | URL on `https://billing.stripe.com/p/session/...` or `/p/session?secret=test_...`; operator verifies bound fixture customer and dedicated portal configuration. Never print the full URL. |
 
 All POSTs require the exact staging Origin and JSON. The in-memory cookie jar
 must accept exactly the existing access/refresh cookies plus
@@ -208,7 +214,7 @@ inventory. No provider mutation has been authorized by this planning document.
 
 The prepared Pro companion covers the staged purchase state machine,
 three-cookie private transport, explicit hosted-payment handoff, fixture
-ownership checks and cleanup. Its ten offline tests include no-execute behavior,
+ownership checks and cleanup. Its thirteen offline tests include no-execute behavior,
 fixed sandbox guards, URL validation, credential transport, FIFO permissions,
 acknowledgment retention, browser-only fixture preparation, and refusal to
 delete on stale or active billing state. Initial Supporters purchase, browser

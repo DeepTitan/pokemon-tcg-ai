@@ -66,7 +66,10 @@ export function safeBillingUrl(value, action) {
   try {
     const url = new URL(value);
     const checkout = action === 'checkout' && url.origin === 'https://checkout.stripe.com' && /^\/(?:c\/)?pay\/[^/]+/.test(url.pathname);
-    const portal = action === 'portal' && url.origin === 'https://billing.stripe.com' && url.pathname.startsWith('/p/session/');
+    const portalPath = /^\/p\/session\/[A-Za-z0-9_-]+$/.test(url.pathname) && !url.search;
+    const portalQuery = url.pathname === '/p/session' && [...url.searchParams].length === 1 &&
+      /^(?:test|live)_[A-Za-z0-9_-]+$/.test(url.searchParams.get('secret') || '');
+    const portal = action === 'portal' && url.origin === 'https://billing.stripe.com' && !url.hash && (portalPath || portalQuery);
     return typeof value === 'string' && value.length <= 8192 && !url.username && !url.password && (checkout || portal) ? url.href : null;
   } catch { return null; }
 }

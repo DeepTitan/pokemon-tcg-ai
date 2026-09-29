@@ -20,7 +20,7 @@ import select
 import stat
 import subprocess
 import time
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlsplit
 
 ROOT = Path(__file__).resolve().parent.parent
 STACK = 'trace-memberships-staging'
@@ -54,8 +54,14 @@ def validate_parameters(params):
 def safe_url(value, kind):
     parsed = urlsplit(value) if isinstance(value, str) else None
     host = 'checkout.stripe.com' if kind == 'checkout' else 'billing.stripe.com'
-    pattern = r'/(?:c/)?pay/cs_test_[A-Za-z0-9_]+' if kind == 'checkout' else r'/p/session/[A-Za-z0-9_]+'
-    require(parsed and parsed.scheme == 'https' and parsed.netloc == host and re.fullmatch(pattern, parsed.path), 'unexpected sandbox provider URL')
+    require(parsed and parsed.scheme == 'https' and parsed.netloc == host, 'unexpected sandbox provider URL')
+    if kind == 'checkout':
+        require(re.fullmatch(r'/(?:c/)?pay/cs_test_[A-Za-z0-9_]+', parsed.path), 'unexpected sandbox Checkout path')
+    else:
+        fields = parse_qsl(parsed.query, keep_blank_values=True)
+        path_form = re.fullmatch(r'/p/session/[A-Za-z0-9_-]+', parsed.path) and not parsed.query
+        query_form = parsed.path == '/p/session' and len(fields) == 1 and fields[0][0] == 'secret' and re.fullmatch(r'test_[A-Za-z0-9_-]+', fields[0][1])
+        require(not parsed.fragment and (path_form or query_form), 'unexpected sandbox portal path')
     return value
 
 
@@ -106,7 +112,7 @@ class Channel:
 
 
 class Purchase:
-    def __init__(self, channel, browser_fixture=False):
+    def __init__(self, channel, browser_fixture=False, expected_tier='trace'):
         # Root confirmed the default profile's login flow works with this existing
         # CLI-bundled SDK. No credential export or CLI input-file workaround.
         from awscli.botocore.session import Session
@@ -119,6 +125,7 @@ class Purchase:
         self.purchase_started = False
         self.cleaned = False
         self.browser_fixture, self.browser_proof_hash = browser_fixture, None
+        self.expected_tier = expected_tier
 
     def guard(self):
         cf, cg = self.aws['cloudformation'], self.aws['cognito-idp']
@@ -203,26 +210,28 @@ class Purchase:
     def login(self, user):
         require(self.web('auth/login', {'email': user['email'], 'password': user['password']}) == {'authenticated': True}, 'redacted successful login')
 
-    def assert_pro(self, account):
-        require(account.get('plan') == 'trace' and account.get('status') == 'active' and account.get('traceAccess') is True and account.get('admin') is False and account.get('opponentDecklists') is False, 'paid Pro boundary')
+    def assert_paid(self, account, expected_tier='trace'):
+        require(expected_tier in ('trace', 'supporter'), 'unknown expected paid tier')
+        deck_study = expected_tier == 'supporter'
+        require(account.get('plan') == expected_tier and account.get('status') == 'active' and account.get('traceAccess') is True and account.get('admin') is False and account.get('opponentDecklists') is deck_study, 'paid tier boundary')
         require(dt.datetime.fromisoformat(account.get('expiresAt', '').replace('Z', '+00:00')) > dt.datetime.now(dt.timezone.utc), 'future paid period')
-        require(account.get('capabilities') == {'recordMatches': True, 'leaderboard': True, 'recentReplayDays': 7, 'fullHistory': True, 'expandedSharing': True, 'opponentDecklists': False, 'freeSharesPerWindow': 1, 'shareWindowDays': 7}, 'exact Pro capabilities')
+        require(account.get('capabilities') == {'recordMatches': True, 'leaderboard': True, 'recentReplayDays': 7, 'fullHistory': True, 'expandedSharing': True, 'opponentDecklists': deck_study, 'freeSharesPerWindow': 1, 'shareWindowDays': 7}, 'exact paid capabilities')
 
     def run(self):
         self.guard()
         self.main_user = self.user()
         if self.browser_fixture:
-            self.channel.emit('browser-fixture-ready', login={'email': self.main_user['email'], 'password': self.main_user['password']}, fixture=self.fixture())
+            self.channel.emit('browser-fixture-ready', expectedTier=self.expected_tier, login={'email': self.main_user['email'], 'password': self.main_user['password']}, fixture=self.fixture())
             self.channel.command({'browser-complete'})
             self.login(self.main_user)
-            self.assert_pro(self.web('account'))
+            self.assert_paid(self.web('account'), self.expected_tier)
             customer = self.item('ACCOUNT#' + self.main_user['subject']).get('customerId')
             require(isinstance(customer, str) and re.fullmatch(r'cus_[A-Za-z0-9]+', customer), 'browser fixture customer binding')
             self.browser_proof_hash = self.item('GUEST_CUSTOMER#' + customer).get('proof')
             require(bool(re.fullmatch(r'[a-f0-9]{64}', self.browser_proof_hash or '')), 'browser guest purchase ownership')
             fixture = self.fixture()
             require(fixture['customerId'] == customer and self.record.get('claimedBy') == self.main_user['subject'], 'browser claim ownership')
-            passed('browser fixture has active Pro entitlement; browser interaction evidence is supplied separately')
+            passed('browser fixture has the expected active paid tier; browser interaction evidence is supplied separately')
             self.channel.emit('browser-account-verified', fixture=fixture)
             return self.finish_purchase()
         require(self.web('checkout/prepare') == {'ready': True}, 'purchase preparation')
@@ -251,7 +260,7 @@ class Purchase:
         require(self.web('account').get('traceAccess') is False, 'payment alone cannot grant the account access')
         self.web('checkout/claim', expected=410, cookies={key: value for key, value in self.cookies.items() if key != PROOF})
         require(self.web('checkout/claim') == {'claimed': True} and PROOF not in self.cookies, 'explicit claim must clear proof after success')
-        self.assert_pro(self.web('account'))
+        self.assert_paid(self.web('account'))
         require(self.web('checkout/claim', cookies={**self.cookies, PROOF: self.proof}) == {'claimed': True}, 'lost claim response retry must be safe')
         require(self.web('checkout/guest', {'plan': 'trace'}) == {'accountRequired': True}, 'active membership cannot create duplicate checkout')
         passed('unauthenticated/missing-proof/wrong-email claims denied; explicit Pro claim and retry succeeded')
@@ -269,9 +278,9 @@ class Purchase:
                 self.channel.emit('account-state', account={key: account.get(key) for key in fields})
             elif command == 'verify-cancellation':
                 account = self.web('account')
-                self.assert_pro(account)
+                self.assert_paid(account, self.expected_tier)
                 require(account.get('cancelAtPeriodEnd') is True, 'cancellation must retain paid access until period end')
-                passed('period-end cancellation confirmed while paid Pro access remains')
+                passed('period-end cancellation confirmed while expected paid access remains')
                 self.channel.emit('cancellation-verified')
             elif command == 'cleanup-confirmed':
                 self.cleanup_paid()
@@ -340,7 +349,10 @@ def main():
     parser.add_argument('--execute', action='store_true')
     parser.add_argument('--control-dir')
     parser.add_argument('--browser-fixture', action='store_true', help='Create only the suppressed test login; operator starts and claims Checkout in the same browser')
+    parser.add_argument('--expected-tier', choices=('trace', 'supporter'), default='trace', help='Browser-fixture expected plan: trace (Pro, default) or supporter (Supporters Club)')
     args = parser.parse_args()
+    if args.expected_tier != 'trace' and not args.browser_fixture:
+        parser.error('--expected-tier supporter requires --browser-fixture; the adapter purchase remains Pro')
     if not args.execute:
         print('Plan only: guarded Pro sandbox purchase with private FIFOs. No files, provider calls or credentials created.')
         return 0
@@ -348,7 +360,7 @@ def main():
     channel = Channel(args.control_dir)
     runner = None
     try:
-        runner = Purchase(channel, browser_fixture=args.browser_fixture)
+        runner = Purchase(channel, browser_fixture=args.browser_fixture, expected_tier=args.expected_tier)
         runner.run()
         return 0
     except Exception as error:

@@ -136,6 +136,39 @@ test('account email and billing errors are allowlisted, without raw upstream err
   assert.equal(parsed(verified).code, 'email_not_verified');
 });
 
+test('portal accepts both Stripe session URL formats without broadening the redirect boundary', async () => {
+  for (const url of ['https://billing.stripe.com/p/session/test_offline', 'https://billing.stripe.com/p/session?secret=test_offline-123', 'https://billing.stripe.com/p/session?secret=live_offline_123']) {
+    assert.equal(safeBillingUrl(url, 'portal'), url);
+    const result = await invoke('portal', { service: { configured: true, call: async (action) => {
+      assert.equal(action, 'portal');
+      return { status: 200, body: { url, customerId: 'private-customer', extra: 'private' } };
+    } } });
+    assert.equal(result.statusCode, 200);
+    assert.deepEqual(parsed(result), { url });
+    assert.match(result.headers['cache-control'], /no-store/);
+  }
+  for (const url of [
+    'https://billing.stripe.com/p/session', 'https://billing.stripe.com/p/session?secret=',
+    'https://billing.stripe.com/p/session?secret=unrecognized',
+    'https://billing.stripe.com/p/session?secret=test_offline&secret=test_other',
+    'https://billing.stripe.com/p/session?secret=test_offline&redirect=https://evil.test',
+    'https://billing.stripe.com/p/session?token=test_offline',
+    'https://billing.stripe.com/p/session?secret=test_offline#fragment',
+    'https://billing.stripe.com/p/session?secret=test_offline%2Fother',
+    'https://billing.stripe.com/p/session/test_offline?secret=test_other',
+    'https://billing.stripe.com/p/session/extra/path',
+    'https://billing.stripe.com.evil.test/p/session?secret=test_offline',
+    'https://user@billing.stripe.com/p/session?secret=test_offline',
+    'https://billing.stripe.com:444/p/session?secret=test_offline',
+    'http://billing.stripe.com/p/session?secret=test_offline',
+  ]) {
+    assert.equal(safeBillingUrl(url, 'portal'), null);
+    const result = await invoke('portal', { service: { configured: true, call: async () => ({ status: 200, body: { url } }) } });
+    assert.equal(result.statusCode, 503);
+    assert.doesNotMatch(result.body, /test_offline/);
+  }
+});
+
 test('only explicit POST can approve a link and normalized code alone reaches server', async () => {
   let calls = 0;
   const service = { configured: true, call: async (action, input) => { calls++; assert.equal(action, 'devices/link/approve'); assert.deepEqual(input.body, { userCode: 'ABCDEF2345' }); return { status: 200, body: { linked: true, accessToken: 'private' } }; } };
