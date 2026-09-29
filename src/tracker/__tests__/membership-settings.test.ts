@@ -11,7 +11,7 @@ assert.match(render(status), /Trace Free/);
 assert.match(render(status), /last 7 days of replays are free/);
 assert.match(render(status), /1 new replay every 7 days/);
 assert.match(render(status), /Older matches stay saved/);
-assert.match(render(status), /before this upgrade stay available/);
+assert.match(render(status), /Older matches stay saved. Upgrade to replay them anytime/);
 assert.doesNotMatch(render(status), /to use Trace/);
 assert.match(render({ ...status, status: 'unavailable' }), /Free features are ready/);
 assert.doesNotMatch(render(status), /Manage membership|Owner access/);

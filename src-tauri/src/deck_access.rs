@@ -5,6 +5,8 @@ use serde_json::{json, Value};
 
 #[derive(Clone, Default, Deserialize, Serialize)]
 pub struct MatchAccess {
+    #[serde(default)]
+    pub projection_version: u8,
     pub local_account_id: Option<String>,
     pub local_player_id: Option<String>,
     pub local_player_name: Option<String>,
@@ -84,40 +86,50 @@ fn captured_deck(player: &Value) -> Option<Value> {
 }
 
 impl MatchAccess {
+    pub const PROJECTION_VERSION: u8 = 2;
+
     pub fn observe(&mut self, operation: &CapturedOperation) {
-        if self.local_account_id.is_none() {
-            self.local_account_id = operation.account_id.clone().filter(|v| !v.is_empty());
+        self.projection_version = Self::PROJECTION_VERSION;
+        if self.local_account_id.as_deref().is_none_or(|id| id.eq_ignore_ascii_case("SERVER")) {
+            self.local_account_id = operation.account_id.clone()
+                .filter(|v| !v.is_empty() && !v.eq_ignore_ascii_case("SERVER"));
         }
-        if let Some(players) = operation
-            .operation
-            .get("players")
-            .or_else(|| operation.operation.get("Players"))
-            .and_then(Value::as_array)
-        {
-            for player in players {
-                if let Some(deck) = captured_deck(player) {
-                    self.decks
-                        .retain(|old| old.get("playerId") != deck.get("playerId"));
-                    self.decks.push(deck);
-                }
-                if let Some(account) = self.local_account_id.as_deref() {
-                    if string(player, &["playerId", "PlayerId"]) == Some(account)
-                        || string(player, &["accountID", "accountId", "AccountID"]) == Some(account)
-                    {
-                        self.local_player_id =
-                            string(player, &["playerId", "PlayerId"]).map(str::to_owned);
-                        self.local_player_name =
-                            string(player, &["playerName", "PlayerName"]).map(str::to_owned);
-                    }
-                }
+        self.observe_players(&operation.operation);
+        // Match-start is often a SERVER envelope; the local account arrives later.
+        // Resolve it against the native roster retained from that earlier packet.
+        if let Some(account) = self.local_account_id.as_deref() {
+            if let Some(deck) = self.decks.iter().find(|d| d.get("playerId").and_then(Value::as_str) == Some(account)) {
+                self.local_player_id = Some(account.to_owned());
+                self.local_player_name = string(deck, &["playerName"]).map(str::to_owned);
             }
         }
         if let Some(id) = self.local_player_id.as_deref() {
-            self.local_player_side = self
-                .local_player_side
-                .or_else(|| player_side(&operation.operation, id));
+            self.local_player_side = self.local_player_side.or_else(|| player_side(&operation.operation, id));
         }
         self.completed |= terminal(&operation.operation);
+    }
+
+    fn observe_players(&mut self, value: &Value) {
+        match value {
+            Value::Array(values) => values.iter().for_each(|v| self.observe_players(v)),
+            Value::Object(fields) => {
+                if let Some(deck) = captured_deck(value) {
+                    self.decks.retain(|old| old.get("playerId") != deck.get("playerId"));
+                    self.decks.push(deck);
+                }
+                if let Some(account) = self.local_account_id.as_deref() {
+                    let id = string(value, &["playerId", "PlayerId", "ownerPlayerId", "ownerPlayerID"]);
+                    let name = string(value, &["playerName", "PlayerName", "userName", "UserName"]);
+                    if name.is_some() && (id == Some(account)
+                        || string(value, &["accountID", "accountId", "AccountID", "entityID"]) == Some(account)) {
+                        self.local_player_id = id.map(str::to_owned).or_else(|| Some(account.to_owned()));
+                        self.local_player_name = name.map(str::to_owned);
+                    }
+                }
+                fields.values().for_each(|v| self.observe_players(v));
+            }
+            _ => {}
+        }
     }
 
     pub fn opponent_deck(&self) -> Result<Value, String> {
@@ -160,7 +172,9 @@ impl MatchAccess {
             self.local_player_id.as_deref(),
             self.local_player_side,
         );
-        operation.operation["traceMatchCompleted"] = Value::Bool(self.completed);
+        if let Some(fields) = operation.operation.as_object_mut() {
+            fields.insert("traceMatchCompleted".into(), Value::Bool(self.completed));
+        }
         operation
     }
 
@@ -447,6 +461,49 @@ mod tests {
     ],"updatedEntities":[{"cardSourceID":"public_card"}]}))
     }
     #[test]
+    fn server_start_then_local_envelope_preserves_own_hand_only() {
+        let mut access = MatchAccess::default();
+        let mut server = start();
+        server.account_id = Some("SERVER".into());
+        server.operation = json!([server.operation]);
+        access.observe(&server);
+        assert_eq!(access.local_account_id, None);
+        let projected_start = access.project_operation(server);
+        assert!(projected_start.operation.is_array());
+        assert!(!projected_start.operation.to_string().contains("secret_card"));
+        let raw = operation(json!({"updatedEntities":[
+            {"entityID":"local-entity", "ownerPlayerId":"local", "userName":"You", "currentPos":4},
+            {"entityID":"my-hand", "currentPos":12,"cardSourceID":"own_hand"},
+            {"entityID":"their-hand", "currentPos":11,"cardSourceID":"secret_hand"}
+        ]}));
+        access.observe(&raw);
+        assert_eq!(access.local_player_name.as_deref(), Some("You"));
+        assert_eq!(access.local_player_side, Some(2));
+        let projected = access.project_operation(raw).operation.to_string();
+        assert!(projected.contains("own_hand"));
+        assert!(!projected.contains("secret_hand"));
+        let review = access.project_review(json!({"turns":[{"canonical":{
+            "playerNames":["Opponent","You"],"state":{"players":[
+                {"hand":[{"id":"a","name":"SECRET"}]},
+                {"hand":[{"id":"b","name":"Own hand"}]}
+            ]}}}]})).to_string();
+        assert!(review.contains("Own hand"));
+        assert!(!review.contains("SECRET"));
+        assert!(access.opponent_deck().is_err(), "identity recovery must not unlock a live opponent list");
+    }
+
+    #[test]
+    fn late_account_resolves_previously_captured_roster_without_repeating_start() {
+        let mut access = MatchAccess::default();
+        let mut server = start();
+        server.account_id = Some("SERVER".into());
+        access.observe(&server);
+        access.observe(&operation(json!({"operationNumber": 2})));
+        assert_eq!(access.local_player_id.as_deref(), Some("local"));
+        assert_eq!(access.local_player_name.as_deref(), Some("You"));
+    }
+
+    #[test]
     fn inventory_is_hidden_until_native_result_and_never_in_normal_projection() {
         let mut access = MatchAccess::default();
         access.observe(&start());
@@ -477,9 +534,9 @@ mod tests {
         unknown.account_id = None;
         let mut access = MatchAccess::default();
         access.observe(&unknown);
-        access.observe(&operation(
-            json!({"$type":"EndGameModification","winner":1}),
-        ));
+        let mut result = operation(json!({"$type":"EndGameModification","winner":1}));
+        result.account_id = None;
+        access.observe(&result);
         assert!(access.opponent_deck().is_err());
         assert!(!access
             .project_operation(unknown)
