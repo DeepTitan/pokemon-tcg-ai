@@ -372,6 +372,7 @@ mod tests {
                             Err(error) => panic!("Offline membership server did not receive its expected request: {error}"),
                         }
                     };
+                    stream.set_nonblocking(false).unwrap();
                     stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
                     let mut data = Vec::new();
                     let (headers, body) = loop {
