@@ -1,6 +1,6 @@
 # Trace launch dry run — September 28, 2026
 
-**Status: local checks and the sandbox Pro purchase/claim/portal-open journey passed. Remaining provider checks and production release are pending.**
+**Status: local checks and both initial sandbox purchases passed. Pro cancellation and portal access passed. Remaining provider checks and production release are pending.**
 
 This release spans the public Trace website, a new membership API, capture service enforcement, and a desktop update newer than v0.1.88. Publishing the pricing HTML alone would send people into missing account routes and sell features the current desktop release cannot unlock.
 
@@ -54,12 +54,26 @@ and [period-end cancellation screenshot](../artifacts/pro-cancel-period-end-2026
 plus the root operator's [sanitized browser checkpoint](../artifacts/browser-membership-evidence-20260929.md).
 No provider URL containing a secret or account credential is retained here.
 
+An independent synthetic account then completed the Supporters browser flow:
+
+- **Join Supporters** opened hosted Checkout for **$39.99/month**.
+- Canceling before payment returned to **Finish checkout**. Resuming reopened
+  the exact same Stripe Checkout session, rather than creating another one.
+- Completing the test payment, returning, signing in and explicitly choosing
+  **Activate membership** reached **Supporters · Active**.
+- The helper independently confirmed the exact Supporters plan and capabilities,
+  including post-match deck study, with `admin:false`. This account-level check
+  does not replace the capture/tracker tests that enforce the match-end boundary.
+
+Evidence: [Supporters account browser screenshot](../artifacts/supporter-account-browser-20260929.png).
+The restricted fixture inventory is retained separately for scoped cleanup.
+
 Separately, the first Pro API-adapter attempt reached customer creation but
 Checkout returned HTTP 503. That earlier failed fixture remains separate from
 the successful browser purchase and is retained for diagnosis and cleanup.
 
 **Still unverified:** delivered signup/confirmation and recovery emails,
-independent Supporters purchase, actual subscription expiry, portal upgrades and
+actual subscription expiry, portal upgrades and
 failed-upgrade behavior, verified owner binding, and production rollout.
 Admin-confirming the fixture does not verify email delivery. The production
 observations and original provider checklist below retain their September 28
@@ -85,16 +99,21 @@ The unit suites exercise mocked providers. Their passing results are not proof o
 
 ## Protected deployment — September 29, 2026
 
-- Source commit: `d52302944cfcbdda13db4a48159bed04df5fffa4` in the website checkout.
+- Source commit: `03834b201ded958622475588731a0c5f19c69349` in the website checkout.
 - Stable preview: https://trace-memberships-staging-deeptitan-6729s-projects.vercel.app/trace
-- Deployment: `dpl_5HBWXX9gXmYpvejkbEjyu6js9jDa`.
+- Deployment: `dpl_DtTEKuUfGUSGFNKVMh87KrxZoYuN`.
 - Built from a clean Git archive; the unrelated working-tree dashboard change
   was excluded. The exact Vercel build passed. Focused validation passed
-  44 web tests and 13 purchase-helper tests.
+  57 web tests for the password/recovery update; the unchanged purchase helper
+  previously passed its 13 tests.
 - Post-alias checks confirmed an unauthenticated request redirects to Vercel
   sign-in, the signed-out account API returns 401/private no-store, and signup
   returns 200/private no-store. Sandbox membership configuration is installed.
   Production aliases, environment values and apex routing remain unchanged.
+- Signup and password reset accept 8–128 characters without composition rules.
+  The deployed Cognito policy matches. An unfinished signup now offers code
+  entry, resend and sign-in recovery instead of a generic error. The provider
+  accepted a confirmation resend, but receipt of that email is not yet confirmed.
 
 ## Production baseline — September 28, 2026
 

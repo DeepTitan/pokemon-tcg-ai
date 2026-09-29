@@ -13,9 +13,12 @@ deck-study access. Actual signed webhook deliveries and automatic/manual retry
 of the same completed-checkout event returned 200. After fixing the website's
 portal URL allowlist, normal Manage billing opened the correct sandbox portal.
 The portal's end-of-period cancellation was independently confirmed with
-`cancelAtPeriodEnd:true` while Pro remained active. Actual expiry, upgrades,
-an independent Supporters purchase and real email delivery remain unverified
-at this checkpoint. See the
+`cancelAtPeriodEnd:true` while Pro remained active. A separate account completed
+the initial $39.99 Supporters browser purchase, explicit activation and exact
+capability check with no owner override. Canceling that checkout before payment
+and resuming reused the same Stripe session. Actual expiry, portal upgrades,
+failed-upgrade behavior and real email delivery remain unverified at this
+checkpoint. See the
 [dated browser evidence and limits](TRACE_MEMBERSHIPS_DRY_RUN_20260928.md#protected-staging-browser-check--september-29-2026).
 
 ## Scope and starting point
@@ -224,5 +227,6 @@ three-cookie private transport, explicit hosted-payment handoff, fixture
 ownership checks and cleanup. Its thirteen offline tests include no-execute behavior,
 fixed sandbox guards, URL validation, credential transport, FIFO permissions,
 acknowledgment retention, browser-only fixture preparation, and refusal to
-delete on stale or active billing state. Initial Supporters purchase, browser
-happy path, real email delivery and webhook delivery remain separate checks.
+delete on stale or active billing state. The dated evidence above records both
+initial browser purchases and actual signed webhook delivery/retry. Real email
+delivery, actual expiry and portal upgrade behavior remain separate checks.
