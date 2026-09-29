@@ -177,11 +177,11 @@ Resources:
         EmailMessage: 'Your Trace verification code is {####}.'
       Policies:
         PasswordPolicy:
-          MinimumLength: 12
-          RequireLowercase: true
-          RequireUppercase: true
-          RequireNumbers: true
-          RequireSymbols: true
+          MinimumLength: 8
+          RequireLowercase: false
+          RequireUppercase: false
+          RequireNumbers: false
+          RequireSymbols: false
           TemporaryPasswordValidityDays: 1
       Schema:
         - Name: email

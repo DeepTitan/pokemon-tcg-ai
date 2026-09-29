@@ -121,9 +121,7 @@ def email_value(value):
 
 
 def password_value(value):
-    if not isinstance(value, str) or not 12 <= len(value) <= 128 or not all((
-        re.search(r'[A-Z]', value), re.search(r'[a-z]', value), re.search(r'[0-9]', value), re.search(r'[^A-Za-z0-9\s]', value),
-    )):
+    if not isinstance(value, str) or not 8 <= len(value) <= 128:
         raise ApiError(400, 'invalid_password')
     return value
 

@@ -3,6 +3,7 @@ import copy
 import importlib.util
 import json
 from pathlib import Path
+import re
 import unittest
 
 ROOT = Path(__file__).parents[1]
@@ -20,6 +21,14 @@ class DeployTests(unittest.TestCase):
 
     def test_development_can_use_default_email_and_no_reservation(self):
         self.assertEqual(deploy.validate(self.config)['ReservedConcurrency'], '0')
+
+    def test_cognito_deployment_matches_simple_password_policy(self):
+        template = (ROOT / 'template.yml').read_text()
+        policy = re.search(r'        PasswordPolicy:\n((?:          .*\n)+)', template).group(1)
+        values = dict(re.findall(r'^          (\w+): (\w+)$', policy, re.MULTILINE))
+        self.assertEqual(values['MinimumLength'], '8')
+        for name in ('RequireLowercase', 'RequireUppercase', 'RequireNumbers', 'RequireSymbols'):
+            self.assertEqual(values[name], 'false')
 
     def test_production_cannot_use_default_cognito_sender(self):
         self.params['Environment'] = 'production'

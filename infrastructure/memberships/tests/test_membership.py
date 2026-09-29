@@ -617,9 +617,13 @@ class MembershipTests(unittest.TestCase):
         self.store.devices[DEVICE]['tokenHash'] = digest('changed')
         self.assert_error('invalid_code', lambda: self.service.approve_link(USER, start['userCode']))
 
-    def test_password_and_link_bruteforce_limits(self):
-        for password in ['short', 'abcdefghijk1234!', 'ABCDEFGHIJK1234!', 'LongNoNumbers!!']:
+    def test_password_accepts_8_to_128_characters_without_composition_requirements(self):
+        for password in ('abcdefgh', 'ABCDEFGH', '12345678', '!!!!!!!!', 'a' * 128):
+            self.assertEqual(password_value(password), password)
+        for password in (None, 12345678, [], '', 'a' * 7, 'a' * 129):
             self.assert_error('invalid_password', lambda: password_value(password))
+
+    def test_link_bruteforce_limits(self):
         for _ in range(12):
             self.assert_error('invalid_code', lambda: self.service.approve_link(USER, 'AAAAAAAAAA'))
         self.assert_error('rate_limited', lambda: self.service.approve_link(USER, 'AAAAAAAAAA'))
