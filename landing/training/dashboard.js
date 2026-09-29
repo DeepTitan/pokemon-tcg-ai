@@ -1,18 +1,29 @@
-let data,chosen;const $=id=>document.getElementById(id),anchor='4f42626fe3241cc64c7fda4e692b251fe5118670342fd1be5f32e0e7aaeb2733';
+let data,chosen,allRuns,selectedRun;const $=id=>document.getElementById(id),anchor='4f42626fe3241cc64c7fda4e692b251fe5118670342fd1be5f32e0e7aaeb2733';
+function chooseRun(payload){
+ allRuns=payload;const runs=payload.runs||[payload];selectedRun=selectedRun||payload.defaultRunId||runs[0].runId;
+ data=runs.find(r=>r.runId===selectedRun)||runs[0];
+ let selector=$('runSelector');if(!selector){const box=document.createElement('div');box.className='detailhead';const label=document.createElement('label');label.htmlFor='runSelector';label.textContent='Training run';selector=document.createElement('select');selector.id='runSelector';box.append(label,selector);document.querySelector('.runline').before(box);}
+ selector.disabled=false;selector.onchange=()=>{selectedRun=selector.value;chosen=null;$('checkpoint').replaceChildren();chooseRun(allRuns);render()};
+ selector.replaceChildren(...runs.map(r=>{const o=document.createElement('option');o.value=r.runId;o.textContent=r.runName||'Original';return o}));selector.value=data.runId;selectedRun=data.runId;
+ document.querySelector('.records thead th:last-child').textContent=data.comparisonLabel||'vs previous model';
+ const lineage=data.runId==='strength-fast'?'Steps count only this fast trainer’s own decisions. It started from revised standard +120M; inherited steps are excluded.':data.lineage;
+ document.querySelector('#more .detail-content p').textContent=lineage?lineage+' The graph uses the frozen 100M benchmark. The parent column prefers independent confirmation or endpoint matches over screening results. Intervals pair both seats by engine seed. Simulated games count this branch only.':'Original run: checkpoints versus the frozen 100M benchmark and previous checkpoint. Simulated games are cumulative across the original exact-list run and continuation.';
+}
 const names={'anchor-100m':'100M benchmark',imitation:'Human baseline','original-10m':'Original 10M',incumbent:'Earlier incumbent','start-rehearsal':'Starting model','previous-milestone':'Previous checkpoint'};
 const pct=n=>(n*100).toFixed(1)+'%',steps=n=>(n/1e6).toFixed(1)+'M',fmt=n=>Number(n).toLocaleString();
-function checkpointSteps(c){return c.phase===data.phases.at(-1).id?Math.floor(data.phases.at(-1).offset/1e7)*1e7+c.milestone:c.milestone}
-function checkpointLabel(c){return (checkpointSteps(c)/1e6)+'M'}
+function displayOffset(){return data.runId==='strength-fast'?0:Math.floor(data.phases.at(-1).offset/1e7)*1e7}
+function checkpointSteps(c){return c.phase===data.phases.at(-1).id?displayOffset()+c.milestone:c.milestone}
+function checkpointLabel(c){return (data.lineage?'+':'')+(checkpointSteps(c)/1e6)+'M'}
 function benchmark(c){return c.panels.find(p=>p.matchup==='mirror'&&c.opponents?.[p.opponent]?.sha256===anchor)}
 function current(){return data.checkpoints.filter(c=>c.phase===data.phases.at(-1).id)}
 function duration(ms){let m=Math.floor(Math.max(0,ms)/60000);return `${Math.floor(m/60)}h ${String(m%60).padStart(2,'0')}m`}
 function clock(){if(!data)return;const r=data.run,observed=Date.parse(r.observedAt),fresh=Date.now()-observed<600000,end=fresh&&['running','evaluating'].includes(r.status)?Date.now():observed;
-$('status').textContent=[!fresh?'Status stale':r.status==='running'?'Training':r.status==='evaluating'?'Evaluating':r.status==='exporting'?'Saving checkpoint':r.status,r.phaseDecisions==null?'':steps(Math.floor(data.phases.at(-1).offset/1e7)*1e7+r.phaseDecisions)+' steps',Number.isFinite(end)?duration(end-Date.parse(r.phaseStarted))+' on this run':''].filter(Boolean).join(' · ');
+$('status').textContent=[!fresh?'Status stale':r.status==='running'?'Training':r.status==='evaluating'?'Evaluating':r.status==='exporting'?'Saving checkpoint':r.status,r.phaseDecisions==null?'':steps(displayOffset()+r.phaseDecisions)+' steps',Number.isFinite(end)?duration(end-Date.parse(r.phaseStarted))+' on this run':''].filter(Boolean).join(' · ');
 $('status').title=r.totalDecisions==null?'':`Exact total: ${fmt(r.totalDecisions)} training decisions. The displayed step count uses the same rounded starting offset as checkpoint labels.`;
 pace(fresh);
 $('session').textContent='Current deck run launched '+new Date(r.phaseStarted).toLocaleString()+'. AWS session launched '+new Date(r.hostSessionStarted).toLocaleString()+'. Times are elapsed wall time, not GPU hours.';}
 function pace(fresh){
- const r=data.run,rate=r.stepsPerSecond,target=r.nextCheckpointSteps;
+ const r=data.run,rate=r.stepsPerSecond,target=r.nextCheckpointSteps-(data.runId==='strength-fast'?Math.floor(data.phases.at(-1).offset/1e7)*1e7:0);
  const available=fresh&&Number.isFinite(rate),windowMinutes=Math.max(1,Math.round(r.speedWindowSeconds/60));
  const basis=r.speedBasis==='recent'?`Last ${windowMinutes} min average`:'Average since this run started';
  $('speed').textContent=available?`${Math.round(rate).toLocaleString()} steps/s`:'— steps/s';
@@ -33,7 +44,7 @@ $('latest').textContent=p?pct(p.winRate):'—';$('latestCaption').innerHTML=last
 $('verdict').textContent=!p?'':p.winRateWilson95[0]>.5?'Ahead of 100M in this evaluation.':p.winRateWilson95[1]<.5?'Behind 100M in this evaluation.':'Still roughly even with 100M.';
 const resultCell=(p,opponent)=>p?`<span class="rate">${pct(p.winRate)}</span><div class="caption">${p.wins}–${p.losses}${p.draws?'–'+p.draws:''} · ${fmt(p.games)} games${opponent?` <span class="previous-target">· vs ${checkpointLabel(opponent)}</span>`:''}</div>`:'<span class="caption">Not evaluated</span>';
 $('records').innerHTML=cs.slice().reverse().map(c=>{let b=benchmark(c),prior=c.panels.find(p=>p.name==='previous-milestone-mirror'),opponent=prior&&data.checkpoints.find(x=>x.actor===c.opponents?.[prior.opponent]?.sha256);return `<tr${c===last?' class="latest"':''}><td><span class="checkpoint-label">${checkpointLabel(c)}</span>${c===last?'<span class="tag">Latest evaluated</span>':''}<div class="caption">${c.trainingGames==null?'':fmt(c.trainingGames)+' simulated games'}</div></td><td>${resultCell(b)}</td><td>${resultCell(prior,opponent)}</td></tr>`}).join('')||'<tr><td colspan="3">First checkpoint evaluation is pending.</td></tr>';
-$('pending').textContent=data.benchmark?.status==='evaluating'?'Evaluating '+((Math.floor(data.phases.at(-1).offset/1e7)*1e7+data.benchmark.milestone)/1e6)+'M'+' against 100M…':'Next checkpoint is tested automatically.';
+$('pending').textContent=data.benchmark?.status==='evaluating'?'Evaluating '+((displayOffset()+data.benchmark.milestone)/1e6)+'M'+' against 100M…':'Next checkpoint is tested automatically.';
 $('deck').textContent='Current deck: '+data.run.deck+'. Earlier deck results are available below.';
 const sel=$('checkpoint');if(sel.options.length!==data.checkpoints.length){sel.innerHTML=data.checkpoints.slice().reverse().map(c=>`<option value="${c.id}">${checkpointLabel(c)} · ${c.phaseName}</option>`).join('');}if(!chosen)chosen=data.checkpoints.at(-1)?.id;if(chosen)sel.value=chosen;
 const stale=Date.now()-Date.parse(data.run.observedAt)>600000;$('error').style.display=data.sync.error||stale?'block':'none';$('error').textContent=data.sync.error?'Training updates are temporarily unavailable. Showing the last saved results.':'Training status is stale. Saved evaluation results remain available.';
@@ -60,5 +71,5 @@ function draw(pts){
 let chartWidth=0;
 new ResizeObserver(([entry])=>{if(data&&Math.abs(chartWidth-entry.contentRect.width)>1){chartWidth=entry.contentRect.width;draw(current().filter(benchmark))}}).observe($('chart'));
 function detail(){let c=data.checkpoints.find(c=>c.id===$('checkpoint').value);if(!c)return;$('metadata').textContent=c.deck+' · Exact total: '+fmt(c.decisions)+' decisions · '+new Date(c.completedAt).toLocaleString();$('detailsTable').querySelector('tbody').innerHTML=c.panels.map(p=>`<tr><td>${names[p.opponent]||p.opponent} / ${p.matchup==='mirror'?'mirror':'vs Alakazam'}</td><td>${p.wins}–${p.losses}–${p.draws}</td><td>${pct(p.winRate)}</td><td>${p.winRateWilson95.map(pct).join('–')}</td></tr>`).join('');}
-async function load(){try{let r=await fetch('/trace/leaderboard-static/training/status.json');if(!r.ok)throw Error();data=await r.json();render()}catch(e){$('error').style.display='block';$('error').textContent='Training updates are temporarily unavailable. Displayed results have not refreshed.'}}
+async function load(){try{let r=await fetch('/trace/leaderboard-static/training/status.json');if(!r.ok)throw Error();chooseRun(await r.json());render()}catch(e){$('error').style.display='block';$('error').textContent='Training updates are temporarily unavailable. Displayed results have not refreshed.'}}
 $('checkpoint').onchange=()=>{chosen=$('checkpoint').value;detail()};$('refresh').onclick=async()=>{try{$('refresh').disabled=true;await load()}catch(e){$('error').style.display='block';$('error').textContent='Could not refresh. Please try again shortly.'}};load();setInterval(load,15000);setInterval(clock,1000);

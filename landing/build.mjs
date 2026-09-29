@@ -10,6 +10,9 @@ const repositoryDirectory = path.dirname(landingDirectory);
 const outputDirectory = path.join(landingDirectory, 'dist');
 const trackerBuildDirectory = path.join(repositoryDirectory, 'dist', 'ui');
 
+// Keep multi-run navigation in every website release.
+execFileSync(process.execPath, ['--test', path.join(landingDirectory, 'lib/training-selector.test.mjs')], { stdio: 'inherit' });
+
 // A new texture format must pass framing checks before it reaches production.
 execFileSync(process.execPath, ['--test', path.join(landingDirectory, 'lib/share-card-art.test.mjs'), path.join(landingDirectory, 'lib/replay-card-catalog.test.mjs')], { stdio: 'inherit' });
 

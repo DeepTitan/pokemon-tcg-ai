@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#f6f4ef">
   <title>Dragapult training · Trace</title>
   <link rel="icon" href="/trace/leaderboard-static/training/assets/trace-mascot.png">
-  <link rel="stylesheet" href="/trace/leaderboard-static/training/dashboard.css">
-  <script src="/trace/leaderboard-static/training/dashboard.js" defer></script>
+  <link rel="stylesheet" href="/trace/leaderboard-static/training/dashboard.css?v=runs-20260929">
+  <script src="/trace/leaderboard-static/training/dashboard.js?v=runs-20260929" defer></script>
   <link rel="stylesheet" href="/trace/leaderboard-static/training/header.css">
   <link rel="canonical" href="https://victoryroad.app/trace/training">
   <meta name="description" content="Follow Dragapult self-play training, checkpoint match results, and live training progress.">
@@ -20,6 +20,7 @@
   </div></header>
   <main>
     <header class="page-heading"><h1>Dragapult training</h1><button id="refresh"><img src="/trace/leaderboard-static/training/assets/refresh.svg" alt=""><span>Refresh</span></button></header>
+    <div class="run-picker"><label for="runSelector">Training run</label><select id="runSelector" disabled><option>Loading runs…</option></select></div>
     <div class="runline">
       <div class="status" id="status">Loading training status…</div>
       <div class="pace" aria-label="Training speed and next checkpoint"><span id="speed">— steps/s</span><span class="eta" id="eta">Estimating next checkpoint…</span></div>
