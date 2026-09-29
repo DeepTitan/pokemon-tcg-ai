@@ -4,7 +4,7 @@
     "description": "Preserve same-origin membership requests through the Trace server proxy.",
     "enabled": true,
     "srcSyntax": "path-to-regexp",
-    "route": { "src": "/trace/api/:action*", "dest": "https://victoryroad-lovat.vercel.app/trace/api/:action*" }
+    "route": { "src": "/trace/api/:action*", "dest": "https://victoryroad-lovat.vercel.app/trace/api/$1" }
   },
   "position": { "placement": "before", "referenceId": "ca154d6b-73e7-4b69-9708-9e1abec80201" }
 }

@@ -23,3 +23,9 @@ test('staged review rejects dropped public routes, modified existing rules and u
   changed = staged(); changed.routes[8].route.headers = { 'Access-Control-Allow-Origin': '*' }; assert.throws(() => verifyStaged(changed));
   changed = staged(); changed.routes.push(changed.routes.splice(8, 1)[0]); assert.throws(() => verifyStaged(changed));
 });
+test('project API destination uses the capture syntax verified on the staged alias', () => {
+  const changed = staged();
+  const api = changed.routes.find(({ route }) => route.src === '/trace/api/:action*');
+  api.route.dest = 'https://victoryroad-lovat.vercel.app/trace/api/:action*';
+  assert.throws(() => verifyStaged(changed), /must use the \$1 capture/);
+});

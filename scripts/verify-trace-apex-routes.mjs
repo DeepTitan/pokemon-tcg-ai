@@ -18,6 +18,9 @@ export function verifyCurrent(snapshot, versions) {
   return true;
 }
 export function verifyStaged(snapshot) {
+  // Raw project rules expand destination captures as $1; vercel.json rewrite syntax differs.
+  const api = snapshot.routes?.find(({ route }) => route.src === '/trace/api/:action*');
+  assert.equal(api?.route.dest, 'https://victoryroad-lovat.vercel.app/trace/api/$1', 'Project API destination must use the $1 capture, not :action*.');
   assert.equal(snapshot.routes?.length, baseline.routes.length + additions.length, 'Expected exactly two new routes.');
   assert.equal(new Set(snapshot.routes.map(({ id }) => id)).size, snapshot.routes.length, 'Route IDs must remain unique.');
   const old = snapshot.routes.filter(({ id }) => originalIds.has(id));
