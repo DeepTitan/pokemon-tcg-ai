@@ -12,8 +12,10 @@ helper independently confirmed exact Pro capabilities without owner or opponent
 deck-study access. Actual signed webhook deliveries and automatic/manual retry
 of the same completed-checkout event returned 200. After fixing the website's
 portal URL allowlist, normal Manage billing opened the correct sandbox portal.
-Cancellation, upgrades, an independent Supporters purchase and real email
-delivery remain unverified at this checkpoint. See the
+The portal's end-of-period cancellation was independently confirmed with
+`cancelAtPeriodEnd:true` while Pro remained active. Actual expiry, upgrades,
+an independent Supporters purchase and real email delivery remain unverified
+at this checkpoint. See the
 [dated browser evidence and limits](TRACE_MEMBERSHIPS_DRY_RUN_20260928.md#protected-staging-browser-check--september-29-2026).
 
 ## Scope and starting point

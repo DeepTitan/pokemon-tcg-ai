@@ -42,9 +42,16 @@ The same browser fixture then completed the real sandbox Pro flow:
   After the scoped validator fix, the normal button opened Stripe's hosted
   sandbox portal with the exact Pro subscription, $14.99 price and configured
   management controls.
+- The portal accepted end-of-period cancellation and displayed service ending
+  October 29. The helper's `verify-cancellation` check passed: Pro stayed active
+  and `cancelAtPeriodEnd` was true. This proves the cancellation flag and retained
+  paid access, not that the period ended or access expired. The operator is
+  restoring renewal before the next upgrade test; that later change is not yet
+  recorded as verified here.
 
 Evidence: [Pro account browser screenshot](../artifacts/pro-account-browser-20260929.png)
-and the root operator's [sanitized browser checkpoint](../artifacts/browser-membership-evidence-20260929.md).
+and [period-end cancellation screenshot](../artifacts/pro-cancel-period-end-20260929.png),
+plus the root operator's [sanitized browser checkpoint](../artifacts/browser-membership-evidence-20260929.md).
 No provider URL containing a secret or account credential is retained here.
 
 Separately, the first Pro API-adapter attempt reached customer creation but
@@ -52,9 +59,8 @@ Checkout returned HTTP 503. That earlier failed fixture remains separate from
 the successful browser purchase and is retained for diagnosis and cleanup.
 
 **Still unverified:** delivered signup/confirmation and recovery emails,
-independent Supporters purchase, cancellation state/expiry, portal upgrades and
+independent Supporters purchase, actual subscription expiry, portal upgrades and
 failed-upgrade behavior, verified owner binding, and production rollout.
-Submitting a cancellation request is not yet recorded as confirmed cancellation.
 Admin-confirming the fixture does not verify email delivery. The production
 observations and original provider checklist below retain their September 28
 baseline date; they are not a fresh production-state audit.
