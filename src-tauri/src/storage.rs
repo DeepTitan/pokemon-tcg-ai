@@ -246,8 +246,8 @@ impl MatchStorage {
                 ",
             )
             .map_err(|error| error.to_string())?;
-        // Snapshot only once. An upgrade never removes access to already-saved matches.
-        // Future captures receive their own native save time and are never re-grandfathered.
+        // Mark pre-membership entries once so their original capture dates determine age.
+        // Future captures receive an immutable native save time.
         connection.execute_batch("BEGIN IMMEDIATE;
             INSERT OR IGNORE INTO replay_access(match_id, saved_at, grandfathered)
                 SELECT id, unixepoch(), 1 FROM matches
@@ -341,6 +341,7 @@ impl MatchStorage {
             .and_then(|(id, json)| {
                 serde_json::from_str::<MatchAccess>(&json)
                     .ok()
+                    .filter(|v| v.projection_version == MatchAccess::PROJECTION_VERSION)
                     .map(|v| (id, v))
             })
             .unwrap_or((0, MatchAccess::default()));
@@ -414,14 +415,25 @@ impl MatchStorage {
     }
 
     fn replay_requires_pro_at(&self, id: &str, now: i64) -> Result<bool, String> {
-        self.connection()?.query_row(
-            "SELECT grandfathered=0 AND (saved_at > ?2 OR ?2-saved_at >= ?3) FROM replay_access WHERE match_id=?1",
-            params![id, now, crate::membership::RECENT_REPLAY_SECONDS], |row| row.get(0),
-        ).optional().map_err(|e| e.to_string()).map(|value| value.unwrap_or(false))
+        let connection = self.connection()?;
+        let age: Option<(i64, bool, String)> = connection.query_row(
+            "SELECT replay_access.saved_at, grandfathered, matches.first_received FROM replay_access JOIN matches ON matches.id=match_id WHERE match_id=?1",
+            [id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        ).optional().map_err(|e| e.to_string())?;
+        let Some((saved_at, legacy, first_received)) = age else { return Ok(true); };
+        // Existing archives used to be exempt. Apply the same seven-day window,
+        // using their original capture date, never the date the app was upgraded.
+        let timestamp = if legacy {
+            let iso: Option<i64> = connection.query_row("SELECT unixepoch(?1)", [&first_received], |r| r.get(0))
+                .map_err(|e| e.to_string())?;
+            iso.or_else(|| first_received.trim_end_matches('Z').parse::<f64>().ok()
+                .filter(|n| n.is_finite() && *n > 0.0).map(|n| n as i64)).unwrap_or(0)
+        } else { saved_at };
+        Ok(timestamp <= 0 || timestamp > now || now - timestamp >= crate::membership::RECENT_REPLAY_SECONDS)
     }
 
     /// Freeze the existing recovery file boundary before capture starts. Later fallback
-    /// appends are new captures, not an extension of the grandfathered archive.
+    /// appends use their native save time; pre-upgrade entries use original capture time.
     pub fn prepare_legacy_replay_snapshot(&self, path: &Path) -> Result<(), String> {
         let length = fs::metadata(path).map(|file| file.len()).unwrap_or(0);
         self.connection()?.execute(
@@ -1095,6 +1107,42 @@ mod tests {
     }
 
     #[test]
+    fn stale_server_identity_is_rebuilt_from_original_operations() {
+        let (directory, storage) = temporary_storage();
+        let mut start = operation();
+        start.account_id = Some("SERVER".into());
+        start.operation = json!({"players":[{"playerId":"local","playerName":"You","deckInfo":{"cards":{"own_card":60}}}]});
+        storage.record_operation(&start).unwrap();
+        let mut local = operation();
+        local.operation_id = Some("local-frame".into());
+        storage.record_operation(&local).unwrap();
+        storage.connection().unwrap().execute("UPDATE match_access SET payload_json=?1", [r#"{"local_account_id":"SERVER","completed":false,"decks":[]}"#]).unwrap();
+        let access = storage.match_access("live-match-1").unwrap();
+        assert_eq!(access.local_player_name.as_deref(), Some("You"));
+        assert_eq!(access.projection_version, MatchAccess::PROJECTION_VERSION);
+        assert_eq!(storage.load_operations("live-match-1").unwrap().len(), 2);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn legacy_replays_use_original_iso_or_numeric_date_at_exact_boundary() {
+        let (directory, storage) = temporary_storage();
+        storage.record_operation(&operation()).unwrap();
+        let connection = storage.connection().unwrap();
+        connection.execute("UPDATE replay_access SET grandfathered=1,saved_at=9999999999", []).unwrap();
+        for date in ["2026-09-01T00:00:00.000Z", "1788220800.500Z"] {
+            connection.execute("UPDATE matches SET first_received=?1", [date]).unwrap();
+            let boundary = 1788220800 + crate::membership::RECENT_REPLAY_SECONDS;
+            assert!(!storage.replay_requires_pro_at("live-match-1", boundary-1).unwrap());
+            assert!(storage.replay_requires_pro_at("live-match-1", boundary).unwrap());
+        }
+        connection.execute("UPDATE matches SET first_received='unknown'", []).unwrap();
+        assert!(storage.replay_requires_pro_at("live-match-1", 1788220800).unwrap());
+        drop(connection);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
     fn recent_replays_expire_at_seven_days_without_deleting_or_redating_data() {
         let (directory, storage) = temporary_storage();
         storage.record_operation(&operation()).unwrap();
@@ -1121,7 +1169,7 @@ mod tests {
     }
 
     #[test]
-    fn migration_preserves_existing_archive_once_and_never_grandfathers_new_captures() {
+    fn migration_preserves_data_but_applies_age_limits_to_existing_archive() {
         let (directory, storage) = temporary_storage();
         storage.record_operation(&operation()).unwrap();
         let original = storage.load_operations("live-match-1").unwrap()[0].operation.clone();
@@ -1129,13 +1177,13 @@ mod tests {
         storage.connection().unwrap().execute_batch("DELETE FROM replay_access; DELETE FROM metadata WHERE key='freemium_archive_snapshot';").unwrap();
         let upgraded = MatchStorage::new(directory.join("trace.sqlite3")).unwrap();
         let future = i64::MAX / 2;
-        assert!(!upgraded.replay_requires_pro_at("live-match-1", future).unwrap());
+        assert!(upgraded.replay_requires_pro_at("live-match-1", future).unwrap());
         let mut fresh = operation();
         fresh.match_id = Some("new-match".into());
         upgraded.record_operation(&fresh).unwrap();
         let reopened = MatchStorage::new(directory.join("trace.sqlite3")).unwrap();
         assert!(reopened.replay_requires_pro_at("live-new-match", future).unwrap());
-        assert!(!reopened.replay_requires_pro_at("live-match-1", future).unwrap());
+        assert!(reopened.replay_requires_pro_at("live-match-1", future).unwrap());
         assert_eq!(reopened.load_operations("live-match-1").unwrap()[0].operation, original);
         fs::remove_dir_all(directory).unwrap();
     }
@@ -1153,7 +1201,7 @@ mod tests {
         fs::write(&file, &appended).unwrap();
         storage.prepare_legacy_replay_snapshot(&file).unwrap();
         assert_eq!(storage.import_legacy_jsonl(&file).unwrap(), 2);
-        assert!(!storage.replay_requires_pro_at("live-match-1", i64::MAX / 2).unwrap());
+        assert!(storage.replay_requires_pro_at("live-match-1", i64::MAX / 2).unwrap());
         assert!(storage.replay_requires_pro_at("live-later-fallback", i64::MAX / 2).unwrap());
         assert_eq!(fs::read_to_string(file).unwrap(), appended);
         fs::remove_dir_all(directory).unwrap();
@@ -1164,7 +1212,7 @@ mod tests {
         let (directory, storage) = temporary_storage();
         let review = json!({"id":"old-browser-match", "importedAt":"2020-01-01", "turns":[]});
         storage.import_legacy_reviews(vec![review], 99).unwrap();
-        assert!(!storage.replay_requires_pro_at("old-browser-match", i64::MAX / 2).unwrap());
+        assert!(storage.replay_requires_pro_at("old-browser-match", i64::MAX / 2).unwrap());
         let later = json!({"id":"new-browser-match", "importedAt":"2020-01-01", "turns":[]});
         storage.persist_review(&later, 99).unwrap();
         storage.import_legacy_reviews(vec![later], 99).unwrap();

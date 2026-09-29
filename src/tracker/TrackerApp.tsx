@@ -17,10 +17,12 @@ import { ArrowUp } from '@phosphor-icons/react/ArrowUp';
 import { Copy } from '@phosphor-icons/react/Copy';
 import { CircleNotch } from '@phosphor-icons/react/CircleNotch';
 import { ShareNetwork } from '@phosphor-icons/react/ShareNetwork';
+import { LockSimple } from '@phosphor-icons/react/LockSimple';
 import type { Card, PlayerState, PokemonInPlay } from '../engine/types.js';
 import { parseBattleLog } from './battle-log-parser.js';
 import { DEMO_BATTLE_LOG } from './demo-log.js';
 import { readArchiveSearchIndex, searchArchive } from './archive-search.js';
+import { ArchiveUpgradeModal } from './ArchiveUpgradeModal.js';
 import { InfiniteArchiveList } from './InfiniteArchiveList.js';
 import { CaptureSetupModal } from './CaptureSetupModal.js';
 import {
@@ -587,7 +589,7 @@ function ArchiveFeaturedCard({ card, label, rating, tone, catalog }: { card: Tra
   </span>;
 }
 
-function ArchiveRow({ summary, selected, catalog, onSelect, locked = false }: { summary: MatchSummary; selected: boolean; locked?: boolean; catalog: ReadonlyMap<string, CardInfo>; onSelect: () => void }) {
+export function ArchiveRow({ summary, selected, catalog, onSelect, locked = false }: { summary: MatchSummary; selected: boolean; locked?: boolean; catalog: ReadonlyMap<string, CardInfo>; onSelect: () => void }) {
   const result = resultLabel(summary);
   const matchup = archiveMatchup(summary, catalog);
   const localCardName = matchup.localCard ? (resolvedCardInfo(matchup.localCard, catalog)?.name || matchup.localCard.name) : 'Unknown deck';
@@ -599,7 +601,7 @@ function ArchiveRow({ summary, selected, catalog, onSelect, locked = false }: { 
   return (
     <button
       type="button"
-      className={`session-card ${selected ? 'selected' : ''} ${summary.recording ? 'recording' : ''}`}
+      className={`session-card ${selected ? 'selected' : ''} ${summary.recording ? 'recording' : ''} ${locked ? 'replay-locked' : ''}`}
       onClick={onSelect}
       aria-label={`${result} against ${summary.opponent}. ${localCardName} versus ${opponentCardName}.${summary.localRating != null ? ` Your Elo ${summary.localRating}.` : ''}${summary.opponentRating != null ? ` Opponent Elo ${summary.opponentRating}.` : ''}${ratingChangeLabel ? ` ${ratingChangeLabel} Elo. New rating ${summary.ratingAfter}.` : ''} ${dateLabel}. ${durationLabel}. ${prizeLabel}.${locked ? ' Trace Pro replay.' : ''}`}
     >
@@ -614,8 +616,9 @@ function ArchiveRow({ summary, selected, catalog, onSelect, locked = false }: { 
         <span className="session-meta">
           <time dateTime={summary.importedAt}><CalendarBlank size={12} weight="bold" />{dateLabel}</time>
           <small><Clock size={12} weight="bold" />{durationLabel}</small>
-          <small><Trophy size={12} weight="fill" />{prizeLabel}</small>{locked && <small className="archive-pro-label">Pro replay</small>}
+          <small><Trophy size={12} weight="fill" />{prizeLabel}</small>
         </span>
+        {locked && <span className="archive-upgrade-action"><LockSimple size={13} weight="bold" aria-hidden="true" />Upgrade to replay<CaretRight size={13} weight="bold" aria-hidden="true" /></span>}
       </span>
     </button>
   );
@@ -673,6 +676,7 @@ export default function TrackerApp() {
   });
   const [safetyDismissed, setSafetyDismissed] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showArchiveUpgrade, setShowArchiveUpgrade] = useState(false);
   const [showSetup, setShowSetup] = useState(false);
   const [membership, setMembership] = useState<MembershipStatus | null>(null);
   const refreshMembership = useCallback(async () => {
@@ -1345,7 +1349,7 @@ export default function TrackerApp() {
   }, [selectedEventKey, selectedReview?.id, timeline.entries.length]);
 
   useEffect(() => {
-    if (!selectedReview || showSetup || showSettings || inspector || restoringReview || environment.capture.waitingForMatchEnd) return undefined;
+    if (!selectedReview || showSetup || showSettings || showArchiveUpgrade || inspector || restoringReview || environment.capture.waitingForMatchEnd) return undefined;
 
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target instanceof HTMLElement ? event.target : null;
@@ -1362,7 +1366,7 @@ export default function TrackerApp() {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [environment.capture.waitingForMatchEnd, inspector, keyMoments, navigateToFrame, selectedReview, showSetup, showSettings, restoringReview]);
+  }, [environment.capture.waitingForMatchEnd, inspector, keyMoments, navigateToFrame, selectedReview, showSetup, showSettings, showArchiveUpgrade, restoringReview]);
 
   useEffect(() => {
     if (environment.capture.waitingForMatchEnd) setPlaying(false);
@@ -1583,8 +1587,7 @@ export default function TrackerApp() {
           <InfiniteArchiveList itemCount={summaries.length} hasMore={isTauri() && summaries.length < archiveTotal} searchActive={searchActive} loadMore={loadOlderMatches}>
             {visibleSummaries.map((summary) => <ArchiveRow key={summary.id} summary={summary} selected={summary.id === selectedId} catalog={cardCatalog} locked={Boolean(summary.replayRequiresPro && !fullHistory)} onSelect={() => {
               if (summary.replayRequiresPro && !fullHistory) {
-                setNotice('Your match is saved. Trace Pro unlocks replays older than 7 days.');
-                openSettings();
+                setShowArchiveUpgrade(true);
               } else void selectSummary(summary);
             }} />)}
             {searchActive && !visibleSummaries.length && !searchLoading && !searchError && <div className="empty-library"><MagnifyingGlass size={28} /><strong>No matching games</strong><p>Try part of a player’s name, a Pokémon, or a different date.</p><button type="button" onClick={() => setArchiveQuery('')}>Clear search</button></div>}
@@ -1682,6 +1685,7 @@ export default function TrackerApp() {
 
       {!sharedMode && environment.capture.waitingForMatchEnd && !safetyDismissed && !showSetup && !showSettings && <div className="capture-safety-backdrop"><section className="capture-safety-dialog" role="alertdialog" aria-modal="true" aria-labelledby="capture-safety-title" aria-describedby="capture-safety-description"><div className="capture-safety-icon" aria-hidden="true"><ShieldCheck size={33} weight="fill" /><i /></div><span>Safe connection</span><h2 id="capture-safety-title">TCG Live is already connected</h2><p id="capture-safety-description">Trace can’t safely tell whether a match is active. It won’t interrupt your connection or install an update.</p><div className="capture-safety-waiting"><i aria-hidden="true" /><span><strong>In a match? Finish playing first.</strong><small>Already on Home? Quit TCG Live, leave Trace open until it says Ready, then reopen TCG Live.</small></span></div><div className="modal-actions"><button type="button" onClick={() => setSafetyDismissed(true)}>Continue reviewing</button><button type="button" onClick={openSettings}>Open Settings</button></div></section></div>}
       {!sharedMode && showSetup && <CaptureSetupModal onClose={closeSetup} onCapture={capture => setEnvironment(current => ({ ...current, capture }))} />}
+      {!sharedMode && showArchiveUpgrade && <ArchiveUpgradeModal onClose={() => setShowArchiveUpgrade(false)} onLink={() => { setShowArchiveUpgrade(false); openSettings(); }} />}
       {!sharedMode && showSettings && <UpdateSettingsModal onClose={() => setShowSettings(false)} version={appVersion}>{isTauri() && accountSettings}</UpdateSettingsModal>}
       {shareUrl && <div className="modal-backdrop share-modal-backdrop"><div className="share-modal" role="dialog" aria-modal="true" aria-labelledby="share-match-title"><div className="modal-title"><div><span>Ready to send</span><h2 id="share-match-title">Share this match</h2></div><button type="button" onClick={() => setShareUrl(null)} aria-label="Close share dialog"><X size={21} weight="bold" /></button></div><p>Anyone with this link can click through the replay in their browser.</p><div className="share-link-row"><input value={shareUrl} readOnly aria-label="Share link" onFocus={(event) => event.currentTarget.select()} /><button className="primary" type="button" onClick={() => void copyShareUrl(shareUrl)}><Copy size={16} weight="bold" />Copy link</button></div></div></div>}
       <ReviewOverlay inspector={inspector} catalog={cardCatalog} onClose={() => setInspector(null)} onInspectCard={openCard} />

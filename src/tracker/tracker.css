@@ -2950,3 +2950,24 @@ button.stadium-marker:focus-visible {
 .membership-link-code a { display: inline-block; margin-top: 8px; font-size: 13px; }
 
 .session-copy .session-meta .archive-pro-label { grid-column: 1 / -1; color: #8c6113; font-size: 8px; font-weight: 900; }
+
+/* Older matches stay recognizable; only the replay action is locked. */
+.session-card.replay-locked { background: #f2f0eb; border-color: #e0ddd5; box-shadow: none; }
+.session-card.replay-locked .session-matchup { opacity: .45; filter: grayscale(.75); }
+.session-card.replay-locked .session-heading strong,
+.session-card.replay-locked .session-decks { color: #777a7c; }
+.session-card.replay-locked .session-heading em { filter: saturate(.35); }
+.session-card.replay-locked:hover,
+.session-card.replay-locked:focus-visible { background: #ece8df; border-color: #bdb5a5; transform: none; }
+.archive-upgrade-action { display: flex; align-items: center; gap: 5px; margin-top: 7px; color: #735518; font-size: 11px; font-weight: 800; line-height: 1.4; }
+.archive-upgrade-action > svg:last-child { margin-left: auto; }
+.archive-upgrade-modal { width: min(400px, calc(100vw - 40px)); box-sizing: border-box; padding: 32px; border: 1px solid #d6ccba; border-radius: 16px; background: #fffdf7; color: #223653; text-align: center; box-shadow: 0 20px 65px #17202c38; }
+.archive-upgrade-modal::backdrop { background: #18212e65; backdrop-filter: blur(3px); }
+.archive-upgrade-close { position: absolute; right: 12px; top: 12px; display: grid; place-items: center; padding: 7px; background: transparent; border: 0; border-radius: 6px; color: #687079; cursor: pointer; }
+.archive-upgrade-icon { display: inline-grid; place-items: center; width: 48px; height: 48px; border-radius: 12px; background: #fff0b8; color: #806014; }
+.archive-upgrade-modal h2 { margin: 16px 0 8px; font-size: 24px; line-height: 1.2; }
+.archive-upgrade-modal p { margin: 0 0 24px; color: #646d75; font-size: 14px; line-height: 1.6; }
+.archive-upgrade-primary { width: 100%; padding: 13px 16px; border: 1px solid #c8940b; border-radius: 8px; background: #ffd44a; color: #352b13; font: inherit; font-weight: 800; cursor: pointer; }
+.archive-upgrade-primary:disabled { opacity: .6; }
+.archive-upgrade-link { margin-top: 14px; padding: 5px; background: transparent; border: 0; color: #4c6073; font: inherit; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.archive-upgrade-modal button:focus-visible { outline: 2px solid #427da8; outline-offset: 3px; }

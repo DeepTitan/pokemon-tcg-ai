@@ -5,7 +5,7 @@
 - **Free:** continuous capture, leaderboard eligibility, full replays from the last seven days, and one new replay share per installation per rolling seven days. This is ongoing free access, not a seven-day recording trial.
 - **Pro:** USD $14.99/month for full archive access and expanded sharing. Internal plan ID remains `trace`.
 - **Supporters Club:** USD $39.99/month, including Pro and post-match opponent deck study. Full opponent starting lists require authoritative match-end evidence; closing the client or an inferred winner cannot unlock them.
-- Subscription status never filters rating events, deletes captures or stops recording. Existing locally saved games are grandfathered by the native migration; new old-game cloud reads/shares follow the cloud policy. Existing public links remain accessible.
+- Subscription status never filters rating events, deletes captures or stops recording. The next desktop patch applies the seven-day replay window to existing local games too, while keeping their summaries visible and all original data saved. Existing public links remain accessible.
 - No Discord account or community join is required for signup, checkout, download, device linking or deployment.
 - One verified owner may bypass billing through a pinned Cognito subject and separate database switch. This grants product access, not AWS/billing administration, and never bypasses match-end evidence.
 
@@ -237,7 +237,7 @@ The ignored `artifacts/membership/staging-config.json` contains the verified pri
 4. Set preview `TRACE_MEMBERSHIP_API_URL`, `TRACE_MEMBERSHIP_PROXY_SECRET` and matching `TRACE_WEB_ORIGIN`. Match the proxy secret to service `webProxySecret`; neither enters JavaScript. Enable test billing only on staging after configuration.
 5. Complete Free signup, email confirmation/resend/recovery, download, both sandbox purchases, claim and device linking. Release desktop binaries deliberately accept only the production link URL: approve a staging code manually on the protected preview and inspect staging device status instead of weakening release validation.
 6. Test failed card, canceled checkout, refresh-only session, wrong-account recovery, duplicate clicks/tabs, lost responses, delayed/duplicate/out-of-order webhooks, plan switching, cancellation, failed invoice, owner on/off and unlink. No redirect parameter or browser flag may grant access.
-7. With saved/synthetic captures, verify recent free reads, locked new old replays, local grandfathering, one free share then rejection, repeat-share reuse, concurrent share requests, premium sharing, membership outages and pre/post-match deck restrictions. Existing sanitized public links must remain readable. **Do not launch Pokémon TCG Live or enter a match.**
+7. With saved/synthetic captures, verify recent free reads, locked old replays including the pre-upgrade archive, one free share then rejection, repeat-share reuse, concurrent share requests, premium sharing, membership outages and pre/post-match deck restrictions. Existing sanitized public links must remain readable. **Do not launch Pokémon TCG Live or enter a match.**
 
 Required real-provider evidence: actual email receipt/recovery, authenticated session and CSRF rejection, atomic DynamoDB/IAM behavior, Stripe sandbox reconciliation, and preview redirect/cookie handling. Offline fakes cannot prove these integrations.
 
