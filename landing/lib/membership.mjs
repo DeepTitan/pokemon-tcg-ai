@@ -119,7 +119,9 @@ function inputFor(action, raw) {
   if (['auth/signup', 'auth/resend', 'auth/confirm', 'auth/login', 'auth/recover', 'auth/reset'].includes(action) &&
       (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) throw new Error('input');
   if (['auth/signup', 'auth/login', 'auth/reset'].includes(action) &&
-      (typeof password !== 'string' || password.length < 1 || password.length > 128)) throw new Error('input');
+      (typeof password !== 'string' || password.length < (action === 'auth/login' ? 1 : 8) || password.length > 128)) {
+    throw Object.assign(new Error('input'), { code: 'invalid_password' });
+  }
   if (['auth/confirm', 'auth/reset'].includes(action) && !/^\d{6,8}$/.test(code)) throw new Error('input');
   if (action === 'auth/signup' || action === 'auth/login') return { email, password };
   if (action === 'auth/confirm') return { email, code };
@@ -148,9 +150,9 @@ function failure(response, status, action, body) {
     410: 'This code has expired. Request a new code and try again.',
     429: 'Too many attempts. Wait a moment, then try again.',
   };
-  const codes = new Set(['invalid_request', 'invalid_email', 'invalid_password', 'invalid_code', 'unauthorized', 'invalid_credentials', 'email_not_verified', 'device_already_linked', 'billing_busy', 'subscription_exists', 'rate_limited', 'billing_unavailable', 'service_unavailable', 'checkout_expired', 'payment_processing', 'payment_already_completed', 'purchase_already_claimed', 'checkout_email_mismatch', 'checkout_not_found', 'purchase_not_active']);
+  const codes = new Set(['invalid_request', 'invalid_email', 'invalid_password', 'invalid_code', 'unauthorized', 'invalid_credentials', 'email_not_verified', 'account_exists', 'device_already_linked', 'billing_busy', 'subscription_exists', 'rate_limited', 'billing_unavailable', 'service_unavailable', 'checkout_expired', 'payment_processing', 'payment_already_completed', 'purchase_already_claimed', 'checkout_email_mismatch', 'checkout_not_found', 'purchase_not_active']);
   const code = codes.has(body?.error) ? body.error : undefined;
-  const explanation = code === 'invalid_password' ? 'Use 12–128 characters, with uppercase and lowercase letters, a number, and a symbol.' : code === 'invalid_code' ? 'That code is invalid or expired. Check the code and try again.' : code === 'subscription_exists' ? 'You already have a subscription. Use Manage billing to change your plan.' : null;
+  const explanation = code === 'invalid_password' ? 'Use 8–128 characters. No uppercase letters, numbers or symbols required.' : code === 'invalid_code' ? 'That code is invalid or expired. Check the code and try again.' : code === 'subscription_exists' ? 'You already have a subscription. Use Manage billing to change your plan.' : code === 'account_exists' ? 'This email already has a Trace account. Sign in, or confirm your email to finish signup.' : null;
   const purchaseExplanation = ({
     purchase_not_active: 'This purchase no longer has an active membership. Check Manage billing or contact support before paying again.',
     checkout_not_found: 'We could not find this purchase. Open the browser you used at checkout, or sign in if you already linked it.',
@@ -232,7 +234,8 @@ export function createMembershipHandler({ service = createMembershipService(), o
     }
     try {
       let body;
-      try { body = inputFor(action, request.body); } catch { return send(response, 400, { error: 'Check the details and try again.' }); }
+      try { body = inputFor(action, request.body); }
+      catch (error) { return failure(response, 400, action, { error: error.code === 'invalid_password' ? 'invalid_password' : 'invalid_request' }); }
       if (action === 'auth/logout') {
         const cookies = readCookies(request.headers?.cookie);
         writeCookies(response, clearCookies());

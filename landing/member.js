@@ -71,7 +71,7 @@ async function submitForm(form, label, work) {
   finally { form.removeAttribute('aria-busy'); button.disabled = false; button.textContent = previous; }
 }
 const emailField = () => `<label class="form-field">Email<input name="email" type="email" autocomplete="email" maxlength="254" value="${esc(email)}" required /></label>`;
-const passwordField = (fresh) => `<label class="form-field">Password<input name="password" type="password" autocomplete="${fresh ? 'new-password' : 'current-password'}" ${fresh ? 'minlength="12"' : ''} maxlength="128" required ${fresh ? 'aria-describedby="password-help"' : ''} />${fresh ? '<small id="password-help">12–128 characters. Include uppercase and lowercase letters, a number, and a symbol.</small>' : ''}</label>`;
+const passwordField = (fresh) => `<label class="form-field">Password<input name="password" type="password" autocomplete="${fresh ? 'new-password' : 'current-password'}" ${fresh ? 'minlength="8"' : ''} maxlength="128" required ${fresh ? 'aria-describedby="password-help"' : ''} />${fresh ? '<small id="password-help">8–128 characters. No numbers or symbols required.</small>' : ''}</label>`;
 const codeField = () => '<label class="form-field">Email code<input name="code" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6,8}" minlength="6" maxlength="8" required /></label>';
 const messageSlot = () => '<p id="message" class="message" role="status" hidden></p>';
 function authCard(title, intro, fields, button, links, extra = '') {
@@ -86,7 +86,15 @@ function renderAuth(name) {
     const form = authCard('Get started.', intro, emailField() + passwordField(true), 'Create account', link('login', 'Already have an account? Sign in'));
     form.addEventListener('submit', (event) => { event.preventDefault(); void submitForm(form, 'Creating account…', async (data) => {
       email = data.get('email').trim();
-      await api('auth/signup', { email, password: data.get('password') });
+      try { await api('auth/signup', { email, password: data.get('password') }); }
+      catch (error) {
+        if (error.code === 'account_exists') {
+          navigate('confirm');
+          notice('This email already has a Trace account. Enter your confirmation code, or go back to sign in if you already confirmed it.', true);
+          return;
+        }
+        throw error;
+      }
       navigate('confirm');
       notice('Check your inbox for a confirmation code.');
     }); });

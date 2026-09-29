@@ -30,6 +30,35 @@ test('login stores secure host-only HttpOnly tokens and returns no credentials o
   assert.equal(result.headers.vary, 'Cookie');
 });
 
+test('new passwords accept 8–128 characters without composition rules and explain rejected lengths', async () => {
+  for (const action of ['auth/signup', 'auth/reset']) {
+    for (const password of ['abcdefgh', '12345678', 'a'.repeat(128)]) {
+      let sent;
+      const result = await invoke(action, { body: { email: 'member@example.test', password, code: '123456' }, service: { configured: true, call: async (_action, input) => { sent = input.body; return { status: 200, body: {} }; } } });
+      assert.equal(result.statusCode, 200);
+      assert.equal(sent.password, password);
+    }
+    for (const password of ['short', 'a'.repeat(129), null]) {
+      const result = await invoke(action, { body: { email: 'member@example.test', password, code: '123456' }, service: { configured: true, call: async () => { assert.fail('invalid password reached provider'); } } });
+      assert.equal(result.statusCode, 400);
+      assert.equal(parsed(result).code, 'invalid_password');
+      assert.match(parsed(result).error, /8–128 characters/);
+    }
+    const upstream = await invoke(action, { body: { email: 'member@example.test', password: 'abcdefgh', code: '123456' }, service: { configured: true, call: async () => ({ status: 400, body: { error: 'invalid_password', message: 'private provider text' } }) } });
+    assert.equal(parsed(upstream).error, 'Use 8–128 characters. No uppercase letters, numbers or symbols required.');
+    assert.doesNotMatch(upstream.body, /private provider/);
+  }
+  const login = await invoke('auth/login', { body: { email: 'member@example.test', password: 'short' } });
+  assert.equal(login.statusCode, 200); // Existing passwords are checked by Cognito.
+});
+
+test('an existing signup returns actionable recovery without leaking provider details', async () => {
+  const result = await invoke('auth/signup', { body: { email: 'member@example.test', password: 'abcdefgh' }, service: { configured: true, call: async () => ({ status: 409, body: { error: 'account_exists', message: 'private Cognito data', subject: 'private-subject' } }) } });
+  assert.equal(result.statusCode, 409);
+  assert.deepEqual(parsed(result), { error: 'This email already has a Trace account. Sign in, or confirm your email to finish signup.', code: 'account_exists' });
+  assert.doesNotMatch(result.body, /Cognito|private/);
+});
+
 test('CSRF origin matching is exact; caller host and Vercel URL cannot bless origins', async () => {
   let calls = 0;
   const service = { configured: true, call: async () => { calls++; return { status: 200, body: {} }; } };
