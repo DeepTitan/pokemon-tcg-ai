@@ -310,6 +310,59 @@ class Cognito:
         return {'accessToken': auth['AccessToken'], 'refreshToken': auth.get('RefreshToken') or refresh,
                 'expiresIn': auth['ExpiresIn']}
 
+    def email_start(self, email):
+        """One entry point; account existence stays behind the website boundary."""
+        try:
+            user = self.client.admin_get_user(UserPoolId=self.config.pool_id, Username=email)
+        except ClientError as error:
+            if error.response.get('Error', {}).get('Code') != 'UserNotFoundException':
+                raise ApiError(503, 'service_unavailable')
+            try:
+                result = self.call('sign_up', ClientId=self.config.client_id, Username=email,
+                                   UserAttributes=[{'Name': 'email', 'Value': email}])
+                return {'kind': 'signup', 'email': email, 'session': result.get('Session', '')}
+            except ApiError as error:
+                if error.code != 'account_exists':
+                    raise
+                # Another tab may have created this account meanwhile.
+                return self.email_start(email)
+        if not user.get('Enabled', False):
+            raise ApiError(401, 'invalid_credentials')
+        if user.get('UserStatus') == 'UNCONFIRMED':
+            # Incomplete legacy password signups are not verified identities. Discard
+            # the unverified password BEFORE OTP verifies this mailbox, so a password
+            # planted by someone else never becomes usable after the real owner logs in.
+            # This confirms the profile but does not mark its email verified or issue tokens.
+            self.call('admin_set_user_password', UserPoolId=self.config.pool_id, Username=email,
+                      Password=secrets.token_urlsafe(48) + 'aA1!', Permanent=True)
+        result = self.call('initiate_auth', ClientId=self.config.client_id, AuthFlow='USER_AUTH',
+                           AuthParameters={'USERNAME': email, 'PREFERRED_CHALLENGE': 'EMAIL_OTP'})
+        return self.email_challenge(result, email)
+
+    @staticmethod
+    def email_challenge(result, email):
+        if result.get('ChallengeName') != 'EMAIL_OTP' or not result.get('Session'):
+            raise ApiError(503, 'service_unavailable')
+        return {'kind': 'signin', 'email': email, 'session': result['Session'],
+                'username': result.get('ChallengeParameters', {}).get('USERNAME', email)}
+
+    def email_finish(self, challenge, code):
+        email = challenge['email']
+        if challenge['kind'] == 'signup':
+            result = self.call('confirm_sign_up', ClientId=self.config.client_id, Username=email,
+                               ConfirmationCode=code, ForceAliasCreation=False,
+                               **({'Session': challenge['session']} if challenge.get('session') else {}))
+            result = self.call('initiate_auth', ClientId=self.config.client_id, AuthFlow='USER_AUTH',
+                               AuthParameters={'USERNAME': email, 'PREFERRED_CHALLENGE': 'EMAIL_OTP'},
+                               **({'Session': result['Session']} if result.get('Session') else {}))
+            if 'AuthenticationResult' not in result:
+                return {'challenge': self.email_challenge(result, email)}
+        else:
+            result = self.call('respond_to_auth_challenge', ClientId=self.config.client_id,
+                               ChallengeName='EMAIL_OTP', Session=challenge['session'],
+                               ChallengeResponses={'USERNAME': challenge.get('username', email), 'EMAIL_OTP_CODE': code})
+        return self.tokens(result)
+
     def login(self, email, password):
         result = self.call('initiate_auth', ClientId=self.config.client_id, AuthFlow='USER_PASSWORD_AUTH',
                            AuthParameters={'USERNAME': email, 'PASSWORD': password})

@@ -1,0 +1,62 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Optional Google sign-in resources for an existing Trace Cognito pool.
+Parameters:
+  UserPoolId:
+    Type: String
+    AllowedPattern: 'us-east-1_[A-Za-z0-9]+'
+  DomainPrefix:
+    Type: String
+    AllowedPattern: '[a-z0-9-]+'
+  GoogleSecretArn:
+    Type: String
+    Description: Secrets Manager JSON containing clientId and clientSecret; never raw credentials.
+    AllowedPattern: 'arn:aws:secretsmanager:us-east-1:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+'
+Resources:
+  GoogleProvider:
+    Type: AWS::Cognito::UserPoolIdentityProvider
+    Properties:
+      UserPoolId: !Ref UserPoolId
+      ProviderName: Google
+      ProviderType: Google
+      ProviderDetails:
+        client_id: !Sub '{{resolve:secretsmanager:${GoogleSecretArn}:SecretString:clientId}}'
+        client_secret: !Sub '{{resolve:secretsmanager:${GoogleSecretArn}:SecretString:clientSecret}}'
+        authorize_scopes: openid email profile
+      AttributeMapping:
+        email: email
+        email_verified: email_verified
+  Domain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      UserPoolId: !Ref UserPoolId
+      Domain: !Ref DomainPrefix
+  LinkIdentity:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: lambda/
+      Handler: google_link.handler
+      Runtime: python3.13
+      Architectures: [arm64]
+      Timeout: 5
+      Environment:
+        Variables:
+          USER_POOL_ID: !Ref UserPoolId
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ['cognito-idp:AdminGetUser', 'cognito-idp:AdminCreateUser', 'cognito-idp:AdminLinkProviderForUser']
+              Resource: !Sub 'arn:${AWS::Partition}:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${UserPoolId}'
+  CognitoPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref LinkIdentity
+      Principal: cognito-idp.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !Sub 'arn:${AWS::Partition}:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${UserPoolId}'
+Outputs:
+  TriggerArn:
+    Value: !GetAtt LinkIdentity.Arn
+  Domain:
+    Value: !Sub 'https://${DomainPrefix}.auth.${AWS::Region}.amazoncognito.com'

@@ -470,8 +470,9 @@ class MembershipService:
             self.store.save_account(subject, {'checkout': {**pending, 'sessionId': session['id']}}, lease, self.now())
             return {'url': self.stripe.checkout_url(session)}
 
-    def require_proxy(self, event):
-        self.require_billing()
+    def require_proxy(self, event, billing=True):
+        if billing:
+            self.require_billing()
         supplied = headers(event).get('x-trace-proxy-key', '')
         expected = self.stripe.proxy_secret()
         if not supplied or len(supplied) > 512 or not hmac.compare_digest(supplied, expected):
@@ -736,7 +737,17 @@ class MembershipService:
             if not isinstance(value, str) or not 1 <= len(value) <= 8192:
                 raise ApiError(400, 'invalid_request')
             return self.cognito.refresh(value)
+        if action == 'email-finish':
+            challenge = request.get('challenge')
+            if not isinstance(challenge, dict) or challenge.get('kind') not in {'signup', 'signin'}:
+                raise ApiError(400, 'invalid_request')
+            email_value(challenge.get('email'))
+            if not isinstance(challenge.get('session', ''), str) or len(challenge.get('session', '')) > 8192:
+                raise ApiError(400, 'invalid_request')
+            return self.cognito.email_finish(challenge, confirmation_code(request.get('code')))
         email = email_value(request.get('email'))
+        if action == 'email-start':
+            return {'challenge': self.cognito.email_start(email)}
         if action == 'signup':
             self.cognito.signup(email, password_value(request.get('password')))
             return {'ok': True, 'confirmationRequired': True}
@@ -762,13 +773,19 @@ class MembershipService:
         path = event.get('rawPath', '')
         if method == 'POST' and path.startswith('/v1/auth/'):
             action = path.removeprefix('/v1/auth/')
-            if action not in {'signup', 'confirm', 'resend', 'login', 'refresh', 'recover', 'reset', 'logout'}:
+            if action not in {'signup', 'confirm', 'resend', 'login', 'refresh', 'recover', 'reset', 'logout', 'email-start', 'email-finish'}:
                 raise ApiError(404, 'not_found')
             # The website proxy shares egress IPs. Bucket by a hash of the account/token,
             # not that shared IP; Cognito and API Gateway provide additional limits.
             request = body(event)
-            identity = str(request.get('email', request.get('refreshToken', bearer(event) if action == 'logout' else 'unknown')))
+            if action in {'email-start', 'email-finish'}:
+                self.require_proxy(event, billing=False)
+            identity = str(request.get('email') or (request.get('challenge', {}).get('email') if isinstance(request.get('challenge'), dict) else '') or request.get('refreshToken') or (bearer(event) if action == 'logout' else 'unknown'))
             self.store.limit('auth:' + digest(identity.lower() if 'email' in request else identity), 30, 300, self.now())
+            if action == 'email-finish':
+                self.store.limit('email-check:' + digest(email_value((request.get('challenge') or {}).get('email'))), 10, 300, self.now())
+            if action == 'email-start':
+                self.store.limit('email-send:' + digest(email_value(request.get('email'))), 1, 60, self.now())
             return self.auth(action, event)
         if method == 'POST' and path == '/v1/webhook':
             return self.webhook(event)

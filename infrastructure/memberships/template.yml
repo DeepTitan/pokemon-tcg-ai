@@ -2,6 +2,10 @@ AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: Isolated Trace memberships. Billing disabled until explicitly configured and approved.
 Parameters:
+  GoogleTriggerArn:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^arn:aws:lambda:us-east-1:[0-9]{12}:function:[A-Za-z0-9_-]+$'
   Environment:
     Type: String
     Default: staging
@@ -66,6 +70,7 @@ Parameters:
     Description: Verified owner's immutable Cognito sub, pinned by operator after identity verification. Blank disables override.
     AllowedPattern: '^$|^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$'
 Conditions:
+  HasGoogle: !Not [!Equals [!Ref GoogleTriggerArn, '']]
   HasStripeSecret: !Not [!Equals [!Ref StripeSecretArn, '']]
   HasReservedConcurrency: !Not [!Equals [!Ref ReservedConcurrency, 0]]
   HasSesIdentity: !Not [!Equals [!Ref SesIdentity, '']]
@@ -155,6 +160,8 @@ Resources:
     Properties:
       UserPoolName: !Sub 'trace-memberships-${Environment}'
       DeletionProtection: ACTIVE
+      UserPoolTier: ESSENTIALS
+      LambdaConfig: !If [HasGoogle, {PreSignUp: !Ref GoogleTriggerArn}, !Ref 'AWS::NoValue']
       UsernameAttributes: [email]
       UsernameConfiguration:
         CaseSensitive: false
@@ -181,6 +188,8 @@ Resources:
           If you did not request this code, you can ignore this email.</p>
           <p>Trace &middot; Victory Road</p>
       Policies:
+        SignInPolicy:
+          AllowedFirstAuthFactors: [PASSWORD, EMAIL_OTP]
         PasswordPolicy:
           MinimumLength: 8
           RequireLowercase: false
@@ -198,8 +207,14 @@ Resources:
     Properties:
       UserPoolId: !Ref UserPool
       ClientName: trace-memberships-web
+      SupportedIdentityProviders: !If [HasGoogle, [COGNITO, Google], [COGNITO]]
+      AllowedOAuthFlowsUserPoolClient: !If [HasGoogle, true, false]
+      AllowedOAuthFlows: !If [HasGoogle, [code], !Ref 'AWS::NoValue']
+      AllowedOAuthScopes: !If [HasGoogle, [openid, email, aws.cognito.signin.user.admin], !Ref 'AWS::NoValue']
+      CallbackURLs: !If [HasGoogle, [!Sub '${WebOrigin}/trace/api/auth/google-callback'], !Ref 'AWS::NoValue']
       GenerateSecret: false
-      ExplicitAuthFlows: [ALLOW_USER_PASSWORD_AUTH, ALLOW_REFRESH_TOKEN_AUTH]
+      ExplicitAuthFlows: [ALLOW_USER_PASSWORD_AUTH, ALLOW_REFRESH_TOKEN_AUTH, ALLOW_USER_AUTH]
+      AuthSessionValidity: 15
       PreventUserExistenceErrors: ENABLED
       EnableTokenRevocation: true
       ReadAttributes: [sub, email, email_verified]
@@ -238,6 +253,9 @@ Resources:
           WEB_ORIGIN: !Ref WebOrigin
       Policies:
         - Statement:
+            - Effect: Allow
+              Action: ['cognito-idp:AdminGetUser', 'cognito-idp:AdminSetUserPassword']
+              Resource: !GetAtt UserPool.Arn
             - Effect: Allow
               Action: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem', 'dynamodb:DeleteItem', 'dynamodb:ConditionCheckItem']
               Resource: !GetAtt Accounts.Arn

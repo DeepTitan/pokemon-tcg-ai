@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parent
 PARAMETERS = {'Environment', 'CaptureDevicesTableName', 'BillingEnabled', 'StripeMode', 'StripeSecretArn',
               'TracePriceId', 'SupporterPriceId', 'StripePortalConfigId', 'OwnerSubject',
               'ReservedConcurrency', 'SesIdentity', 'SesFromEmail', 'SesRegion',
-              'WebOrigin'}
+              'WebOrigin', 'GoogleTriggerArn'}
 
 
 def validate_email(params):
@@ -39,7 +39,10 @@ def validate_email(params):
 def validate(config, allow_live=False):
     if not isinstance(config, dict) or set(config) != {'stackName', 'region', 'profile', 'artifactBucket', 'parameters'}:
         raise ValueError('Use the complete config.example.json shape; raw secrets are not configuration fields.')
-    params = config['parameters']
+    if not isinstance(config['parameters'], dict):
+        raise ValueError('Parameters must be an object.')
+    params = dict(config['parameters'])
+    params.setdefault('GoogleTriggerArn', '')
     if not isinstance(params, dict) or set(params) != PARAMETERS or any(not isinstance(v, str) for v in params.values()):
         raise ValueError('Configuration needs exactly the documented string parameters.')
     for name, pattern in {'stackName': r'[A-Za-z][A-Za-z0-9-]{0,127}', 'region': r'[a-z]{2}-[a-z]+-\d',
@@ -54,6 +57,8 @@ def validate(config, allow_live=False):
         raise ValueError('Invalid CaptureDevicesTableName.')
     if not re.fullmatch(r'0|[1-9][0-9]{0,3}', params['ReservedConcurrency']) or int(params['ReservedConcurrency']) > 1000:
         raise ValueError('ReservedConcurrency must be 0 (unreserved) or an integer from 1 to 1000.')
+    if params['GoogleTriggerArn'] and not re.fullmatch(r'arn:aws:lambda:us-east-1:[0-9]{12}:function:[A-Za-z0-9_-]+', params['GoogleTriggerArn']):
+        raise ValueError('GoogleTriggerArn must be the reviewed identity-link trigger ARN.')
     validate_email(params)
     if not re.fullmatch(r'https://(?:victoryroad\.app|[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.vercel\.app)', params['WebOrigin']):
         raise ValueError('WebOrigin must be the canonical site or one fixed HTTPS Vercel origin, without path/query.')
