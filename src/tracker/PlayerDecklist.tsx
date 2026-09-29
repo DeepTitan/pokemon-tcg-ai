@@ -115,13 +115,13 @@ export function PlayerDecklist({ name, deck: suppliedDeck, catalog, loadDeck, un
   return <>
     <span className="player-decklist-control">
     <button ref={button} type="button" className="player-decklist-trigger" aria-label={`${name} decklist`}
-      aria-disabled={!available && !onUpgrade} aria-describedby={!available ? `${id}-unavailable` : undefined}
+      aria-disabled={!available && !onUpgrade} aria-describedby={!available && !onUpgrade ? `${id}-unavailable` : undefined}
       aria-expanded={available || onUpgrade ? open : undefined} aria-controls={open ? id : undefined} aria-haspopup={available || onUpgrade ? 'dialog' : undefined}
       onMouseEnter={() => { cancelClose(); clearTimeout(hoverTimer.current); hoverTimer.current = setTimeout(show, 100); }} onMouseLeave={leave} onFocus={() => { if (!suppressFocus.current) show(); }} onBlur={leave}
       onClick={show} onKeyDown={event => { if (event.key === 'ArrowDown') { event.preventDefault(); show(); setTimeout(() => panel.current?.focus(), 0); } }}>
       <CardsThree size={18} />
     </button>
-    {!available && !open && <span id={`${id}-unavailable`} role="tooltip" className="player-decklist-unavailable">{unavailableReason || 'Decklist not available'}</span>}
+    {!available && !onUpgrade && !open && <span id={`${id}-unavailable`} role="tooltip" className="player-decklist-unavailable">{unavailableReason || 'Decklist not available'}</span>}
     </span>
     {open && createPortal(<div ref={panel} id={id} role="dialog" aria-label={`${name} captured decklist`}
       tabIndex={-1} className={`player-decklist-panel${!available && onUpgrade ? ' decklist-locked-preview' : ''}`} style={position} onMouseEnter={cancelClose} onMouseLeave={leave}

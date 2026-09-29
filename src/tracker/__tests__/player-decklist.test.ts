@@ -16,3 +16,12 @@ assert.match(available, /aria-disabled="false"/);
 assert.match(available, /aria-haspopup="dialog"/);
 assert.doesNotMatch(available, /Decklist not available|aria-describedby/);
 console.log('player-decklist: missing capture disabled with tooltip; captured inventory remains available');
+
+// Upgrade previews replace the legacy tooltip, including during hover intent delay.
+for (const upgradeLabel of ['Get Trace Pro', 'Join Supporters Club']) {
+  const locked = renderToStaticMarkup(createElement(PlayerDecklist, {
+    name: 'Locked', catalog: new Map(), onUpgrade: () => {}, upgradeLabel,
+  }));
+  assert.match(locked, /aria-haspopup="dialog"/);
+  assert.doesNotMatch(locked, /role="tooltip"|aria-describedby|player-decklist-unavailable/);
+}
