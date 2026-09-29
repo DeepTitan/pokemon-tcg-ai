@@ -17,7 +17,7 @@ test('encrypted auth state is private, tamper resistant, bound to secret and exp
   assert.equal(openAuth(sealed,secret,1001).challenge.session,'private');
   assert.equal(openAuth(sealed,secret,1000+15*60000),null);
   assert.equal(openAuth(sealed,secret+'different',1001),null);
-  assert.equal(openAuth('x'+sealed.slice(1),secret,1001),null);
+  assert.equal(openAuth((sealed[0] === 'x' ? 'y' : 'x')+sealed.slice(1),secret,1001),null);
   assert.ok(!sealed.includes('player'));
 });
 test('new and existing users receive identical public replies and HttpOnly state',async()=>{
