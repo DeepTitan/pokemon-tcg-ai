@@ -75,7 +75,13 @@ assert.equal((releaseWorkflow.match(/ref: \$\{\{ needs\.checkpoint\.outputs\.com
 assert.match(releaseWorkflow, /releaseCommitish: \$\{\{ needs\.checkpoint\.outputs\.commitSha \}\}/);
 assert.match(releaseWorkflow, /releaseDraft: \$\{\{ needs\.checkpoint\.outputs\.shouldPublish != 'true' \|\| steps\.upload-state\.outputs\.releaseDraft == 'true' \}\}/);
 for (const step of ['Publish verified release', 'Verify network update manifest']) {
-  assert.match(releaseWorkflow, new RegExp(`- name: ${step}\\n        if: needs\\.checkpoint\\.outputs\\.shouldPublish == 'true'`));
+  const guard = new RegExp(`- name: ${step}\\r?\\n        if: needs\\.checkpoint\\.outputs\\.shouldPublish == 'true'`);
+  for (const newline of ['\n', '\r\n']) {
+    const workflow = releaseWorkflow.replace(/\r?\n/g, newline);
+    assert.match(workflow, guard, `${step} stays guarded with ${JSON.stringify(newline)} line endings`);
+    assert.doesNotMatch(workflow.replace(guard, `- name: ${step}${newline}        if: true`), guard,
+      `${step} must not accept an unconditional publish step`);
+  }
 }
 assert.match(releaseWorkflow, /- name: Confirm held candidate\s+if: needs\.checkpoint\.outputs\.shouldPublish != 'true'/);
 assert.match(releaseWorkflow, /if \[\[ "\$VERIFY_APP_LAUNCH" == 'true' \]\]; then[\s\S]*"\$executable_path"[\s\S]*verify-macos-helper-bundle\.sh "\$fresh_app"\s+fi/);
