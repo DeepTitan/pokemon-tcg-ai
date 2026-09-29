@@ -34,7 +34,8 @@
   app's canonical `/trace/link` handoff, release endpoint pairing or isolated-data
   behavior. A subsequent native readiness check passed 26 Rust tests and three
   frontend suites. No packaged app was launched; production endpoint pairing
-  and testing an isolated packaged app remain open.
+  and testing an isolated packaged app remained open at that checkpoint.
+  Production endpoint pairing subsequently passed as recorded below.
 - The real owner account is confirmed in staging, after the original Cognito
   email arrived in Spam. It has no production subject binding or owner override.
 - Domain DKIM and the exact SES test recipient are verified. Staging Cognito
@@ -56,13 +57,61 @@
   SES production access was requested once at 06:17:57 UTC and initially read
   back `PENDING`. Around 06:20 UTC, AWS confirmed `ProductionAccessEnabled:true`
   and review `GRANTED`, case `179066268400340`. SES public sending is approved
-  for this account and region. The production application and live billing
-  remain undeployed. See [operations status](TRACE_EMAIL_OPERATIONS.md).
+  for this account and region. See [operations status](TRACE_EMAIL_OPERATIONS.md).
 
-Remaining release work includes completing password recovery,
-production owner binding, separate live Stripe setup,
-the packaged native release checks, and coordinated production deployment.
-No sandbox result alone establishes that production is shipped.
+### Production infrastructure checkpoint — September 29, 2026
+
+- New isolated `trace-memberships-production` reached `CREATE_COMPLETE` at
+  `https://kg0vg9dnk0.execute-api.us-east-1.amazonaws.com`. Its Cognito pool is
+  `us-east-1_FhL6gNP11`, client `6hq47mf56i6grejr3bs3gnraci`. The Accounts table is
+  `trace-memberships-production-Accounts-1MC7VRDW6OLXV`; the separate owner switch
+  table is `trace-memberships-production-OwnerSwitches-10KAUO5WKZ1VM`.
+  Branded SES sender, the eight-character/no-composition password policy and
+  unauthenticated account 401 were verified. Billing and owner override are off.
+- Production capture reached `UPDATE_COMPLETE` with the new membership API and
+  `RequireMembership=false`. All 65 offline capture tests passed. The executed
+  change set modified only Lambda code/environment and the API definition.
+  All storage identities, stack tags and the exact KEYS_ONLY leaderboard stream
+  ARN remained unchanged. Private APIs rejected unsigned requests. No synthetic
+  game, app launch or existing installation credential change was used.
+- The read-only [endpoint preflight](TRACE_NATIVE_RELEASE_PREFLIGHT.md) passed
+  against actual production CloudFormation ownership in both directions. Its
+  17 offline guard tests passed. GitHub's `TRACE_MEMBERSHIP_API_URL` now points
+  at the new production API; `TRACE_SYNC_API_URL` retains the existing capture
+  endpoint. This verifies build configuration, not a packaged app's behavior.
+- Website production endpoint/origin variables and a dedicated sensitive proxy
+  secret are configured. The same proxy value exists in a dedicated AWS secret,
+  whose metadata is recorded in ignored `production-secret-metadata.json`.
+  That secret has no live Stripe key/webhook secret yet and is not wired into
+  the billing-disabled production Lambda. No secret value was logged or saved
+  in source. Existing film credentials are unchanged.
+- Clean website source `110789d` built as production deployment
+  `dpl_FU7u55HPXzfw5hJNhxuPgLdSTfcw` at
+  `https://victoryroad-bugzfkp5s-deeptitan-6729s-projects.vercel.app`, with
+  `--skip-domain`. Vercel assigned its generated project alias, but the stable
+  `victoryroad-lovat.vercel.app` used by the public apex still resolves to
+  `dpl_8fUT6j7aMK3WxQStFtRVyZNWP35C`. Apex routes are not promoted. The unrelated
+  dirty dashboard file was excluded from the clean archive/build. All seven
+  protected HTTP smoke checks passed through authenticated Vercel CLI requests:
+  pricing, signup, link, script, account 401/no-store, download redirect and
+  leaderboard. Plain requests encountered the expected SSO redirect; protection
+  remains enabled. These are artifact checks, not proof of public promotion.
+- Stripe Dashboard sign-in expired before live setup. An external Chrome
+  sign-in tab is awaiting the user. Sandbox billing is verified; live products,
+  runtime key and webhook remain unconfigured. Do not enable paid access or
+  promote checkout until these and the native release are ready.
+
+Ignored evidence: `membership-production-stack.json`,
+`capture-production-changeset-20260929.json`,
+`capture-production-after-20260929.json`, and
+`production-endpoint-pair-20260929.json`; website preparation/build evidence is
+in the sibling checkout's `artifacts/membership/production-preflight-20260929/`.
+
+Remaining release work includes completing password recovery, production owner
+binding, separate live Stripe setup, the packaged native release checks,
+public website routing/promotion, and enabling capture policy in coordination.
+No sandbox or infrastructure result alone establishes that memberships are
+publicly launched.
 
 ### Historical setup snapshot — September 28, 2026
 
