@@ -291,7 +291,7 @@ class MembershipTests(unittest.TestCase):
             self.assertEqual(caps['recentReplayDays'], 7)
             self.assertTrue(caps['fullHistory'])
             self.assertTrue(caps['expandedSharing'])
-            self.assertEqual(caps['opponentDecklists'], plan == 'supporter')
+            self.assertFalse(caps['opponentDecklists'])
         self.store.owners[OWNER] = True
         owner = self.service.entitlement(OWNER)
         self.assertTrue(owner['capabilities']['opponentDecklists'])
@@ -303,7 +303,7 @@ class MembershipTests(unittest.TestCase):
     def test_paid_supporter_and_trace_permissions(self):
         account = self.service.handle(request('account'))
         self.assertTrue(account['traceAccess'])
-        self.assertTrue(account['opponentDecklists'])
+        self.assertFalse(account['opponentDecklists'])
         self.assertEqual(account['status'], 'active')
         self.stripe.current = [subscription('trace')]
         self.clock += 301
@@ -590,7 +590,7 @@ class MembershipTests(unittest.TestCase):
         self.service.handle(request('devices/link/approve', 'POST', {'userCode': started['userCode']}))
         after = self.service.handle(request('devices/status', device=True))
         self.assertTrue(after['linked'])
-        self.assertTrue(after['opponentDecklists'])
+        self.assertFalse(after['opponentDecklists'])
         self.assert_error('invalid_code', lambda: self.service.approve_link(OWNER, started['userCode']))
         self.assert_error('device_already_linked', lambda: self.service.start_link(DEVICE, digest('capture-secret')))
         unlinked = self.service.handle(request('devices/unlink', 'POST', device=True))

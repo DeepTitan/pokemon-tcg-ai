@@ -83,7 +83,7 @@ impl MembershipStatus {
         let paid = self.paid_access_at(now);
         self.admin = owner;
         self.trace_access &= owner || paid;
-        self.opponent_decklists &= self.trace_access && self.plan == "supporter";
+        self.opponent_decklists &= self.trace_access && owner;
         self.capabilities = Capabilities {
             full_history: self.trace_access && self.capabilities.full_history,
             expanded_sharing: self.trace_access && self.capabilities.expanded_sharing,
@@ -272,6 +272,8 @@ mod tests {
             assert!(!value.validated().trace_access);
         }
         let mut value = active();
+        value.plan = "supporter".into();
+        assert!(!value.clone().validated().opponent_decklists);
         value.admin = true;
         assert!(!value.clone().validated().trace_access);
         value.plan = "supporter".into();

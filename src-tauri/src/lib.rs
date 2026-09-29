@@ -484,7 +484,7 @@ async fn load_opponent_decklist(
 ) -> Result<Value, String> {
     if !membership.refresh(&cloud_sync).await.opponent_decklists {
         return Err(
-            "An active Supporters Club membership is required to view opponent decklists.".into(),
+            "Opponent decklists are restricted to the owner account.".into(),
         );
     }
     let storage = storage.inner().clone();

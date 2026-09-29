@@ -30,7 +30,6 @@ export function MembershipSettings({ status, onRefresh, onChange }: {
     {status?.capabilities?.fullHistory
       ? <p>Full replay history and unlimited sharing are included.</p>
       : <><p>Share 1 new replay every 7 days. Trace Pro adds full history and unlimited sharing.</p><p>Older matches stay saved. Upgrade to replay them anytime.</p></>}
-    {status?.traceAccess && <p>{status.opponentDecklists ? 'Opponent decklists unlock after the match result is recorded.' : 'Supporters Club adds opponent decklists after each match.'}</p>}
     {link && <div className="membership-link-code"><p>Confirm this code in your browser.</p><strong>{link.userCode}</strong><a href={link.verificationUrl} target="_blank" rel="noreferrer">Open account linking</a></div>}
     {!notConfigured && <div className="membership-actions">
       {status?.linked ? <><button type="button" disabled={busy} onClick={() => void run(openMembershipAccount)}>Manage membership</button><button type="button" disabled={busy} onClick={() => void run(async () => { onChange(await unlinkMembership()); setLink(null); })}>Unlink this device</button></>
