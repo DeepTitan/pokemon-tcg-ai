@@ -1,9 +1,11 @@
+import { googleConfig, startGoogle, finishGoogle } from './google-auth.mjs';
+import { AUTH_COOKIE, sealAuth, openAuth, authContext, authDestination } from './auth-state.mjs';
 import { randomBytes } from 'node:crypto';
 // Browser session boundary for Trace membership. Tokens are never sent to page JS.
 export const ACCESS_COOKIE = '__Host-trace-member-access';
 export const REFRESH_COOKIE = '__Host-trace-member-refresh';
 export const CHECKOUT_COOKIE = '__Host-trace-checkout';
-const GUEST_ACTIONS = new Set(['checkout/guest', 'checkout/status', 'checkout/claim']);
+const GUEST_ACTIONS = new Set(['auth/email-start', 'auth/email-finish', 'checkout/guest', 'checkout/status', 'checkout/claim']);
 const validCheckoutToken = (value) => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 const pendingCookies = new WeakMap();
 const resolvedSessions = new WeakMap();
@@ -18,6 +20,7 @@ export const DOWNLOADS = Object.freeze({
   windows: 'https://github.com/DeepTitan/pokemon-tcg-ai/releases/latest/download/Trace_x64-setup.exe',
 });
 const ACTIONS = new Map([
+  ['auth/options', 'GET'], ['auth/google-start', 'POST'], ['auth/google-callback', 'GET'], ['auth/email-start', 'POST'], ['auth/email-finish', 'POST'],
   ['auth/signup', 'POST'], ['auth/resend', 'POST'], ['auth/confirm', 'POST'], ['auth/login', 'POST'],
   ['auth/refresh', 'POST'], ['auth/recover', 'POST'], ['auth/reset', 'POST'],
   ['auth/logout', 'POST'], ['account', 'GET'], ['checkout', 'POST'],
@@ -123,6 +126,15 @@ function inputFor(action, raw) {
     throw Object.assign(new Error('input'), { code: 'invalid_password' });
   }
   if (['auth/confirm', 'auth/reset'].includes(action) && !/^\d{6,8}$/.test(code)) throw new Error('input');
+  if (action === 'auth/google-start') return { context: authContext(body.context) };
+  if (action === 'auth/email-start') {
+    if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('input');
+    return { email: email.toLowerCase(), context: authContext(body.context) };
+  }
+  if (action === 'auth/email-finish') {
+    if (!/^\d{6,8}$/.test(code)) throw new Error('input');
+    return { code };
+  }
   if (action === 'auth/signup' || action === 'auth/login') return { email, password };
   if (action === 'auth/confirm') return { email, code };
   if (action === 'auth/recover' || action === 'auth/resend') return { email };
@@ -215,7 +227,7 @@ async function withSession(request, response, service, action, method, body) {
   return result;
 }
 
-export function createMembershipHandler({ service = createMembershipService(), origin = process.env.TRACE_WEB_ORIGIN || 'https://victoryroad.app', newCheckoutToken = () => randomBytes(32).toString('hex') } = {}) {
+export function createMembershipHandler({ service = createMembershipService(), origin = process.env.TRACE_WEB_ORIGIN || 'https://victoryroad.app', authSecret = process.env.TRACE_MEMBERSHIP_PROXY_SECRET, googleDomain = process.env.TRACE_GOOGLE_COGNITO_DOMAIN, googleClientId = process.env.TRACE_GOOGLE_CLIENT_ID, oauthFetch = fetch, newCheckoutToken = () => randomBytes(32).toString('hex') } = {}) {
   const allowedOrigin = membershipOrigin(origin);
   return async function membership(request, response) {
     setPrivateHeaders(response);
@@ -238,7 +250,7 @@ export function createMembershipHandler({ service = createMembershipService(), o
       catch (error) { return failure(response, 400, action, { error: error.code === 'invalid_password' ? 'invalid_password' : 'invalid_request' }); }
       if (action === 'auth/logout') {
         const cookies = readCookies(request.headers?.cookie);
-        writeCookies(response, clearCookies());
+        writeCookies(response, [...clearCookies(), cookie(AUTH_COOKIE, '', 0)]);
         if (service.configured) {
           try {
             let signedOut = false;
@@ -257,6 +269,44 @@ export function createMembershipHandler({ service = createMembershipService(), o
         return send(response, 200, { signedOut: true });
       }
       if (!service.configured) return send(response, 503, { error: 'Memberships are not available yet. Please check back soon.' });
+      const google = googleConfig(googleDomain, googleClientId, allowedOrigin);
+      if (action === 'auth/options') return send(response, 200, { emailCode: Boolean(authSecret && service.guestConfigured), google: Boolean(authSecret && google) });
+      if (action === 'auth/google-start') {
+        if (!google || !authSecret) return send(response, 503, { error: 'Google sign-in is not available yet. Continue with email.' });
+        const started = startGoogle(google, body.context);
+        writeCookies(response, [cookie(AUTH_COOKIE, sealAuth(started.pending, authSecret), 900)]);
+        return send(response, 200, { url: started.url });
+      }
+      if (action === 'auth/google-callback') {
+        const pending = openAuth(readCookies(request.headers?.cookie)[AUTH_COOKIE], authSecret);
+        writeCookies(response, [cookie(AUTH_COOKIE, '', 0)]);
+        try {
+          if (!google || !authSecret) throw new Error('Unconfigured');
+          const completed = await finishGoogle(google, pending, new URL(request.url, allowedOrigin).searchParams, oauthFetch);
+          // Use the same verified Cognito subject and membership checks as email sign-in.
+          const checked = await service.call('account', { method: 'GET', accessToken: completed.tokens.accessToken });
+          if (checked.status !== 200 || !publicAccount(checked.body) || !rememberSession(response, completed.tokens)) throw new Error('Account unavailable');
+          response.statusCode = 303; response.setHeader('Location', completed.next); return response.end();
+        } catch {
+          response.statusCode = 303; response.setHeader('Location', '/trace/login?authError=google'); return response.end();
+        }
+      }
+      if (action === 'auth/email-start' || action === 'auth/email-finish') {
+        if (!authSecret || !service.guestConfigured) return send(response, 503, { error: 'Sign-in is temporarily unavailable. Please try again.' });
+        const previous = openAuth(readCookies(request.headers?.cookie)[AUTH_COOKIE], authSecret);
+        if (action === 'auth/email-finish' && previous?.type !== 'email') return send(response, 410, { error: 'Your sign-in session expired. Send a new code.', code: 'auth_expired' });
+        const result = await service.call(action, { body: action === 'auth/email-start' ? { email: body.email } : { challenge: previous.challenge, code: body.code } });
+        if (result.status < 200 || result.status >= 300) return failure(response, result.status, action, result.body);
+        if (result.body.challenge) {
+          const challenge = result.body.challenge;
+          if (!['signup', 'signin'].includes(challenge.kind) || typeof challenge.email !== 'string' || typeof challenge.session !== 'string') throw new Error('Invalid auth state');
+          writeCookies(response, [cookie(AUTH_COOKIE, sealAuth({ type: 'email', challenge, context: action === 'auth/email-start' ? body.context : previous.context }, authSecret), 900)]);
+          return send(response, 200, { codeRequired: true });
+        }
+        if (action !== 'auth/email-finish' || !rememberSession(response, result.body)) throw new Error('Invalid auth result');
+        writeCookies(response, [cookie(AUTH_COOKIE, '', 0)]);
+        return send(response, 200, { authenticated: true, next: authDestination(previous.context) });
+      }
       // Establish proof before any payment side effect. The page serializes prepare +
       // checkout with Web Locks, including across tabs. Lost prepare responses are harmless.
       if (action === 'checkout/prepare') {

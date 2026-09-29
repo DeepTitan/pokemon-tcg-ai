@@ -49,6 +49,15 @@ http.createServer(async (req, res) => {
         if (role === 'anonymous') return send(401, { error: 'Sign in to continue.' });
         return send(200, { ...account, ...(extraAccountStates[role] || (role === 'admin' ? { plan: 'supporter', status: 'admin', admin: true, expiresAt: null } : role === 'trace' ? { plan: 'trace', opponentDecklists: false, capabilities: { ...account.capabilities, opponentDecklists: false } } : ['free', 'none'].includes(role) ? { plan: 'none', status: 'none', traceAccess: false, opponentDecklists: false, expiresAt: null, capabilities: freeCapabilities } : {})) });
       }
+      if (action === 'auth/options') return send(200, { emailCode: true, google: true });
+      if (action === 'auth/email-start') return send(200, { codeRequired: true });
+      if (action === 'auth/email-finish') {
+        let input = ''; for await (const chunk of req) input += chunk;
+        if (JSON.parse(input).code !== '12345678') return send(400, { error: 'That code is invalid or expired. Try 12345678 in this local preview.' });
+        res.setHeader('Set-Cookie', 'trace-preview-role=free; Path=/; SameSite=Lax');
+        return send(200, { authenticated: true, next: '/trace/account' });
+      }
+      if (action === 'auth/google-start') return send(503, { error: 'Design preview: Google sign-in still needs its OAuth app connected.' });
       if (action === 'auth/login') { res.setHeader('Set-Cookie', 'trace-preview-role=none; Path=/; SameSite=Lax'); return send(200, { authenticated: true }); }
       if (action === 'auth/logout') { res.setHeader('Set-Cookie', 'trace-preview-role=anonymous; Path=/; SameSite=Lax'); return send(200, { signedOut: true }); }
       if (['auth/signup', 'auth/resend', 'auth/confirm', 'auth/recover', 'auth/reset'].includes(action)) return send(200, { ok: true });
@@ -58,7 +67,8 @@ http.createServer(async (req, res) => {
     }
     if (url.pathname === '/trace/access') return send(503, { error: 'Local preview: installer downloads are disabled.' });
     let file;
-    if (url.pathname === '/' || url.pathname === '/trace') file = 'index.html';
+    if (url.pathname === '/trace/auth-flow') file = 'auth-flow-preview.html';
+    else if (url.pathname === '/' || url.pathname === '/trace') file = 'index.html';
     else if (routes.has(url.pathname.replace('/trace/', ''))) file = 'account.html';
     else if (url.pathname === '/trace-styles.css') file = 'styles.css';
     else if (url.pathname === '/trace-script.js') file = 'script.js';

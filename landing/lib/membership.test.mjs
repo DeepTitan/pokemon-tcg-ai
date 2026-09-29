@@ -142,7 +142,7 @@ test('refresh fails closed, clears invalid session and does not turn outages int
 test('logout clears session even if provider revocation has an outage', async () => {
   const result = await invoke('auth/logout', { service: { configured: true, call: async () => { throw Error('private provider error'); } } });
   assert.deepEqual(parsed(result), { signedOut: true });
-  assert.equal(result.headers['set-cookie'].length, 2);
+  assert.equal(result.headers['set-cookie'].length, 3);
   assert.doesNotMatch(result.body, /private/);
 });
 
@@ -378,5 +378,5 @@ test('rejected access token at logout retries revocation through refresh, withou
 test('local logout remains available when membership service is unconfigured', async () => {
   const result = await invoke('auth/logout', { service: { configured: false, call: async () => { throw Error('must not call'); } } });
   assert.equal(result.statusCode, 200);
-  assert.equal(result.headers['set-cookie'].length, 2);
+  assert.equal(result.headers['set-cookie'].length, 3);
 });

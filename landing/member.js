@@ -4,6 +4,9 @@ const planNames = { trace: 'Pro', supporter: 'Supporters Club' };
 let email = '';
 let renderVersion = 0;
 let settling = 0;
+let authOptions = null;
+let codeRequested = false;
+let resendAfter = 0;
 
 function context() {
   const params = new URLSearchParams(location.search);
@@ -79,7 +82,50 @@ function authCard(title, intro, fields, button, links, extra = '') {
   return document.getElementById('auth-form');
 }
 const link = (name, label) => `<a data-route href="${esc(route(name))}">${label}</a>`;
+function renderEmailEntry() {
+  const intro = context().userCode ? 'Sign in to link your Trace app.' : context().setup ? 'Use the email you entered at checkout.' : 'New here? We’ll create your free account.';
+  mount(`<section class="auth-card unified-auth"><img class="auth-mascot" src="/trace-assets/trace-mascot.png" alt="" /><h1>Let’s get you in.</h1><p class="intro">${intro}</p>${messageSlot()}
+    ${authOptions?.google ? '<button class="button google-button" id="google-signin" type="button">Continue with Google</button><div class="auth-divider">or use email</div>' : ''}
+    <form id="email-entry">${emailField()}<button class="button primary" type="submit">Continue with email</button></form><p class="auth-reassurance">No password to remember.</p><div class="form-links"><button class="text-button" id="password-signin" type="button">Use a password instead</button></div></section>`, 'Sign in');
+  if (new URLSearchParams(location.search).get('authError') === 'google') notice('Google sign-in didn’t finish. Try again or continue with email.', true);
+  document.getElementById('password-signin').onclick = () => renderAuth('password');
+  document.getElementById('google-signin')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget; button.disabled = true;
+    try { const result = await api('auth/google-start', { context: context() }); location.assign(result.url); }
+    catch (error) { notice(error.message, true); button.disabled = false; }
+  });
+  const form = document.getElementById('email-entry');
+  form.addEventListener('submit', (event) => { event.preventDefault(); void submitForm(form, 'Sending code…', async (data) => {
+    email = data.get('email').trim();
+    await api('auth/email-start', { email, context: context() });
+    codeRequested = true; resendAfter = Date.now() + 60000; renderEmailCode();
+  }); });
+}
+function renderEmailCode() {
+  if (!codeRequested) return renderEmailEntry();
+  mount(`<section class="auth-card unified-auth"><h1>Check your email.</h1><p class="intro">Enter the code sent to<br><strong>${esc(email)}</strong></p>${messageSlot()}
+    <form id="email-code">${codeField()}<button class="button primary" type="submit">Continue</button></form>
+    <div class="auth-code-actions"><button class="text-button" id="resend-email" type="button">Send a new code</button><button class="text-button" id="change-email" type="button">Change email</button></div><p class="auth-reassurance">Can’t find it? Check spam or change your email.</p></section>`, 'Check your email');
+  document.getElementById('change-email').onclick = () => { codeRequested = false; renderEmailEntry(); };
+  const resend = document.getElementById('resend-email');
+  const tick = () => { const seconds = Math.max(0, Math.ceil((resendAfter - Date.now()) / 1000)); resend.disabled = seconds > 0; resend.textContent = seconds ? `Send a new code in ${seconds}s` : 'Send a new code'; };
+  tick(); const timer = setInterval(() => { if (!resend.isConnected) clearInterval(timer); else tick(); }, 1000);
+  resend.onclick = async () => {
+    resend.disabled = true;
+    try { await api('auth/email-start', { email, context: context() }); resendAfter = Date.now() + 60000; notice('New code requested. Use the latest email.'); }
+    catch (error) { notice(error.message, true); }
+    tick();
+  };
+  const form = document.getElementById('email-code');
+  form.querySelector('[name="code"]').focus();
+  form.addEventListener('submit', (event) => { event.preventDefault(); void submitForm(form, 'Signing in…', async (data) => {
+    const result = await api('auth/email-finish', { code: data.get('code') });
+    if (result.authenticated) { codeRequested = false; history.replaceState({}, '', result.next); await render(); }
+    else { resendAfter = Date.now() + 60000; renderEmailCode(); notice('Email confirmed. Enter the new sign-in code we just sent.'); }
+  }); });
+}
 function renderAuth(name) {
+  if (['login', 'signup', 'recover'].includes(name) && authOptions?.emailCode) return renderEmailEntry();
   if (name === 'signup') {
     const { plan, setup } = context();
     const intro = setup ? 'Use the same email you entered at Stripe checkout. Then we’ll connect your membership to Trace.' : plan ? `Create your Trace account. You can manage ${planNames[plan]} here.` : 'Start free with automatic recording and your latest 7 days of replays.';
@@ -237,7 +283,7 @@ function renderPurchase(account, purchase) {
       : `Your ${plan} payment is confirmed. Create an account or sign in with the same email you used at checkout.`;
     mount(`<section class="auth-card"><h1>Let’s get you set up.</h1><p class="intro">${intro}</p>${messageSlot()}${account
       ? '<button class="button primary" type="button" id="activate-membership">Activate membership</button><button class="text-button" type="button" id="switch-account">Use a different account</button>'
-      : `<div class="claim-actions"><a class="button primary" data-route href="${esc(route('signup', { setup: 'payment' }))}">Create account</a><a class="button" data-route href="${esc(route('login', { setup: 'payment' }))}">Sign in</a></div>`}<p class="small-note">Already paid? There’s no need to check out again.</p></section>`, 'Set up Trace');
+      : `<div class="claim-actions"><a class="button primary" data-route href="${esc(route('login', { setup: 'payment' }))}">Continue with your email</a></div>`}<p class="small-note">Already paid? There’s no need to check out again.</p></section>`, 'Set up Trace');
     document.getElementById('activate-membership')?.addEventListener('click', async (event) => {
       const button = event.currentTarget; button.disabled = true; button.textContent = 'Activating…'; notice('');
       try {
@@ -283,7 +329,11 @@ function needsPurchaseSetup(account, purchase, returned) {
 async function render() {
   const version = ++renderVersion;
   const name = viewName();
-  if (!['account', 'connect'].includes(name)) { renderAuth(name); return; }
+  if (!['account', 'connect'].includes(name)) {
+    if (!authOptions) { try { authOptions = await api('auth/options'); } catch { authOptions = { emailCode: false, google: false }; } }
+    if (version !== renderVersion) return;
+    renderAuth(name); return;
+  }
   root.setAttribute('aria-busy', 'true');
   root.innerHTML = '<p class="loading">Loading your account…</p>';
   try {
@@ -300,7 +350,7 @@ async function render() {
         renderPurchase(account, purchase); return;
       }
     }
-    if (!account) { history.replaceState({}, '', route('login')); renderAuth('login'); return; }
+    if (!account) { history.replaceState({}, '', route('login')); void render(); return; }
     email = account.email;
     if (name === 'connect') renderConnect(account); else renderAccount(account, purchase);
   } catch (error) {

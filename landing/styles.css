@@ -1206,3 +1206,14 @@ h3 {
   .account-heading h1 { font-size:30px; }
   .account-email { font-size:12px; }
 }
+
+/* One sign-in entry point, shared by new and returning players. */
+.unified-auth { max-width: 440px; }
+.auth-mascot { width: 48px; height: 56px; object-fit: contain; margin-bottom: 20px; }
+.auth-card .google-button { background: #fff; color: var(--navy, #203450); border: 1px solid #d8d5cb; box-shadow: none; }
+.auth-divider { display: flex; align-items: center; gap: 16px; color: #737b80; font-size: 13px; margin: 22px 0; }
+.auth-divider::before,.auth-divider::after { content: ""; height: 1px; background: #dedbd3; flex: 1; }
+.auth-reassurance { font-size: 13px; color: #737b80; text-align: center; margin: 18px 0 0; }
+.auth-code-actions { display: flex; justify-content: space-between; gap: 16px; margin-top: 24px; }
+.unified-auth input[name="code"] { letter-spacing: .3em; font-size: 25px; font-variant-numeric: tabular-nums; }
+.auth-code-actions button:disabled { opacity: .55; cursor: default; }
