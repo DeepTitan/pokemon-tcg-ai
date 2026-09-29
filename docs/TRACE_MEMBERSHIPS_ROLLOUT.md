@@ -17,9 +17,50 @@
 
 ## Readiness and configuration
 
+### Current checkpoint — September 29, 2026
+
+- The protected website preview uses source `03834b2`, deployment
+  `dpl_DtTEKuUfGUSGFNKVMh87KrxZoYuN`, at
+  `https://trace-memberships-staging-deeptitan-6729s-projects.vercel.app`.
+  Production aliases and public billing remain unchanged.
+- Both initial sandbox purchases, explicit claims, portal access, paid Pro →
+  Supporters upgrade, failed-upgrade preservation, cancellation and signed
+  webhook delivery/retry passed. All successful and failed synthetic purchase
+  fixtures were cleaned up with scoped ownership checks; Stripe audit objects
+  and the real owner account were preserved. The backend passed 116 tests.
+  See the [dated browser and helper evidence](../../trace-memberships-web-20260927/docs/TRACE_MEMBERSHIPS_DRY_RUN_20260928.md#protected-staging-browser-check--september-29-2026).
+- The synthetic staging installation/API and explicit browser approval passed
+  Free → Supporters → unlink to Free. This did **not** test the packaged native
+  app's canonical `/trace/link` handoff, release endpoint pairing or isolated-data
+  behavior. Those native release checks remain pending.
+- The real owner account is confirmed in staging, after the original Cognito
+  email arrived in Spam. It has no production subject binding or owner override.
+- Domain DKIM and the exact SES test recipient are verified. Staging Cognito
+  uses `DEVELOPER` email from `no-reply@victoryroad.app`. The recovery UI requested
+  a branded email; SES reports one attempt and no bounce, complaint or reject,
+  but the user's Inbox/Spam response and recovery completion remain pending.
+  No password was changed. See [sender evidence](TRACE_MEMBERSHIPS_EMAIL_SETUP.md).
+- The five-resource email operations stack reached `CREATE_COMPLETE`. SNS
+  confirmation is pending, so the feedback helper correctly refuses attachment;
+  Bounce/Complaint topics are not attached and monitoring is not operational.
+  SES production access has not been requested. See [operations status](TRACE_EMAIL_OPERATIONS.md).
+
+Remaining release work includes confirming branded email receipt/recovery and
+the SNS subscription, attaching and verifying email feedback, obtaining SES
+public sending access, production owner binding, separate live Stripe setup,
+the packaged native release checks, and coordinated production deployment.
+No sandbox result alone establishes that production is shipped.
+
+### Historical setup snapshot — September 28, 2026
+
+The September 28 readiness/progress and catalog notes below preserve the earlier
+sequence and resource provenance. Their pending statements and old deployment
+IDs are historical, not current readiness; the September 29 checkpoint above
+and its linked evidence supersede them.
+
 Local implementation and offline checks do **not** establish a production launch or successful provider integration. As of September 28, 2026, AWS authentication works with profile `default`, account `108241940679`, region `us-east-1`; both CloudFormation templates passed AWS validation. The user has authorized the existing Victory Road Stripe account for separate Trace plans, webhooks and test-mode checkout. Stripe sign-in succeeded; setup uses the existing `PrizeMap LLC sandbox` (`acct_1UBug9KoV4rXpeob`), whose live parent is `acct_1UBug03qgXndaKhC`. Use dedicated Trace credentials and resources; the existing film billing secret has not been exported and is not needed. The owner's email and verified Cognito subject remain pending.
 
-### Authorized staging progress — September 28, 2026
+### Historical authorized staging progress — September 28, 2026
 
 - Existing production capture, leaderboard and legacy access stacks remain unchanged. The legacy `trace-access-production` stack is the private download-code service, not the new membership service; preserve its resources and existing capture-device identities.
 - Isolated capture stack `trace-memberships-capture-staging` is deployed at `https://wfricgjx12.execute-api.us-east-1.amazonaws.com` and is `UPDATE_COMPLETE` with `RequireMembership=true`, pointing at the staging membership API below. Real-AWS capture smoke tests passed with both the initial disabled policy and the enabled policy. Enabled-policy evidence: `artifacts/membership/capture-staging-smoke-enabled.json`; all six groups passed, covering one new share per seven days, old-replay 403, repeat-share reuse, private/public redaction, preserved raw S3 data and error-free synthetic cleanup. Current output metadata: `artifacts/membership/capture-staging-stack.json` (refreshed after enabling enforcement).
@@ -32,7 +73,7 @@ Local implementation and offline checks do **not** establish a production launch
 
 Remaining gates are authoritative DKIM publication and SES verification/production sending, the real sandbox payment/claim/portal journey and runtime permission verification, owner identity verification, and a completed protected-preview signup/email/device-link flow. The capture and disposable session smoke tests do not establish successful signup email delivery or billing/claim behavior.
 
-### Verified Stripe sandbox catalog
+### Historical Stripe sandbox catalog/setup snapshot
 
 These IDs are sandbox-only configuration, not live billing resources. Both prices are active, USD monthly and tax-exclusive. Nonsecret evidence: `artifacts/membership/stripe-sandbox-catalog.json` (ignored locally).
 
