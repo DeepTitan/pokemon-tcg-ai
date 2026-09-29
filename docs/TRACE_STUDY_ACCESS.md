@@ -10,6 +10,6 @@ Verification: browser-only fixture at /study-access-preview.html; tracker produc
 
 Production cloud access controls deployed successfully on September 29, 2026 (`trace-production`, UPDATE_COMPLETE). Production Google OAuth is published for external users and enabled at victoryroad.app; both email-code login and Google login completed in the production browser. Existing signed-in users redirect from the login route to their account. Google requests only sign-in profile/email scopes.
 
-Desktop publication is in progress: source `35acb2e52b21ba6e18094a15ed04cf9eca7f2a6c`, release workflow run `36620191493`, intended version 0.1.91. Do not describe desktop gates as shipped until the signed installers and public updater manifest are verified.
+Desktop 0.1.91 published September 29, 2026 at 19:57 UTC. Source `35acb2e52b21ba6e18094a15ed04cf9eca7f2a6c` was fast-forwarded to main and released through its existing signing trust. Workflow `36621511221` succeeded for both platforms, including Apple notarization and trusted Windows publisher verification. The public latest.json reports 0.1.91 with signed macOS Apple-silicon and Windows x64 artifacts. Earlier feature-branch signing failed before publication; no signing permissions were expanded.
 
 Validation: full tracker setup/regression suite passed; native library tests 59 passed/1 ignored; cloud tests 66 passed; website membership tests 30 passed. Production capture and membership endpoints remain paired to their existing stacks. No game client was launched.
