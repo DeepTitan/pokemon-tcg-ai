@@ -108,3 +108,14 @@ evidence of a spam fix. Staging deployment completed and AWS read-back confirms
 `From: Trace <no-reply@victoryroad.app>`, subject `Your Trace code`, and the
 reviewed body. All 116 backend tests passed. No additional email was sent after
 this copy change, so its received rendering has not yet been tested.
+
+## Recipient follow-up and mailbox check
+
+The owner later reported that recent emails came through and believed the
+authentication result was successful. They explicitly authorized inspecting
+their Gmail for the Trace messages. The connected Gmail account and existing
+browser session were work accounts, not the personal test recipient; the
+personal account requires a normal Google sign-in. That page is prepared for
+the owner. Actual SPF/DKIM/DMARC results and the latest message labels have not
+yet been read independently. Do not treat a moved-from-Spam message as proof it
+originally arrived in Inbox or assume this recipient result generalizes.
