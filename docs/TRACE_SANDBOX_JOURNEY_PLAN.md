@@ -1,7 +1,8 @@
 # Trace sandbox checkout journey
 
-Prepared September 28, 2026. Planning only: no provider calls, secret reads, accounts,
-payment sessions or browser actions were made for this plan.
+Prepared September 28, 2026. The companion is implemented and tested offline;
+it has not created an account or payment session. A separate authorized staging
+probe confirmed prepare/status wiring without starting Checkout.
 
 ## Scope and starting point
 
@@ -11,10 +12,9 @@ CSRF, refresh and logout against the protected staging website. It deliberately
 requires billing to be disabled and deletes an account only when it has no
 Stripe customer. **Do not turn off those guards to reuse it for a paid test.**
 
-Use a separate companion, proposed name
-`scripts/smoke-trace-member-purchase-staging.py`, which shares the private request
-transport but has its own paid-test preflight, state machine and cleanup. The
-companion has not been implemented or executed. It needs no Stripe runtime key:
+The separate companion, `scripts/smoke-trace-member-purchase-staging.py`, has
+its own paid-test preflight, private request transport, state machine and cleanup.
+It is deliberately limited to an initial Pro purchase. It needs no Stripe runtime key:
 all customer-facing requests use the website proxy. Provider inspection and
 cleanup are separate scoped operator steps in the dedicated sandbox.
 
@@ -46,9 +46,58 @@ values or copy proof into JavaScript, URLs, screenshots or logs. Browser signup
 and delivered email confirmation are a separate real-email check; an
 admin-confirmed synthetic user cannot prove those steps.
 
-## Minimal fixtures
+## Running the prepared companion
 
-Two independent guest purchases cover both initial plans: one Pro and one
+The default invocation prints the plan without constructing clients, files or
+credentials. Only after the root operator dispatches the authorized test:
+
+```sh
+/opt/homebrew/Cellar/awscli/2.34.44/libexec/bin/python \
+  scripts/smoke-trace-member-purchase-staging.py \
+  --execute --control-dir /private/tmp/trace-paid-smoke-pro-20260929
+```
+
+Choose a new directory name for every run. The runner creates a mode-0700
+directory containing only mode-0600 named pipes, `events` and `commands`.
+The controlling process must open and retain a reader for `events`, parse each
+JSON line into private memory, and never print its payload or write it to a
+regular file. The operator's browser handoff can consume the private Checkout
+URL and synthetic login directly. Do not use `cat`, shell substitution or
+command-line arguments for these values. All control commands are nonsecret
+JSON lines written to `commands`.
+
+| Event or command | Meaning |
+| --- | --- |
+| `payment-ready` event | Contains private `checkoutUrl`, `login` and fixture inventory. Root completes genuine hosted test payment with that email. |
+| `payment-complete` command | Continue the adapter's paid-state, wrong-email, missing-proof, claim, entitlement and retry assertions. |
+| `portal-ready` event | Contains the private portal URL and fixture inventory. Root verifies the portal UI. |
+| `inspect-account` command | Returns an `account-state` event with plan/status/capabilities, without requiring the original Pro tier; useful during a portal upgrade. |
+| `verify-cancellation` command | Checks that a period-end cancellation keeps the original active Pro access. |
+| `cleanup-confirmed` command | Use only after actual immediate provider cancellation. Waits up to 315 seconds for fresh backend reconciliation, then removes only the owned fixture rows and user. |
+| `finish` command | Retain the paid fixture and emit `operator-cleanup-required`. |
+| `abort` command | Stop assertions and emit private cleanup inventory. |
+| `acknowledge` command | Required after cleanup-required or cleaned; only then are FIFO endpoints removed. |
+
+Commands time out after 30 minutes. Retain every fixture inventory in the
+controller's private memory before acknowledging it; acknowledgment means the
+operator has enough information for cleanup. A command timeout is a failure,
+never proof that payment or cleanup succeeded.
+
+Optional `--browser-fixture` creates only the suppressed Pro test login and emits
+`browser-fixture-ready`, with no guest request or purchase cookie. The operator
+starts Checkout, pays, signs in and claims in the same browser, then sends
+`browser-complete`. The companion verifies the resulting account independently;
+it cannot itself prove which UI steps the browser performed.
+
+Offline verification:
+
+```sh
+python3 -m unittest discover -s scripts -p 'test_trace_member_purchase_staging.py' -v
+```
+
+## Broader fixture coverage
+
+Two independent guest purchases would cover both initial plans: one Pro and one
 Supporters Club. Each has a unique purchase cookie and matching synthetic email.
 Use two disposable Cognito accounts (invitations suppressed, credentials only in
 memory) for an email-free adapter test. The other fixture's account can exercise
@@ -150,7 +199,10 @@ inventory. No provider mutation has been authorized by this planning document.
 - Backend `infrastructure/memberships/stripe_sandbox_plan.py`: offline provider
   setup payloads only; not a checkout/payment test runner.
 
-The useful automation delta is the staged purchase state machine, a three-cookie
-private transport, explicit hosted-payment handoff, assertions tied to real
-fixture provider IDs, and paid-fixture cleanup. No new live automation should be
-enabled until the sandbox/provider configuration and cleanup authority are set.
+The prepared Pro companion covers the staged purchase state machine,
+three-cookie private transport, explicit hosted-payment handoff, fixture
+ownership checks and cleanup. Its ten offline tests include no-execute behavior,
+fixed sandbox guards, URL validation, credential transport, FIFO permissions,
+acknowledgment retention, browser-only fixture preparation, and refusal to
+delete on stale or active billing state. Initial Supporters purchase, browser
+happy path, real email delivery and webhook delivery remain separate checks.
