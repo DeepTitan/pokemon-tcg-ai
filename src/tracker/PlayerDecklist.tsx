@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { CardsThree } from '@phosphor-icons/react/CardsThree';
 import { Check } from '@phosphor-icons/react/Check';
@@ -44,11 +44,13 @@ export function PlayerDecklist({ name, deck: suppliedDeck, catalog, loadDeck, un
   const [position, setPosition] = useState({ left: 12, top: 12 });
   const button = useRef<HTMLButtonElement>(null), panel = useRef<HTMLDivElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>();
+  const hoverTimer = useRef<ReturnType<typeof setTimeout>>();
   const suppressFocus = useRef(false);
   const id = useId();
   const cancelClose = () => clearTimeout(timer.current);
-  const close = () => { cancelClose(); isOpen.current = false; fetchGeneration.current++; setPrivateDeck(undefined); setLoadState('idle'); setCopyState('idle'); copyAttempt.current++; setOpen(false); };
+  const close = () => { clearTimeout(hoverTimer.current); cancelClose(); isOpen.current = false; fetchGeneration.current++; setPrivateDeck(undefined); setLoadState('idle'); setCopyState('idle'); copyAttempt.current++; setOpen(false); };
   const show = () => {
+    clearTimeout(hoverTimer.current);
     cancelClose();
     if ((!available && !onUpgrade) || isOpen.current) return;
     isOpen.current = true;
@@ -66,10 +68,18 @@ export function PlayerDecklist({ name, deck: suppliedDeck, catalog, loadDeck, un
       });
     }
   };
-  const leave = () => { cancelClose(); timer.current = setTimeout(() => {
+  const leave = () => { clearTimeout(hoverTimer.current); cancelClose(); timer.current = setTimeout(() => {
     if (!panel.current?.contains(document.activeElement) && document.activeElement !== button.current) close();
   }, 180); };
-  useEffect(() => () => clearTimeout(timer.current), []);
+  useEffect(() => () => { clearTimeout(timer.current); clearTimeout(hoverTimer.current); }, []);
+  useLayoutEffect(() => {
+    if (!open || !panel.current || !button.current) return;
+    const anchor = button.current.getBoundingClientRect();
+    const height = panel.current.offsetHeight, width = panel.current.offsetWidth;
+    const below = anchor.bottom + 8;
+    const top = below + height <= window.innerHeight - 12 ? below : Math.max(12, anchor.top - height - 8);
+    setPosition({ left: Math.max(12, Math.min(anchor.left, window.innerWidth - width - 12)), top });
+  }, [open, loadState, deck]);
   useEffect(() => { close(); setCopyState('idle'); copyAttempt.current++; }, [name, suppliedDeck, accessKey]);
   useEffect(() => () => { copyAttempt.current++; fetchGeneration.current++; }, []);
   useEffect(() => {
@@ -106,7 +116,7 @@ export function PlayerDecklist({ name, deck: suppliedDeck, catalog, loadDeck, un
     <button ref={button} type="button" className="player-decklist-trigger" aria-label={`${name} decklist`}
       aria-disabled={!available && !onUpgrade} aria-describedby={!available ? `${id}-unavailable` : undefined}
       aria-expanded={available || onUpgrade ? open : undefined} aria-controls={open ? id : undefined} aria-haspopup={available || onUpgrade ? 'dialog' : undefined}
-      onMouseEnter={show} onMouseLeave={leave} onFocus={() => { if (!suppressFocus.current) show(); }} onBlur={leave}
+      onMouseEnter={() => { cancelClose(); clearTimeout(hoverTimer.current); hoverTimer.current = setTimeout(show, 100); }} onMouseLeave={leave} onFocus={() => { if (!suppressFocus.current) show(); }} onBlur={leave}
       onClick={show} onKeyDown={event => { if (event.key === 'ArrowDown') { event.preventDefault(); show(); setTimeout(() => panel.current?.focus(), 0); } }}>
       <CardsThree size={18} />
     </button>

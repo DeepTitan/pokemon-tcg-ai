@@ -2992,3 +2992,15 @@ button.stadium-marker:focus-visible {
  .study-locked-cards { grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 18px; }
  .study-locked-cards.is-prizes { padding: 24px 35px; }
 }
+
+/* Match the review dialogs: a short, restrained reveal rather than a hard pop. */
+.player-decklist-panel { animation: review-dialog-in .18s cubic-bezier(.2,.8,.2,1) both; }
+:root .player-decklist-trigger { transition: background .16s ease, border-color .16s ease, box-shadow .16s ease; }
+.player-decklist-trigger:hover, .player-decklist-trigger[aria-expanded="true"] { border-color: #b8b09f; box-shadow: 0 2px 6px #22365312; }
+.player-decklist-unavailable { opacity: 0; transform: translateY(3px); transition: opacity .14s ease, transform .14s ease, visibility .14s; }
+.player-decklist-control:hover .player-decklist-unavailable, .player-decklist-control:focus-within .player-decklist-unavailable { opacity: 1; transform: translateY(0); }
+@media (prefers-reduced-motion: reduce) {
+ .player-decklist-panel { animation: none; }
+ :root .player-decklist-trigger, .player-decklist-unavailable { transition: none; }
+ .player-decklist-unavailable { transform: none; }
+}
