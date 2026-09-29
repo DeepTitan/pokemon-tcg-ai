@@ -23,6 +23,10 @@
   "trailingSlash": false,
   "rewrites": [
     {
+      "source": "/trace/privacy",
+      "destination": "/trace-privacy"
+    },
+    {
       "source": "/trace/api/:action*",
       "destination": "/api/membership?action=:action*"
     },

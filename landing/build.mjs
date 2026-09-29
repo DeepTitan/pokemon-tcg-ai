@@ -21,6 +21,7 @@ const landingFiles = {
   'styles.css': 'trace-styles.css',
   'script.js': 'trace-script.js',
   'account.html': 'trace-account.html',
+  'privacy.html': 'trace-privacy.html',
   'member.js': 'trace-member.js',
   'og.png': 'trace-og.png',
   'robots.txt': 'robots.txt',

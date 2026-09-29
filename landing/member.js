@@ -86,9 +86,8 @@ function renderEmailEntry() {
   const intro = context().userCode ? 'Sign in to link your Trace app.' : context().setup ? 'Use the email you entered at checkout.' : 'New here? We’ll create your free account.';
   mount(`<section class="auth-card unified-auth"><img class="auth-mascot" src="/trace-assets/trace-mascot.png" alt="" /><h1>Let’s get you in.</h1><p class="intro">${intro}</p>${messageSlot()}
     ${authOptions?.google ? '<button class="button google-button" id="google-signin" type="button">Continue with Google</button><div class="auth-divider">or use email</div>' : ''}
-    <form id="email-entry">${emailField()}<button class="button primary" type="submit">Continue with email</button></form><p class="auth-reassurance">No password to remember.</p><div class="form-links"><button class="text-button" id="password-signin" type="button">Use a password instead</button></div></section>`, 'Sign in');
+    <form id="email-entry">${emailField()}<button class="button primary" type="submit">Continue with email</button></form></section>`, 'Sign in');
   if (new URLSearchParams(location.search).get('authError') === 'google') notice('Google sign-in didn’t finish. Try again or continue with email.', true);
-  document.getElementById('password-signin').onclick = () => renderAuth('password');
   document.getElementById('google-signin')?.addEventListener('click', async (event) => {
     const button = event.currentTarget; button.disabled = true;
     try { const result = await api('auth/google-start', { context: context() }); location.assign(result.url); }
@@ -184,7 +183,7 @@ function renderAuth(name) {
 function upgradeRow(plan) {
   const supporter = plan === 'supporter';
   const price = supporter ? '39.99' : '14.99';
-  return `<article class="account-upgrade ${context().plan === plan ? 'plan-selected' : ''}"><div class="upgrade-copy"><h3>${planNames[plan]}</h3><p>${supporter ? 'Everything in Pro, plus post-match deck study.' : 'Full replay archive and expanded sharing.'}</p></div><p class="upgrade-price">$${price}<span>/ month</span></p><button type="button" class="button secondary" data-checkout="${plan}">Choose ${planNames[plan]}</button></article>`;
+  return `<article class="account-upgrade ${context().plan === plan ? 'plan-selected' : ''}"><div class="upgrade-copy"><h3>${planNames[plan]}</h3><p>${supporter ? 'Everything in Pro, plus post-match deck study.' : 'Deck and prize insights, full replay archive, and expanded sharing.'}</p></div><p class="upgrade-price">$${price}<span>/ month</span></p><button type="button" class="button secondary" data-checkout="${plan}">Choose ${planNames[plan]}</button></article>`;
 }
 function dateLabel(value) {
   if (!value) return '';
@@ -228,7 +227,7 @@ function renderAccount(account, purchase = { state: 'none', plan: 'none' }) {
   const canceled = new URLSearchParams(location.search).get('checkout') === 'cancel';
   const success = new URLSearchParams(location.search).get('checkout') === 'success';
   const billingText = admin ? 'All features included.' : active ? (until ? `${account.cancelAtPeriodEnd ? 'Available until' : 'Renews'} ${until}` : 'Monthly subscription') : canUseTrace ? 'No subscription needed.' : 'We could not confirm access. Try refreshing your account.';
-  const features = canUseTrace ? active || admin ? ['Full replay archive', 'Expanded sharing', ...(account.opponentDecklists ? ['Post-match deck study'] : [])] : ['Automatic recording', 'Last 7 days of replays', 'Leaderboard & results', '1 replay share every 7 days'] : [];
+  const features = canUseTrace ? active || admin ? ['Your deck & prize insights', 'Full replay archive', 'Expanded sharing', ...(account.opponentDecklists ? ['Post-match deck study'] : [])] : ['Automatic recording', 'Last 7 days of replays', 'Leaderboard & results', '1 replay share every 7 days'] : [];
   mount(`<div class="account-heading"><div><h1>My account</h1><p class="account-email">${esc(account.email)}</p></div><button class="text-button" id="sign-out" type="button">Sign out</button></div>${messageSlot()}
     <div class="account-workspace ${canUseTrace ? '' : 'access-unavailable'}">
       ${canUseTrace ? `<section class="account-downloads" aria-labelledby="download-heading"><div class="download-heading"><h2 id="download-heading">Get Trace</h2><p>Install the app, then link your account.</p></div><div class="download-options"><a class="download-option" href="/trace/access?action=download&amp;platform=mac"><img src="/trace-assets/apple.svg" alt="" /><span><strong>Download for macOS</strong><small>Apple silicon</small></span></a><a class="download-option" href="/trace/access?action=download&amp;platform=windows"><img src="/trace-assets/windows.svg" alt="" /><span><strong>Download for Windows</strong><small>64-bit</small></span></a></div><div class="account-link-app"><div><h3>Already have Trace?</h3><p>Use the code shown in the app.</p></div><a class="button primary" data-route href="${esc(route('connect'))}">${context().userCode ? 'Continue linking your app' : 'Link app'}</a></div></section>` : ''}
@@ -328,18 +327,22 @@ function needsPurchaseSetup(account, purchase, returned) {
 }
 async function render() {
   const version = ++renderVersion;
-  const name = viewName();
-  if (!['account', 'connect'].includes(name)) {
-    if (!authOptions) { try { authOptions = await api('auth/options'); } catch { authOptions = { emailCode: false, google: false }; } }
-    if (version !== renderVersion) return;
-    renderAuth(name); return;
-  }
+  let name = viewName();
   root.setAttribute('aria-busy', 'true');
   root.innerHTML = '<p class="loading">Loading your account…</p>';
   try {
     let account = null;
     try { account = await api('account'); } catch (error) { if (error.status !== 401) throw error; }
     if (version !== renderVersion) return;
+    if (!['account', 'connect'].includes(name)) {
+      if (!account) {
+        if (!authOptions) authOptions = await api('auth/options');
+        if (version !== renderVersion) return;
+        renderAuth(name); return;
+      }
+      name = context().userCode ? 'connect' : 'account';
+      history.replaceState({}, '', route(name));
+    }
     let purchase = { state: 'none', plan: 'none', expiresAt: null };
     if (name === 'account') {
       try { purchase = await api('checkout/status', {}); }
