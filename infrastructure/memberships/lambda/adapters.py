@@ -1,4 +1,4 @@
-"""AWS and Stripe adapters. Never log credentials, payloads, email addresses, or Stripe errors."""
+"""AWS and Stripe adapters. Never log credentials, payloads, or raw provider errors."""
 from contextlib import contextmanager
 from decimal import Decimal
 import json
@@ -19,6 +19,52 @@ from membership import ApiError, trusted_web_origin
 
 AWS_CONFIG = AwsConfig(connect_timeout=3, read_timeout=5, retries={'max_attempts': 1})
 STRIPE_VERSION = '2024-06-20'  # Locks subscription-level current_period_end and invoice fields.
+
+
+def log_stripe_http_error(method, path, error):
+    # Fixed categories keep resource IDs and query/customer inputs out of logs.
+    routes = ((r'/v1/prices/[^/]+', 'prices_retrieve'),
+              (r'/v1/customers', 'customers'), (r'/v1/subscriptions', 'subscriptions'),
+              (r'/v1/checkout/sessions', 'checkout_sessions'),
+              (r'/v1/checkout/sessions/[^/]+', 'checkout_session_retrieve'),
+              (r'/v1/checkout/sessions/[^/]+/expire', 'checkout_session_expire'),
+              (r'/v1/billing_portal/sessions', 'portal_sessions'))
+    record = {'event': 'stripe_http_error', 'method': method if method in {'GET', 'POST'} else 'unknown',
+              'endpoint': next((name for pattern, name in routes if re.fullmatch(pattern, path)), 'unknown'),
+              'status': error.code if type(error.code) is int and 100 <= error.code <= 599 else 0}
+    request_id = error.headers.get('Request-Id') if error.headers else None
+    if isinstance(request_id, str) and re.fullmatch(r'req_[A-Za-z0-9]{1,64}', request_id):
+        record['requestId'] = request_id
+    try:
+        body = error.read(8193)
+        parsed = json.loads(body) if len(body) <= 8192 else None
+        detail = parsed.get('error') if isinstance(parsed, dict) else None
+        if isinstance(detail, dict):
+            # Enumerations, not free-form provider strings (even syntactically valid secrets).
+            allowed = {
+                'type': {'api_error', 'authentication_error', 'card_error', 'idempotency_error',
+                         'invalid_request_error', 'permission_error', 'rate_limit_error'},
+                'code': {'account_invalid', 'api_key_expired', 'authentication_required', 'card_declined',
+                         'idempotency_key_in_use', 'parameter_invalid_array', 'parameter_invalid_boolean',
+                         'parameter_invalid_empty', 'parameter_invalid_enum', 'parameter_invalid_integer',
+                         'parameter_invalid_object', 'parameter_invalid_positive_integer',
+                         'parameter_invalid_string', 'parameter_invalid_string_blank',
+                         'parameter_invalid_string_empty', 'parameter_invalid_url', 'parameter_missing',
+                         'parameter_unknown', 'permission_missing', 'rate_limit', 'resource_missing',
+                         'secret_key_required', 'url_invalid'},
+                'param': {'customer', 'email', 'metadata', 'mode', 'client_reference_id', 'line_items',
+                          'line_items[0][price]', 'line_items[0][quantity]', 'payment_method_types',
+                          'payment_method_types[0]', 'subscription_data', 'success_url', 'cancel_url',
+                          'expires_at', 'limit', 'status', 'expand', 'expand[]', 'configuration', 'return_url'},
+            }
+            for key, values in allowed.items():
+                if isinstance(detail.get(key), str) and detail[key] in values:
+                    record[key] = detail[key]
+    except (OSError, ValueError, TypeError):
+        pass
+    finally:
+        error.close()
+    print(json.dumps(record, separators=(',', ':')))
 
 
 def conditional_error(error):
@@ -356,6 +402,9 @@ class Stripe:
         try:
             with self.opener.open(request, timeout=8) as response:
                 return json.load(response)
+        except urllib.error.HTTPError as error:
+            log_stripe_http_error(method, path, error)
+            raise ApiError(503, 'billing_unavailable') from None
         except (urllib.error.URLError, TimeoutError, ValueError):
             raise ApiError(503, 'billing_unavailable')
 

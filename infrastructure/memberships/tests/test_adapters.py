@@ -95,6 +95,50 @@ class AdapterTests(unittest.TestCase):
             stripe.secrets()
         self.assertEqual(caught.exception.code, 'billing_unavailable')
 
+    def test_stripe_http_failure_logs_only_controlled_diagnostics_and_still_returns_503(self):
+        stripe = adapters.Stripe('secret-arn', 'bpc_fixture', False)
+        stripe.secrets = lambda: {'secretKey': 'rk_test_CredentialNeverLog'}
+        stripe.opener = Mock()
+        error = urllib.error.HTTPError(
+            'https://api.stripe.com/v1/checkout/sessions?customer=cus_Private', 403,
+            'Sensitive HTTP reason', {'Request-Id': 'req_Diagnostic123', 'Authorization': 'Sensitive header'},
+            io.BytesIO(json.dumps({'error': {'type': 'invalid_request_error', 'code': 'permission_missing',
+                                           'param': 'customer', 'message': 'Sensitive provider message',
+                                           'request_log_url': 'https://sensitive.example/log'}}).encode()))
+        stripe.opener.open.side_effect = error
+        with patch('builtins.print') as logged, self.assertRaises(ApiError) as caught:
+            stripe.request('GET', '/v1/checkout/sessions', {'customer': 'cus_Private', 'email': 'private@example.test'})
+        self.assertEqual((caught.exception.status, caught.exception.code), (503, 'billing_unavailable'))
+        logged.assert_called_once()
+        self.assertEqual(json.loads(logged.call_args.args[0]), {
+            'event': 'stripe_http_error', 'method': 'GET', 'endpoint': 'checkout_sessions', 'status': 403,
+            'requestId': 'req_Diagnostic123', 'type': 'invalid_request_error',
+            'code': 'permission_missing', 'param': 'customer'})
+
+    def test_stripe_diagnostics_discard_malformed_oversized_and_sensitive_fields(self):
+        bodies = [b'not JSON: rk_test_Private', b'x' * 8193,
+                  json.dumps({'error': {'type': 'sk_test_Private', 'code': 'rk_test_Private',
+                                        'param': 'customer_private_email', 'message': 'private@example.test'}}).encode(),
+                  json.dumps({'error': ['private@example.test']}).encode()]
+        for body in bodies:
+            with self.subTest(body_size=len(body)):
+                stream = io.BytesIO(body)
+                error = urllib.error.HTTPError('https://sensitive.example', 400, 'private',
+                                               {'Request-Id': 'req_Private\nAuthorization: secret'}, stream)
+                with patch('builtins.print') as logged:
+                    adapters.log_stripe_http_error('POST', '/v1/checkout/sessions/cs_Private/expire', error)
+                self.assertEqual(json.loads(logged.call_args.args[0]), {
+                    'event': 'stripe_http_error', 'method': 'POST',
+                    'endpoint': 'checkout_session_expire', 'status': 400})
+                self.assertTrue(stream.closed)
+
+    def test_stripe_diagnostics_never_log_unknown_method_or_resource_path(self):
+        error = urllib.error.HTTPError('https://sensitive.example', 400, 'private', {}, io.BytesIO(b'{}'))
+        with patch('builtins.print') as logged:
+            adapters.log_stripe_http_error('CUSTOMER_PRIVATE', '/v1/private/customer?token=private', error)
+        self.assertEqual(json.loads(logged.call_args.args[0]), {
+            'event': 'stripe_http_error', 'method': 'unknown', 'endpoint': 'unknown', 'status': 400})
+
     def test_standard_and_restricted_keys_work_only_in_their_configured_mode(self):
         for live in (False, True):
             for family in ('sk', 'rk'):
