@@ -61,8 +61,9 @@ test('free account offers downloads and account linking before optional upgrades
   assert.match(html, /No subscription needed/);
   for (const platform of ['mac', 'windows']) assert.match(html, new RegExp(`platform=${platform}`));
   assert.match(html, /data-route href="\/trace\/connect">Link app<\/a>/);
-  assert(html.indexOf('Download for macOS') < html.indexOf('data-checkout="trace"'));
-  assert.match(html, /Choose Pro/); assert.match(html, /Choose Supporters Club/);
+  assert.match(html, /Compare plans/);
+  assert.match(html, /Other platforms/);
+  assert.doesNotMatch(html, /data-checkout=|id="refresh-account"/);
   assert.doesNotMatch(html, /Opponent decklist|See the other side|No active plan|Choose a monthly plan to use Trace/i);
 });
 
@@ -145,4 +146,22 @@ test('account and app-link screens need no Discord activation, even with legacy 
   assert.equal(view.context.context().discord, undefined);
   view.context.renderConnect(account);
   assert.match(view.html(), /I opened Trace and this is my code/);
+});
+
+
+test('Windows gets the single primary download while macOS stays in other platforms', () => {
+  const view = browser();
+  view.context.navigator = { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' };
+  view.context.renderAccount(free);
+  const html = view.html();
+  assert.match(html, /account-primary-download[^>]+platform=windows/);
+  assert.match(html, /<details class="other-platforms">[\s\S]*platform=mac/);
+  assert.equal((html.match(/account-primary-download/g) || []).length, 1);
+});
+
+test('an explicit plan choice retains checkout without showing competing plan buttons', () => {
+  const view = browser('?plan=trace');
+  view.context.renderAccount(free);
+  assert.match(view.html(), /data-checkout="trace"/);
+  assert.doesNotMatch(view.html(), /data-checkout="supporter"/);
 });
