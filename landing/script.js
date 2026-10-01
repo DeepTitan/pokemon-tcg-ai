@@ -1,3 +1,19 @@
+// Capture a creator link once; checkout waits for the server-only cookie.
+const referralCode = new URL(location.href).searchParams.get('ref');
+const referralReady = referralCode ? fetch('/trace/api/referrals/start', {
+  method: 'POST', credentials: 'same-origin', cache: 'no-store',
+  signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(8000) : undefined,
+  headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: referralCode }),
+}).then(async response => {
+  const result = await response.json();
+  if (!response.ok || !result.recorded) throw new Error('We could not save the creator link. Enter the creator code at checkout.');
+  const clean = new URL(location.href); clean.searchParams.delete('ref');
+  history.replaceState(history.state, '', clean.pathname + clean.search + clean.hash);
+}).catch(() => {
+  const notice = document.getElementById('checkout-message');
+  notice.textContent = 'Enter your creator code at checkout to make sure they receive credit.';
+  notice.hidden = false;
+}) : Promise.resolve();
 document.getElementById('year').textContent = new Date().getFullYear();
 let openingCheckout = false;
 const buttons = [...document.querySelectorAll('[data-plan]')];
@@ -10,6 +26,7 @@ buttons.forEach((button) => button.addEventListener('click', async () => {
   button.textContent = 'Opening Stripe…'; message.hidden = true; message.replaceChildren();
   try {
     if (!navigator.locks?.request) throw new Error('Secure checkout needs an up-to-date browser. Please update your browser and try again.');
+    await referralReady;
     const result = await navigator.locks.request('trace-checkout', async () => {
       const prepare = await fetch('/trace/api/checkout/prepare', {
         method: 'POST', credentials: 'same-origin', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: '{}',

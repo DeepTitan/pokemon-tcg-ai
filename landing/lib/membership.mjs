@@ -1,3 +1,4 @@
+import { REFERRAL_COOKIE, REFERRAL_SECONDS, creatorCode, issueReferral, readReferral } from './referrals.mjs';
 import { googleConfig, startGoogle, finishGoogle } from './google-auth.mjs';
 import { AUTH_COOKIE, sealAuth, openAuth, authContext, authDestination } from './auth-state.mjs';
 import { randomBytes } from 'node:crypto';
@@ -20,7 +21,7 @@ export const DOWNLOADS = Object.freeze({
   windows: 'https://github.com/DeepTitan/pokemon-tcg-ai/releases/latest/download/Trace_x64-setup.exe',
 });
 const ACTIONS = new Map([
-  ['auth/options', 'GET'], ['auth/google-start', 'POST'], ['auth/google-callback', 'GET'], ['auth/email-start', 'POST'], ['auth/email-finish', 'POST'],
+  ['referrals/start', 'POST'], ['auth/options', 'GET'], ['auth/google-start', 'POST'], ['auth/google-callback', 'GET'], ['auth/email-start', 'POST'], ['auth/email-finish', 'POST'],
   ['auth/signup', 'POST'], ['auth/resend', 'POST'], ['auth/confirm', 'POST'], ['auth/login', 'POST'],
   ['auth/refresh', 'POST'], ['auth/recover', 'POST'], ['auth/reset', 'POST'],
   ['auth/logout', 'POST'], ['account', 'GET'], ['checkout', 'POST'],
@@ -125,6 +126,11 @@ function inputFor(action, raw) {
     throw Object.assign(new Error('input'), { code: 'invalid_password' });
   }
   if (['auth/confirm', 'auth/reset'].includes(action) && !/^\d{6,8}$/.test(code)) throw new Error('input');
+  if (action === 'referrals/start') {
+    const code = creatorCode(body.code);
+    if (!code) throw new Error('input');
+    return { code };
+  }
   if (action === 'auth/google-start') return { context: authContext(body.context) };
   if (action === 'auth/email-start') {
     if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('input');
@@ -247,6 +253,16 @@ export function createMembershipHandler({ service = createMembershipService(), o
       let body;
       try { body = inputFor(action, request.body); }
       catch (error) { return failure(response, 400, action, { error: error.code === 'invalid_password' ? 'invalid_password' : 'invalid_request' }); }
+      if (action === 'referrals/start') {
+        if (!authSecret) return send(response, 503, { error: 'Creator links are temporarily unavailable.' });
+        const token = issueReferral(body.code, authSecret);
+        writeCookies(response, [cookie(REFERRAL_COOKIE, token, REFERRAL_SECONDS)]);
+        return send(response, 200, { recorded: true, code: body.code });
+      }
+      if (action === 'checkout' || action === 'checkout/guest') {
+        const referralToken = readCookies(request.headers?.cookie)[REFERRAL_COOKIE];
+        if (readReferral(referralToken, authSecret)) body.referralToken = referralToken;
+      }
       if (action === 'auth/logout') {
         const cookies = readCookies(request.headers?.cookie);
         writeCookies(response, [...clearCookies(), cookie(AUTH_COOKIE, '', 0)]);
@@ -353,7 +369,7 @@ export function createMembershipHandler({ service = createMembershipService(), o
           if (!checkoutToken) return send(response, 400, { error: 'Please allow cookies for Victory Road and try again. No checkout has been started.' });
           // Existing open guest checkouts are resumed, including after sign-in.
           // The backend rechecks paid/expired state under its purchase lock.
-          const checkout = await service.call(action, { body: { plan: body.plan, checkoutToken } });
+          const checkout = await service.call(action, { body: { ...body, checkoutToken } });
           if (checkout.status < 200 || checkout.status >= 300) return failure(response, checkout.status, action, checkout.body);
           const target = safeBillingUrl(checkout.body.url, 'checkout');
           return target ? send(response, 200, { url: target }) : send(response, 503, { error: 'We could not open secure billing. Please try again.' });

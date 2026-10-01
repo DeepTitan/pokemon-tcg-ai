@@ -184,7 +184,7 @@ test('two browser tabs serialize prepare and checkout under the same Web Lock; u
       assert.equal(storedProof, proof);
       return { ok: true, json: async () => ({ url: checkoutUrl }) };
     };
-    vm.runInNewContext(script, { document: { getElementById: (id) => id === 'year' ? {} : message, querySelectorAll: () => [button], createElement: () => ({}) }, navigator: supported ? { locks } : {}, fetch: fetcher, URL, Date, location: { assign: (url) => navigated.push(url) } });
+    vm.runInNewContext(script, { document: { getElementById: (id) => id === 'year' ? {} : message, querySelectorAll: () => [button], createElement: () => ({}) }, navigator: supported ? { locks } : {}, fetch: fetcher, URL, Date, location: { href: 'https://victoryroad.app/trace', assign: (url) => navigated.push(url) } });
     return { click: () => listener(), message };
   }
   const first = tab('A'); const second = tab('B');
