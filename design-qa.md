@@ -10,3 +10,13 @@ Verification: 62 account, checkout, and membership tests pass. Platform cases co
 Visual comparison remains unavailable: the browser tool previously rejected access to this local preview under its URL security policy. No alternate browser mechanism was used. No desktop/mobile screenshot comparison or visual pass is claimed. The user reviewed the running local preview and explicitly approved production release on September 30, 2026 ("looks great lets ship it"). This approval supersedes the automated visual gate for this release; it does not constitute an automated screenshot comparison.
 
 final result: user-approved for release; automated visual comparison blocked
+
+## Production release — September 30, 2026
+
+- Deployed application commit `2810f50` to `https://victoryroad-i8v91ufae-deeptitan-6729s-projects.vercel.app`, aliased by the existing public site.
+- Public account URL `https://victoryroad.app/trace/account` returns 200 with private/no-store caching.
+- Verified public JS, CSS, download icon, both platform icons, and all three UI font weights match the release bytes.
+- Fixed a public-domain proxy limitation discovered after deployment: nested font paths returned 404 while direct origin paths worked. CSS now requests the fonts at the supported flat public asset paths.
+- Both signed-out installer endpoints return 303 to sign-in while preserving the selected platform.
+- The deployment error-log query returned zero entries at verification time.
+- Browser screenshot comparison remains unverified; the user approved the local appearance before release.
