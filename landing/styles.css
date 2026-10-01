@@ -1224,7 +1224,9 @@ h3 {
 @font-face { font-family:TraceUI; src:url('/trace-assets/roboto-500.ttf') format('truetype'); font-weight:500; font-display:swap; }
 @font-face { font-family:TraceUI; src:url('/trace-assets/roboto-700.ttf') format('truetype'); font-weight:700; font-display:swap; }
 .account-page:has(.account-workspace) { font-family:TraceUI,"Segoe UI",system-ui,sans-serif; }
-.account-page:has(.account-workspace) .site-header { max-width:none; height:76px; padding-inline:max(32px,calc((100vw - 1280px)/2)); }
+/* Keep unused viewport height below the content, not in the header's auto margins.
+   1076px matches the account main's 1140px width minus its 32px side padding. */
+.account-page:has(.account-workspace) .site-header { max-width:none; height:76px; flex:none; margin:0; padding-inline:max(32px,calc((100% - 1076px)/2)); }
 .account-page:has(.account-workspace) .brand strong { font-size:28px; }
 .account-page:has(.account-workspace) .brand img { width:38px; height:46px; }
 .account-page:has(.account-workspace) .site-header nav a { font-size:15px; font-weight:500; }
@@ -1267,6 +1269,7 @@ h3 {
 .account-page:has(.account-workspace) .site-footer { max-width:1076px; width:calc(100% - 64px); margin-top:0; padding:28px 0; font-size:13px; }
 .account-page:has(.account-workspace) .site-footer>a:last-child { display:none; }
 @media(max-width:850px) {
+ .account-page:has(.account-workspace) .site-header { padding-inline:28px; }
  .account-main:has(.account-workspace) { padding:36px 28px 0; }
  .account-row { grid-template-columns:minmax(180px,1fr) minmax(0,1.8fr); gap:24px; }
  .account-heading h1 { font-size:32px; }
