@@ -28,30 +28,36 @@
       <div class="hero-copy"><p class="eyebrow">Pokémon TCG Live</p>
         <h1 id="hero-title">Review the spot.<br /><span>Find the line.</span></h1>
         <p class="hero-description">Replay your matches. Learn from every turn.</p>
-        <a class="button primary" href="/trace/signup">Start free <span aria-hidden="true">→</span></a>
+        <a class="compare-plans-link" href="#plans">Compare plans <img src="/trace-assets/plan-arrow-down.svg" alt="" width="18" height="18" /></a>
         <p class="compatibility">macOS Apple silicon · Windows 64-bit</p>
       </div>
       <div class="replay-frame"><img src="/trace-assets/trace-match-dragapult-alakazam.png" alt="Trace match review showing the board, match history, and turn controls" width="1800" height="1125" /></div>
     </section>
     <section class="plans-section" id="plans" aria-labelledby="plans-title">
-      <div class="section-heading"><h2 id="plans-title">Choose your plan</h2><p>USD · Cancel anytime</p></div>
-      <div class="plans plan-comparison">
-        <article class="plan"><h3>Free</h3>
-          <p class="price">$0<span>/ month</span></p>
-          <ul class="benefits"><li>Automatic recording</li><li>Last 7 days of replays</li><li>Leaderboard &amp; results</li><li>1 replay share every 7 days</li></ul>
-          <a class="button secondary" href="/trace/signup">Start free <span aria-hidden="true">→</span></a>
-        </article>
-        <article class="plan"><h3>Pro</h3>
-          <p class="price">$14.99<span>/ month</span></p>
-          <ul class="benefits"><li>Everything in Free</li><li>Your deck &amp; prize insights</li><li>Full replay archive</li><li>Expanded sharing</li></ul>
-          <button class="button primary" type="button" data-plan="trace">Get Pro <span aria-hidden="true">→</span></button>
-        </article>
-        <article class="plan supporter"><h3>Supporters Club</h3>
-          <p class="price">$39.99<span>/ month</span></p>
-          <ul class="benefits"><li>Everything in Pro</li><li>Exclusive Discord access &amp; support</li><li>Early access to new features &amp; nightly releases</li></ul>
-          <button class="button secondary" type="button" data-plan="supporter">Join Supporters Club <span aria-hidden="true">→</span></button>
-        </article>
-      </div>
+      <div class="section-heading"><h2 id="plans-title">Choose your plan</h2><p>USD · Billed monthly · Cancel anytime</p></div>
+      <table role="table" class="pricing-table" aria-labelledby="plans-title">
+        <colgroup><col class="pricing-feature-column" /><col /><col /><col /></colgroup>
+        <thead><tr>
+          <td class="pricing-corner">Feature</td>
+          <th scope="col" id="plan-free"><h3>Free</h3><p class="price">$0<span>/ month</span></p>
+            <a class="button secondary" href="/trace/signup">Start free <img class="plan-arrow" src="/trace-assets/plan-arrow-right.svg" alt="" width="16" height="16" /></a>
+          </th>
+          <th scope="col" id="plan-pro" class="pricing-pro"><h3>Pro</h3><p class="price">$14.99<span>/ month</span></p>
+            <button class="button primary" type="button" data-plan="trace">Get Pro</button>
+          </th>
+          <th scope="col" id="plan-supporter"><h3>Supporters Club</h3><p class="price">$39.99<span>/ month</span></p>
+            <button class="button secondary" type="button" data-plan="supporter">Join the club</button>
+          </th>
+        </tr></thead>
+        <tbody>
+          <tr><th scope="row" id="feature-recording">Automatic recording &amp; leaderboard</th><td headers="feature-recording plan-free"><img class="plan-inclusion" src="/trace-assets/plan-check.svg" alt="Included" width="20" height="20" /></td><td class="pricing-pro" headers="feature-recording plan-pro"><img class="plan-inclusion" src="/trace-assets/plan-check.svg" alt="Included" width="20" height="20" /></td><td headers="feature-recording plan-supporter"><img class="plan-inclusion" src="/trace-assets/plan-check.svg" alt="Included" width="20" height="20" /></td></tr>
+          <tr><th scope="row" id="feature-history">Replay history</th><td headers="feature-history plan-free">Last 7 days</td><td class="pricing-pro" headers="feature-history plan-pro">Full archive</td><td headers="feature-history plan-supporter">Full archive</td></tr>
+          <tr><th scope="row" id="feature-study">Your deck &amp; prize insights</th><td headers="feature-study plan-free"><img class="plan-inclusion" src="/trace-assets/plan-minus.svg" alt="Not included" width="20" height="20" /></td><td class="pricing-pro" headers="feature-study plan-pro"><img class="plan-inclusion" src="/trace-assets/plan-check.svg" alt="Included" width="20" height="20" /></td><td headers="feature-study plan-supporter"><img class="plan-inclusion" src="/trace-assets/plan-check.svg" alt="Included" width="20" height="20" /></td></tr>
+          <tr><th scope="row" id="feature-sharing">Replay sharing</th><td headers="feature-sharing plan-free">1 every 7 days</td><td class="pricing-pro" headers="feature-sharing plan-pro">Expanded</td><td headers="feature-sharing plan-supporter">Expanded</td></tr>
+          <tr><th scope="row" id="feature-community">Exclusive Discord access &amp; support</th><td headers="feature-community plan-free"><img class="plan-inclusion" src="/trace-assets/plan-minus.svg" alt="Not included" width="20" height="20" /></td><td class="pricing-pro" headers="feature-community plan-pro"><img class="plan-inclusion" src="/trace-assets/plan-minus.svg" alt="Not included" width="20" height="20" /></td><td headers="feature-community plan-supporter"><img class="plan-inclusion" src="/trace-assets/plan-check.svg" alt="Included" width="20" height="20" /></td></tr>
+          <tr><th scope="row" id="feature-early">Early features &amp; nightly releases</th><td headers="feature-early plan-free"><img class="plan-inclusion" src="/trace-assets/plan-minus.svg" alt="Not included" width="20" height="20" /></td><td class="pricing-pro" headers="feature-early plan-pro"><img class="plan-inclusion" src="/trace-assets/plan-minus.svg" alt="Not included" width="20" height="20" /></td><td headers="feature-early plan-supporter"><img class="plan-inclusion" src="/trace-assets/plan-check.svg" alt="Included" width="20" height="20" /></td></tr>
+        </tbody>
+      </table>
       <p id="checkout-message" class="message error checkout-message" role="alert" hidden></p>
       <div class="plan-footer"><p>Secure checkout with Stripe</p><a href="/trace/login">Sign in</a></div>
       <noscript><p class="checkout-note">Enable JavaScript to open secure checkout.</p></noscript>

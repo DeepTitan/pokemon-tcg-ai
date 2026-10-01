@@ -164,7 +164,7 @@ test('free plan starts signup while paid plan buttons still directly open Stripe
   assert.doesNotMatch(html, /href="\/trace\/signup\?plan=/);
   assert.match(html, /href="\/trace\/signup">Start free/);
   assert.match(html, /<h3>Free<\/h3>/); assert.match(html, /<h3>Pro<\/h3>/);
-  assert.match(html, /Last 7 days of replays/); assert.match(html, /Full replay archive/);
+  assert.match(html, /Last 7 days/); assert.match(html, /Full archive/);
   assert.match(html, /Exclusive Discord access/); assert.match(html, /nightly releases/); assert.doesNotMatch(html, /Post-match deck study/); assert.doesNotMatch(html, /opponent decklist/i);
 });
 

@@ -1275,3 +1275,89 @@ h3 {
  .platform-switch,.account-primary-download { flex-basis:100%; }
  .account-link-row .account-quiet-link { justify-self:start; }
 }
+
+/* Plans: one shared grid, with the product preview leading into comparison. */
+.landing-page.trace-web .hero {
+  grid-template-columns:minmax(0,.65fr) minmax(0,1.35fr);
+  gap:40px;
+  padding:48px 0;
+}
+.landing-page.trace-web .hero h1 { font-size:44px; line-height:1.08; letter-spacing:-1.1px; margin-bottom:24px; }
+.landing-page .hero-description { margin-bottom:18px; }
+.compare-plans-link { display:inline-flex; align-items:center; gap:10px; min-height:44px; font-size:16px; font-weight:500; text-underline-offset:5px; }
+.compare-plans-link:hover { color:#304e73; }
+.landing-page .compatibility { font-size:13px; line-height:1.5; margin-top:16px; }
+.landing-page .replay-frame { border-radius:4px; }
+.landing-page.trace-web .plans-section { padding-top:32px; scroll-margin-top:calc(var(--trace-header-height) + 8px); }
+.landing-page .section-heading { margin-bottom:24px; }
+.pricing-table { width:100%; table-layout:fixed; border-collapse:collapse; font-size:15px; line-height:1.4; }
+.pricing-feature-column { width:34%; }
+.pricing-table th,.pricing-table td { border-bottom:1px solid var(--line); }
+.pricing-table thead th,.pricing-corner { padding:24px 16px 20px; border-top:1px solid var(--line); text-align:center; vertical-align:top; }
+.pricing-table thead th { font-weight:400; }
+.pricing-table .pricing-corner { text-align:left; vertical-align:middle; color:var(--muted); font-weight:500; }
+.pricing-table h3 { font-size:20px; line-height:1.25; letter-spacing:-.4px; }
+.pricing-table .price { font-size:30px; line-height:1.25; letter-spacing:-.8px; margin:14px 0 16px; white-space:nowrap; }
+.pricing-table .price span { font-size:12px; margin-left:5px; }
+.pricing-table .button { width:100%; min-height:44px; padding:10px 12px; border-radius:3px; gap:12px; }
+.pricing-table .button.secondary { border-color:#8c97a1; }
+.pricing-table button::after { content:''; width:16px; height:16px; flex:none; background:url('/trace-assets/plan-arrow-right.svg') center/contain no-repeat; }
+.pricing-table button:disabled::after { display:none; }
+.pricing-table .pricing-pro { background:#fbf4df; }
+.pricing-table thead .pricing-pro { border-top:3px solid var(--yellow); padding-top:22px; }
+.pricing-table tbody th { padding:15px 16px; height:52px; text-align:left; font-weight:400; }
+.pricing-table tbody td { padding:14px 12px; text-align:center; }
+.pricing-table thead th,.pricing-table tbody td { border-left:1px solid #e1d9cc; }
+.plan-inclusion { display:block; margin:auto; }
+.landing-page .plan-footer { padding:12px 0; font-size:13px; }
+.landing-page .plan-footer a { text-decoration:underline; font-weight:400; }
+.landing-page.trace-web .faq-section { padding-top:0; padding-bottom:32px; }
+.landing-page .faq-list summary { min-height:48px; padding:14px 0; }
+.landing-page .site-footer { border-top:0; }
+
+@media (min-width:741px) and (max-width:1000px) {
+  .landing-page.trace-web .hero { grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr); }
+}
+@media (max-width:850px) {
+  .landing-page.trace-web .hero { gap:32px; }
+  .landing-page.trace-web .hero h1 { font-size:36px; }
+  .pricing-feature-column { width:31%; }
+  .pricing-table { font-size:14px; }
+  .pricing-table thead th,.pricing-corner { padding:20px 10px 16px; }
+  .pricing-table thead .pricing-pro { padding-top:18px; }
+  .pricing-table h3 { font-size:18px; min-height:45px; }
+  .pricing-table .price { font-size:26px; margin-top:8px; }
+  .pricing-table .price span { display:block; margin:3px 0 0; }
+  .pricing-table .button { padding:10px 8px; font-size:13px; }
+  .pricing-table .plan-arrow,.pricing-table button::after { display:none; }
+  .pricing-table tbody th { padding-inline:10px; }
+}
+@media (max-width:740px) {
+  .landing-page.trace-web .hero { grid-template-columns:1fr; padding:32px 0; gap:28px; }
+  .landing-page .hero-copy { max-width:none; }
+  .landing-page .hero-description { max-width:none; }
+  .landing-page.trace-web .hero h1 { font-size:40px; margin-bottom:18px; }
+  .landing-page .compatibility { margin-top:8px; }
+}
+@media (max-width:640px) {
+  .landing-page.trace-web .plans-section { padding-top:28px; }
+  .landing-page .section-heading { display:block; margin-bottom:20px; }
+  .landing-page .section-heading > p { text-align:left; margin-top:8px; font-size:12px; }
+  /* Keep all three plans visible. Feature labels span the row on phones. */
+  .pricing-table { display:block; }
+  .pricing-table colgroup,.pricing-table .pricing-corner { display:none; }
+  .pricing-table thead,.pricing-table tbody { display:block; }
+  .pricing-table thead { position:sticky; top:calc(var(--trace-header-height) + 1px); z-index:2; background:var(--cream); }
+  .pricing-table tr { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .pricing-table thead th { padding:16px 6px 12px; border-left:0; }
+  .pricing-table thead .pricing-pro { padding-top:14px; }
+  .pricing-table h3 { font-size:16px; min-height:40px; display:flex; align-items:center; justify-content:center; }
+  .pricing-table .price { font-size:23px; margin:8px 0 12px; }
+  .pricing-table .button { padding:8px 3px; font-size:12px; }
+  .pricing-table tbody th { grid-column:1/-1; height:auto; padding:14px 8px 4px; border:0; font-size:14px; }
+  .pricing-table tbody td { display:flex; justify-content:center; align-items:center; min-height:48px; padding:10px 4px; border-left:0; font-size:13px; }
+  .pricing-table tbody .pricing-pro { background:#fbf4df; }
+  .landing-page .plan-footer { font-size:12px; }
+  .landing-page .site-footer p { margin-top:12px; }
+}
+@media (prefers-reduced-motion:reduce) { html { scroll-behavior:auto; } }

@@ -57,4 +57,4 @@
 .share-preview .trace-web .intro { padding:14px 0 18px; }
 .share-preview .trace-web .player-profile { padding-top:10px; }
 
-@media(max-width:690px) { :root { --trace-header-height:99px; } }
+@media(max-width:740px) { :root { --trace-header-height:99px; } }

@@ -1,22 +1,44 @@
-# Trace account rows with automatic platform selection
+# Trace plans production design QA
 
-Visual target: selected compact-row concept, revised to keep macOS and Windows equally visible.
-Source: /Users/theisaiahw/.codex/generated_images/01a0f04b-8185-7403-b07c-7cdeb1a433b9/exec-b0939aad-3251-4b0e-a66e-0ec055c962f9.png
+Date: 2026-09-30
 
-Implemented locally: compact account rows, lighter UI typography, always-visible platform buttons, one matching installer link, automatic desktop OS selection, explicit neutral choice for phones/unknown systems, and manual overrides retained during account refresh.
+final result: passed
 
-Verification: 62 account, checkout, and membership tests pass. Platform cases cover Windows UA and platform hints, macOS, iPad desktop mode, iPhone, Android, Linux/unknown, explicit installer query, and manual switching in both directions. Syntax and whitespace checks pass. The existing local fixture server is running on port 5195.
+## Reference and implementation
 
-Visual comparison remains unavailable: the browser tool previously rejected access to this local preview under its URL security policy. No alternate browser mechanism was used. No desktop/mobile screenshot comparison or visual pass is claimed. The user reviewed the running local preview and explicitly approved production release on September 30, 2026 ("looks great lets ship it"). This approval supersedes the automated visual gate for this release; it does not constitute an automated screenshot comparison.
+- Approved reference: `/Users/theisaiahw/.codex/generated_images/01a0f04b-8185-7403-b07c-7cdeb1a433b9/exec-bb5d6a24-bdaf-457b-aedc-47ea738d28e2.png` (1073 × 1466 pixels).
+- Final implementation screenshot: `/private/tmp/trace-plans-design/local-approved.png` (1073 × 1514 pixels).
+- Local page: `http://127.0.0.1:5195/trace`.
+- Compared both images together at the same width. The implementation capture has 48 additional vertical pixels of viewport/footer framing; images were not stretched to match heights.
 
-final result: user-approved for release; automated visual comparison blocked
+## Comparison and corrections
 
-## Production release — September 30, 2026
+1. Initial comparison found the app screenshot too small and monthly price suffixes wrapping unnecessarily on desktop. Increased the screenshot's share of the hero and kept price suffixes inline where space permits.
+2. Final comparison confirmed the approved white header, cream surface, navy typography, original headline, real Trace screenshot, underlined Compare plans link, flat comparison table, gold Pro treatment, concise FAQ, and footer.
+3. Header and content share the existing account page's 1076px maximum width. The 32px desktop gutter intentionally preserves the shared site grid instead of the generated reference's larger gutter.
+4. Production typography and approximately 52px comparison rows preserve readability. The real app screenshot replaces generated illustration details in the reference.
+5. Corrected duplicate XML namespace attributes in the new standard icon assets; all four assets load.
+6. At 700px, the single-row header's brand extended beyond its content grid. Switched the header to two rows at 740px and aligned sticky offsets with that breakpoint. Verified the brand and header end at the same x-coordinate (665px at a 700px viewport).
 
-- Deployed application commit `2810f50` to `https://victoryroad-i8v91ufae-deeptitan-6729s-projects.vercel.app`, aliased by the existing public site.
-- Public account URL `https://victoryroad.app/trace/account` returns 200 with private/no-store caching.
-- Verified public JS, CSS, download icon, both platform icons, and all three UI font weights match the release bytes.
-- Fixed a public-domain proxy limitation discovered after deployment: nested font paths returned 404 while direct origin paths worked. CSS now requests the fonts at the supported flat public asset paths.
-- Both signed-out installer endpoints return 303 to sign-in while preserving the selected platform.
-- The deployment error-log query returned zero entries at verification time.
-- Browser screenshot comparison remains unverified; the user approved the local appearance before release.
+## Responsive and interaction checks
+
+- Desktop 1440px: matching header/main grid; no horizontal overflow.
+- Narrow desktop 788px: readable comparison, correctly wrapped monthly price suffixes.
+- Mobile 390px: all three plans visible without sideways scrolling. Feature labels span each row; column headers remain visible while comparing. Explicit table roles and header associations retained.
+- Compare plans keyboard activation lands below the fixed header.
+- Start free routes the signed-in local fixture to My account.
+- Get Pro and Join the club use existing checkout handlers. Local billing-disabled errors appear and buttons recover correctly; no payment was made.
+- Leaderboard and Training navigation work with the shared header. Training shows its expected content.
+- Browser console: no errors after asset corrections.
+- Reduced-motion preference disables smooth scrolling.
+
+## Functional scope and verification
+
+- Existing signup, authentication, billing handlers, prices, and entitlements preserved.
+- No opponent decklist feature advertised.
+- Account, guest checkout, and training selector tests: 34 passed.
+- Leaderboard build passed; landing and public-page builds passed, including their training and card asset checks.
+- `git diff --check` passed.
+- Native Trace/Pokémon gameplay was not launched.
+
+No unresolved visual differences requiring approval remain.
