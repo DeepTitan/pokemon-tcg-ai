@@ -33,7 +33,7 @@ for (const [source, destination] of Object.entries(landingFiles)) {
   fs.copyFileSync(path.join(landingDirectory, source), path.join(outputDirectory, destination));
 }
 // The static pages and React leaderboard use the same shell styles.
-fs.appendFileSync(path.join(outputDirectory, 'trace-styles.css'), '\n' + fs.readFileSync(path.join(landingDirectory, 'trace-shell.css'), 'utf8'));
+fs.appendFileSync(path.join(outputDirectory, 'trace-styles.css'), '\n' + fs.readFileSync(path.join(landingDirectory, 'trace-shell.css'), 'utf8') + '\n' + fs.readFileSync(path.join(landingDirectory, 'training/header.css'), 'utf8'));
 fs.cpSync(path.join(landingDirectory, 'assets'), path.join(outputDirectory, 'trace-assets'), {
   recursive: true,
   filter: (source) => !['share-card-catalog.json.gz', 'leaderboard-pages.json.gz', 'share-card-art', 'replay-card-art', 'replay-art-manifest.json'].includes(path.basename(source)),

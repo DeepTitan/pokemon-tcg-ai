@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../landing');
 const port = Number(process.env.TRACE_MEMBERSHIP_PREVIEW_PORT || 5190);
-const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.ttf': 'font/ttf' };
+const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.ttf': 'font/ttf', '.json': 'application/json', '.jpg': 'image/jpeg' };
 const freeCapabilities = { recordMatches: true, leaderboard: true, recentReplayDays: 7, fullHistory: false, expandedSharing: false, opponentDecklists: false, freeSharesPerWindow: 1, shareWindowDays: 7 };
 const account = { email: 'player@example.test', plan: 'supporter', traceAccess: true, opponentDecklists: true, admin: false, status: 'active', expiresAt: '2099-10-27T08:00:00Z', cancelAtPeriodEnd: false, capabilities: { ...freeCapabilities, fullHistory: true, expandedSharing: true, opponentDecklists: true } };
 const extraAccountStates = {
@@ -66,19 +66,31 @@ http.createServer(async (req, res) => {
       return send(404, { error: 'Not part of this offline preview.' });
     }
     if (url.pathname === '/trace/access') return send(503, { error: 'Local preview: installer downloads are disabled.' });
+    if (url.pathname === '/trace/leaderboard-static/training/status.json') {
+      const snapshot = process.env.TRACE_TRAINING_PREVIEW_SNAPSHOT;
+      if (!snapshot) return send(503, { error: 'Training data is not loaded in this local preview.' });
+      return send(200, JSON.parse(await fs.readFile(snapshot, 'utf8')));
+    }
     let file;
     if (url.pathname === '/trace/auth-flow') file = 'auth-flow-preview.html';
     else if (url.pathname === '/' || url.pathname === '/trace') file = 'index.html';
     else if (routes.has(url.pathname.replace('/trace/', ''))) file = 'account.html';
+    else if (url.pathname === '/trace/training') file = 'training/index.html';
+    else if (url.pathname === '/trace/leaderboard' || url.pathname.startsWith('/trace/players/')) file = 'dist/trace-local-leaderboard.html';
+    else if (url.pathname === '/trace/leaderboard-static/events.json') file = 'leaderboard/events.json';
+    else if (url.pathname.startsWith('/trace/leaderboard-static/training/')) file = 'training/' + url.pathname.slice('/trace/leaderboard-static/training/'.length);
+    else if (url.pathname.startsWith('/trace/leaderboard-static/')) file = 'dist' + url.pathname;
     else if (url.pathname === '/trace-styles.css') file = 'styles.css';
     else if (url.pathname === '/trace-script.js') file = 'script.js';
     else if (url.pathname === '/trace-member.js') file = 'member.js';
     else if (url.pathname.startsWith('/trace-assets/')) file = 'assets/' + url.pathname.slice('/trace-assets/'.length);
     else return send(404, { error: 'This page is outside the offline membership preview.' });
-    const target = path.resolve(root, file);
-    if (!target.startsWith(root + '/')) return send(404, { error: 'Not found.' });
+    const isLeaderboardShell = file === 'dist/trace-local-leaderboard.html';
+    const target = isLeaderboardShell ? path.resolve(root, '../dist-leaderboard/leaderboard.html') : path.resolve(root, file);
+    if (!isLeaderboardShell && !target.startsWith(root + '/')) return send(404, { error: 'Not found.' });
     let bytes = await fs.readFile(target);
-    if (file === 'styles.css') bytes = Buffer.concat([bytes, Buffer.from('\n'), await fs.readFile(path.join(root, 'trace-shell.css'))]);
+    if (isLeaderboardShell) bytes = Buffer.from(bytes.toString().replace('/tracker-assets/trace-mascot.png', '/trace/leaderboard-static/training/assets/trace-mascot.png'));
+    if (file === 'styles.css') bytes = Buffer.concat([bytes, Buffer.from('\n'), await fs.readFile(path.join(root, 'trace-shell.css')), Buffer.from('\n'), await fs.readFile(path.join(root, 'training/header.css'))]);
     if (file.endsWith('.html')) bytes = Buffer.from(bytes.toString().replace('</body>', '<aside style="position:fixed;bottom:8px;right:10px;z-index:10;background:#172b49;color:#fff;padding:5px 9px;font:11px system-ui;border-radius:3px">Local preview · payments disabled</aside></body>'));
     res.setHeader('Content-Type', types[path.extname(file)] || 'application/octet-stream'); res.end(bytes);
   } catch { res.statusCode = 404; res.end('Not found'); }

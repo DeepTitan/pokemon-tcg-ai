@@ -9,6 +9,7 @@ import { playerProfileHref, leaderboardShareHref, LEADERBOARD_BASE, LEADERBOARD_
 import { startSnapshotRefresh, type LeaderboardSnapshot, type SnapshotRefreshStatus } from './snapshot-refresh.js';
 import './styles.css';
 import '../../landing/trace-shell.css';
+import '../../landing/training/header.css';
 
 const number = (value: number) => Math.round(value).toLocaleString();
 const date = (value: string) => new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
