@@ -78,6 +78,7 @@ http.createServer(async (req, res) => {
     const target = path.resolve(root, file);
     if (!target.startsWith(root + '/')) return send(404, { error: 'Not found.' });
     let bytes = await fs.readFile(target);
+    if (file === 'styles.css') bytes = Buffer.concat([bytes, Buffer.from('\n'), await fs.readFile(path.join(root, 'trace-shell.css'))]);
     if (file.endsWith('.html')) bytes = Buffer.from(bytes.toString().replace('</body>', '<aside style="position:fixed;bottom:8px;right:10px;z-index:10;background:#172b49;color:#fff;padding:5px 9px;font:11px system-ui;border-radius:3px">Local preview · payments disabled</aside></body>'));
     res.setHeader('Content-Type', types[path.extname(file)] || 'application/octet-stream'); res.end(bytes);
   } catch { res.statusCode = 404; res.end('Not found'); }

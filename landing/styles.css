@@ -1220,17 +1220,7 @@ h3 {
 
 
 /* Account rows: platform choices stay visible on every computer. */
-@font-face { font-family:TraceUI; src:url('/trace-assets/roboto-400.ttf') format('truetype'); font-weight:400; font-display:swap; }
-@font-face { font-family:TraceUI; src:url('/trace-assets/roboto-500.ttf') format('truetype'); font-weight:500; font-display:swap; }
-@font-face { font-family:TraceUI; src:url('/trace-assets/roboto-700.ttf') format('truetype'); font-weight:700; font-display:swap; }
-.account-page:has(.account-workspace) { font-family:TraceUI,"Segoe UI",system-ui,sans-serif; }
-/* Keep unused viewport height below the content, not in the header's auto margins.
-   1076px matches the account main's 1140px width minus its 32px side padding. */
-.account-page:has(.account-workspace) .site-header { max-width:none; height:76px; flex:none; margin:0; padding-inline:max(32px,calc((100% - 1076px)/2)); }
-.account-page:has(.account-workspace) .brand strong { font-size:28px; }
-.account-page:has(.account-workspace) .brand img { width:38px; height:46px; }
-.account-page:has(.account-workspace) .site-header nav a { font-size:15px; font-weight:500; }
-.account-main:has(.account-workspace) { max-width:1140px; padding:52px 32px 0; flex:0; }
+.account-main:has(.account-workspace) { padding-bottom:0; flex:0; }
 .account-heading { margin-bottom:36px; align-items:flex-start; }
 .account-heading h1 { font-family:inherit; font-size:36px; line-height:1.2; font-weight:700; letter-spacing:-.8px; }
 .account-email { font-size:16px; margin-top:8px; }
@@ -1266,23 +1256,14 @@ h3 {
 .membership-price { grid-column:1/-1; font-size:16px; margin:4px 0; letter-spacing:0; }
 .membership-actions,.billing-attention { grid-column:1/-1; }
 .membership-actions .text-button { font-size:14px; }
-.account-page:has(.account-workspace) .site-footer { max-width:1076px; width:calc(100% - 64px); margin-top:0; padding:28px 0; font-size:13px; }
 .account-page:has(.account-workspace) .site-footer>a:last-child { display:none; }
 @media(max-width:850px) {
- .account-page:has(.account-workspace) .site-header { padding-inline:28px; }
- .account-main:has(.account-workspace) { padding:36px 28px 0; }
  .account-row { grid-template-columns:minmax(180px,1fr) minmax(0,1.8fr); gap:24px; }
  .account-heading h1 { font-size:32px; }
  .membership-content { grid-template-columns:1fr; }
  .compare-plans { grid-column:1; grid-row:auto; justify-self:start; }
 }
 @media(max-width:580px) {
- .account-page:has(.account-workspace) .site-header { height:68px; padding-inline:20px; gap:16px; }
- .account-page:has(.account-workspace) .site-header nav { gap:12px; }
- .account-page:has(.account-workspace) .site-header nav a { font-size:12px; }
- .account-page:has(.account-workspace) .brand strong { font-size:22px; }
- .account-page:has(.account-workspace) .brand img { width:27px; height:35px; }
- .account-main:has(.account-workspace) { padding:28px 20px 0; }
  .account-heading { gap:12px; margin-bottom:28px; }
  .account-heading h1 { font-size:28px; }
  .account-email { font-size:14px; }
@@ -1293,5 +1274,4 @@ h3 {
  .account-download-action { gap:12px; }
  .platform-switch,.account-primary-download { flex-basis:100%; }
  .account-link-row .account-quiet-link { justify-self:start; }
- .account-page:has(.account-workspace) .site-footer { width:calc(100% - 40px); gap:16px; font-size:12px; }
 }
