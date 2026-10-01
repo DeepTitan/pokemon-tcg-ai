@@ -1,6 +1,6 @@
 @font-face {
   font-family:Nunito;
-  src:url('/trace-assets/fonts/nunito-800.ttf') format('truetype');
+  src:url('/trace-assets/nunito-800.ttf') format('truetype');
   font-weight:800;
   font-display:swap;
 }
@@ -1220,9 +1220,9 @@ h3 {
 
 
 /* Account rows: platform choices stay visible on every computer. */
-@font-face { font-family:TraceUI; src:url('/trace-assets/fonts/roboto-400.ttf') format('truetype'); font-weight:400; font-display:swap; }
-@font-face { font-family:TraceUI; src:url('/trace-assets/fonts/roboto-500.ttf') format('truetype'); font-weight:500; font-display:swap; }
-@font-face { font-family:TraceUI; src:url('/trace-assets/fonts/roboto-700.ttf') format('truetype'); font-weight:700; font-display:swap; }
+@font-face { font-family:TraceUI; src:url('/trace-assets/roboto-400.ttf') format('truetype'); font-weight:400; font-display:swap; }
+@font-face { font-family:TraceUI; src:url('/trace-assets/roboto-500.ttf') format('truetype'); font-weight:500; font-display:swap; }
+@font-face { font-family:TraceUI; src:url('/trace-assets/roboto-700.ttf') format('truetype'); font-weight:700; font-display:swap; }
 .account-page:has(.account-workspace) { font-family:TraceUI,"Segoe UI",system-ui,sans-serif; }
 .account-page:has(.account-workspace) .site-header { max-width:none; height:76px; padding-inline:max(32px,calc((100vw - 1280px)/2)); }
 .account-page:has(.account-workspace) .brand strong { font-size:28px; }
