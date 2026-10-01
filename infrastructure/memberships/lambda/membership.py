@@ -404,7 +404,12 @@ class MembershipService:
                     and len(items) == 1 and items[0].get('quantity') == 1
                     and price_plan(items[0].get('price'), self.config))
 
-    def checkout(self, subject, email, plan):
+    def affiliate_candidate(self, token):
+        from affiliates import referral
+        candidate = referral(token, self.stripe.proxy_secret(), self.now()) if token else None
+        return {'version': 1, **(candidate or {})}
+
+    def checkout(self, subject, email, plan, referral_token=None):
         self.require_billing()
         if plan not in PRICE_AMOUNTS:
             raise ApiError(400, 'invalid_plan')
@@ -412,6 +417,7 @@ class MembershipService:
             raise ApiError(409, 'access_already_enabled')
         if price_plan(self.stripe.price(self.config.prices[plan]), self.config, require_active=True) != plan:
             raise ApiError(503, 'billing_unavailable')
+        candidate = self.affiliate_candidate(referral_token)
         with self.store.account_lock(subject, self.now()) as lease:
             account = self.store.account(subject)
             if not account.get('customerId'):
@@ -444,7 +450,7 @@ class MembershipService:
                             # still be payable, or mutate its idempotent parameters.
                             raise ApiError(409, 'billing_busy')
                         recovered = self.stripe.checkout(account['customerId'], self.config.prices[pending['plan']], subject,
-                                                         pending['key'], pending['expiresAt'])
+                                                         pending['key'], pending['expiresAt'], affiliate=pending.get('affiliate'))
                         identifier = recovered['id']
                     if identifier:
                         pending = {**pending, 'sessionId': identifier}
@@ -457,16 +463,17 @@ class MembershipService:
                             or int(session.get('expires_at', 0)) != int(pending['expiresAt'])):
                         raise ApiError(503, 'billing_unavailable')
                     if session.get('status') == 'open':
-                        if pending['plan'] == plan and int(session.get('expires_at', 0)) > self.now():
+                        if (pending['plan'] == plan and int(session.get('expires_at', 0)) > self.now()
+                                and (not candidate.get('code') or candidate == pending.get('affiliate'))):
                             return {'url': self.stripe.checkout_url(session)}
                         self.stripe.expire_checkout(session['id'])
                     if session.get('status') == 'complete' and not self.completed_checkout_ended(
                             session, subject, account['customerId']):
                         raise ApiError(409, 'payment_processing')
-            pending = {'key': secrets.token_urlsafe(24), 'plan': plan, 'expiresAt': self.now() + 3600}
+            pending = {'key': secrets.token_urlsafe(24), 'plan': plan, 'expiresAt': self.now() + 3600, 'affiliate': candidate}
             self.store.save_account(subject, {'checkout': pending}, lease, self.now())
             session = self.stripe.checkout(account['customerId'], self.config.prices[plan], subject,
-                                           pending['key'], pending['expiresAt'])
+                                           pending['key'], pending['expiresAt'], affiliate=pending.get('affiliate'))
             self.store.save_account(subject, {'checkout': {**pending, 'sessionId': session['id']}}, lease, self.now())
             return {'url': self.stripe.checkout_url(session)}
 
@@ -507,7 +514,7 @@ class MembershipService:
                     # payable; changing expiry under that key violates idempotency.
                     raise ApiError(409, 'billing_busy')
                 session = self.stripe.guest_checkout(record['customerId'], self.config.prices[record['plan']],
-                                                     proof, record['key'], int(record['expiresAt']))
+                                                     proof, record['key'], int(record['expiresAt']), affiliate=record.get('affiliate'))
                 identifier = session['id']
             else:
                 return None
@@ -546,9 +553,10 @@ class MembershipService:
             raise ApiError(409, 'purchase_not_active')
         return snapshot
 
-    def guest_checkout(self, plan, token):
+    def guest_checkout(self, plan, token, referral_token=None):
         self.require_billing()
         proof = checkout_digest(token)
+        candidate = self.affiliate_candidate(referral_token)
         if plan not in PRICE_AMOUNTS:
             raise ApiError(400, 'invalid_plan')
         if price_plan(self.stripe.price(self.config.prices[plan]), self.config, require_active=True) != plan:
@@ -563,7 +571,8 @@ class MembershipService:
                 if previous and previous.get('status') == 'complete':
                     raise ApiError(409, 'payment_already_completed')
                 if previous and previous.get('status') == 'open':
-                    if record['plan'] == plan and int(previous.get('expires_at', 0)) > self.now():
+                    if (record['plan'] == plan and int(previous.get('expires_at', 0)) > self.now()
+                            and (not candidate.get('code') or candidate == record.get('affiliate'))):
                         return {'url': self.stripe.checkout_url(previous)}
                     self.stripe.expire_checkout(previous['id'])
             if not record:
@@ -574,7 +583,7 @@ class MembershipService:
                 customer = self.stripe.create_guest_customer(proof)
                 record['customerId'] = customer['id']
                 self.store.bind_guest_customer(proof, record, lease, self.now())
-            record = {**record, 'plan': plan, 'key': secrets.token_urlsafe(24), 'expiresAt': self.now() + 3600}
+            record = {**record, 'plan': plan, 'key': secrets.token_urlsafe(24), 'expiresAt': self.now() + 3600, 'affiliate': candidate}
             record.pop('sessionId', None)
             self.store.save_guest(proof, record, lease, self.now())
             session = self.guest_session(proof, record, lease, create=True)
@@ -696,10 +705,15 @@ class MembershipService:
                                   self.stripe.webhook_secret(), self.now())
         if incoming.get('livemode') is not self.config.stripe_live:
             raise ApiError(400, 'wrong_billing_mode')
+        from affiliates import ADJUSTMENT_EVENTS, AffiliateLedger
+        if incoming.get('type') in ADJUSTMENT_EVENTS:
+            AffiliateLedger(self).handle_event(incoming)
+            return {'received': True}
         if incoming.get('type') not in EVENT_TYPES:
             return {'received': True}
         if self.store.event_seen(incoming['id']):
             return {'received': True}
+        AffiliateLedger(self).handle_event(incoming)
         obj = (incoming.get('data') or {}).get('object') or {}
         customer_id = obj.get('customer')
         if not isinstance(customer_id, str) or not re.fullmatch(r'cus_[A-Za-z0-9]+', customer_id):
@@ -793,7 +807,7 @@ class MembershipService:
             self.require_proxy(event)
             request = body(event)
             if path.endswith('/guest'):
-                return self.guest_checkout(request.get('plan'), request.get('checkoutToken'))
+                return self.guest_checkout(request.get('plan'), request.get('checkoutToken'), request.get('referralToken'))
             if path.endswith('/status'):
                 return self.guest_status(request.get('checkoutToken'))
             subject, email = self.account_identity(event)
@@ -815,7 +829,8 @@ class MembershipService:
         if path == '/v1/account':
             return self.entitlement(subject, email)
         if path == '/v1/checkout':
-            return self.checkout(subject, email, body(event).get('plan'))
+            request = body(event)
+            return self.checkout(subject, email, request.get('plan'), request.get('referralToken'))
         if path == '/v1/portal':
             return self.portal(subject)
         return self.approve_link(subject, body(event).get('userCode'))

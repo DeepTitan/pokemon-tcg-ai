@@ -205,7 +205,7 @@ class FakeStripe:
         self.calls.append('customer')
         return {'id': 'cus_new'}
 
-    def checkout(self, customer, identifier, subject, key, expires):
+    def checkout(self, customer, identifier, subject, key, expires, affiliate=None):
         if key not in self.sessions:
             self.calls.append('create_checkout')
             self.sessions[key] = {'id': 'cs_' + str(len(self.sessions)), 'status': 'open',

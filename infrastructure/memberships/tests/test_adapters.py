@@ -59,6 +59,35 @@ class AdapterTests(unittest.TestCase):
         adapters.boto3.client.reset_mock()
         adapters.boto3.resource.reset_mock()
 
+    def test_affiliate_delta_and_invoice_balance_commit_in_one_lock_checked_transaction(self):
+        store = adapters.Store('accounts', 'devices', 'owners')
+        store.table.name = 'accounts'
+        store.transact = Mock()
+        record = {'pk': 'AFFILIATE_INVOICE#in_fixture', 'invoiceId': 'in_fixture',
+                  'subscriptionId': 'sub_fixture', 'creator': 'jakeptcg', 'currency': 'usd',
+                  'commissionCents': 150, 'refundedCents': 750, 'disputeHeld': False}
+        store.save_affiliate_invoice(record['pk'], record, -150, 'lease-token', 100)
+        items = store.transact.call_args.args[0]
+        self.assertEqual(len(items), 3)
+        self.assertIn('ConditionCheck', items[0])
+        self.assertEqual(items[1]['Put']['Item']['commissionCents'], {'N': '150'})
+        self.assertEqual(items[2]['Put']['Item']['deltaCommissionCents'], {'N': '-150'})
+        self.assertEqual(items[2]['Put']['Item']['balanceCents'], {'N': '150'})
+        self.assertNotIn('email', items[2]['Put']['Item'])
+        store.save_affiliate_invoice(record['pk'], record, 0, 'lease-token', 100)
+        self.assertEqual(len(store.transact.call_args.args[0]), 2)
+
+    def test_affiliate_provider_lookups_are_read_only_scoped_and_reject_pagination(self):
+        stripe = adapters.Stripe('secret-arn', 'bpc_fixture', False)
+        stripe.request = Mock(return_value={'data': [], 'has_more': False})
+        stripe.affiliate_sessions('sub_fixture')
+        stripe.request.assert_called_with('GET', '/v1/checkout/sessions', {'subscription': 'sub_fixture', 'limit': 100})
+        stripe.affiliate_disputes('ch_fixture')
+        stripe.request.assert_called_with('GET', '/v1/disputes', {'charge': 'ch_fixture', 'limit': 100})
+        stripe.request.return_value = {'data': [], 'has_more': True}
+        with self.assertRaises(ApiError): stripe.affiliate_sessions('sub_fixture')
+        with self.assertRaises(ApiError): stripe.affiliate_disputes('ch_fixture')
+
     def test_paid_invoice_lookup_is_read_only_and_exactly_scoped(self):
         stripe = adapters.Stripe('secret-arn', 'bpc_fixture', False)
         stripe.request = Mock(return_value={'data': [{'id': 'in_paid'}], 'has_more': True})

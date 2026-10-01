@@ -25,7 +25,8 @@ def log_stripe_http_error(method, path, error):
     # Fixed categories keep resource IDs and query/customer inputs out of logs.
     routes = ((r'/v1/prices/[^/]+', 'prices_retrieve'),
               (r'/v1/customers', 'customers'), (r'/v1/subscriptions', 'subscriptions'),
-              (r'/v1/invoices', 'invoices'),
+              (r'/v1/invoices', 'invoices'), (r'/v1/invoices/[^/]+', 'invoice_retrieve'),
+              (r'/v1/charges/[^/]+', 'charge_retrieve'), (r'/v1/disputes', 'disputes'),
               (r'/v1/checkout/sessions', 'checkout_sessions'),
               (r'/v1/checkout/sessions/[^/]+', 'checkout_session_retrieve'),
               (r'/v1/checkout/sessions/[^/]+/expire', 'checkout_session_expire'),
@@ -51,7 +52,7 @@ def log_stripe_http_error(method, path, error):
                          'parameter_invalid_object', 'parameter_invalid_positive_integer',
                          'parameter_invalid_string', 'parameter_invalid_string_blank',
                          'parameter_invalid_string_empty', 'parameter_invalid_url', 'parameter_missing',
-                         'parameter_unknown', 'permission_missing', 'rate_limit', 'resource_missing',
+                         'parameter_unknown', 'permission_missing', 'more_permissions_required', 'rate_limit', 'resource_missing',
                          'secret_key_required', 'url_invalid'},
                 'param': {'customer', 'email', 'metadata', 'mode', 'client_reference_id', 'line_items',
                           'line_items[0][price]', 'line_items[0][quantity]', 'payment_method_types',
@@ -150,6 +151,24 @@ class Store:
                                     'ConditionExpression': 'attribute_not_exists(pk) OR #subject = :subject',
                                     'ExpressionAttributeNames': {'#subject': 'subject'},
                                     'ExpressionAttributeValues': self.serialized({':subject': subject})}})
+        self.transact(items)
+
+    def save_affiliate_record(self, key, record, lease, now):
+        self.transact([self.lock_check(key, lease, now), {'Put': {'TableName': self.table.name,
+                       'Item': self.serialized(record)}}])
+
+    def save_affiliate_invoice(self, key, record, delta, lease, now):
+        items = [self.lock_check(key, lease, now), {'Put': {'TableName': self.table.name,
+                  'Item': self.serialized(record)}}]
+        if delta:
+            entry = {'pk': 'AFFILIATE_ENTRY#' + record['invoiceId'] + '#' + secrets.token_hex(12),
+                     'creator': record['creator'], 'invoiceId': record['invoiceId'],
+                     'subscriptionId': record['subscriptionId'], 'recordedAt': now,
+                     'deltaCommissionCents': delta, 'balanceCents': record['commissionCents'],
+                     'currency': record['currency'], 'disputeHeld': record['disputeHeld'],
+                     'refundedCents': record['refundedCents']}
+            items.append({'Put': {'TableName': self.table.name, 'Item': self.serialized(entry),
+                                   'ConditionExpression': 'attribute_not_exists(pk)'}})
         self.transact(items)
 
     def device_link(self, device):
@@ -486,21 +505,23 @@ class Stripe:
         # coverage. Older omitted invoices cannot strengthen insufficient evidence.
         return result['data']
 
-    def checkout(self, customer, price, subject, key, expires):
+    def checkout(self, customer, price, subject, key, expires, affiliate=None):
+        from affiliates import checkout_fields
         return self.request('POST', '/v1/checkout/sessions', {
             'mode': 'subscription', 'customer': customer, 'client_reference_id': subject,
             'managed_payments[enabled]': 'false',
             'line_items[0][price]': price, 'line_items[0][quantity]': 1,
             'payment_method_types[0]': 'card', 'subscription_data[metadata][trace_subject]': subject,
             'success_url': self.account_url + '?checkout=success', 'cancel_url': self.account_url + '?checkout=cancel',
-            'expires_at': expires,
+            'expires_at': expires, **checkout_fields(affiliate),
         }, 'trace-checkout-' + key)
 
     def create_guest_customer(self, proof):
         # Checkout collects the email for this deliberately blank anonymous customer.
         return self.request('POST', '/v1/customers', {'metadata[trace_guest]': proof}, 'trace-guest-customer-' + proof)
 
-    def guest_checkout(self, customer, price, proof, key, expires):
+    def guest_checkout(self, customer, price, proof, key, expires, affiliate=None):
+        from affiliates import checkout_fields
         return self.request('POST', '/v1/checkout/sessions', {
             'mode': 'subscription', 'customer': customer, 'client_reference_id': 'guest_' + proof,
             'managed_payments[enabled]': 'false',
@@ -508,8 +529,26 @@ class Stripe:
             'metadata[trace_guest]': proof, 'metadata[trace_reservation]': key,
             'subscription_data[metadata][trace_guest]': proof, 'subscription_data[metadata][trace_reservation]': key,
             'success_url': self.account_url + '?checkout=success', 'cancel_url': self.account_url + '?checkout=cancel',
-            'expires_at': expires,
+            'expires_at': expires, **checkout_fields(affiliate),
         }, 'trace-guest-checkout-' + key)
+
+    def affiliate_invoice(self, identifier):
+        return self.request('GET', '/v1/invoices/' + identifier)
+
+    def affiliate_charge(self, identifier):
+        return self.request('GET', '/v1/charges/' + identifier)
+
+    def affiliate_sessions(self, subscription):
+        result = self.request('GET', '/v1/checkout/sessions', {'subscription': subscription, 'limit': 100})
+        if result.get('has_more') or not isinstance(result.get('data'), list):
+            raise ApiError(503, 'billing_unavailable')
+        return result['data']
+
+    def affiliate_disputes(self, charge):
+        result = self.request('GET', '/v1/disputes', {'charge': charge, 'limit': 100})
+        if result.get('has_more') or not isinstance(result.get('data'), list):
+            raise ApiError(503, 'billing_unavailable')
+        return result['data']
 
     def checkout_sessions(self, customer):
         result = self.request('GET', '/v1/checkout/sessions', {'customer': customer, 'limit': 100})

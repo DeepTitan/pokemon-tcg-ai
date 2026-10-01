@@ -84,7 +84,7 @@ class GuestStripe(FakeStripe):
             raise ApiError(503, 'billing_unavailable')
         return deepcopy(self.by_customer.get(customer, self.current if customer == 'cus_fixture' else []))
 
-    def guest_checkout(self, customer, identifier, proof, key, expires):
+    def guest_checkout(self, customer, identifier, proof, key, expires, affiliate=None):
         if key not in self.sessions:
             self.calls.append('create_guest_checkout')
             plan = next(p for p, value in CFG.prices.items() if value == identifier)
