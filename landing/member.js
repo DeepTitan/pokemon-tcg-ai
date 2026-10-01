@@ -7,6 +7,20 @@ let settling = 0;
 let authOptions = null;
 let codeRequested = false;
 let resendAfter = 0;
+let downloadPlatformChoice = null;
+
+// Guess the desktop OS only. Do not mistake iPad desktop mode for a Mac,
+// or claim that a browser can identify the Mac's processor architecture.
+function detectDownloadPlatform(client = typeof navigator === 'undefined' ? {} : navigator) {
+  const ua = client.userAgent || '';
+  const platform = client.userAgentData?.platform || client.platform || '';
+  if (client.userAgentData?.mobile || /Android|iPhone|iPad|iPod|Windows Phone/i.test(ua)
+    || (/Mac/i.test(platform + ' ' + ua) && client.maxTouchPoints > 1)) return null;
+  if (/Windows|^Win/i.test(platform) || /Windows NT/i.test(ua)) return 'windows';
+  if (/Mac/i.test(platform) || /Macintosh|Mac OS X/i.test(ua)) return 'mac';
+  return null;
+}
+
 
 function context() {
   const params = new URLSearchParams(location.search);
@@ -227,23 +241,40 @@ function renderAccount(account, purchase = { state: 'none', plan: 'none' }) {
   const canceled = new URLSearchParams(location.search).get('checkout') === 'cancel';
   const success = new URLSearchParams(location.search).get('checkout') === 'success';
   const billingText = admin ? 'All features included.' : active ? (until ? `${account.cancelAtPeriodEnd ? 'Available until' : 'Renews'} ${until}` : 'Monthly subscription') : canUseTrace ? 'No subscription needed.' : 'We could not confirm access. Try refreshing your account.';
-  const platform = typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent || '') ? 'windows' : 'mac';
-  const otherPlatform = platform === 'mac' ? 'windows' : 'mac';
+  const platform = downloadPlatformChoice || context().download || detectDownloadPlatform();
   const platformNames = { mac: 'macOS', windows: 'Windows' };
   const platformDetails = { mac: 'Apple silicon', windows: '64-bit' };
   const features = canUseTrace ? active || admin ? ['Your deck & prize insights', 'Full replay archive', 'Expanded sharing', ...(account.plan === 'supporter' ? ['Exclusive Discord access & support', 'Early access to new features & nightly releases'] : [])] : ['Automatic recording', 'Last 7 days of replays', 'Leaderboard & results', '1 replay share every 7 days'] : [];
   mount(`<div class="account-heading"><div><h1>My account</h1><p class="account-email">${esc(account.email)}</p></div><button class="text-button" id="sign-out" type="button">Sign out</button></div>${messageSlot()}
     <div class="account-workspace ${canUseTrace ? '' : 'access-unavailable'}">
-      ${canUseTrace ? `<section class="account-downloads" aria-labelledby="download-heading"><div class="download-heading"><h2 id="download-heading">Get Trace</h2><p>Download the app to automatically record your games<br class="desktop-break"> and review every turn.</p></div><div class="account-download-action"><a class="button primary account-primary-download" href="/trace/access?action=download&amp;platform=${platform}"><img src="/trace-assets/${platform === 'mac' ? 'apple' : 'windows'}.svg" alt="" />Download for ${platformNames[platform]}</a><small>${platformDetails[platform]}</small><details class="other-platforms"><summary>Other platforms</summary><a href="/trace/access?action=download&amp;platform=${otherPlatform}">Download for ${platformNames[otherPlatform]} <small>${platformDetails[otherPlatform]}</small></a></details></div><div class="account-link-app"><div><h3>Already installed?</h3><p>Use the code shown in the app to link your account.</p></div><a class="account-quiet-link" data-route href="${esc(route('connect'))}">${context().userCode ? 'Continue linking your app' : 'Link app'}</a></div></section>` : ''}
-      <section class="account-membership" aria-label="Your plan"><p class="account-section-label">Your plan</p><div class="membership-title"><h2>${memberName}</h2><span class="status-label ${!canUseTrace || account.cancelAtPeriodEnd ? 'paused' : ''}">${esc(status)}</span></div>${!admin && active ? `<p class="membership-price">${account.plan === 'supporter' ? '$39.99' : '$14.99'}<span>USD / month</span></p>` : ''}<p class="membership-detail">${esc(billingText)}</p>${features.length ? `<ul class="membership-features">${features.map((feature) => `<li>${esc(feature)}</li>`).join('')}</ul>` : ''}
+      ${canUseTrace ? `<section class="account-row account-downloads" aria-labelledby="download-heading">
+        <div class="account-row-heading"><h2 id="download-heading">Desktop app</h2><p>Download and install Trace to start tracking your games.</p></div>
+        <div class="account-download-content"><h3 id="download-title">${platform ? `Trace for ${platformNames[platform]}` : 'Choose your computer'}</h3><p id="download-detail">${platform ? platformDetails[platform] : 'Available for macOS and Windows'}</p>
+          <div class="account-download-action"><div class="platform-switch" role="group" aria-label="Download platform">${['mac', 'windows'].map(value => `<button type="button" id="platform-${value}" aria-pressed="${value === platform}"><img src="/trace-assets/${value === 'mac' ? 'apple' : 'windows'}.svg" alt="" />${platformNames[value]}</button>`).join('')}</div>
+          <a id="primary-download" class="button primary account-primary-download" ${platform ? `href="/trace/access?action=download&amp;platform=${platform}"` : 'aria-disabled="true"'}><img src="/trace-assets/account-download.svg" alt="" /><span id="download-label">${platform ? `Download for ${platformNames[platform]}` : 'Choose a platform'}</span></a></div>
+        </div></section>
+        <section class="account-row account-link-row" aria-labelledby="link-heading"><div class="account-row-heading"><h2 id="link-heading">Link your app</h2><p>Use the code shown in Trace to link your account.</p></div><a class="account-quiet-link" data-route href="${esc(route('connect'))}">${context().userCode ? 'Continue linking your app' : 'Enter code'}</a></section>` : ''}
+      <section class="account-row account-membership" aria-labelledby="plan-heading"><div class="account-row-heading"><h2 id="plan-heading">Your plan</h2><p>Manage your plan and see what’s included.</p></div><div class="membership-content"><div class="membership-title"><h3>${memberName}</h3><span class="status-label ${!canUseTrace || account.cancelAtPeriodEnd ? 'paused' : ''}">${esc(status)}</span></div>${!admin && active ? `<p class="membership-price">${account.plan === 'supporter' ? '$39.99' : '$14.99'}<span>USD / month</span></p>` : ''}${admin ? '' : `<p class="membership-detail">${esc(billingText)}</p>`}${features.length ? `<p class="membership-summary">${admin ? 'All features included' : active ? 'Deck & prize insights · Full replay archive · Expanded sharing' : '7 days of replays · Leaderboard · 1 share a week'}</p>` : ''}
       ${paidInactive ? '<p class="billing-attention">Your paid features are inactive. Check your billing to restore them.</p>' : ''}
       ${!canUseTrace ? '<p class="billing-attention">Access unavailable</p>' : ''}
       ${(!admin && hasBilling) || !canUseTrace || (success && !active) ? `<div class="membership-actions">${!admin && hasBilling ? '<button type="button" class="text-button manage-billing" id="manage-billing">Manage billing</button>' : ''}${(!canUseTrace || (success && !active)) ? '<button class="text-button" id="refresh-account" type="button">Refresh account</button>' : ''}</div>` : ''}
       ${!active && !paidInactive ? '<a class="account-quiet-link compare-plans" href="/trace#plans">Compare plans</a>' : ''}
-      </section>
+      </div></section>
     </div>
     ${unfinishedUpgrade ? `<section class="account-pending"><div><h2>Finish your upgrade</h2><p>Your ${planNames[purchase.plan]} checkout is ${purchase.state === 'expired' ? 'expired' : 'unfinished'}. ${canUseTrace ? 'You can keep using Free.' : ''}</p></div><button class="button secondary" type="button" id="resume-upgrade">Continue to Stripe</button></section>` : ''}
     ${context().plan && !active && ['none', 'canceled', 'incomplete_expired'].includes(account.status) ? `<section class="account-upgrades" aria-labelledby="upgrade-heading"><div class="upgrade-heading"><h2 id="upgrade-heading">Upgrade your plan</h2><p>USD · Monthly · Cancel anytime</p></div><div class="account-upgrade-list">${upgradeRow(context().plan)}</div></section>` : ''}`, 'My account');
+  for (const selected of ['mac', 'windows']) {
+    document.getElementById(`platform-${selected}`)?.addEventListener('click', () => {
+      downloadPlatformChoice = selected;
+      for (const value of ['mac', 'windows']) document.getElementById(`platform-${value}`).setAttribute('aria-pressed', String(value === selected));
+      const download = document.getElementById('primary-download');
+      download.href = `/trace/access?action=download&platform=${selected}`;
+      download.removeAttribute('aria-disabled');
+      document.getElementById('download-label').textContent = `Download for ${platformNames[selected]}`;
+      document.getElementById('download-title').textContent = `Trace for ${platformNames[selected]}`;
+      document.getElementById('download-detail').textContent = platformDetails[selected];
+    });
+  }
   document.getElementById('sign-out').addEventListener('click', async (event) => {
     event.currentTarget.disabled = true;
     try { await api('auth/logout', {}); email = ''; navigate('login', { userCode: null, plan: null, download: null }); }

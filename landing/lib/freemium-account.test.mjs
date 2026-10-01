@@ -10,13 +10,14 @@ const pro = { ...free, plan: 'trace', status: 'active', traceAccess: true, expir
 function browser(search = '') {
   const elements = new Map();
   const element = (id) => {
-    if (!elements.has(id)) elements.set(id, { innerHTML: '', hidden: true, textContent: '', listeners: {}, setAttribute() {}, scrollIntoView() {}, addEventListener(name, listener) { this.listeners[name] = listener; }, querySelectorAll: () => [] });
+    if (!elements.has(id)) elements.set(id, { innerHTML: '', hidden: true, textContent: '', listeners: {}, attributes: {}, setAttribute(name, value) { this.attributes[name] = value; }, removeAttribute(name) { delete this.attributes[name]; }, scrollIntoView() {}, addEventListener(name, listener) { this.listeners[name] = listener; }, querySelectorAll: () => [] });
     return elements.get(id);
   };
   const context = vm.createContext({
     document: { getElementById: element, querySelectorAll: () => [] },
     window: { scrollTo() {}, addEventListener() {} },
     location: { pathname: '/trace/account', search },
+    navigator: { userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', platform: 'MacIntel', maxTouchPoints: 0 },
     URL, URLSearchParams, setTimeout() {},
     fetch: () => new Promise(() => {}), // The tested renderer receives a normalized account directly.
   });
@@ -57,12 +58,12 @@ test('an existing signup opens explicit confirmation recovery without sending an
 test('free account offers downloads and account linking before optional upgrades', () => {
   const view = browser(); view.context.renderAccount(free);
   const html = view.html();
-  assert.match(html, /<h2>Free<\/h2>/);
+  assert.match(html, /<h3>Free<\/h3>/);
   assert.match(html, /No subscription needed/);
-  for (const platform of ['mac', 'windows']) assert.match(html, new RegExp(`platform=${platform}`));
-  assert.match(html, /data-route href="\/trace\/connect">Link app<\/a>/);
+  for (const platform of ['mac', 'windows']) assert.match(html, new RegExp(`id="platform-${platform}"`));
+  assert.match(html, /data-route href="\/trace\/connect">Enter code<\/a>/);
   assert.match(html, /Compare plans/);
-  assert.match(html, /Other platforms/);
+  assert.match(html, /Download platform/);
   assert.doesNotMatch(html, /data-checkout=|id="refresh-account"/);
   assert.doesNotMatch(html, /Opponent decklist|See the other side|No active plan|Choose a monthly plan to use Trace/i);
 });
@@ -70,7 +71,7 @@ test('free account offers downloads and account linking before optional upgrades
 test('Pro and owner accounts show access without duplicate purchase buttons', () => {
   for (const account of [pro, { ...pro, plan: 'supporter', status: 'admin', admin: true, expiresAt: null, opponentDecklists: true }]) {
     const view = browser(); view.context.renderAccount(account);
-    assert.match(view.html(), account.admin ? /<h2>Owner access<\/h2>/ : /<h2>Pro<\/h2>/);
+    assert.match(view.html(), account.admin ? /<h3>Owner access<\/h3>/ : /<h3>Pro<\/h3>/);
     assert.match(view.html(), /Download for macOS/);
     assert.doesNotMatch(view.html(), /data-checkout=/);
     if (account.admin) assert.doesNotMatch(view.html(), /id="manage-billing"/);
@@ -79,7 +80,7 @@ test('Pro and owner accounts show access without duplicate purchase buttons', ()
 
 test('overdue members retain free downloads and get billing recovery rather than another subscription', () => {
   const view = browser(); view.context.renderAccount({ ...free, plan: 'trace', status: 'past_due' });
-  assert.match(view.html(), /<h2>Free<\/h2>/);
+  assert.match(view.html(), /<h3>Free<\/h3>/);
   assert.match(view.html(), /Download for macOS/);
   assert.match(view.html(), /id="manage-billing"/);
   assert.match(view.html(), /Your paid features are inactive/);
@@ -91,7 +92,7 @@ test('backend billing-problem states retain the Free account UI and billing reco
     const view = browser();
     const plan = status === 'payment_pending' ? 'trace' : 'none';
     view.context.renderAccount(publicAccount({ ...pro, status, plan }));
-    assert.match(view.html(), /<h2>Free<\/h2>/);
+    assert.match(view.html(), /<h3>Free<\/h3>/);
     assert.match(view.html(), /Download for macOS/);
     assert.match(view.html(), /id="manage-billing"/);
     assert.match(view.html(), /Your paid features are inactive/);
@@ -102,7 +103,7 @@ test('backend billing-problem states retain the Free account UI and billing reco
 test('missing access does not display downloads or falsely label account Free', () => {
   const view = browser(); view.context.renderAccount({ ...free, capabilities: {} });
   assert.match(view.html(), /Access unavailable/);
-  assert.doesNotMatch(view.html(), /Download for macOS|<h2>Free<\/h2>/);
+  assert.doesNotMatch(view.html(), /Download for macOS|<h3>Free<\/h3>/);
 });
 
 test('a free account cannot turn the Stripe success URL into paid membership confirmation', () => {
@@ -149,13 +150,25 @@ test('account and app-link screens need no Discord activation, even with legacy 
 });
 
 
-test('Windows gets the single primary download while macOS stays in other platforms', () => {
+test('Windows gets the single primary download and the selector can switch to macOS', () => {
   const view = browser();
   view.context.navigator = { userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' };
   view.context.renderAccount(free);
   const html = view.html();
   assert.match(html, /account-primary-download[^>]+platform=windows/);
-  assert.match(html, /<details class="other-platforms">[\s\S]*platform=mac/);
+  assert.match(html, /id="platform-windows" aria-pressed="true"/);
+  view.element('platform-mac').listeners.click();
+  assert.equal(view.element('primary-download').href, '/trace/access?action=download&platform=mac');
+  assert.equal(view.element('download-label').textContent, 'Download for macOS');
+  assert.equal(view.element('download-title').textContent, 'Trace for macOS');
+  assert.equal(view.element('download-detail').textContent, 'Apple silicon');
+  assert.equal(view.element('platform-mac').attributes['aria-pressed'], 'true');
+  assert.equal(view.element('platform-windows').attributes['aria-pressed'], 'false');
+  view.context.renderAccount(free);
+  assert.match(view.html(), /account-primary-download[^>]+platform=mac/); // Preserve manual choice through account refresh.
+  view.element('platform-windows').listeners.click();
+  assert.equal(view.element('primary-download').href, '/trace/access?action=download&platform=windows');
+  assert.equal(view.element('download-detail').textContent, '64-bit');
   assert.equal((html.match(/account-primary-download/g) || []).length, 1);
 });
 
@@ -164,4 +177,45 @@ test('an explicit plan choice retains checkout without showing competing plan bu
   view.context.renderAccount(free);
   assert.match(view.html(), /data-checkout="trace"/);
   assert.doesNotMatch(view.html(), /data-checkout="supporter"/);
+});
+
+
+test('desktop detection supports browser platform hints and UA fallbacks without selecting a mobile installer', () => {
+  const view = browser();
+  const cases = [
+    [{ userAgentData: { platform: 'Windows', mobile: false } }, 'windows'],
+    [{ platform: 'Win32' }, 'windows'],
+    [{ userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }, 'windows'],
+    [{ userAgentData: { platform: 'macOS', mobile: false } }, 'mac'],
+    [{ platform: 'MacIntel', maxTouchPoints: 0 }, 'mac'],
+    [{ userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)' }, 'mac'],
+    [{ platform: 'MacIntel', maxTouchPoints: 5 }, null],
+    [{ userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)' }, null],
+    [{ userAgent: 'Mozilla/5.0 (Linux; Android 15)' }, null],
+    [{ userAgentData: { platform: 'Windows', mobile: true } }, null],
+    [{ platform: 'Linux x86_64' }, null],
+    [{}, null],
+  ];
+  for (const [client, expected] of cases) assert.equal(view.context.detectDownloadPlatform(client), expected, JSON.stringify(client));
+});
+
+test('unknown devices can choose either platform without a misleading default installer', () => {
+  const view = browser();
+  view.context.navigator = { userAgent: 'Mozilla/5.0 (Linux; Android 15)' };
+  view.context.renderAccount(free);
+  const html = view.html();
+  assert.match(html, /id="primary-download"[^>]+aria-disabled="true"/);
+  assert.doesNotMatch(html.match(/<a id="primary-download"[^>]*>/)[0], /href=/);
+  for (const os of ['mac', 'windows']) assert.match(html, new RegExp(`id="platform-${os}" aria-pressed="false"`));
+  view.element('platform-windows').listeners.click();
+  assert.equal(view.element('primary-download').href, '/trace/access?action=download&platform=windows');
+  assert.equal(view.element('download-label').textContent, 'Download for Windows');
+  assert.equal(view.element('primary-download').attributes['aria-disabled'], undefined);
+});
+
+test('an explicit installer choice is respected before automatic OS detection', () => {
+  const view = browser('?download=windows');
+  view.context.renderAccount(free);
+  assert.match(view.html(), /id="platform-windows" aria-pressed="true"/);
+  assert.match(view.html(), /account-primary-download[^>]+platform=windows/);
 });

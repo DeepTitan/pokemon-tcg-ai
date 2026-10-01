@@ -1,15 +1,12 @@
-# Trace account — option 1
+# Trace account rows with automatic platform selection
 
-final result: passed
+Visual target: selected compact-row concept, revised to keep macOS and Windows equally visible.
+Source: /Users/theisaiahw/.codex/generated_images/01a0f04b-8185-7403-b07c-7cdeb1a433b9/exec-b0939aad-3251-4b0e-a66e-0ec055c962f9.png
 
-Source: /Users/theisaiahw/.codex/generated_images/01a0edea-ae7a-7f60-8c24-b982a69bfd6e/exec-cc70d0a9-0e9a-4601-9ff4-cb86ee0194d9.png
-Implementation: http://127.0.0.1:5195/trace/account (Free fixture).
-Desktop evidence: /private/tmp/quiet-account-desktop-v2.png, 1487 × 1058.
+Implemented locally: compact account rows, lighter UI typography, always-visible platform buttons, one matching installer link, automatic desktop OS selection, explicit neutral choice for phones/unknown systems, and manual overrides retained during account refresh.
 
-Compared source and implementation together at the same desktop size and Free state.
-Initial P2 differences: narrow header and footer, undersized primary action, insufficient display hierarchy, missing feature icons.
-Fixed: aligned full-width header/footer, matching 414px primary button, heavier Nunito headings, official Phosphor check icons.
-Second comparison: no remaining P0/P1/P2 issues. Structure, cream/navy/yellow palette, single primary action, quiet links and plan summary match.
-P3: retained production footer links and accurate replay copy rather than mock text; source illustrative font rendering differs slightly.
+Verification: 62 account, checkout, and membership tests pass. Platform cases cover Windows UA and platform hints, macOS, iPad desktop mode, iPhone, Android, Linux/unknown, explicit installer query, and manual switching in both directions. Syntax and whitespace checks pass. The existing local fixture server is running on port 5195.
 
-Mobile inspected at 390 × 844: single column, no horizontal overflow, primary button fits. Other platforms expands to Windows download; Link app reaches explicit code confirmation and Cancel returns. Owner and paid states use existing entitlement logic. Billing recovery and explicitly selected-plan checkout remain available. No payment or live app was started.
+Visual comparison remains unavailable: the browser tool previously rejected access to this local preview under its URL security policy. No alternate browser mechanism was used. No desktop/mobile screenshot comparison or visual pass is claimed. The user reviewed the running local preview and explicitly approved production release on September 30, 2026 ("looks great lets ship it"). This approval supersedes the automated visual gate for this release; it does not constitute an automated screenshot comparison.
+
+final result: user-approved for release; automated visual comparison blocked
