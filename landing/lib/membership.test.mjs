@@ -6,9 +6,9 @@ const ORIGIN = 'https://victoryroad.app';
 const access = 'private.access.token';
 const refresh = 'private.refresh.token';
 const cookies = `${ACCESS_COOKIE}=${access}; ${REFRESH_COOKIE}=${refresh}`;
-const freeCapabilities = { recordMatches: true, leaderboard: true, recentReplayDays: 7, fullHistory: false, expandedSharing: false, opponentDecklists: false, freeSharesPerWindow: 1, shareWindowDays: 7 };
+const freeCapabilities = { recordMatches: true, leaderboard: true, recentReplayDays: 7, fullHistory: false, expandedSharing: false, opponentDecklists: true, freeSharesPerWindow: 1, shareWindowDays: 7 };
 const account = { email: 'member@example.test', plan: 'supporter', traceAccess: true, opponentDecklists: true, admin: false, status: 'active', expiresAt: '2099-01-01T00:00:00Z', cancelAtPeriodEnd: false, capabilities: { ...freeCapabilities, fullHistory: true, expandedSharing: true, opponentDecklists: true } };
-const freeAccount = { ...account, plan: 'none', status: 'none', traceAccess: false, opponentDecklists: false, expiresAt: null, capabilities: freeCapabilities };
+const freeAccount = { ...account, plan: 'none', status: 'none', traceAccess: false, opponentDecklists: true, expiresAt: null, capabilities: freeCapabilities };
 const session = { accessToken: access, refreshToken: refresh, expiresIn: 3600 };
 const response = () => ({ statusCode: 200, headers: {}, setHeader(key, value) { this.headers[key.toLowerCase()] = value; }, end(value = '') { this.body = value; } });
 async function invoke(action, { method = action === 'account' ? 'GET' : 'POST', headers = {}, body = {}, service, origin = ORIGIN } = {}) {
@@ -80,16 +80,18 @@ test('public action response redaction and field allowlists apply even to succes
   assert.deepEqual(sent, { email: 'member@example.test', password: 'SafeTestPassword!2' });
   assert.deepEqual(parsed(result), { ok: true });
   const details = await invoke('account', { service: { configured: true, call: async () => ({ status: 200, body: { ...account, accessToken: 'secret', stripeCustomerId: 'private', userId: 'private' } }) } });
-  assert.deepEqual(parsed(details), { ...account, opponentDecklists: false, capabilities: { ...account.capabilities, opponentDecklists: false } });
+  assert.deepEqual(parsed(details), account);
 });
 
-test('missing, malformed and unknown permissions fail closed', () => {
+test('paid permissions fail closed while post-match deck study is Free', () => {
   for (const value of [null, {}, { ...account, plan: 'super-admin' }, { ...account, status: undefined }]) assert.equal(publicAccount(value), null);
   for (const override of [{ plan: 'none' }, { status: 'trialing' }, { status: 'past_due' }, { status: 'unknown' }, { expiresAt: null }, { expiresAt: '2020-01-01T00:00:00Z' }, { status: 'admin', admin: true, plan: 'trace' }, { traceAccess: 'true' }, { status: 'active', admin: true, plan: 'none' }]) assert.equal(publicAccount({ ...account, ...override }).traceAccess, false);
-  assert.equal(publicAccount(account).opponentDecklists, false);
-  assert.equal(publicAccount(account).capabilities.opponentDecklists, false);
-  assert.equal(publicAccount({ ...account, plan: 'trace' }).opponentDecklists, false);
-  assert.equal(publicAccount({ ...account, opponentDecklists: 'true' }).opponentDecklists, false);
+  assert.equal(publicAccount({ ...account, status: 'unknown' }).opponentDecklists, false);
+  assert.equal(publicAccount({ ...freeAccount, opponentDecklists: false, capabilities: { ...freeCapabilities, opponentDecklists: false } }).opponentDecklists, true, 'old service flags do not paywall Free deck study');
+  assert.equal(publicAccount(account).opponentDecklists, true);
+  assert.equal(publicAccount(account).capabilities.opponentDecklists, true);
+  assert.equal(publicAccount({ ...account, plan: 'trace' }).opponentDecklists, true);
+  assert.equal(publicAccount({ ...account, opponentDecklists: 'true' }).opponentDecklists, true);
   assert.deepEqual(publicAccount({ ...account, status: 'admin', admin: true, expiresAt: null }), { ...account, status: 'admin', admin: true, expiresAt: null });
 });
 
@@ -98,7 +100,7 @@ test('recognized billing problems preserve Free downloads without granting paid 
     const supplied = { ...account, status, plan: status === 'payment_pending' ? 'supporter' : 'none' };
     const normalized = publicAccount(supplied);
     assert.equal(normalized.traceAccess, false);
-    assert.equal(normalized.opponentDecklists, false);
+    assert.equal(normalized.opponentDecklists, true);
     assert.equal(normalized.admin, false);
     assert.deepEqual(normalized.capabilities, freeCapabilities);
     for (const platform of ['mac', 'windows']) {
@@ -236,7 +238,7 @@ test('verified free accounts download without checkout and never gain paid capab
   assert.deepEqual(publicAccount(freeAccount), freeAccount);
   const forged = publicAccount({ ...freeAccount, capabilities: { ...account.capabilities } });
   assert.equal(forged.traceAccess, false);
-  for (const name of ['fullHistory', 'expandedSharing', 'opponentDecklists']) assert.equal(forged.capabilities[name], false);
+  for (const name of ['fullHistory', 'expandedSharing']) assert.equal(forged.capabilities[name], false);
   for (const platform of ['mac', 'windows']) {
     const result = response();
     const calls = [];

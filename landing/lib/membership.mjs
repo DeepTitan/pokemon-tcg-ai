@@ -90,7 +90,7 @@ export function publicAccount(value) {
   const recordMatches = knownStatus && supplied.recordMatches === true;
   return {
     email: value.email, plan: value.plan, status: value.status.slice(0, 40), admin,
-    traceAccess, opponentDecklists: traceAccess && admin && value.opponentDecklists === true,
+    traceAccess, opponentDecklists: recordMatches,
     expiresAt: typeof value.expiresAt === 'string' && Number.isFinite(Date.parse(value.expiresAt)) ? value.expiresAt : null,
     cancelAtPeriodEnd: value.cancelAtPeriodEnd === true,
     capabilities: {
@@ -98,7 +98,7 @@ export function publicAccount(value) {
       recentReplayDays: recordMatches && supplied.recentReplayDays === 7 ? 7 : 0,
       fullHistory: traceAccess && supplied.fullHistory === true,
       expandedSharing: traceAccess && supplied.expandedSharing === true,
-      opponentDecklists: traceAccess && admin && supplied.opponentDecklists === true,
+      opponentDecklists: recordMatches,
       freeSharesPerWindow: recordMatches && supplied.freeSharesPerWindow === 1 ? 1 : 0,
       shareWindowDays: recordMatches && supplied.shareWindowDays === 7 ? 7 : 0,
     },
