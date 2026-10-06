@@ -18,7 +18,7 @@ SUBJECT = '00000000-0000-0000-0000-000000000002'
 
 def free():
     return {'linked': False, 'plan': 'none', 'status': 'none', 'traceAccess': False,
-            'opponentDecklists': False, 'admin': False, 'capabilities': deepcopy(smoke.FREE)}
+            'opponentDecklists': True, 'admin': False, 'capabilities': deepcopy(smoke.FREE)}
 
 
 def supporter():

@@ -41,7 +41,7 @@ class PaidInvoiceTests(unittest.TestCase):
         account = MembershipService(CFG, store, FakeCognito(), stripe, lambda: NOW).handle(request('account'))
         self.assertEqual(account['status'], 'payment_pending')
         self.assertFalse(account['traceAccess'])
-        self.assertFalse(account['opponentDecklists'])
+        self.assertTrue(account['opponentDecklists'])
         self.assertFalse(account['capabilities']['fullHistory'])
         self.assertTrue(account['capabilities']['recordMatches'])
 
@@ -79,8 +79,8 @@ class PaidInvoiceTests(unittest.TestCase):
                 self.assertTrue(account['traceAccess'])
                 self.assertTrue(account['capabilities']['fullHistory'])
                 self.assertTrue(account['capabilities']['expandedSharing'])
-                self.assertFalse(account['opponentDecklists'])
-                self.assertFalse(account['capabilities']['opponentDecklists'])
+                self.assertTrue(account['opponentDecklists'])
+                self.assertTrue(account['capabilities']['opponentDecklists'])
                 self.assertEqual(store.accounts[USER]['snapshot']['expiresAt'], sub['current_period_end'])
 
     def test_current_higher_tier_cannot_use_previous_pro_payment(self):

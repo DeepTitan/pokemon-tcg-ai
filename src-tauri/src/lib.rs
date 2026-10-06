@@ -482,11 +482,9 @@ async fn load_opponent_decklist(
     storage: tauri::State<'_, storage::MatchStorage>,
     match_id: String,
 ) -> Result<Value, String> {
-    if !membership.refresh(&cloud_sync).await.opponent_decklists {
-        return Err(
-            "Opponent decklists are restricted to the owner account.".into(),
-        );
-    }
+    // Free post-match study follows the same archive window as the replay.
+    // Recent matches do not require a network request or linked membership.
+    verify_replay_access(&storage, &membership, &cloud_sync, &match_id).await?;
     let storage = storage.inner().clone();
     tauri::async_runtime::spawn_blocking(move || storage.match_access(&match_id)?.opponent_deck())
         .await

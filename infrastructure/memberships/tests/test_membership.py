@@ -250,7 +250,7 @@ class MembershipTests(unittest.TestCase):
     def test_free_capabilities_for_unlinked_and_inactive_accounts(self):
         expected = {'recordMatches': True, 'leaderboard': True, 'recentReplayDays': 7,
                     'freeSharesPerWindow': 1, 'shareWindowDays': 7,
-                    'fullHistory': False, 'expandedSharing': False, 'opponentDecklists': False}
+                    'fullHistory': False, 'expandedSharing': False, 'opponentDecklists': True}
         unlinked = self.service.handle(request('devices/status', device=True))
         self.assertFalse(unlinked['linked'])
         self.assertFalse(unlinked['traceAccess'])
@@ -291,7 +291,7 @@ class MembershipTests(unittest.TestCase):
             self.assertEqual(caps['recentReplayDays'], 7)
             self.assertTrue(caps['fullHistory'])
             self.assertTrue(caps['expandedSharing'])
-            self.assertFalse(caps['opponentDecklists'])
+            self.assertTrue(caps['opponentDecklists'])
         self.store.owners[OWNER] = True
         owner = self.service.entitlement(OWNER)
         self.assertTrue(owner['capabilities']['opponentDecklists'])
@@ -303,13 +303,13 @@ class MembershipTests(unittest.TestCase):
     def test_paid_supporter_and_trace_permissions(self):
         account = self.service.handle(request('account'))
         self.assertTrue(account['traceAccess'])
-        self.assertFalse(account['opponentDecklists'])
+        self.assertTrue(account['opponentDecklists'])
         self.assertEqual(account['status'], 'active')
         self.stripe.current = [subscription('trace')]
         self.clock += 301
         account = self.service.handle(request('account'))
         self.assertTrue(account['traceAccess'])
-        self.assertFalse(account['opponentDecklists'])
+        self.assertTrue(account['opponentDecklists'])
 
     def test_trial_unpaid_past_due_paused_and_expired_deny(self):
         for status in ['trialing', 'past_due', 'unpaid', 'paused', 'incomplete', 'canceled']:
@@ -590,7 +590,7 @@ class MembershipTests(unittest.TestCase):
         self.service.handle(request('devices/link/approve', 'POST', {'userCode': started['userCode']}))
         after = self.service.handle(request('devices/status', device=True))
         self.assertTrue(after['linked'])
-        self.assertFalse(after['opponentDecklists'])
+        self.assertTrue(after['opponentDecklists'])
         self.assert_error('invalid_code', lambda: self.service.approve_link(OWNER, started['userCode']))
         self.assert_error('device_already_linked', lambda: self.service.start_link(DEVICE, digest('capture-secret')))
         unlinked = self.service.handle(request('devices/unlink', 'POST', device=True))

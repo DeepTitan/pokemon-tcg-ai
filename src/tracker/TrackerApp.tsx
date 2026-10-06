@@ -1546,12 +1546,12 @@ export default function TrackerApp() {
   }, [selectedReview?.id, resolveCardsForPayload]);
   useEffect(() => { setInspector(null); }, [membership?.traceAccess, membership?.opponentDecklists]);
   const openStudyUpgrade = () => { setStudyZone('decklist'); setShowStudyUpgrade(true); };
-  const ownerDeckAccess = Boolean(!sharedMode && membership?.admin && membership?.status === 'admin' && membership?.plan === 'supporter' && membership?.opponentDecklists);
+  const canViewOpponentDeck = isTauri() && !sharedMode;
   const opponentDeckAccess = {
-    visible: ownerDeckAccess,
-    loadDeck: isTauri() && ownerDeckAccess && selectedReview?.matchCompleted ? loadSelectedOpponentDeck : undefined,
+    visible: canViewOpponentDeck,
+    loadDeck: canViewOpponentDeck && selectedReview?.matchCompleted ? loadSelectedOpponentDeck : undefined,
     unavailableReason: !selectedReview?.matchCompleted ? 'Available after Trace records the match result.' : 'Decklist not available',
-    accessKey: `${selectedReview?.id}:${membership?.email}:${ownerDeckAccess}:${selectedReview?.matchCompleted}`,
+    accessKey: `${selectedReview?.id}:${canViewOpponentDeck}:${selectedReview?.matchCompleted}`,
   };
   const updateNotice = <UpdateNotice matchInProgress={environment.clientRunning} settingsOpen={showSettings} />;
   const accountSettings = <MembershipSettings status={membership} onRefresh={refreshMembership} onChange={setMembership} />;

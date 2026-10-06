@@ -69,12 +69,12 @@ def iso_timestamp(value):
     return dt.datetime.fromtimestamp(int(value), dt.timezone.utc).isoformat().replace('+00:00', 'Z')
 
 
-def capabilities(paid=False, owner=False):
-    """Free recording never depends on billing, linking, or subscription status."""
+def capabilities(paid=False):
+    """Free features never depend on billing, linking, or subscription status."""
     return {'recordMatches': True, 'leaderboard': True, 'recentReplayDays': 7,
             'freeSharesPerWindow': 1, 'shareWindowDays': 7,
             'fullHistory': bool(paid), 'expandedSharing': bool(paid),
-            'opponentDecklists': bool(paid and owner)}
+            'opponentDecklists': True}
 
 
 def headers(event):
@@ -348,7 +348,7 @@ class MembershipService:
             return {'email': email or account.get('email'), 'plan': 'supporter', 'traceAccess': True,
                     'opponentDecklists': True, 'admin': True, 'status': 'admin',
                     'expiresAt': None, 'cancelAtPeriodEnd': False,
-                    'capabilities': capabilities(True, True)}
+                    'capabilities': capabilities(True)}
         # Webhooks normally keep this fresh. Reads repair missed events; stale/failed
         # reconciliation never continues granting paid access from an old snapshot.
         if account and account.get('customerId') and self.config.billing_enabled and (
@@ -364,7 +364,7 @@ class MembershipService:
                    and now - int(snapshot.get('syncedAt', 0)) <= 300)
         allowed = bool(current and plan in PRICE_AMOUNTS and status == 'active' and expires > now)
         return {'email': email or (account or {}).get('email'), 'plan': plan if plan in PRICE_AMOUNTS else 'none',
-                'traceAccess': allowed, 'opponentDecklists': False, 'admin': False,
+                'traceAccess': allowed, 'opponentDecklists': True, 'admin': False,
                 'status': status if current else 'none', 'expiresAt': iso_timestamp(expires) if expires else None,
                 'cancelAtPeriodEnd': snapshot.get('cancelAtPeriodEnd') is True,
                 'capabilities': capabilities(allowed)}

@@ -276,7 +276,7 @@ class GuestCheckoutTests(unittest.TestCase):
         self.assertEqual(result, {'claimed': True})
         self.assertEqual(self.store.customers[session['customer']], USER)
         self.assertNotIn('cus_fixture', self.store.customers)
-        self.assertFalse(self.service.entitlement(USER)['opponentDecklists'])
+        self.assertTrue(self.service.entitlement(USER)['opponentDecklists'])
         self.assertEqual(self.service.handle(self.event('claim')), {'claimed': True})
         self.assertEqual(self.service.guest_status(TOKEN)['state'], 'claimed')
         self.assert_error('purchase_already_claimed', lambda: self.service.claim_checkout(OWNER, 'member@example.test', TOKEN))

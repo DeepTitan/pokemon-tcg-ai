@@ -2,9 +2,9 @@
 
 ## Agreed behavior
 
-- **Free:** continuous capture, leaderboard eligibility, full replays from the last seven days, and one new replay share per installation per rolling seven days. This is ongoing free access, not a seven-day recording trial.
+- **Free:** continuous capture, leaderboard eligibility, full replays from the last seven days, post-match opponent decklists, and one new replay share per installation per rolling seven days. This is ongoing free access, not a seven-day recording trial.
 - **Pro:** USD $14.99/month for full archive access and expanded sharing. Internal plan ID remains `trace`.
-- **Supporters Club:** USD $39.99/month, including Pro and post-match opponent deck study. Full opponent starting lists require authoritative match-end evidence; closing the client or an inferred winner cannot unlock them.
+- **Supporters Club:** USD $39.99/month, including Pro, exclusive Discord access/support, and early features/nightly releases. Full opponent starting lists require authoritative match-end evidence; closing the client or an inferred winner cannot unlock them.
 - Subscription status never filters rating events, deletes captures or stops recording. The next desktop patch applies the seven-day replay window to existing local games too, while keeping their summaries visible and all original data saved. Existing public links remain accessible.
 - No Discord account or community join is required for signup, checkout, download, device linking or deployment.
 - One verified owner may bypass billing through a pinned Cognito subject and separate database switch. This grants product access, not AWS/billing administration, and never bypasses match-end evidence.

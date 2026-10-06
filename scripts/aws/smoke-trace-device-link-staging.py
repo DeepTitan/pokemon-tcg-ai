@@ -38,7 +38,7 @@ WEB = 'https://trace-memberships-staging-deeptitan-6729s-projects.vercel.app'
 CHANNEL_HELPER = Path(__file__).resolve().parents[3] / 'trace-memberships-web-20260927/scripts/smoke-trace-member-purchase-staging.py'
 FREE = {'recordMatches': True, 'leaderboard': True, 'recentReplayDays': 7,
         'freeSharesPerWindow': 1, 'shareWindowDays': 7,
-        'fullHistory': False, 'expandedSharing': False, 'opponentDecklists': False}
+        'fullHistory': False, 'expandedSharing': False, 'opponentDecklists': True}
 SUPPORTER = {**FREE, 'fullHistory': True, 'expandedSharing': True, 'opponentDecklists': True}
 
 
@@ -73,7 +73,7 @@ def validate_stack(stack, name):
 
 def assert_free(status):
     require(status.get('linked') is False and status.get('plan') == 'none' and status.get('status') == 'none'
-            and status.get('traceAccess') is False and status.get('opponentDecklists') is False
+            and status.get('traceAccess') is False and status.get('opponentDecklists') is True
             and status.get('admin') is False and status.get('capabilities') == FREE, 'exact unlinked Free entitlement required')
 
 

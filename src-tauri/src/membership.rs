@@ -27,7 +27,7 @@ pub struct Capabilities {
 impl Default for Capabilities {
     fn default() -> Self {
         Self { record_matches: true, leaderboard: true, recent_replay_days: 7,
-            full_history: false, expanded_sharing: false, opponent_decklists: false,
+            full_history: false, expanded_sharing: false, opponent_decklists: true,
             free_shares_per_window: 1, share_window_days: 7 }
     }
 }
@@ -53,7 +53,7 @@ impl MembershipStatus {
             email: None,
             plan: "none".into(),
             trace_access: false,
-            opponent_decklists: false,
+            opponent_decklists: true,
             admin: false,
             status: status.into(),
             expires_at: None,
@@ -83,7 +83,9 @@ impl MembershipStatus {
         let paid = self.paid_access_at(now);
         self.admin = owner;
         self.trace_access &= owner || paid;
-        self.opponent_decklists &= self.trace_access && owner;
+        // Post-match opponent decklists are Free, including offline/unlinked use.
+        // Native stored match-end evidence controls when a list can be released.
+        self.opponent_decklists = true;
         self.capabilities = Capabilities {
             full_history: self.trace_access && self.capabilities.full_history,
             expanded_sharing: self.trace_access && self.capabilities.expanded_sharing,
@@ -265,7 +267,7 @@ mod tests {
     }
     #[test]
     fn strict_entitlements_and_admin() {
-        assert!(!active().validated().opponent_decklists);
+        assert!(active().validated().opponent_decklists);
         for status in ["trialing", "past_due", "canceled", "unknown"] {
             let mut value = active();
             value.status = status.into();
@@ -273,7 +275,7 @@ mod tests {
         }
         let mut value = active();
         value.plan = "supporter".into();
-        assert!(!value.clone().validated().opponent_decklists);
+        assert!(value.clone().validated().opponent_decklists);
         value.admin = true;
         assert!(!value.clone().validated().trace_access);
         value.plan = "supporter".into();
@@ -292,7 +294,8 @@ mod tests {
             assert_eq!(status.capabilities.free_shares_per_window, 1);
             assert!(!status.capabilities.full_history);
             assert!(!status.capabilities.expanded_sharing);
-            assert!(!status.opponent_decklists);
+            assert!(status.opponent_decklists);
+            assert!(status.capabilities.opponent_decklists);
         }
         let mut invalid = active();
         invalid.status = "unknown".into();
@@ -302,6 +305,18 @@ mod tests {
         assert!(!invalid.capabilities.full_history);
         assert!(invalid.capabilities.record_matches);
         assert_eq!(invalid.capabilities.recent_replay_days, 7);
+    }
+    #[test]
+    fn older_service_flags_cannot_remove_free_post_match_deck_study() {
+        let mut status = MembershipStatus::denied("unavailable");
+        status.opponent_decklists = false;
+        status.capabilities.opponent_decklists = false;
+        let status = status.validated();
+        assert!(status.opponent_decklists);
+        assert!(status.capabilities.opponent_decklists);
+        assert!(!status.trace_access);
+        assert!(!status.capabilities.full_history);
+        assert!(!status.capabilities.expanded_sharing);
     }
     #[test]
     fn paid_history_expires_without_affecting_free_capabilities() {
