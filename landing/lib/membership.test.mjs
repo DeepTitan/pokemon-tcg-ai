@@ -83,7 +83,7 @@ test('public action response redaction and field allowlists apply even to succes
   assert.deepEqual(parsed(details), account);
 });
 
-test('paid permissions fail closed while post-match deck study is Free', () => {
+test('paid permissions fail closed while deck study is Free', () => {
   for (const value of [null, {}, { ...account, plan: 'super-admin' }, { ...account, status: undefined }]) assert.equal(publicAccount(value), null);
   for (const override of [{ plan: 'none' }, { status: 'trialing' }, { status: 'past_due' }, { status: 'unknown' }, { expiresAt: null }, { expiresAt: '2020-01-01T00:00:00Z' }, { status: 'admin', admin: true, plan: 'trace' }, { traceAccess: 'true' }, { status: 'active', admin: true, plan: 'none' }]) assert.equal(publicAccount({ ...account, ...override }).traceAccess, false);
   assert.equal(publicAccount({ ...account, status: 'unknown' }).opponentDecklists, false);

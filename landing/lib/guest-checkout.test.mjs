@@ -165,7 +165,7 @@ test('free plan starts signup while paid plan buttons still directly open Stripe
   assert.match(html, /href="\/trace\/signup">Start free/);
   assert.match(html, /<h3>Free<\/h3>/); assert.match(html, /<h3>Pro<\/h3>/);
   assert.match(html, /Last 7 days/); assert.match(html, /Full archive/);
-  assert.match(html, /Exclusive Discord access/); assert.match(html, /nightly releases/); assert.match(html, /Post-match deck study/); assert.doesNotMatch(html, /opponent decklist/i);
+  assert.match(html, /Exclusive Discord access/); assert.match(html, /nightly releases/); assert.match(html, /Deck study/); assert.doesNotMatch(html, /opponent decklist/i);
 });
 
 test('two browser tabs serialize prepare and checkout under the same Web Lock; unsupported browsers do not start requests', async () => {
