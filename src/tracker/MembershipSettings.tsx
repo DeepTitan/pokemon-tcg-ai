@@ -27,7 +27,7 @@ export function MembershipSettings({ status, onRefresh, onChange }: {
       : status.traceAccess ? status.admin ? 'Owner access' : status.plan === 'supporter' ? 'Supporters Club' : 'Trace Pro'
       : 'Trace Free'}</p>
     <p>Recording, leaderboards and your last 7 days of replays are free.</p>
-    <p>Post-match deck study is included for everyone.</p>
+    <p>Deck study is included for everyone.</p>
     {status?.capabilities?.fullHistory
       ? <p>Full replay history and unlimited sharing are included.</p>
       : <><p>Share 1 new replay every 7 days. Trace Pro adds full history and unlimited sharing.</p><p>Older matches stay saved. Upgrade to replay them anytime.</p></>}

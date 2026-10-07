@@ -133,11 +133,6 @@ impl MatchAccess {
     }
 
     pub fn opponent_deck(&self) -> Result<Value, String> {
-        if !self.completed {
-            return Err(
-                "The opponent’s decklist unlocks after Trace records the match result.".into(),
-            );
-        }
         let local = self
             .local_player_id
             .as_deref()
@@ -508,7 +503,8 @@ mod tests {
             ]}}}]})).to_string();
         assert!(review.contains("Own hand"));
         assert!(!review.contains("SECRET"));
-        assert!(access.opponent_deck().is_err(), "identity recovery must not unlock a live opponent list");
+        assert!(!access.completed);
+        assert_eq!(access.opponent_deck().unwrap()["playerId"], "other");
     }
 
     #[test]
@@ -517,16 +513,21 @@ mod tests {
         let mut server = start();
         server.account_id = Some("SERVER".into());
         access.observe(&server);
+        assert!(access.opponent_deck().is_err(), "a captured list still requires verified local identity");
         access.observe(&operation(json!({"operationNumber": 2})));
         assert_eq!(access.local_player_id.as_deref(), Some("local"));
         assert_eq!(access.local_player_name.as_deref(), Some("You"));
+        assert!(!access.completed);
+        assert_eq!(access.opponent_deck().unwrap()["playerId"], "other");
     }
 
     #[test]
-    fn inventory_is_hidden_until_native_result_and_never_in_normal_projection() {
+    fn captured_opponent_list_is_available_live_but_never_in_normal_projection() {
         let mut access = MatchAccess::default();
         access.observe(&start());
-        assert!(access.opponent_deck().is_err());
+        assert!(!access.completed);
+        let live_deck = access.opponent_deck().unwrap();
+        assert!(live_deck.to_string().contains("secret_card"));
         let projected = serde_json::to_string(&access.project_operation(start())).unwrap();
         assert!(!projected.contains("secret_card"));
         assert!(projected.contains("own_card"));
@@ -534,15 +535,13 @@ mod tests {
         access.observe(&operation(
             json!({"winner":1,"resultReason":"local-client-closed"}),
         ));
-        assert!(access.opponent_deck().is_err());
+        assert!(!access.completed);
+        assert_eq!(access.opponent_deck().unwrap(), live_deck);
         access.observe(&operation(
             json!({"modifications":[{"$type":"Game.EndGameModification, Game", "winner":2}]}),
         ));
-        assert!(access
-            .opponent_deck()
-            .unwrap()
-            .to_string()
-            .contains("secret_card"));
+        assert!(access.completed);
+        assert_eq!(access.opponent_deck().unwrap(), live_deck);
         let forged = access.project_review(json!({"localPlayer":"Opponent","decklists":access.decks,"winner":"Opponent", "turns":[]}));
         assert!(!forged.to_string().contains("secret_card"));
         assert_eq!(forged["matchCompleted"], true);
@@ -569,6 +568,20 @@ mod tests {
         assert!(!terminal(
             &json!({"$type":"EndGameModification","winner":0})
         ));
+    }
+    #[test]
+    fn incomplete_or_ambiguous_live_decklists_are_unavailable() {
+        let mut access = MatchAccess::default();
+        access.observe(&operation(json!({"players":[
+            {"playerId":"local","playerName":"You","deckInfo":{"cards":{"own_card":60}}},
+            {"playerId":"other","playerName":"Opponent","deckInfo":{"cards":{"secret_card":59}}}
+        ]})));
+        assert!(!access.completed);
+        assert!(access.opponent_deck().is_err());
+        access.observe(&start());
+        assert_eq!(access.opponent_deck().unwrap()["playerId"], "other");
+        access.observe(&operation(json!({"playerId":"extra","playerName":"Unknown","deckInfo":{"cards":{"extra_card":60}}})));
+        assert!(access.opponent_deck().is_err());
     }
     #[test]
     fn legacy_review_hides_inventory_and_hidden_zone_art_but_keeps_public_cards() {

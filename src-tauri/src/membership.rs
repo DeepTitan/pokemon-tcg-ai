@@ -83,7 +83,7 @@ impl MembershipStatus {
         let paid = self.paid_access_at(now);
         self.admin = owner;
         self.trace_access &= owner || paid;
-        // Post-match opponent decklists are Free, including offline/unlinked use.
+        // Captured opponent decklists are Free, including offline/unlinked use.
         // Native stored match-end evidence controls when a list can be released.
         self.opponent_decklists = true;
         self.capabilities = Capabilities {
@@ -307,7 +307,7 @@ mod tests {
         assert_eq!(invalid.capabilities.recent_replay_days, 7);
     }
     #[test]
-    fn older_service_flags_cannot_remove_free_post_match_deck_study() {
+    fn older_service_flags_cannot_remove_free_deck_study() {
         let mut status = MembershipStatus::denied("unavailable");
         status.opponent_decklists = false;
         status.capabilities.opponent_decklists = false;

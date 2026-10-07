@@ -1511,11 +1511,11 @@ mod tests {
                 .unwrap()
                 .contains("secret_card")
         );
-        assert!(storage
-            .match_access("live-match-1")
-            .unwrap()
-            .opponent_deck()
-            .is_err());
+        let live_access = storage.match_access("live-match-1").unwrap();
+        assert!(!live_access.completed);
+        assert!(!storage.replay_requires_pro("live-match-1").unwrap());
+        let live_deck = live_access.opponent_deck().unwrap();
+        assert_eq!(live_deck["playerId"], "other");
         assert!(storage
             .match_access("missing")
             .unwrap()
@@ -1528,6 +1528,7 @@ mod tests {
             .execute("DELETE FROM match_access", [])
             .unwrap();
         assert_eq!(storage.match_access("live-match-1").unwrap().decks.len(), 2);
+        assert_eq!(storage.match_access("live-match-1").unwrap().opponent_deck().unwrap(), live_deck);
         let mut end = operation();
         end.message_index = Some(8);
         end.operation = json!({"modifications":[{"$type":"EndGameModification","winner":1}]});

@@ -29,6 +29,7 @@ use std::path::Path;
 use std::process::Command;
 use std::sync::Arc;
 use tauri::Manager;
+use tauri_plugin_clipboard_manager::ClipboardExt;
 
 #[cfg(target_os = "windows")]
 fn hidden_windows_command(program: &str) -> Command {
@@ -482,7 +483,7 @@ async fn load_opponent_decklist(
     storage: tauri::State<'_, storage::MatchStorage>,
     match_id: String,
 ) -> Result<Value, String> {
-    // Free post-match study follows the same archive window as the replay.
+    // Free captured decklists follow the same archive window as the replay.
     // Recent matches do not require a network request or linked membership.
     verify_replay_access(&storage, &membership, &cloud_sync, &match_id).await?;
     let storage = storage.inner().clone();
@@ -536,11 +537,17 @@ fn stop_tracking(app: tauri::AppHandle) -> CaptureStatus {
     capture::stop(&app)
 }
 
+#[tauri::command]
+fn write_clipboard_text(app: tauri::AppHandle, text: String) -> Result<(), String> {
+    app.clipboard().write_text(text).map_err(|error| error.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut builder = tauri::Builder::default();
     #[cfg(desktop)]
     {
+        builder = builder.plugin(tauri_plugin_clipboard_manager::init());
         builder = builder.plugin(tauri_plugin_process::init());
         builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             if let Some(window) = app.get_webview_window("main") {
@@ -610,6 +617,7 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            write_clipboard_text,
             open_leaderboard,
             membership_status,
             open_membership_account,

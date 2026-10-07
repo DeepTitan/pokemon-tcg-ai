@@ -18,6 +18,12 @@ export function isTauri(): boolean {
   return Boolean(window.__TAURI_INTERNALS__);
 }
 
+export async function writeClipboardText(text: string): Promise<void> {
+  // Webview clipboard access can lose user activation while Share waits on the network.
+  if (isTauri()) return invoke<void>('write_clipboard_text', { text });
+  await navigator.clipboard.writeText(text);
+}
+
 export const LEADERBOARD_URL = 'https://victoryroad.app/trace/leaderboard';
 
 export async function openLeaderboard(): Promise<void> {

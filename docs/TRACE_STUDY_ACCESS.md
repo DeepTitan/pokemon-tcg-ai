@@ -1,8 +1,8 @@
 # Trace study access — September 29, 2026
 
-Free: public game state, own hand, and opponent starting decklists after native match-completion evidence; deck and prize counts remain visible. Pro: own decklist, deck contents, and prize inspection. Supporters: Pro plus exclusive Discord access/support and early features/nightly releases. Existing free replay/share limits remain unchanged.
+Free: public game state, own hand, and opponent starting decklists as soon as a complete list and player identity are captured, including during the match; deck and prize counts remain visible. Pro: own decklist, deck contents, and prize inspection. Supporters: Pro plus exclusive Discord access/support and early features/nightly releases. Existing free replay/share limits remain unchanged.
 
-Locked decklist controls open an explanation on hover, keyboard focus or click. Own-deck upgrade panels offer Get Trace Pro. The opponent control explains that the list becomes available after the match. Own deck/prize inspection opens the dismissible Pro upgrade dialog with an account-link alternative.
+Locked decklist controls open an explanation on hover, keyboard focus or click. Own-deck upgrade panels offer Get Trace Pro. The opponent control opens the captured list during or after the match. Missing or incomplete captures show an unavailable message. Own deck/prize inspection opens the dismissible Pro upgrade dialog with an account-link alternative.
 
 Native IPC and capture events use the validated membership lease to project inventories. Raw stored captures stay intact. Cloud replay reads check current membership and mask inventory if it cannot be verified, without denying recent Free replays. Public replay shares mask deck/prize inventories. Paid content is not added to match summaries.
 

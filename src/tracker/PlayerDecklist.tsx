@@ -8,6 +8,7 @@ import { X } from '@phosphor-icons/react/X';
 import type { CapturedDecklist, CardInfo } from './types.js';
 import { cardArtUsesAlternate, resolvedCardArt, showCardBackOnError } from './card-art.js';
 import { exportDecklist } from './decklist-export.js';
+import { writeClipboardText } from './tauri.js';
 
 function DecklistCard({ cardId, count, card, onInspect }: { onInspect?: () => void; cardId: string; count: number; card?: CardInfo }) {
   const [unavailable, setUnavailable] = useState(false);
@@ -107,7 +108,7 @@ export function PlayerDecklist({ name, deck: suppliedDeck, catalog, loadDeck, un
     const attempt = ++copyAttempt.current;
     setCopyState('copying');
     try {
-      await navigator.clipboard.writeText(exported.text);
+      await writeClipboardText(exported.text);
       if (attempt === copyAttempt.current) setCopyState('copied');
     } catch {
       if (attempt === copyAttempt.current) setCopyState('failed');
@@ -137,11 +138,11 @@ export function PlayerDecklist({ name, deck: suppliedDeck, catalog, loadDeck, un
         <button type="button" aria-label="Close decklist" onClick={close}><X size={18} /></button></div></header>
       <span className="decklist-copy-status" role="status">{copyState === 'copied' ? 'Decklist copied for Pokémon TCG Live.' : ''}</span>
       {copyState === 'failed' && <p className="decklist-copy-error" role="alert">Couldn’t access the clipboard. Please try Copy again.</p>}
-      {loadState === 'loading' && <p role="status" className="decklist-empty">Checking membership and match result…</p>}
+      {loadState === 'loading' && <p role="status" className="decklist-empty">Loading decklist…</p>}
       {loadState === 'failed' && <p role="alert" className="decklist-empty">{loadError}</p>}
       {!available && (onUpgrade ? <div className="decklist-locked-body">
         <div className="decklist-locked-grid" aria-hidden="true">{Array.from({ length: 10 }, (_, index) => <div className="study-card-placeholder" key={index}><i /><b /><em /></div>)}</div>
-        <div className="decklist-locked-unlock"><span className="decklist-plan-label"><LockSimple size={13} />{upgradeLabel?.includes('Supporters') ? 'SUPPORTERS CLUB' : 'PRO'}</span><p>{upgradeLabel?.includes('Supporters') ? 'Post-match deck study' : 'See the full decklist'}</p>{upgradeLabel?.includes('Supporters') && <small>Available after the match</small>}<button type="button" onClick={onUpgrade}>{upgradeLabel?.includes('Supporters') ? 'Unlock with Supporters' : 'Unlock with Pro'}<span aria-hidden="true"> →</span></button></div>
+        <div className="decklist-locked-unlock"><span className="decklist-plan-label"><LockSimple size={13} />{upgradeLabel?.includes('Supporters') ? 'SUPPORTERS CLUB' : 'PRO'}</span><p>{upgradeLabel?.includes('Supporters') ? 'Deck study' : 'See the full decklist'}</p><button type="button" onClick={onUpgrade}>{upgradeLabel?.includes('Supporters') ? 'Unlock with Supporters' : 'Unlock with Pro'}<span aria-hidden="true"> →</span></button></div>
       </div> : <div className="decklist-empty"><p>{unavailableReason || 'No decklist was saved for this match.'}</p></div>)}
       {deck ? <>{exported.error && <p className="decklist-copy-error">{exported.error}</p>}
         <div className="player-decklist-grid">{entries.map(entry => {

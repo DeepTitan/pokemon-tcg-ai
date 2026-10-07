@@ -28,7 +28,7 @@ import { CaptureSetupModal } from './CaptureSetupModal.js';
 import {
   getMembershipStatus, openMembershipAccount, loadOpponentDecklist, getRecentMatchOperations, getTraceVersion, getTrackerEnvironment, initializeTrackerStorage, isTauri, listMatchSummaries,
   importLegacyReviews, listRawMatchIds, loadMatchOperations, loadMatchReview, onMatchOperation, persistMatchReview,
-  resolveCardSources, shareMatch, startTracking, stopTracking, LEADERBOARD_URL, openLeaderboard,
+  resolveCardSources, shareMatch, startTracking, stopTracking, LEADERBOARD_URL, openLeaderboard, writeClipboardText,
 } from './tauri.js';
 import { LiveReviewAssembler } from './live-operation-reducer.js';
 import { ReviewOverlay, type ReviewInspector } from './ReviewInteractions.js';
@@ -1504,7 +1504,8 @@ export default function TrackerApp() {
 
   const copyShareUrl = useCallback(async (url: string): Promise<boolean> => {
     try {
-      await navigator.clipboard.writeText(url);
+      await writeClipboardText(url);
+      setError(null);
       setNotice('Share link copied.');
       return true;
     } catch {
@@ -1549,9 +1550,9 @@ export default function TrackerApp() {
   const canViewOpponentDeck = isTauri() && !sharedMode;
   const opponentDeckAccess = {
     visible: canViewOpponentDeck,
-    loadDeck: canViewOpponentDeck && selectedReview?.matchCompleted ? loadSelectedOpponentDeck : undefined,
-    unavailableReason: !selectedReview?.matchCompleted ? 'Available after Trace records the match result.' : 'Decklist not available',
-    accessKey: `${selectedReview?.id}:${canViewOpponentDeck}:${selectedReview?.matchCompleted}`,
+    loadDeck: canViewOpponentDeck && selectedReview ? loadSelectedOpponentDeck : undefined,
+    unavailableReason: 'Decklist not captured yet.',
+    accessKey: `${selectedReview?.id}:${canViewOpponentDeck}`,
   };
   const updateNotice = <UpdateNotice matchInProgress={environment.clientRunning} settingsOpen={showSettings} />;
   const accountSettings = <MembershipSettings status={membership} onRefresh={refreshMembership} onChange={setMembership} />;
