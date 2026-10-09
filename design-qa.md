@@ -2,7 +2,7 @@
 
 final result: passed
 
-Scope: local shared-replay UI, not a production deployment. User selected the second generated layout, with the stadium beside its owner and no numbered turn breakdown on the progress bar.
+Initial review scope: local shared-replay UI. User selected the second generated layout, with the stadium beside its owner and no numbered turn breakdown on the progress bar. Production release after explicit approval is recorded at the end.
 
 ## Visual evidence
 
@@ -92,3 +92,27 @@ User reported missing playback animations, slow default playback and an unhelpfu
 Evidence: the real replay moved from frame 71 into Phantom Dive at frame 72 in approximately 685 ms. The browser showed `trace-frame-transition`, followed by a visible attack core (opacity 1, transformed across the board) and a lunging attacker (scale 1.03271 and Y -12.1512). The route connected the actual Active centers at offsets +52/-52 pixels. At 2× the same entry took approximately 378 ms and the core duration changed from 0.54 s to 0.27 s. Clicking Next during an active transition immediately paused on frame 73 and cleared the transition. No runtime errors were logged. Screenshot `32-clean-playback-header.jpg` shows the final header; `33-playback-settings-final.jpg` shows the turn menu and playback options.
 
 Build, navigation/animation model tests and hold-controller tests passed; no TypeScript errors were reported in changed modules (pre-existing whole-repository errors remain). Physical touch/Safari validation remains outstanding. Final local result: passed. Nothing deployed.
+
+## Production release — October 9, 2026
+
+User explicitly approved shipping the reviewed implementation. Released source commit: `bf10391` on `codex/mobile-replay` in this isolated checkout.
+
+- Project: `victoryroad` (`prj_xu8lQXM29IgPY7fLDvbkT4qah4Ta`), team `team_6rqfBuaO0W1ndg07WpRuoUv0`.
+- Deployment: `dpl_537sn7dNxVDyKTheg5o6oimXoo5A`, production, READY.
+- Deployment URL: https://victoryroad-4gnp2607h-deeptitan-6729s-projects.vercel.app
+- Public replay: https://victoryroad.app/trace/fYENi4rxKoO8Jv75C-5EakU2
+- The existing `victoryroad-lovat.vercel.app` alias was moved to the verified build; Trace CDN cache was purged to discard old shared-page viewer shells. No apex routing, account service, capture service or native application was deployed.
+
+Production baseline comparison used Vercel's deployment source manifest: 1,043 unchanged source files matched by SHA-1; only the five edited existing replay modules differed, plus the newly added replay modules. The nine output-function entries are generated deployment artifacts. Three already-live training standings files were confirmed byte-for-byte against public production and preserved in baseline commit `07a77b1`; the original checkout's uncommitted work was untouched. Local `.claude` settings were excluded from the upload.
+
+Release verification:
+
+- Main tracker suite passed, including reconstruction, privacy, navigation, shared replay and card-source tests. The standard pretest stops on an outdated membership-copy assertion; the identical failure was reproduced on unchanged baseline `6bbba15`. It was not changed or represented as passing.
+- Full site build and all 138 website/API tests passed. Remote production build completed successfully in 17 seconds.
+- Staged `/shared-replay` and its JavaScript matched the locally tested artifact byte-for-byte. The share-page handler fetches its shell through the stable alias, so the complete shared route was checked after alias promotion.
+- Public HTML loads `/assets/tracker-C8l2rwf4.js`; the production JavaScript also matched byte-for-byte after decoding its Brotli transfer encoding.
+- Live browser, 390 × 844: turn menu present, raw frame counter absent, actual attack playback visible (attack opacity 1 at frame 72), Pause works, and Dragapult opens a 390 × 844 full-screen inspector. No browser runtime errors. Screenshot: `/Users/theisaiahw/pokemon-tcg-ai/artifacts/trace-mobile-20261009/34-production-mobile-replay.jpg`.
+- Existing landing, account and leaderboard pages returned success; the live training script remained byte-for-byte unchanged.
+- Post-release server log scan found one Node `DEP0169` deprecation warning for `url.parse()` on a successful 200 response, with no application failures observed. This does not constitute a physical Safari or ongoing monitoring test.
+
+Rollback point: `dpl_Haeg3RDeVt6YXTH9eLX9JhnFPAf6`, https://victoryroad-4feuaii0y-deeptitan-6729s-projects.vercel.app. A rollback must promote that deployment and restore the stable `victoryroad-lovat.vercel.app` alias, followed by public replay verification; no rollback was needed.
