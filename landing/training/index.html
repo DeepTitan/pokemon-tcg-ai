@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#f6f4ef">
   <title>Dragapult training · Trace</title>
   <link rel="icon" href="/trace/leaderboard-static/training/assets/trace-mascot.png">
-  <link rel="stylesheet" href="/trace/leaderboard-static/training/dashboard.css?v=runs-20260929">
-  <script src="/trace/leaderboard-static/training/dashboard.js?v=runs-20260929" defer></script>
+  <link rel="stylesheet" href="/trace/leaderboard-static/training/dashboard.css?v=standings-history-20261005">
+  <script src="/trace/leaderboard-static/training/dashboard.js?v=standings-history-20261005" defer></script>
   <link rel="stylesheet" href="/trace/leaderboard-static/training/header.css">
   <link rel="canonical" href="https://victoryroad.app/trace/training">
   <meta name="description" content="Follow Dragapult self-play training, checkpoint match results, and live training progress.">
@@ -26,6 +26,10 @@
       <div class="pace" aria-label="Training speed and next checkpoint"><span id="speed">— steps/s</span><span class="eta" id="eta">Estimating next checkpoint…</span></div>
     </div>
     <div id="error" role="status"></div>
+    <section class="standings" aria-labelledby="standingsHeading" hidden>
+      <div class="standings-head"><h2 id="standingsHeading">Checkpoint standings <span>vs 100M</span></h2><label class="standings-mode">Rank <select id="standingsMode" aria-label="Standings view"><option value="history">All-time checkpoints</option><option value="latest">Latest per run</option></select></label></div>
+      <p id="standingsNote" class="caption">Top 5 saved checkpoints across all runs · observed win rate</p><ol id="runStandings" aria-label="Checkpoints ranked by win rate against 100M"></ol>
+    </section>
     <section class="panel" aria-labelledby="benchmarkHeading">
       <div class="summary"><h2 id="benchmarkHeading">Win rate vs 100M</h2><div class="value" id="latest">—</div><div class="caption" id="latestCaption">Latest evaluated checkpoint</div><p class="verdict" id="verdict"></p></div>
       <div class="plot"><svg id="chart" viewBox="0 0 850 300" role="img" aria-label="Current deck checkpoint win rate against the fixed 100M model"></svg><p class="chartnote">Higher is better. 50% means an even match.</p></div>

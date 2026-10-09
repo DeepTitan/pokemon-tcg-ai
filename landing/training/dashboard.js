@@ -39,7 +39,31 @@ function pace(fresh){
  $('eta').title='Estimated time to the next saved training checkpoint, based on observed throughput. Evaluation results follow separately. Refreshed with cloud progress; pauses can change the estimate.';
  $('paceMethod').textContent=`Speed counts fresh accepted training decisions once, not repeated optimizer passes or human rehearsal. ${available?basis+'. ':''}It includes collection and learning time. Recent speed uses up to 30 minutes of cloud observations; until two samples are available, it uses the run average. The checkpoint ETA estimates training time remaining at this pace, excluding the subsequent evaluation. Stale or paused runs do not show an ETA.`;
 }
-function render(){const cs=current(),pts=cs.filter(benchmark),last=pts.at(-1),p=last&&benchmark(last);
+function renderStandings(){
+ const runs=allRuns.runs||[allRuns];
+ const historical=$('standingsMode').value==='history';
+ const ranked=runs.flatMap(run=>{
+  const eligible=run.checkpoints.filter(c=>benchmark(c));
+  const checkpoints=historical?eligible:eligible.filter(c=>c.phase===run.phases.at(-1).id).sort((a,b)=>b.milestone-a.milestone).slice(0,1);
+  return checkpoints.map(checkpoint=>({run,checkpoint,result:benchmark(checkpoint)}));
+ }).sort((a,b)=>b.result.winRate-a.result.winRate||a.run.runId.localeCompare(b.run.runId)||b.checkpoint.milestone-a.checkpoint.milestone);
+ $('standingsNote').textContent=historical?'Top 5 saved checkpoints across all runs · observed win rate':'Latest evaluated checkpoint per run · observed win rate';
+ $('runStandings').replaceChildren(...ranked.slice(0,5).map((entry,index)=>{
+  const {run,checkpoint,result}=entry,li=document.createElement('li'),button=document.createElement('button');
+  const rank=index&&result.winRate===ranked[index-1].result.winRate?ranked[index-1].rank:index+1;entry.rank=rank;
+  button.type='button';button.className='standing'+(rank===1?' standing-leader':'');
+  button.setAttribute('aria-pressed',String(run.runId===data.runId&&(!historical||chosen===checkpoint.id)));
+  const offset=run.runId==='strength-fast'?0:Math.floor(run.phases.at(-1).offset/1e7)*1e7;
+  const label=(run.lineage?'+':'')+(checkpoint.milestone+(checkpoint.phase===run.phases.at(-1).id?offset:0))/1e6+'M';
+  const add=(tag,cls,text)=>{const el=document.createElement(tag);el.className=cls;el.textContent=text;button.append(el)};
+  add('span','standing-rank',String(rank));add('span','standing-name',(run.runName||'Original').replace('Mirror league · ','Mirror · '));
+  add('strong','standing-rate',pct(result.winRate));add('span','standing-detail',label+' · '+fmt(result.games)+' games');
+  button.title=result.winRateWilson95?'95% interval: '+result.winRateWilson95.map(pct).join('–')+'. Ranking is observed performance, not proof of superiority.':'';
+  button.onclick=()=>{selectedRun=run.runId;chosen=checkpoint.id;$('checkpoint').replaceChildren();chooseRun(allRuns);render();$('more').open=true;$('checkpoint').focus()};
+  li.append(button);return li;
+ }));document.querySelector('.standings').hidden=!ranked.length;
+}
+function render(){renderStandings();const cs=current(),pts=cs.filter(benchmark),last=pts.at(-1),p=last&&benchmark(last);
 $('latest').textContent=p?pct(p.winRate):'—';$('latestCaption').innerHTML=last?`<span>${checkpointLabel(last)} checkpoint</span><span>${fmt(p.games)} evaluation games</span>`:'Waiting for the first benchmark';
 $('verdict').textContent=!p?'':p.winRateWilson95[0]>.5?'Ahead of 100M in this evaluation.':p.winRateWilson95[1]<.5?'Behind 100M in this evaluation.':'Still roughly even with 100M.';
 const resultCell=(p,opponent)=>p?`<span class="rate">${pct(p.winRate)}</span><div class="caption">${p.wins}–${p.losses}${p.draws?'–'+p.draws:''} · ${fmt(p.games)} games${opponent?` <span class="previous-target">· vs ${checkpointLabel(opponent)}</span>`:''}</div>`:'<span class="caption">Not evaluated</span>';
@@ -72,4 +96,5 @@ let chartWidth=0;
 new ResizeObserver(([entry])=>{if(data&&Math.abs(chartWidth-entry.contentRect.width)>1){chartWidth=entry.contentRect.width;draw(current().filter(benchmark))}}).observe($('chart'));
 function detail(){let c=data.checkpoints.find(c=>c.id===$('checkpoint').value);if(!c)return;$('metadata').textContent=c.deck+' · Exact total: '+fmt(c.decisions)+' decisions · '+new Date(c.completedAt).toLocaleString();$('detailsTable').querySelector('tbody').innerHTML=c.panels.map(p=>`<tr><td>${names[p.opponent]||p.opponent} / ${p.matchup==='mirror'?'mirror':'vs Alakazam'}</td><td>${p.wins}–${p.losses}–${p.draws}</td><td>${pct(p.winRate)}</td><td>${p.winRateWilson95.map(pct).join('–')}</td></tr>`).join('');}
 async function load(){try{let r=await fetch('/trace/leaderboard-static/training/status.json');if(!r.ok)throw Error();chooseRun(await r.json());render()}catch(e){$('error').style.display='block';$('error').textContent='Training updates are temporarily unavailable. Displayed results have not refreshed.'}}
+$('standingsMode').onchange=renderStandings;
 $('checkpoint').onchange=()=>{chosen=$('checkpoint').value;detail()};$('refresh').onclick=async()=>{try{$('refresh').disabled=true;await load()}catch(e){$('error').style.display='block';$('error').textContent='Could not refresh. Please try again shortly.'}};load();setInterval(load,15000);setInterval(clock,1000);
