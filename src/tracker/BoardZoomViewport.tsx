@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type Poin
 import { Hand } from '@phosphor-icons/react';
 import { boardPanPosition, boardZoomScroll, boardZoomShortcut, MAX_BOARD_ZOOM, MIN_BOARD_ZOOM, nextBoardZoom, type BoardPanStart } from './board-zoom.js';
 
-export function BoardZoomViewport({ children }: { children: ReactNode }) {
+export function BoardZoomViewport({ children, compact = false }: { children: ReactNode; compact?: boolean }) {
   const host = useRef<HTMLDivElement>(null);
   const viewport = useRef<HTMLDivElement>(null);
   const previousZoom = useRef(1);
@@ -11,7 +11,7 @@ export function BoardZoomViewport({ children }: { children: ReactNode }) {
   const pan = useRef<(BoardPanStart & { pointerId: number; dragging: boolean }) | null>(null);
   const suppressClick = useRef(false);
   const [panning, setPanning] = useState(false);
-  const canPan = zoom > 1;
+  const canPan = !compact && zoom > 1;
 
   const finishPan = (event: PointerEvent<HTMLDivElement>) => {
     if (pan.current?.pointerId !== event.pointerId) return;
@@ -30,6 +30,7 @@ export function BoardZoomViewport({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (compact) return;
     const onKeyDown = (event: KeyboardEvent) => {
       const action = boardZoomShortcut(event);
       if (!action || event.defaultPrevented) return;
@@ -38,16 +39,26 @@ export function BoardZoomViewport({ children }: { children: ReactNode }) {
     };
     window.addEventListener('keydown', onKeyDown, { capture: true });
     return () => window.removeEventListener('keydown', onKeyDown, { capture: true });
-  }, []);
+  }, [compact]);
 
   useLayoutEffect(() => {
     const node = viewport.current!;
+    if (compact) {
+      node.scrollLeft = 0;
+      previousZoom.current = 1;
+      return;
+    }
     node.scrollLeft = boardZoomScroll(node.scrollLeft, size.width, previousZoom.current, zoom);
     node.scrollTop = boardZoomScroll(node.scrollTop, size.height, previousZoom.current, zoom);
     previousZoom.current = zoom;
-  }, [zoom, size.width, size.height]);
+  }, [compact, zoom, size.width, size.height]);
 
-  return <div className="board-zoom" ref={host}>
+  useLayoutEffect(() => {
+    // Rotation changes the board arrangement; begin at its new top edge.
+    if (compact && viewport.current) viewport.current.scrollTop = 0;
+  }, [compact, size.width]);
+
+  return <div className={`board-zoom ${compact ? 'board-zoom-compact' : ''}`} ref={host}>
     <div className={`board-zoom-viewport ${canPan ? 'is-pannable' : ''} ${panning ? 'is-panning' : ''}`} ref={viewport} role="region" aria-label="Match board" tabIndex={0}
       onPointerDown={(event) => {
         suppressClick.current = false;
@@ -79,17 +90,17 @@ export function BoardZoomViewport({ children }: { children: ReactNode }) {
         event.preventDefault();
         event.stopPropagation();
       }}>
-      <div className="board-zoom-canvas" style={{ width: Math.max(size.width, size.width * zoom), height: Math.max(size.height, size.height * zoom) }}>
-        <div className="board-zoom-surface" style={{ width: size.width, height: size.height, left: Math.max(0, size.width * (1 - zoom) / 2), top: Math.max(0, size.height * (1 - zoom) / 2), transform: `scale(${zoom})` }}>
+      <div className="board-zoom-canvas" style={compact ? undefined : { width: Math.max(size.width, size.width * zoom), height: Math.max(size.height, size.height * zoom) }}>
+        <div className="board-zoom-surface" style={compact ? undefined : { width: size.width, height: size.height, left: Math.max(0, size.width * (1 - zoom) / 2), top: Math.max(0, size.height * (1 - zoom) / 2), transform: `scale(${zoom})` }}>
           {children}
         </div>
       </div>
     </div>
-    <div className="board-zoom-controls" role="group" aria-label="Board zoom">
+    {!compact && <div className="board-zoom-controls" role="group" aria-label="Board zoom">
       {canPan && <span className="board-pan-hint"><Hand size={14} aria-hidden="true" />Drag to pan</span>}
       <button type="button" aria-label="Zoom board out" title="Zoom board out · Cmd/Ctrl −" disabled={zoom === MIN_BOARD_ZOOM} onClick={() => setZoom((value) => nextBoardZoom(value, 'out'))}>−</button>
       <button type="button" aria-label="Reset board zoom" title="Reset board zoom · Cmd/Ctrl 0" onClick={() => setZoom(1)}><output aria-live="polite">{Math.round(zoom * 100)}%</output></button>
       <button type="button" aria-label="Zoom board in" title="Zoom board in · Cmd/Ctrl +" disabled={zoom === MAX_BOARD_ZOOM} onClick={() => setZoom((value) => nextBoardZoom(value, 'in'))}>+</button>
-    </div>
+    </div>}
   </div>;
 }

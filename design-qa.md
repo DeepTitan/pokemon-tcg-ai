@@ -1,44 +1,94 @@
-# Trace plans production design QA
-
-Date: 2026-09-30
+# Trace mobile replay — selected portrait layout
 
 final result: passed
 
-## Reference and implementation
+Scope: local shared-replay UI, not a production deployment. User selected the second generated layout, with the stadium beside its owner and no numbered turn breakdown on the progress bar.
 
-- Approved reference: `/Users/theisaiahw/.codex/generated_images/01a0f04b-8185-7403-b07c-7cdeb1a433b9/exec-bb5d6a24-bdaf-457b-aedc-47ea738d28e2.png` (1073 × 1466 pixels).
-- Final implementation screenshot: `/private/tmp/trace-plans-design/local-approved.png` (1073 × 1514 pixels).
-- Local page: `http://127.0.0.1:5195/trace`.
-- Compared both images together at the same width. The implementation capture has 48 additional vertical pixels of viewport/footer framing; images were not stretched to match heights.
+## Visual evidence
 
-## Comparison and corrections
+- Source visual truth: `/Users/theisaiahw/pokemon-tcg-ai/artifacts/trace-mobile-20261009/selected-mobile-design.png`
+- Final browser-rendered implementation: `/Users/theisaiahw/pokemon-tcg-ai/artifacts/trace-mobile-20261009/24-final-mobile.jpg`
+- Normalized full-view comparison: `/Users/theisaiahw/pokemon-tcg-ai/artifacts/trace-mobile-20261009/25-final-comparison.jpg`
+- Focused hand, caption, slider and button comparison: `/Users/theisaiahw/pokemon-tcg-ai/artifacts/trace-mobile-20261009/26-controls-comparison.jpg`
+- Real replay: `http://127.0.0.1:4188/trace/fYENi4rxKoO8Jv75C-5EakU2`
+- State: isaiahw versus NeetLv999, frame 72 of 103, Dragapult ex's Phantom Dive, paused.
+- Source pixels: 853 × 1844. Implementation pixels and CSS viewport: 390 × 844, effective screenshot density 1 pixel per CSS pixel. The comparison page scales the source to 390 pixels wide without stretching; its resulting height is approximately 843 pixels. It displays both artifacts together.
 
-1. Initial comparison found the app screenshot too small and monthly price suffixes wrapping unnecessarily on desktop. Increased the screenshot's share of the hero and kept price suffixes inline where space permits.
-2. Final comparison confirmed the approved white header, cream surface, navy typography, original headline, real Trace screenshot, underlined Compare plans link, flat comparison table, gold Pro treatment, concise FAQ, and footer.
-3. Header and content share the existing account page's 1076px maximum width. The 32px desktop gutter intentionally preserves the shared site grid instead of the generated reference's larger gutter.
-4. Production typography and approximately 52px comparison rows preserve readability. The real app screenshot replaces generated illustration details in the reference.
-5. Corrected duplicate XML namespace attributes in the new standard icon assets; all four assets load.
-6. At 700px, the single-row header's brand extended beyond its content grid. Switched the header to two rows at 740px and aligned sticky offsets with that breakpoint. Verified the brand and header end at the same x-coordinate (665px at a 700px viewport).
+## Findings and comparison history
 
-## Responsive and interaction checks
+1. Earlier implementation: prizes and discard were bare counters, six transport controls competed equally, and card inspection discarded the parent-zone context. Reproduced an additional playback defect: opening discard at frame 21 left an inspector with two cards while the board advanced to frame 32. Evidence: `13-audit-autoplay-inspector.jpg` in the evidence directory. Fixed by pausing every inspection entry point, guarding the playback timer, and maintaining an inspector history with scroll restoration.
+2. First selected-layout build: the board exceeded the 390 × 844 available height and clipped the hand. Reduced bench cards to 44 × 61 touch targets, adjusted vertical gaps and kept a scrolling board for shorter viewports. Both primary navigation buttons remain at least 52 pixels high.
+3. First normalized comparison (`23-design-comparison.jpg`): hand artwork was too small relative to the selected layout and the stadium lacked a visible name. Enlarged the hand, tightened field spacing, and added the stadium's name next to the owning player. The actual captured Risky Ruins art replaces the generated mock's incorrect card art.
+4. Final comparison (`25-final-comparison.jpg` and `26-controls-comparison.jpg`): no remaining actionable P0/P1/P2 findings. Board height 648 pixels fits its 649.2-pixel viewport at 390 × 844. All zones, the complete hand preview, caption, scrubber and both navigation actions are visible.
 
-- Desktop 1440px: matching header/main grid; no horizontal overflow.
-- Narrow desktop 788px: readable comparison, correctly wrapped monthly price suffixes.
-- Mobile 390px: all three plans visible without sideways scrolling. Feature labels span each row; column headers remain visible while comparing. Explicit table roles and header associations retained.
-- Compare plans keyboard activation lands below the fixed header.
-- Start free routes the signed-in local fixture to My account.
-- Get Pro and Join the club use existing checkout handlers. Local billing-disabled errors appear and buttons recover correctly; no payment was made.
-- Leaderboard and Training navigation work with the shared header. Training shows its expected content.
-- Browser console: no errors after asset corrections.
-- Reduced-motion preference disables smooth scrolling.
+## Required fidelity surfaces
 
-## Functional scope and verification
+- Typography: existing Nunito heading style and application fonts retained. Previous/Next are 16-pixel bold labels, with a readable two-line action title. Supporting action text truncates deliberately and opens the complete event log. Header controls are larger than the mock to give practical touch targets.
+- Layout: 3 + 2 benches; opponent above, local player below; separate deck/discard and six prize positions; centered Actives; stadium beside the player who played it; visible local hand. The sticky review dock has only two primary buttons and a plain scrubber. Short phones scroll the board instead of hiding zones.
+- Colors: existing warm neutral background, muted coral opponent and blue local areas, dark ink and yellow Next action. Existing current-turn and damage indicators are retained deliberately.
+- Assets: original Pokémon card images, trainer avatars and Trace mascot are reused. Generated card contents are not treated as replay data. Empty discard piles have an empty state instead of a false card back. Unknown prizes and opponent hand cards remain masked.
+- Copy: all action copy, card counts and board state come from the real replay. The turn picker groups recorded turn labels and identifies both participants when appropriate; it does not infer extra turns from handoff frames. It is separate from the plain scrubber.
 
-- Existing signup, authentication, billing handlers, prices, and entitlements preserved.
-- No opponent decklist feature advertised.
-- Account, guest checkout, and training selector tests: 34 passed.
-- Leaderboard build passed; landing and public-page builds passed, including their training and card asset checks.
-- `git diff --check` passed.
-- Native Trace/Pokémon gameplay was not launched.
+## Interaction verification
 
-No unresolved visual differences requiring approval remain.
+- Ten rapid Next taps advance ten frames, with no lost requests; manual navigation pauses playback. First and final frame boundaries clamp.
+- Play followed by opening discard remains at frame 72 with playback stopped. Opening Unfair Stamp and returning restores the same discard pile and scroll position (126.5 pixels in the tested case).
+- Escape closes the inspector and returns keyboard focus to the originating Prize button. Tab remains in the active dialog; nested card navigation focuses its Back control.
+- Prize counts, hidden Prize identities, empty zones, hand inspection, Pokémon/attachment details and direct key-moment jumps checked. Full event log remains accessible; selecting event 1 navigates to frame 1.
+- 320 × 568: no horizontal document overflow; the board scrolls to the hand while controls remain within the viewport. Prize sheet fits and exposes its close button. Evidence: `18-small-phone.jpg`, `19-small-phone-bottom.jpg`.
+- 375 × 667: document width equals viewport width; controls remain within the viewport. Event navigation and inspection checked at this size.
+- 1280 × 900: desktop transport and zoom remain present. Desktop Prize slots still show only remaining cards (0 and 3 in the final frame). Evidence: `21-desktop-regression.jpg`.
+- Browser error log: no runtime errors in the final replay verification.
+- Build passed. Relevant model tests passed: mobile replay, frame navigation, key moments, zones, Prize knowledge/layout, hand layout, board zoom, shared access and shared replay loading.
+- Whole-repository TypeScript checking still reports errors in unchanged engine and other files. No errors are reported for the changed replay modules. This is not a clean repository-wide typecheck claim.
+
+## Research grounding
+
+The original problem was discoverability and review continuity, not just screen width. TCG Live's official portrait reference preserves recognizable physical card zones. Chess.com's mobile analysis documents back/forward controls at the bottom. Apple recommends 44-point hit regions; this web implementation targets at least 44 CSS pixels for its principal buttons and board cards. W3C guidance supports a non-drag alternative to scrubbing, supplied here by Previous/Next and direct jumps. Public chess complaints about adjacent skip controls informed the placement risk, but were treated as anecdotes, not prevalence data.
+
+- [Official TCG Live reference](https://apps.apple.com/us/app/pok%C3%A9mon-tcg-live/id1557962344)
+- [Chess.com mobile analysis](https://support.chess.com/en/articles/10473022-how-do-i-use-game-analysis-on-the-app)
+- [Apple button guidance](https://developer.apple.com/design/human-interface-guidelines/buttons)
+- [W3C dragging alternatives](https://www.w3.org/WAI/WCAG22/Understanding/dragging-movements)
+
+## Limits and follow-up
+
+- No physical iPhone/Safari, VoiceOver or device safe-area run was available; browser size checks are not a substitute for those checks.
+- The eight-Pokémon bench and handoff boundary cases have model regression coverage; this specific replay does not contain an expanded bench or Lost Zone state for end-to-end visual coverage.
+- Browser Back is not a custom inspector navigation shortcut; use the visible Back/Close controls or Escape.
+- Production deployment remains a separate user review step. No capture, account, network interception or server reconstruction code changed.
+
+## Follow-up: hold navigation and full-screen cards
+
+User requested accelerated Previous/Next holds and full-screen individual cards. Implemented locally:
+
+- A tap advances one frame. A sustained pointer press repeats after 350 ms, then accelerates from 4 to 8 to 16 frames per second. A small 1×/2×/4× badge appears while holding. Release, pointer cancellation, capture loss, focus loss, tab visibility change, disabled boundaries and unmount cancel the timer. Releasing a hold does not add an extra click step.
+- Individual card inspectors fill the mobile viewport; pile browsers retain their sheet layout. Artwork fits within the available screen and details/attachments remain scrollable. Close and nested Back remain available.
+- Large public artwork is loaded only for inspected cards, with captured artwork as fallback. Explicit alternate-art aliases do not replace exact captured art. Pokémon TCG API's documented [large image format](https://docs.pokemontcg.io/api-reference/cards/get-card/) informs the higher-resolution URL.
+- Knocked-out cards still visible in an action frame now open card details even when already removed from the canonical field; this does not fabricate in-play vitals.
+
+Verification:
+
+- Real browser mouse hold: Previous moved from frame 103 to 100 after one second, reached frame 80 at 4×, and remained at 80 after release. A subsequent Next tap moved exactly to 81.
+- Holding Next from 101 stopped at 103 and disabled Next. Start/end and ordinary slider navigation remain available.
+- Final-frame Dragapult, previously inert, opened a full-screen inspector. Its image loaded at 733 × 1024 pixels. Screenshot: `28-fullscreen-card-sharp.jpg` in the evidence directory.
+- Card inspector bounds were exactly (0, 0, 390, 844), and (0, 0, 320, 568) at the small-phone size, without horizontal overflow. The complete image and Close fit on the small screen. Screenshot: `29-fullscreen-small-phone.jpg`.
+- Discard → Unfair Stamp → Back restored the 36-card discard and scrollTop 290 at frame 103.
+- Build, card-art regression tests, frame-hold controller tests and mobile replay model tests passed. Timer tests cover acceleration, release, cancelled short holds, stale callbacks, restarted holds and stopping within a boundary callback. TypeScript has no errors in changed modules; existing repository-wide errors remain.
+- Automated touch-event dispatch is unsupported by the in-app browser. Hold behavior was verified with real pointer/mouse events; physical touch/Safari validation remains outstanding.
+
+Final result for this local follow-up: passed, with the device-testing limits above. No deployment.
+
+## Follow-up: animated playback, pace and header
+
+User reported missing playback animations, slow default playback and an unhelpful capture-frame count in the header.
+
+- Root cause: compact layout unconditionally disabled view transitions in the navigation function. Playback now explicitly requests animation, while mobile manual stepping and hold/scrub input still apply immediately. Existing motion preferences and reduced-motion behavior are respected.
+- Normal mobile playback now holds ordinary actions for 600 ms, attacks/damage for 1200 ms and pass frames for 900 ms, versus the previous 1200/2600/1900 ms. Desktop pacing is unchanged. The turn menu provides 0.75×, 1×, 1.5× and 2× speeds and access to the existing animation preference.
+- Mobile attack and pass effects are shortened to fit the new timing and scale with speed. The attack route measures the actual Active positions so portrait geometry, hand height and bench wrapping do not misplace the effect.
+- Removed the `64 / 103` style capture-frame counter from the mobile header. Play and the turn menu remain.
+- Verification caught a View Transition overlay intercepting button input; making that overlay ignore pointer input restores immediate Pause/Next/card interactions during playback.
+
+Evidence: the real replay moved from frame 71 into Phantom Dive at frame 72 in approximately 685 ms. The browser showed `trace-frame-transition`, followed by a visible attack core (opacity 1, transformed across the board) and a lunging attacker (scale 1.03271 and Y -12.1512). The route connected the actual Active centers at offsets +52/-52 pixels. At 2× the same entry took approximately 378 ms and the core duration changed from 0.54 s to 0.27 s. Clicking Next during an active transition immediately paused on frame 73 and cleared the transition. No runtime errors were logged. Screenshot `32-clean-playback-header.jpg` shows the final header; `33-playback-settings-final.jpg` shows the turn menu and playback options.
+
+Build, navigation/animation model tests and hold-controller tests passed; no TypeScript errors were reported in changed modules (pre-existing whole-repository errors remain). Physical touch/Safari validation remains outstanding. Final local result: passed. Nothing deployed.

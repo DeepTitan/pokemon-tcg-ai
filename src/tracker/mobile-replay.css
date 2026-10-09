@@ -1,0 +1,212 @@
+/* Shared mobile replay. The native recorder keeps its desktop board. */
+.mobile-replay-header, .mobile-prize-count, .mobile-deck-back, .mobile-taken-slot, .mobile-stadium-label { display: none; }
+.prize-fan-cards i.mobile-taken-slot { display: none; }
+.zone-card-empty { display: grid; width: 100%; height: 100%; place-items: center; border: 1px dashed #b4b6b1; border-radius: 4px; }
+.review-overlay > header .review-overlay-back { width: auto; padding: 0 10px; display: flex; gap: 4px; }
+.review-overlay > header .review-overlay-back span { font-size: 12px; letter-spacing: 0; text-transform: none; }
+
+@media (max-width: 1000px) {
+  body.shared-replay-page { min-width: 0; min-height: 0; }
+  .shared-replay.app-shell { height: 100dvh; min-height: 0; display: flex; flex-direction: column; }
+  .shared-replay .mobile-replay-header { flex: 0 0 auto; display: flex; justify-content: space-between; align-items: center; gap: 6px; min-height: 48px; padding: env(safe-area-inset-top, 0px) 8px 0; background: #fffdf7; }
+  .mobile-replay-header a { display: flex; align-items: center; gap: 5px; min-height: 44px; color: #293f38; text-decoration: none; }
+  .mobile-replay-header img { width: 25px; height: 32px; object-fit: contain; }
+  .mobile-replay-header strong { font-family: Nunito, sans-serif; font-size: 22px; font-weight: 900; }
+  .mobile-replay-header a > span { color: #717a70; font-size: 11px; }
+  .mobile-header-actions { display: flex; align-items: center; gap: 5px; }
+  .mobile-header-actions button > span { max-width: 76px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mobile-replay-header button { display: flex; align-items: center; justify-content: center; gap: 5px; min-height: 44px; min-width: 44px; padding: 0 8px; border: 1px solid #dcd7cb; border-radius: 10px; background: #f7f5ed; color: #233c54; font-size: 12px; font-weight: 800; }
+  .mobile-replay-header .mobile-play { padding: 0; border-radius: 50%; background: transparent; }
+  .app-shell.shared-replay .workspace, .app-shell.shared-replay .workspace.timeline-open { flex: 1; min-height: 0; width: 100%; height: auto; padding: 4px 6px 0; display: flex; gap: 0; }
+  .shared-replay .shared-access-rail, .shared-replay .timeline-restore-button { display: none; }
+  .shared-replay .review-stage { flex: 1; gap: 6px; width: 100%; min-width: 0; }
+
+  /* A real portrait table: 3 + 2 bench, visible side piles, Actives together.
+     Short screens scroll the table instead of hiding game information. */
+  .shared-replay .board-zoom-compact { min-height: 0; }
+  .board-zoom-compact .board-zoom-viewport { border-radius: 10px; overscroll-behavior: contain; }
+  .board-zoom-compact .board-zoom-canvas, .board-zoom-compact .board-zoom-surface { position: relative; width: 100%; height: auto; min-height: 100%; overflow: visible; }
+  .board-zoom-compact .board-zoom-surface > .board-frame { height: auto; min-height: 100%; grid-template-rows: auto 4px auto; border-radius: 10px; }
+  .shared-replay .player-field { padding: 0 5px 4px; grid-template-rows: 36px auto; gap: 4px; }
+  .shared-replay .player-field.local { padding-bottom: 0; grid-template-rows: auto 36px 76px; }
+  .shared-replay .local > .field-layout { grid-row: 1; }
+  .shared-replay .local > .player-strip { grid-row: 2; }
+  .shared-replay .player-strip { margin: 0 -5px; padding: 2px 8px; display: flex; gap: 6px; justify-content: space-between; }
+  .shared-replay .player-identity { min-width: 0; flex: 1; gap: 7px; }
+  .shared-replay .player-identity > div { min-width: 0; }
+  .shared-replay .player-identity img { width: 29px; height: 29px; }
+  .shared-replay .player-identity strong { max-width: 135px; font-size: 13px; }
+  .shared-replay .player-identity .header-player-name { font-size: 12px; text-transform: none; }
+  .shared-replay .player-identity .header-handoff { min-width: 0; }
+  .shared-replay .player-decklist-trigger { min-width: 44px; min-height: 44px; margin-block: -4px; }
+  .shared-replay .player-identity > .player-decklist { width: 32px; min-width: 32px; height: 32px; }
+  .shared-replay .strip-zones { display: none; }
+  .shared-replay .turn-statuses { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 2px; max-width: 110px; }
+  .shared-replay .status-slot { width: auto; }
+  .shared-replay .status-slot:has(.inactive), .shared-replay .status-slot:empty { display: none; }
+  .shared-replay .status-pill { font-size: 8px; min-height: 19px; }
+  .shared-replay .turn-number-pill { width: auto; }
+  .shared-replay .opponent-hand-summary { min-height: 44px; min-width: 44px; margin-block: -4px; }
+  .shared-replay .field-layout { display: grid; grid-template-columns: 56px minmax(0, 1fr) 58px; grid-template-rows: auto 96px; gap: 4px 6px; align-items: center; }
+  .shared-replay .battle-lanes { display: contents; }
+  .shared-replay .bench-row { grid-column: 2; grid-row: 1; min-height: 0; height: auto; padding: 5px 3px; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 5px 2px; border-radius: 9px; justify-items: center; }
+  .shared-replay .bench-row > .pokemon-slot { grid-column: span 2; }
+  .shared-replay .bench-row[data-slots="5"] > :nth-child(4) { grid-column: 2 / span 2; }
+  .shared-replay .bench-row[data-slots="5"] > :nth-child(5) { grid-column: 4 / span 2; }
+  .shared-replay .active-lane { grid-column: 2; grid-row: 2; min-height: 96px; }
+  .shared-replay .local .field-layout { grid-template-rows: 96px auto; }
+  .shared-replay .local .bench-row { grid-row: 2; }
+  .shared-replay .local .active-lane { grid-row: 1; }
+  .shared-replay .pokemon-slot { width: 44px; max-width: 100%; height: 61px; border-radius: 5px; }
+  .shared-replay .pokemon-slot.active { width: 65px; height: 90px; }
+  .shared-replay .active-lane > span { display: none; }
+  .shared-replay .pokemon-slot:hover { transform: none; }
+  .shared-replay .pokemon-slot.empty { font-size: 9px; }
+  .shared-replay .damage-token { min-width: 23px; height: 23px; font-size: 11px; }
+  .shared-replay .damage-change-badge { font-size: 9px; }
+  .shared-replay .damage-change-badge small { display: none; }
+  /* Full action and historical choices remain in the caption's game-log sheet. */
+  .shared-replay .choice-stage { display: none; }
+  .shared-replay .midline { padding: 0 8px; }
+  .shared-replay .prize-fan { grid-column: 1; grid-row: 1 / 3; width: 56px; padding: 6px 3px; gap: 4px; align-self: center; background: #f8f4ec; box-shadow: none; }
+  .shared-replay .prize-fan > span:first-child { order: 2; font-size: 10px; text-transform: none; letter-spacing: 0; }
+  .shared-replay .mobile-prize-count { display: block; order: 3; color: #2d4050; font-size: 16px; line-height: 1; }
+  .mobile-prize-count small { font-size: 11px; color: #72796f; }
+  .shared-replay .prize-fan-cards { display: grid; grid-template-columns: 1fr; grid-auto-rows: 22px; justify-items: center; width: 40px; height: 153px; }
+  .shared-replay .prize-fan-cards i { position: static; width: 32px; height: 43px; border-width: 1px; border-radius: 4px; transform: none; box-shadow: 0 1px 2px #243b4c25; }
+  .shared-replay .prize-fan-cards i.mobile-taken-slot { display: block; }
+  .shared-replay .prize-fan-cards i.taken { background: transparent; border: 1px dashed #b4b6b1; box-shadow: none; opacity: 1; }
+  .shared-replay .side-piles { grid-column: 3; grid-row: 1 / 3; gap: 8px; align-content: center; }
+  .shared-replay .zone-stack, .shared-replay .zone-card-group { width: 58px; padding: 5px 3px; gap: 3px; border: 1px solid #d9d5cc; border-radius: 9px; background: #f8f5ee; box-shadow: none; }
+  .shared-replay .zone-stack > span:first-child, .shared-replay .zone-card-group > span:first-child { order: 2; font-size: 10px; font-weight: 700; text-transform: none; letter-spacing: 0; }
+  .shared-replay .zone-stack > b, .shared-replay .zone-card-group > b { order: 3; padding: 0; background: transparent; color: #2d4050; font-size: 16px; line-height: 1; }
+  .shared-replay .zone-stack-cards, .shared-replay .zone-card-stack { display: block; width: 39px; height: 54px; padding: 0; border: 0; border-radius: 4px; background: transparent; }
+  .shared-replay .zone-stack-cards > svg { display: none; }
+  .shared-replay .zone-stack-cards .mobile-deck-back { display: block; width: 39px; height: 54px; object-fit: cover; border-radius: 4px; }
+  .shared-replay .zone-card-group img { width: 37px; height: 51px; border-width: 1px; border-radius: 4px; }
+  .shared-replay .zone-card-group img:nth-child(2) { transform: translate(3px, 2px); }
+  .shared-replay .lost-zone-button { min-height: 44px; font-size: 10px; flex-wrap: wrap; justify-content: center; }
+  .shared-replay .stadium-marker, .shared-replay .opponent .stadium-marker { left: 0; right: auto; width: 44px; z-index: 3; }
+  .shared-replay .stadium-card-peek { width: 40px; height: 56px; }
+  .shared-replay .mobile-stadium-label { display: block; width: 54px; color: #425d4b; font-size: 10px; line-height: 1.1; font-weight: 800; text-align: center; }
+  .shared-replay .stadium-marker { justify-items: center; gap: 3px; }
+  .shared-replay .attached-energy-preview { right: -3px; bottom: -3px; }
+  .shared-replay .attached-energy-card { width: 14px; height: 20px; }
+  .shared-replay .pokemon-slot.active .attached-energy-card { width: 19px; height: 26px; }
+  .shared-replay .attached-tool-card { width: 22px; height: 31px; }
+  .shared-replay .hand-dock { grid-row: 3; margin: 0 -5px; padding: 3px 8px; overflow: hidden; }
+  .shared-replay .hand-dock .local-hand { min-height: 70px; gap: 2px; }
+  .shared-replay .hand-dock .hand-fan-cards { --hand-card-width: 37px; --hand-card-step: 34px; }
+  .shared-replay .hand-dock .hand-fan-card, .shared-replay .hand-dock .local-hand:hover .hand-fan-card { height: 52px; }
+  .shared-replay .hand-dock .hand-fan-label { min-height: 16px; padding: 0 7px; font-size: 10px; }
+
+  /* Two primary actions. Play and large jumps live away from the thumb buttons. */
+  .mobile-replay-controls { flex-shrink: 0; padding: 5px 4px max(6px, env(safe-area-inset-bottom, 0px)); background: #f6f5ef; }
+  .mobile-action-caption { width: 100%; min-height: 40px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 5px 8px; border: 0; background: transparent; text-align: left; color: #233c54; }
+  .mobile-action-caption > span { display: grid; min-width: 0; gap: 3px; }
+  .mobile-action-caption strong { font: 900 14px/1.2 Nunito, sans-serif; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .mobile-action-caption small { color: #667780; font-size: 11px; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+  .mobile-action-caption svg { flex-shrink: 0; }
+  .mobile-replay-scrubber { display: flex; align-items: center; height: 26px; padding: 0 8px; }
+  .mobile-replay-scrubber input { width: 100%; margin: 0; height: 26px; appearance: none; background: transparent; cursor: pointer; }
+  .mobile-replay-scrubber input::-webkit-slider-runnable-track { height: 4px; border-radius: 4px; background: #b4c6d2; }
+  .mobile-replay-scrubber input::-webkit-slider-thumb { appearance: none; width: 18px; height: 18px; margin-top: -7px; border: 1px solid #d6a62c; border-radius: 50%; background: #f4ca50; }
+  .mobile-replay-scrubber input::-moz-range-track { height: 4px; border-radius: 4px; background: #b4c6d2; }
+  .mobile-replay-scrubber input::-moz-range-thumb { width: 18px; height: 18px; border: 1px solid #d6a62c; border-radius: 50%; background: #f4ca50; }
+  .shared-replay .player-decklist-control:has([aria-disabled="true"]) { display: none; }
+  body.shared-replay-page .player-decklist-panel { left: 8px !important; top: max(24px, env(safe-area-inset-top, 0px)) !important; width: calc(100vw - 16px) !important; max-width: 600px; max-height: calc(100dvh - 48px); }
+  .mobile-frame-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding-top: 3px; }
+  .mobile-frame-buttons button { position: relative; display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 52px; border: 1px solid #d6d8d8; border-radius: 12px; background: #eaeef1; color: #233c54; font: 900 16px Nunito, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+  .frame-hold-speed { position: absolute; right: 7px; top: 3px; font-size: 10px; }
+  .mobile-frame-buttons button[data-holding] { box-shadow: inset 0 0 0 2px #233c5466; }
+  .mobile-frame-buttons .mobile-next-frame { border-color: #ddb33c; background: #f4ca50; }
+  .mobile-frame-buttons button:disabled { opacity: .4; cursor: default; }
+  .mobile-frame-buttons button:active:not(:disabled), .mobile-header-actions button:active { filter: brightness(.93); transform: translateY(1px); }
+  .shared-replay button:focus-visible, .shared-replay input:focus-visible { outline: 3px solid #2c6e9a; outline-offset: 2px; }
+
+  .mobile-navigation-backdrop { position: fixed; z-index: 16; inset: 0; background: #20334166; }
+  .shared-replay .timeline-panel.mobile-navigation-sheet { position: fixed; z-index: 17; inset: max(24px, env(safe-area-inset-top, 0px)) 0 0; width: 100%; max-width: 650px; margin: auto; height: auto; display: flex; flex-direction: column; border-radius: 18px 18px 0 0; box-shadow: 0 12px 35px #23345040; padding-bottom: env(safe-area-inset-bottom, 0px); }
+  .shared-replay .timeline-heading { padding: 12px 14px; flex-shrink: 0; }
+  .shared-replay .timeline-heading-actions button { width: 44px; height: 44px; }
+  .mobile-playback-options { display: flex; align-items: end; justify-content: space-between; gap: 12px; padding: 0 14px 12px; flex-shrink: 0; }
+  .mobile-playback-options label { display: grid; gap: 4px; font-size: 11px; font-weight: 700; color: #647269; }
+  .mobile-playback-options select, .mobile-playback-options button { min-height: 44px; padding: 0 10px; border: 1px solid #d8d5ca; border-radius: 8px; background: #faf8f2; font: 700 12px Nunito, sans-serif; color: #233c54; }
+  .mobile-playback-options button { display: flex; align-items: center; gap: 6px; }
+  .mobile-playback-options button[aria-pressed="true"] { background: #f4ecd1; }
+  .mobile-navigation-tabs { display: grid; grid-template-columns: repeat(3, 1fr); padding: 0 12px 8px; gap: 4px; flex-shrink: 0; }
+  .mobile-navigation-tabs button { min-height: 44px; border: 0; border-bottom: 3px solid transparent; color: #647269; background: transparent; font-size: 13px; font-weight: 800; }
+  .mobile-navigation-tabs button[aria-pressed="true"] { color: #223e36; border-bottom-color: #d5ae32; }
+  .mobile-jump-list { padding: 0 14px 20px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .mobile-jump-edges { display: flex; justify-content: space-between; padding: 4px 0 10px; }
+  .mobile-jump-edges button { min-height: 44px; padding: 0 13px; border: 1px solid #d8d5ca; border-radius: 8px; background: #faf8f2; font-weight: 700; }
+  .mobile-jump-row { width: 100%; display: flex; gap: 12px; align-items: center; text-align: left; min-height: 66px; padding: 10px 8px; border: 0; border-bottom: 1px solid #ddd8cb; background: transparent; color: #2c443b; }
+  .mobile-jump-row > span { display: grid; gap: 4px; flex: 1; }
+  .mobile-jump-row strong { font-size: 14px; }
+  .mobile-jump-row small { font-size: 12px; color: #6b766e; }
+  .mobile-jump-row[aria-current="step"] { background: #f4ecd1; }
+  .shared-replay .timeline-list { min-height: 0; padding: 8px 12px 20px; }
+  .shared-replay .timeline-list[hidden] { display: none; }
+  .shared-replay .timeline-event { min-height: 48px; }
+  .shared-replay .event-copy > strong { font-size: 13px; }
+
+  .shared-replay .review-overlay-backdrop { inset: 0; padding: max(24px, env(safe-area-inset-top, 0px)) 0 0; align-items: end; }
+  .shared-replay .review-overlay, .shared-replay .review-overlay.review-zone { width: 100%; max-width: 650px; max-height: calc(100dvh - max(24px, env(safe-area-inset-top, 0px))); min-height: 40dvh; height: auto; margin: 0 auto; grid-template-rows: auto minmax(0, 1fr); border-radius: 18px 18px 0 0; }
+  .shared-replay .review-overlay > header { padding: 12px; gap: 8px; }
+  .shared-replay .review-overlay > header > div { min-width: 0; flex: 1; }
+  .shared-replay .review-overlay > header h2 { font-size: 17px; }
+  .shared-replay .review-overlay > header button { flex-shrink: 0; min-width: 44px; height: 44px; }
+  .shared-replay .review-overlay > header .review-overlay-back { max-width: 115px; }
+  .shared-replay .review-overlay > header .review-overlay-back span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .shared-replay .review-overlay-body { padding: 12px 14px max(24px, env(safe-area-inset-bottom, 0px)); overscroll-behavior: contain; }
+  .shared-replay .card-inspector-layout { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .shared-replay .inspector-art { position: static; width: min(230px, 75%); margin: auto; }
+  /* Every individual card opens edge to edge; pile browsers remain sheets. */
+  .shared-replay .review-overlay-backdrop:has(.review-card) { padding: 0; }
+  .shared-replay .review-overlay.review-card { width: 100%; max-width: none; height: 100dvh; max-height: 100dvh; margin: 0; border: 0; border-radius: 0; }
+  .shared-replay .review-card > header { padding-top: max(12px, env(safe-area-inset-top, 0px)); }
+  .shared-replay .review-card .inspector-art { width: min(100%, 480px, calc((100dvh - 132px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) * .716)); }
+  .shared-replay .review-card .inspector-art > img { max-height: none; width: 100%; height: auto; }
+  .shared-replay .review-card .inspector-card-copy { width: 100%; max-width: 600px; margin: auto; }
+  .shared-replay .review-card-grid, .shared-replay .review-zone .review-card-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+  .shared-replay .zone-summary p { font-size: 13px; line-height: 1.5; }
+  .shared-replay .attachment-list button { min-height: 48px; }
+}
+
+@media (max-width: 359px) {
+  .mobile-replay-header a > span { display: none; }
+  .shared-replay .field-layout { grid-template-columns: 49px minmax(0, 1fr) 51px; gap: 4px; }
+  .shared-replay .prize-fan { width: 49px; }
+  .shared-replay .zone-stack, .shared-replay .zone-card-group { width: 51px; }
+  .shared-replay .pokemon-slot { width: 46px; height: 64px; }
+  .shared-replay .pokemon-slot.active { width: 65px; height: 90px; }
+  .shared-replay .stadium-card-peek { width: 31px; height: 44px; }
+  .shared-replay .mobile-stadium-label { width: 44px; font-size: 9px; }
+  .shared-replay .stadium-marker, .shared-replay .opponent .stadium-marker { left: -2px; width: 44px; }
+}
+@media (max-width: 1000px) and (prefers-reduced-motion: no-preference) {
+  /* Snapshot overlays must not intercept Pause, stepping or card inspection. */
+  html.trace-frame-transition::view-transition { pointer-events: none; }
+  html.trace-frame-transition::view-transition-group(*) { animation-duration: 220ms; }
+  .shared-replay .attack-route { inset: auto; width: 0; height: 0; overflow: visible; }
+  .shared-replay .attack-route-core { width: 34px; height: 34px; animation-duration: calc(540ms / var(--replay-speed)); animation-delay: calc(80ms / var(--replay-speed)); }
+  .shared-replay .attack-route-trail { height: 48px; animation-duration: calc(480ms / var(--replay-speed)); animation-delay: calc(90ms / var(--replay-speed)); }
+  .shared-replay .attack-route .trail-right { animation-delay: calc(120ms / var(--replay-speed)); }
+  .shared-replay .attack-route-impact { animation-duration: calc(360ms / var(--replay-speed)); animation-delay: calc(440ms / var(--replay-speed)); }
+  .shared-replay .frame-motion-enabled .pokemon-slot.attacking { animation-duration: calc(580ms / var(--replay-speed)); animation-delay: calc(80ms / var(--replay-speed)); }
+  .shared-replay .frame-motion-enabled .pokemon-slot.damage-increased { animation-duration: calc(480ms / var(--replay-speed)); animation-delay: calc(320ms / var(--replay-speed)); }
+  .shared-replay .frame-motion-enabled:not(.frame-scrubbing) .pass-impact { animation-duration: calc(850ms / var(--replay-speed)); }
+  .shared-replay .frame-motion-enabled:not(.frame-scrubbing) .header-handoff .header-handoff-message,
+  .shared-replay .frame-motion-enabled:not(.frame-scrubbing) .header-handoff .header-player-name { animation-duration: calc(850ms / var(--replay-speed)); }
+  .shared-replay .frame-motion-enabled:not(.frame-scrubbing) .turn-receiving > .player-strip { animation-duration: calc(850ms / var(--replay-speed)); }
+}
+@media (min-width: 600px) and (max-width: 1000px) {
+  .shared-replay .board-frame, .mobile-replay-controls { width: 100%; max-width: 600px; margin: 0 auto; }
+  .shared-replay .pokemon-slot { width: 60px; height: 83px; }
+  .shared-replay .pokemon-slot.active { width: 80px; height: 111px; }
+  .shared-replay .field-layout { grid-template-rows: auto 114px; }
+  .shared-replay .local .field-layout { grid-template-rows: 114px auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .shared-replay .review-overlay { animation: none; }
+  .mobile-frame-buttons button { transition: none; }
+}

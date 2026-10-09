@@ -11,6 +11,7 @@ artifacts
 release
 .agents
 .codex
+.claude
 design-qa.md
 *.log
 .DS_Store

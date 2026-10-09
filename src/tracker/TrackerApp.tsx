@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from 'react';
 import { flushSync } from 'react-dom';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import {
@@ -57,6 +57,8 @@ import {
   frameAnimationsFromStoredPreference,
   frameCardTransitionName,
   frameNavigationMode,
+  MOBILE_PLAYBACK_RATES,
+  replayFrameDelay,
   resolveFrameNavigationTarget,
   type FrameNavigationRequest,
 } from './frame-animation-model.js';
@@ -70,11 +72,15 @@ import type {
   TrackedPokemon, TrackedTurn, TrackerEnvironment, TrackerEventKind,
 } from './types.js';
 import './tracker.css';
+import './mobile-replay.css';
 import { PlayerDecklist } from './PlayerDecklist.js';
 import { BoardZoomViewport } from './BoardZoomViewport.js';
 import { replayShortcut, replayShortcutFrame } from './replay-shortcuts.js';
 import { SharedAccessRail } from './SharedAccessRail.js';
 import { readSharedAccessOpen, storeSharedAccessOpen } from './shared-access.js';
+import { MobileReplayControls } from './MobileReplayControls.js';
+import { buildReviewChapters, reviewBenchSlots } from './mobile-replay-model.js';
+import { useReplayDialogFocus } from './useReplayDialogFocus.js';
 
 // Keep the legacy key so the rebrand never strands a user's saved match archive.
 const STORAGE_KEY = 'match-lens/reviews-v1';
@@ -290,8 +296,8 @@ function StadiumMarker({
     {resolvedCard || info ? <img src={artwork} data-card-id={resolvedSourceId} alt="" onError={showCardBackOnError} /> : <ShieldCheck size={24} weight="fill" />}
   </span>;
   return resolvedCard
-    ? <button type="button" className={`stadium-marker ${ownerClass}`} style={cardTransitionStyle(resolvedCard.id)} onClick={() => onOpen(resolvedCard)} aria-label={`${context}. Open card details.`} title={`${context} · Click to inspect`}>{content}</button>
-    : <div className={`stadium-marker ${ownerClass}`} aria-label={context} title={context}>{content}</div>;
+    ? <button type="button" className={`stadium-marker ${ownerClass}`} style={cardTransitionStyle(resolvedCard.id)} onClick={() => onOpen(resolvedCard)} aria-label={`${context}. Open card details.`} title={`${context} · Click to inspect`}>{content}<small className="mobile-stadium-label">{resolvedName}</small></button>
+    : <div className={`stadium-marker ${ownerClass}`} aria-label={context} title={context}>{content}<small className="mobile-stadium-label">{resolvedName}</small></div>;
 }
 
 function PokemonSlot({ pokemon, catalog, active = false, defeated = false, attacking = false, damageChange, positionChange, onOpen }: { pokemon: TrackedPokemon | null; catalog: ReadonlyMap<string, CardInfo>; active?: boolean; defeated?: boolean; attacking?: boolean; damageChange?: PokemonDamageChange; positionChange?: PokemonPositionChange; onOpen?: (id: string) => void }) {
@@ -414,14 +420,33 @@ function ChoiceStage({ boardName, frames, currentReviewIndex, catalog, onOpen }:
   </aside>;
 }
 
-function AttackRoute({ resolution, opponentAttacking, hasImpact }: { resolution: AttackResolution; opponentAttacking: boolean; hasImpact: boolean }) {
+function AttackRoute({ resolution, opponentAttacking, hasImpact, compact }: { resolution: AttackResolution; opponentAttacking: boolean; hasImpact: boolean; compact: boolean }) {
+  const routeRef = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => {
+    if (!compact || !routeRef.current) return;
+    const route = routeRef.current;
+    const board = route.closest('.board-frame');
+    const local = board?.querySelector('.local .pokemon-slot.active');
+    const opponent = board?.querySelector('.opponent .pokemon-slot.active');
+    if (!board || !local || !opponent) return;
+    const bounds = board.getBoundingClientRect();
+    const localBounds = local.getBoundingClientRect();
+    const opponentBounds = opponent.getBoundingClientRect();
+    const localY = localBounds.top + localBounds.height / 2;
+    const opponentY = opponentBounds.top + opponentBounds.height / 2;
+    const center = (localY + opponentY) / 2;
+    route.style.top = `${center - bounds.top}px`;
+    route.style.left = `${localBounds.left + localBounds.width / 2 - bounds.left}px`;
+    route.style.setProperty('--attack-start', `${(opponentAttacking ? opponentY : localY) - center}px`);
+    route.style.setProperty('--attack-end', `${(opponentAttacking ? localY : opponentY) - center}px`);
+  }, [compact, opponentAttacking]);
   const outcome = resolution.hits.length
     ? `${resolution.source} used ${resolution.attack}. ${resolution.hits.map((hit) => `${hit.damage || 'Effect'} to ${hit.target}${hit.knockedOut ? ', knocked out' : ''}`).join('. ')}`
     : hasImpact
       ? `${resolution.source} used ${resolution.attack} and placed damage counters`
       : `${resolution.source} used ${resolution.attack} with no direct-damage target captured`;
   return <>
-    <span className={`attack-route ${opponentAttacking ? 'from-opponent' : 'from-local'} ${hasImpact ? 'has-hit' : 'effect-only'}`} aria-hidden="true">
+    <span ref={routeRef} className={`attack-route ${opponentAttacking ? 'from-opponent' : 'from-local'} ${hasImpact ? 'has-hit' : 'effect-only'}`} aria-hidden="true">
       <i className="attack-route-trail trail-left" />
       <i className="attack-route-trail trail-right" />
       <i className="attack-route-core"><Sword size={18} weight="fill" /></i>
@@ -433,7 +458,7 @@ function AttackRoute({ resolution, opponentAttacking, hasImpact }: { resolution:
 
 
 function ZoneStack({ label, count, tone, onOpen }: { label: string; count: number | string; tone: 'coral' | 'blue'; onOpen?: () => void }) {
-  return <button type="button" className={`zone-stack ${tone}`} onClick={onOpen} title={`Open ${label}`}><span>{label}</span><span className="zone-stack-cards"><CardsThree size={36} weight="duotone" /></span><b>{count}</b></button>;
+  return <button type="button" className={`zone-stack ${tone}`} onClick={onOpen} title={`Open ${label}`}><span>{label}</span><span className="zone-stack-cards"><CardsThree size={36} weight="duotone" /><img className="mobile-deck-back" src={CARD_BACK_ART} alt="" /></span><b>{count}</b></button>;
 }
 
 function PrizeFan({ count, cards, tone, inferred = false, onOpen }: { count: number; cards: Card[]; tone: 'coral' | 'blue'; inferred?: boolean; onOpen?: () => void }) {
@@ -448,10 +473,12 @@ function PrizeFan({ count, cards, tone, inferred = false, onOpen }: { count: num
       aria-label={`${remaining} of 6 Prize cards remaining. ${inferred ? 'View inferred Prize cards; positions unknown.' : 'Open Prize cards.'}`}
     >
       <span>Prize</span>
+      <b className="mobile-prize-count" aria-hidden="true">{remaining}<small> / 6</small></b>
       <span className="prize-fan-cards" aria-hidden="true">
         {slots.map((state, index) => (
           <i key={index} className={state} style={cardTransitionStyle(cards[index]?.id)} />
         ))}
+        {Array.from({ length: 6 - remaining }, (_, index) => <i key={`taken-${index}`} className="mobile-taken-slot taken" />)}
       </span>
     </button>
   );
@@ -460,7 +487,7 @@ function PrizeFan({ count, cards, tone, inferred = false, onOpen }: { count: num
 function ZoneCards({ label, cards, catalog, onOpen }: { label: string; cards: TrackedCard[]; catalog: ReadonlyMap<string, CardInfo>; onOpen?: () => void }) {
   const visible = cards.slice(-2).reverse();
   return (
-    <button type="button" className="zone-card-group" onClick={onOpen} title={`Open ${label}`}><span>{label}</span><span className="zone-card-stack">{(visible.length ? visible : [{ id: `fallback-${label}`, name: label }]).map((card) => { const name = resolvedCardInfo(card, catalog)?.name || card.name; return <img key={card.id} style={card.id.startsWith('fallback-') ? undefined : cardTransitionStyle(card.id)} src={resolvedCardImage(card, catalog)} data-card-id={card.cardId} title={name} alt={name} onError={showCardBackOnError} />; })}</span><b>{cards.length}</b></button>
+    <button type="button" className="zone-card-group" onClick={onOpen} title={`Open ${label}`} aria-label={`${label} ${cards.length}`}><span>{label}</span><span className="zone-card-stack">{visible.map((card) => { const name = resolvedCardInfo(card, catalog)?.name || card.name; return <img key={card.id} style={card.id.startsWith('fallback-') ? undefined : cardTransitionStyle(card.id)} src={resolvedCardImage(card, catalog)} data-card-id={card.cardId} title={name} alt={name} onError={showCardBackOnError} />; })}{!visible.length && <span className="zone-card-empty"><CardsThree size={24} weight="regular" /></span>}</span><b>{cards.length}</b></button>
   );
 }
 
@@ -509,13 +536,13 @@ function OpponentHandSummary({ boardName, count, onOpen }: { boardName: string; 
 }
 
 export function PlayerField({ board, decklist, deckAccess, canonical, pendingCards, visibility, catalog, choiceFrames, currentReviewIndex, turnNumber, status, handoff, stadiumCard, stadiumName, stadiumOwner, localPlayerName, opponentName, defeatedIds, defeatedNames, damageChanges, positionChanges, attackerId, opponent = false, avatar, onOpenPokemon, onOpenChoice, onOpenCard, onOpenZone }: { board: TrackedPlayerBoard; decklist?: CapturedDecklist; deckAccess?: { visible?: boolean; loadDeck?: () => Promise<CapturedDecklist>; unavailableReason: string; accessKey: string }; canonical: PlayerState; pendingCards?: Card[]; visibility: Record<string, ReviewCardVisibility>; catalog: ReadonlyMap<string, CardInfo>; choiceFrames: TurnChoiceFrame[]; currentReviewIndex: number; turnNumber: number; status: PlayerTurnStatus; handoff?: TurnHandoffRole; stadiumCard: Card | null; stadiumName?: string; stadiumOwner?: string; localPlayerName: string; opponentName: string; defeatedIds: ReadonlySet<string>; defeatedNames: ReadonlySet<string>; damageChanges: ReadonlyMap<string, PokemonDamageChange>; positionChanges: ReadonlyMap<string, PokemonPositionChange>; attackerId?: string; opponent?: boolean; avatar: string; onOpenPokemon: (id: string) => void; onOpenChoice: (card: TrackedCard) => void; onOpenCard: (card: Card) => void; onOpenZone: (title: string, subtitle: string, cards: Card[], visibility: Record<string, ReviewCardVisibility>) => void }) {
-  const benches = [...board.bench, ...Array.from({ length: Math.max(0, 5 - board.bench.length) }, () => null)].slice(0, 5);
+  const benches = reviewBenchSlots(board.bench);
   const tone = opponent ? 'coral' : 'blue';
   const isDefeated = (pokemon: TrackedPokemon | null) => Boolean(pokemon && (defeatedIds.has(pokemon.id) || defeatedNames.has(pokemon.name)));
   const motionKey = (pokemon: TrackedPokemon | null, fallback: string) => pokemon && (pokemon.id === attackerId || isDefeated(pokemon) || damageChanges.has(pokemon.id) || positionChanges.has(pokemon.id))
     ? `${pokemon.id}:motion:${currentReviewIndex}`
     : pokemon?.id || fallback;
-  const bench = <div className="bench-row" aria-label={`${board.name} bench`}>{benches.map((pokemon, index) => <PokemonSlot key={motionKey(pokemon, `empty-${index}`)} pokemon={pokemon} catalog={catalog} defeated={isDefeated(pokemon)} attacking={pokemon?.id === attackerId} damageChange={pokemon ? damageChanges.get(pokemon.id) : undefined} positionChange={pokemon ? positionChanges.get(pokemon.id) : undefined} onOpen={onOpenPokemon} />)}</div>;
+  const bench = <div className="bench-row" data-slots={benches.length} aria-label={`${board.name} bench`}>{benches.map((pokemon, index) => <PokemonSlot key={motionKey(pokemon, `empty-${index}`)} pokemon={pokemon} catalog={catalog} defeated={isDefeated(pokemon)} attacking={pokemon?.id === attackerId} damageChange={pokemon ? damageChanges.get(pokemon.id) : undefined} positionChange={pokemon ? positionChanges.get(pokemon.id) : undefined} onOpen={onOpenPokemon} />)}</div>;
   const stadiumHere = Boolean(stadiumName) && (stadiumOwner ? stadiumOwner === board.name : !opponent);
   const active = <div className={`active-lane ${stadiumHere ? 'has-stadium-zone' : ''}`}><span>Active</span>{stadiumHere && <StadiumMarker card={stadiumCard} name={stadiumName} owner={stadiumOwner} catalog={catalog} localPlayer={localPlayerName} opponent={opponentName} onOpen={onOpenCard} />}<PokemonSlot key={motionKey(board.active, 'empty-active')} pokemon={board.active} catalog={catalog} active defeated={isDefeated(board.active)} attacking={board.active?.id === attackerId} damageChange={board.active ? damageChanges.get(board.active.id) : undefined} positionChange={board.active ? positionChanges.get(board.active.id) : undefined} onOpen={onOpenPokemon} /><ChoiceStage boardName={board.name} frames={choiceFrames} currentReviewIndex={currentReviewIndex} catalog={catalog} onOpen={onOpenChoice} /></div>;
   const openZone = (label: string, cards: Card[], note: string) => onOpenZone(`${board.name} · ${label}`, note, cards, visibility);
@@ -666,6 +693,7 @@ export default function TrackerApp() {
   const [restoringReview, setRestoringReview] = useState(() => isTauri() || sharedMode);
   const [tracking, setTracking] = useState(() => !isTauri() && !sharedMode);
   const [playing, setPlaying] = useState(false);
+  const [mobilePlaybackRate, setMobilePlaybackRate] = useState(1);
   const [frameAnimations, setFrameAnimations] = useState(initialFrameAnimations);
   const [environment, setEnvironment] = useState<TrackerEnvironment>({
     clientInstalled: false, clientRunning: false, pid: null, captureMode: 'existing-client',
@@ -700,6 +728,21 @@ export default function TrackerApp() {
     catch { return window.innerWidth >= 1180; }
   });
   const [timelineOpen, setTimelineOpen] = useState(false);
+  const [mobileTimelineTab, setMobileTimelineTab] = useState<'turns' | 'moments' | 'log'>('turns');
+  const timelinePanelRef = useRef<HTMLElement>(null);
+  const [compactReplay, setCompactReplay] = useState(() => sharedMode && window.matchMedia('(max-width: 1000px)').matches);
+  useEffect(() => {
+    if (!sharedMode) return;
+    document.body.classList.add('shared-replay-page');
+    const query = window.matchMedia('(max-width: 1000px)');
+    const update = () => setCompactReplay(query.matches);
+    update();
+    query.addEventListener('change', update);
+    return () => {
+      query.removeEventListener('change', update);
+      document.body.classList.remove('shared-replay-page');
+    };
+  }, [sharedMode]);
   const [frameScrubbing, setFrameScrubbing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [liveOperations, setLiveOperations] = useState<CapturedOperation[]>([]);
@@ -771,7 +814,7 @@ export default function TrackerApp() {
     });
   }, []);
 
-  const navigateToFrame = useCallback((next: FrameNavigationRequest) => {
+  const navigateToFrame = useCallback((next: FrameNavigationRequest, source: 'navigation' | 'playback' = 'navigation') => {
     const current = turnIndexRef.current;
     const last = Math.max(0, (selectedReview?.turns.length || 1) - 1);
     const target = resolveFrameNavigationTarget(requestedTurnIndexRef.current, next, last);
@@ -810,7 +853,7 @@ export default function TrackerApp() {
       }, 120);
     };
     const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    const navigationMode = frameNavigationMode(frameAnimations, Boolean(reduceMotion), frameTransitionInFlightRef.current, frameScrubbingRef.current);
+    const navigationMode = frameNavigationMode(frameAnimations, Boolean(reduceMotion), frameTransitionInFlightRef.current, frameScrubbingRef.current, { compact: compactReplay, playback: source === 'playback' });
     if (navigationMode === 'instant') {
       stopActiveTransition();
       apply();
@@ -862,7 +905,7 @@ export default function TrackerApp() {
       delete document.documentElement.dataset.frameDirection;
       finish();
     });
-  }, [frameAnimations, selectedReview?.turns.length]);
+  }, [compactReplay, frameAnimations, selectedReview?.turns.length]);
 
   const selectedTurn = selectedReview?.turns[Math.min(turnIndex, Math.max(0, selectedReview.turns.length - 1))] || null;
   const selectedCanonical = useMemo(() => selectedReview && selectedTurn
@@ -888,6 +931,8 @@ export default function TrackerApp() {
 
   const timeline = useMemo(() => buildTimeline(selectedReview?.turns || []), [selectedReview]);
   const keyMoments = useMemo(() => buildKeyMoments(selectedReview), [selectedReview]);
+  const reviewChapters = useMemo(() => buildReviewChapters(selectedReview?.turns || []), [selectedReview]);
+  useReplayDialogFocus(compactReplay && timelineOpen && !inspector, timelinePanelRef, () => setTimelineOpen(false));
   const selectedSummary = useMemo(() => summaries.find((summary) => summary.id === selectedId), [selectedId, summaries]);
   const turnChoiceFrames = useMemo<TurnChoiceFrame[]>(() => {
     if (!selectedReview || !selectedTurn) return [];
@@ -1339,13 +1384,13 @@ export default function TrackerApp() {
   }, [selectedEventKey, selectedReview?.id, timeline.entries, turnIndex]);
 
   useEffect(() => {
-    if (!selectedEventKey) return undefined;
+    if (!selectedEventKey || !timelineOpen || (compactReplay && mobileTimelineTab !== 'log')) return undefined;
     const frame = window.requestAnimationFrame(() => selectedTimelineEventRef.current?.scrollIntoView({ block: 'center' }));
     return () => window.cancelAnimationFrame(frame);
-  }, [selectedEventKey, selectedReview?.id, timeline.entries.length]);
+  }, [selectedEventKey, selectedReview?.id, timeline.entries.length, timelineOpen, compactReplay, mobileTimelineTab]);
 
   useEffect(() => {
-    if (!selectedReview || showSetup || showSettings || inspector || restoringReview || environment.capture.waitingForMatchEnd) return undefined;
+    if (!selectedReview || showSetup || showSettings || inspector || (compactReplay && timelineOpen) || restoringReview || environment.capture.waitingForMatchEnd) return undefined;
 
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target instanceof HTMLElement ? event.target : null;
@@ -1362,14 +1407,14 @@ export default function TrackerApp() {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [environment.capture.waitingForMatchEnd, inspector, keyMoments, navigateToFrame, selectedReview, showSetup, showSettings, restoringReview]);
+  }, [compactReplay, timelineOpen, environment.capture.waitingForMatchEnd, inspector, keyMoments, navigateToFrame, selectedReview, showSetup, showSettings, restoringReview]);
 
   useEffect(() => {
     if (environment.capture.waitingForMatchEnd) setPlaying(false);
   }, [environment.capture.waitingForMatchEnd]);
 
   useEffect(() => {
-    if (!playing || !selectedReview) return undefined;
+    if (!playing || !selectedReview || inspector || (compactReplay && timelineOpen)) return undefined;
     const selectedFrame = selectedReview.turns[turnIndex];
     const isAttackFrame = selectedFrame?.events.some((event) => event.kind === 'attack' || event.kind === 'damage');
     const isPassFrame = selectedFrame ? Boolean(turnPassForTurn(selectedFrame, selectedReview.players)) : false;
@@ -1377,10 +1422,10 @@ export default function TrackerApp() {
       navigateToFrame((current) => {
         if (current >= selectedReview.turns.length - 1) { setPlaying(false); return current; }
         return current + 1;
-      });
-    }, isAttackFrame ? 2600 : isPassFrame ? 1900 : 1200);
+      }, 'playback');
+    }, replayFrameDelay(Boolean(isAttackFrame), isPassFrame, compactReplay, mobilePlaybackRate));
     return () => window.clearTimeout(timer);
-  }, [navigateToFrame, playing, selectedReview, turnIndex]);
+  }, [compactReplay, mobilePlaybackRate, timelineOpen, inspector, navigateToFrame, playing, selectedReview, turnIndex]);
 
   const changeTracking = useCallback(async () => {
     setError(null);
@@ -1408,14 +1453,23 @@ export default function TrackerApp() {
   }, []);
 
   const openCard = useCallback((card: Card, pokemon?: PokemonInPlay) => {
+    setPlaying(false);
     setInspector({ kind: 'card', card, pokemon, effects: selectedCanonical?.appliedEffects[card.id], title: pokemon ? 'Pokémon in play' : 'Card details' });
   }, [selectedCanonical]);
 
   const openPokemon = useCallback((id: string) => {
     if (!selectedCanonical) return;
     const pokemon = findPokemonById(selectedCanonical, id);
-    if (pokemon) openCard(pokemon.card, pokemon);
-  }, [openCard, selectedCanonical]);
+    if (pokemon) { openCard(pokemon.card, pokemon); return; }
+    // The visible knockout frame can retain a card already removed from the
+    // canonical field. It must still open, without inventing in-play vitals.
+    const tracked = Object.values(selectedTurn?.snapshot.players || {})
+      .flatMap(player => [player.active, ...player.bench]).find(card => card?.id === id);
+    if (tracked) {
+      const info = resolvedCardInfo(tracked, cardCatalog);
+      openCard(cardInfoToEngineCard(info, tracked.id, info?.name || tracked.name, tracked.cardId));
+    }
+  }, [openCard, selectedCanonical, selectedTurn, cardCatalog]);
 
   const openChoiceCard = useCallback((tracked: TrackedCard) => {
     const info = resolvedCardInfo(tracked, cardCatalog);
@@ -1423,11 +1477,13 @@ export default function TrackerApp() {
   }, [cardCatalog, openCard]);
 
   const openZone = useCallback((title: string, subtitle: string, cards: Card[], visibility: Record<string, ReviewCardVisibility>) => {
+    setPlaying(false);
     setInspector({ kind: 'zone', title, subtitle, cards, visibility });
   }, []);
 
   const openSelection = useCallback((selection = selectedCanonical?.selection) => {
     if (!selection) return;
+    setPlaying(false);
     const source = selection.sourceCardId
       ? cardCatalog.get(selection.sourceCardId) || cardCatalog.get(selection.sourceCardId.toLowerCase())
       : undefined;
@@ -1552,7 +1608,14 @@ export default function TrackerApp() {
   const selectedShareUrl = selectedReview ? shareLinks[selectedReview.id] : null;
 
   return (
-    <div className={`app-shell ${sharedMode ? 'shared-replay' : ''}`}>
+    <div className={`app-shell ${sharedMode ? 'shared-replay' : ''}`} style={compactReplay ? { '--replay-speed': mobilePlaybackRate } as CSSProperties : undefined}>
+      {sharedMode && <header className="mobile-replay-header" aria-hidden={compactReplay && (timelineOpen || Boolean(inspector)) || undefined}>
+        <a href="/trace" aria-label="Learn about Trace"><img src="/tracker-assets/trace-mascot.png" alt="" /><strong>Trace</strong><span>Replay</span></a>
+        <div className="mobile-header-actions">
+          {selectedReview && <button type="button" className="mobile-play" aria-label={playing ? 'Pause replay' : 'Play replay'} onClick={() => { if (!playing && turnIndex >= selectedReview.turns.length - 1) navigateToFrame(0); setPlaying(value => !value); }}>{playing ? <Pause size={18} weight="fill" /> : <Play size={18} weight="fill" />}</button>}
+          <button type="button" aria-label={timelineOpen ? 'Close replay navigation' : 'Open turns and game log'} aria-expanded={timelineOpen} aria-controls="replay-game-log" onClick={() => { setPlaying(false); setMobileTimelineTab('turns'); setTimelineOpen(value => !value); }}><span>{selectedTurn?.label.split(/\s+·\s+/)[0] || 'Game log'}</span>{timelineOpen ? <X size={17} /> : <List size={17} />}</button>
+        </div>
+      </header>}
       {!sharedMode && <div className="window-drag-region" onMouseDown={beginWindowDrag} aria-hidden="true" />}
 
       <main className={`workspace ${archiveOpen ? 'archive-open' : 'archive-collapsed'} ${timelineOpen ? 'timeline-open' : 'timeline-collapsed'} ${sharedMode ? `shared-mode ${sharedAccessOpen ? 'shared-access-open' : 'shared-access-collapsed'}` : ''}`}>
@@ -1593,16 +1656,20 @@ export default function TrackerApp() {
           </InfiniteArchiveList>
         </aside>}
 
-        <section className="review-stage" aria-busy={restoringReview}>
+        <section className="review-stage" aria-busy={restoringReview} aria-hidden={Boolean(inspector) || (compactReplay && timelineOpen) || undefined} onClickCapture={(event) => { if ((event.target as HTMLElement).closest('.player-decklist-trigger')) setPlaying(false); }}>
           {restoringReview ? <MatchLoadingSkeleton /> : selectedReview && selectedTurn && localBoard && opponentBoard && selectedCanonical && localCanonicalPlayer && opponentCanonicalPlayer && turnStatus ? <>
-            <BoardZoomViewport><div className={`board-frame ${frameAnimations ? 'frame-motion-enabled' : ''} ${frameScrubbing ? 'frame-scrubbing' : ''}`}>
+            <BoardZoomViewport compact={compactReplay}><div className={`board-frame ${frameAnimations ? 'frame-motion-enabled' : ''} ${frameScrubbing ? 'frame-scrubbing' : ''}`}>
               <div className="reconstructed-chip"><CheckCircle size={18} weight="fill" />Board reconstructed</div>
               <PlayerField deckAccess={opponentDeckAccess} board={opponentBoard} canonical={opponentCanonicalPlayer} pendingCards={selectedCanonical.pendingCards?.[selectedCanonical.localPlayerIndex === 0 ? 1 : 0]} visibility={selectedCanonical.visibility} catalog={cardCatalog} choiceFrames={turnChoiceFrames.filter((frame) => frame.actor === opponentBoard.name)} currentReviewIndex={turnIndex} turnNumber={selectedCanonical.state.turnNumber} status={turnStatus.players[opponentBoard.name]} handoff={turnPass ? turnPass.passer === opponentBoard.name ? turnPass.reason === 'timeout' ? 'timed-out' : 'passing' : 'receiving' : undefined} stadiumCard={selectedCanonical.state.stadium} stadiumName={turnStatus.stadiumName} stadiumOwner={turnStatus.stadiumOwner} localPlayerName={localBoard.name} opponentName={opponentBoard.name} defeatedIds={defeatedIds} defeatedNames={defeatedNames} damageChanges={damageChanges} positionChanges={positionChanges} attackerId={attackResolution?.sourceId} opponent avatar={TRAINER_ART[0]} onOpenPokemon={openPokemon} onOpenChoice={openChoiceCard} onOpenCard={openCard} onOpenZone={openZone} />
               <div className="midline"><span /></div>
               <PlayerField decklist={selectedReview.decklists?.find(deck => deck.playerName === localBoard.name)} board={localBoard} canonical={localCanonicalPlayer} pendingCards={selectedCanonical.pendingCards?.[selectedCanonical.localPlayerIndex]} visibility={selectedCanonical.visibility} catalog={cardCatalog} choiceFrames={turnChoiceFrames.filter((frame) => frame.actor === localBoard.name)} currentReviewIndex={turnIndex} turnNumber={selectedCanonical.state.turnNumber} status={turnStatus.players[localBoard.name]} handoff={turnPass ? turnPass.passer === localBoard.name ? turnPass.reason === 'timeout' ? 'timed-out' : 'passing' : 'receiving' : undefined} stadiumCard={selectedCanonical.state.stadium} stadiumName={turnStatus.stadiumName} stadiumOwner={turnStatus.stadiumOwner} localPlayerName={localBoard.name} opponentName={opponentBoard.name} defeatedIds={defeatedIds} defeatedNames={defeatedNames} damageChanges={damageChanges} positionChanges={positionChanges} attackerId={attackResolution?.sourceId} avatar={TRAINER_ART[2]} onOpenPokemon={openPokemon} onOpenChoice={openChoiceCard} onOpenCard={openCard} onOpenZone={openZone} />
-              {frameAnimations && !frameScrubbing && attackResolution && <AttackRoute key={`${selectedReview.id}:${turnIndex}:${attackResolution.sourceId || attackResolution.source}`} resolution={attackResolution} opponentAttacking={attackResolution.attacker === opponentBoard.name} hasImpact={attackResolution.hits.length > 0 || [...damageChanges.values()].some((change) => change.delta > 0)} />}
+              {frameAnimations && !frameScrubbing && attackResolution && <AttackRoute key={`${selectedReview.id}:${turnIndex}:${attackResolution.sourceId || attackResolution.source}`} resolution={attackResolution} opponentAttacking={attackResolution.attacker === opponentBoard.name} hasImpact={attackResolution.hits.length > 0 || [...damageChanges.values()].some((change) => change.delta > 0)} compact={compactReplay} />}
             </div>
-            </BoardZoomViewport><div className="turn-controls">
+            </BoardZoomViewport>{compactReplay ? <MobileReplayControls index={turnIndex} last={Math.max(0, selectedReview.turns.length - 1)}
+              title={currentActionEvents[0]?.text || selectedTurn.label}
+              detail={currentActionEvents.slice(1).filter(isSupportingActionEvent).map(event => event.text).join(' · ') || (selectedTurn.player ? `Action by ${selectedTurn.player}` : selectedTurn.label === 'Partial capture' ? 'Recording starts before the first complete board' : 'Opening setup')}
+              onNavigate={(request) => { setPlaying(false); navigateToFrame(request); }}
+              onDetails={() => { setPlaying(false); setMobileTimelineTab('log'); setTimelineOpen(true); }} /> : <div className="turn-controls">
               <div className="turn-caption">
                 <span className="turn-caption-meta"><small>{selectedTurn.label}</small><b>{turnIndex} / {Math.max(1, selectedReview.turns.length - 1)}</b></span>
                 <strong>{currentActionEvents[0]?.text || (selectedTurn.player ? `${selectedTurn.player}'s action` : selectedTurn.label)}</strong>
@@ -1619,15 +1686,28 @@ export default function TrackerApp() {
                 <button type="button" onClick={() => navigateToFrame((value) => Math.min(selectedReview.turns.length - 1, value + 1))} disabled={turnIndex >= selectedReview.turns.length - 1} aria-label="Next frame" aria-keyshortcuts="ArrowRight D" title="Next frame · D or →"><CaretRight size={18} weight="regular" /></button>
                 <button type="button" onClick={() => navigateToFrame(selectedReview.turns.length - 1)} disabled={turnIndex >= selectedReview.turns.length - 1} aria-label="Latest frame" aria-keyshortcuts="Shift+D Shift+ArrowRight" title="Latest frame · Shift+D or Shift+→"><SkipForward size={18} weight="regular" /></button>
               </div>
-            </div>
+            </div>}
           </> : sharedMode ? <div className="welcome-state shared-replay-error"><img src="/tracker-assets/trace-mascot.png" alt="" /><span>Shared replay</span><h2>This match could not be opened.</h2><p>{error || 'The link may be incomplete or no longer available.'}</p><a href="/trace">Learn about Trace</a></div> : selectedSummary?.recording ? <div className="welcome-state live-capture-state"><WifiHigh size={58} weight="duotone" /><span>Game detected</span><h2>Capturing this match.</h2><p>Trace registered the game immediately. The reconstructed board will appear as soon as the opening state arrives.</p><small>{Math.max(selectedSummary.operationCount, liveOperations.length)} exact operation{Math.max(selectedSummary.operationCount, liveOperations.length) === 1 ? '' : 's'} safely stored</small></div> : <div className="welcome-state"><img src="/tracker-assets/trace-mascot.png" alt="Trace's furry archivist reading a field guide" /><span>Ready when you are</span><h2>See the whole match.</h2><p>Trace captures exact live operations and rebuilds every turn automatically—no OCR, screenshots, or manual imports.</p><div><button className="primary" type="button" disabled={busy} onClick={() => void changeTracking()}>{tracking ? 'Automatic capture is on' : 'Start automatic capture'}</button><button type="button" onClick={() => importLog(DEMO_BATTLE_LOG)}>Explore a sample</button></div>{liveOperations.length > 0 && <small>{liveOperations.length} exact operations decoded</small>}</div>}
         </section>
 
-        {timelineOpen && <aside className="timeline-panel">
-          <div className="timeline-heading" onMouseDown={beginWindowDrag}><div><span id="match-timeline-heading">Game log</span><small>{timeline.entries.length ? `${timeline.entries.length} events · ${selectedTurn?.label || 'Replay'}` : 'Waiting for a match'}</small></div><div className="timeline-heading-actions"><button type="button" aria-label="Jump to the selected event" title="Jump to selected event" disabled={!selectedEventKey} onClick={() => selectedTimelineEventRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' })}><SkipForward size={19} weight="fill" /></button><button className="panel-collapse-button" type="button" aria-label="Collapse game log" aria-expanded="true" title="Collapse game log" onClick={() => setTimelineOpen(false)}><CaretRight size={17} weight="bold" /></button></div></div>
+        {compactReplay && timelineOpen && <div className="mobile-navigation-backdrop" onClick={() => setTimelineOpen(false)} />}
+        {timelineOpen && <aside ref={timelinePanelRef} id="replay-game-log" aria-hidden={Boolean(inspector) || undefined} className={`timeline-panel ${compactReplay ? 'mobile-navigation-sheet' : ''}`} role={compactReplay ? 'dialog' : undefined} aria-modal={compactReplay || undefined} aria-labelledby="match-timeline-heading" tabIndex={-1}>
+          <div className="timeline-heading" onMouseDown={beginWindowDrag}><div><span id="match-timeline-heading">{compactReplay ? "Review game" : "Game log"}</span><small>{timeline.entries.length ? `${timeline.entries.length} events · ${selectedTurn?.label || 'Replay'}` : 'Waiting for a match'}</small></div><div className="timeline-heading-actions"><button type="button" aria-label="Jump to the selected event" title="Jump to selected event" disabled={!selectedEventKey} onClick={() => { if (compactReplay) setMobileTimelineTab('log'); selectedTimelineEventRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }); }}><SkipForward size={19} weight="fill" /></button><button className="panel-collapse-button" type="button" aria-label={compactReplay ? "Close replay navigation" : "Collapse game log"} aria-expanded="true" title="Collapse game log" onClick={() => setTimelineOpen(false)}>{compactReplay ? <X size={21} weight="bold" /> : <CaretRight size={17} weight="bold" />}</button></div></div>
           {!sharedMode && <div className="timeline-tools"><Toggle on={tracking} disabled={busy} onChange={() => void changeTracking()} /><button className="icon-button" type="button" aria-label="Settings" aria-haspopup="dialog" onClick={openSettings}><GearSix size={21} weight="bold" /></button></div>}
           {restoringReview && <div className="match-loading-log" aria-hidden="true">{[0, 1, 2, 3, 4].map((row) => <div className="skeleton-block" key={row} />)}</div>}
-          <div className="timeline-list" hidden={restoringReview} role="list" aria-labelledby="match-timeline-heading">
+          {compactReplay && <div className="mobile-playback-options">
+            <label>Playback speed<select value={mobilePlaybackRate} onChange={event => setMobilePlaybackRate(Number(event.target.value))}>{MOBILE_PLAYBACK_RATES.map(rate => <option key={rate} value={rate}>{rate}×{rate === 1 ? ' · Normal' : ''}</option>)}</select></label>
+            <button type="button" aria-pressed={frameAnimations} onClick={toggleFrameAnimations}><Sparkle size={17} aria-hidden="true" />Animations {frameAnimations ? 'on' : 'off'}</button>
+          </div>}
+          {compactReplay && <div className="mobile-navigation-tabs" aria-label="Review navigation">
+            {([['turns', 'Turns'], ['moments', 'Key moments'], ['log', 'Game log']] as const).map(([tab, label]) => <button key={tab} type="button" aria-pressed={mobileTimelineTab === tab} onClick={() => setMobileTimelineTab(tab)}>{label}</button>)}
+          </div>}
+          {compactReplay && mobileTimelineTab !== 'log' && <div className="mobile-jump-list">
+            <div className="mobile-jump-edges"><button type="button" onClick={() => { navigateToFrame(0); setTimelineOpen(false); }}>Beginning</button><button type="button" onClick={() => { navigateToFrame((selectedReview?.turns.length || 1) - 1); setTimelineOpen(false); }}>Final board</button></div>
+            {mobileTimelineTab === 'turns' ? reviewChapters.map(chapter => <button type="button" className="mobile-jump-row" aria-current={turnIndex >= chapter.first && turnIndex <= chapter.last ? 'step' : undefined} key={chapter.first} onClick={() => { navigateToFrame(chapter.first); setTimelineOpen(false); }}><span><strong>{chapter.label}</strong><small>{chapter.players.length > 1 ? 'Both players' : chapter.players[0] || 'Match setup'}</small></span><small>{chapter.first}–{chapter.last}</small><CaretRight size={18} /></button>) : keyMoments.map(moment => <button type="button" className="mobile-jump-row" key={moment.reviewIndex} onClick={() => { navigateToFrame(moment.reviewIndex); setTimelineOpen(false); }}><span><strong>{selectedReview?.turns[moment.reviewIndex]?.label}</strong><small>{actionEventsForTurn(selectedReview!.turns[moment.reviewIndex])[0]?.text || moment.reasons.join(' · ')}</small></span><CaretRight size={18} /></button>)}
+            {mobileTimelineTab === 'moments' && !keyMoments.length && <p>No attacks or prize changes were captured in this recording.</p>}
+          </div>}
+          <div className="timeline-list" hidden={restoringReview || (compactReplay && mobileTimelineTab !== 'log')} role="list" aria-labelledby="match-timeline-heading">
             {timeline.groups.map((group) => {
               const current = group.entries.some((entry) => entry.reviewIndex === turnIndex);
               const future = group.entries.every((entry) => entry.reviewIndex > turnIndex);
@@ -1684,7 +1764,7 @@ export default function TrackerApp() {
       {!sharedMode && showSetup && <CaptureSetupModal onClose={closeSetup} onCapture={capture => setEnvironment(current => ({ ...current, capture }))} />}
       {!sharedMode && showSettings && <UpdateSettingsModal onClose={() => setShowSettings(false)} version={appVersion}>{isTauri() && accountSettings}</UpdateSettingsModal>}
       {shareUrl && <div className="modal-backdrop share-modal-backdrop"><div className="share-modal" role="dialog" aria-modal="true" aria-labelledby="share-match-title"><div className="modal-title"><div><span>Ready to send</span><h2 id="share-match-title">Share this match</h2></div><button type="button" onClick={() => setShareUrl(null)} aria-label="Close share dialog"><X size={21} weight="bold" /></button></div><p>Anyone with this link can click through the replay in their browser.</p><div className="share-link-row"><input value={shareUrl} readOnly aria-label="Share link" onFocus={(event) => event.currentTarget.select()} /><button className="primary" type="button" onClick={() => void copyShareUrl(shareUrl)}><Copy size={16} weight="bold" />Copy link</button></div></div></div>}
-      <ReviewOverlay inspector={inspector} catalog={cardCatalog} onClose={() => setInspector(null)} onInspectCard={openCard} />
+      <ReviewOverlay inspector={inspector} catalog={cardCatalog} onClose={() => setInspector(null)} onInspectCard={openCard} onRestore={setInspector} frameLabel={compactReplay ? `Frame ${turnIndex} · Playback paused` : undefined} />
       {!sharedMode && !showSetup && updateNotice}
       {(notice || error || captureError) && <div className={`toast ${error || captureError ? 'error' : ''}`}><span>{error || captureError ? <X size={18} weight="bold" /> : <CheckCircle size={18} weight="fill" />}</span><p>{error || captureError || notice}</p><button type="button" onClick={() => { setError(null); setCaptureError(null); setNotice(null); }} aria-label="Dismiss notification"><X size={16} weight="bold" /></button></div>}
     </div>

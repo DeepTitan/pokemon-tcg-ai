@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { gunzipSync } from 'node:zlib';
-import { CARD_BACK_ART, VERIFIED_CARD_ART, cardArtUsesAlternate, cardCatalogEntryNeedsRefresh, findCatalogCard, publicCardArtUrl, resolvedCardArt, showCardBackOnError } from '../card-art.js';
+import { CARD_BACK_ART, VERIFIED_CARD_ART, cardArtUsesAlternate, cardCatalogEntryNeedsRefresh, findCatalogCard, publicCardArtUrl, publicCardDetailArtUrl, resolvedCardArt, showCardBackOnError } from '../card-art.js';
 import type { CardInfo } from '../types.js';
 
 const stadiumCatalog = new Map([
@@ -16,6 +16,10 @@ assert.equal(publicCardArtUrl('sv9_120'), 'https://images.pokemontcg.io/sv9/120.
 assert.equal(publicCardArtUrl('sv8-5_6'), 'https://images.pokemontcg.io/sv8pt5/6.png');
 assert.equal(publicCardArtUrl('me2-5_183_ph'), 'https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/ASC/ASC_183_R_EN_LG.png');
 assert.equal(publicCardArtUrl('hidden-card'), undefined);
+assert.equal(publicCardDetailArtUrl('sv6_130'), 'https://images.pokemontcg.io/sv6/130_hires.png');
+assert.equal(publicCardDetailArtUrl('me5_103'), publicCardArtUrl('me5_103'));
+assert.equal(publicCardDetailArtUrl('svalt_103'), undefined, 'Detail images must not replace exact captured artwork with an alternate alias');
+assert.equal(publicCardDetailArtUrl('hidden-card'), undefined);
 assert.equal(resolvedCardArt(undefined), CARD_BACK_ART);
 assert.equal(resolvedCardArt('sv9_120', 'asset://local-card.png'), 'asset://local-card.png');
 assert.equal(cardCatalogEntryNeedsRefresh('sv9_120', new Map()), true);

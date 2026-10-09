@@ -1,4 +1,6 @@
-import { createContext, useContext, useEffect } from 'react';
+import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { CaretLeft } from '@phosphor-icons/react/CaretLeft';
+import { useReplayDialogFocus } from './useReplayDialogFocus.js';
 import { CardsThree } from '@phosphor-icons/react/CardsThree';
 import { CheckCircle } from '@phosphor-icons/react/CheckCircle';
 import { LockKey } from '@phosphor-icons/react/LockKey';
@@ -16,7 +18,7 @@ import {
 import { cardInfoToEngineCard, cardRulesText, cardSourceIdFromReviewCard } from './card-adapter.js';
 import { sortCardsForDisplay } from './card-order-model.js';
 import { countEnergyTypes, EnergyBadge, energyTypeLabel } from './EnergyBadge.js';
-import { resolvedCardArt, showCardBackOnError } from './card-art.js';
+import { publicCardDetailArtUrl, resolvedCardArt, showCardBackOnError } from './card-art.js';
 import type { CardInfo, ReviewAppliedEffect, ReviewCardVisibility, ReviewSelection } from './types.js';
 
 export type ReviewInspector =
@@ -36,12 +38,20 @@ function CardName({ card }: { card: Card }) {
   return <>{catalogCardFor(card, catalog)?.name || card.name}</>;
 }
 
-function CardImage({ card, hidden = false }: { card: Card; hidden?: boolean }) {
+function CardImage({ card, hidden = false, detail = false }: { card: Card; hidden?: boolean; detail?: boolean }) {
   const catalog = useContext(CardCatalogContext);
   if (hidden) return <span className="review-card-back"><CardsThree size={28} weight="duotone" /><small>Hidden</small></span>;
   const sourceId = cardSourceIdFromReviewCard(card);
   const resolved = catalogCardFor(card, catalog);
-  return <img src={resolvedCardArt(sourceId, card.imageUrl || resolved?.imageDataUrl)} data-card-id={sourceId} alt={resolved?.name || card.name} onError={showCardBackOnError} />;
+  const localArt = card.imageUrl || resolved?.imageDataUrl;
+  const art = (detail && publicCardDetailArtUrl(sourceId)) || resolvedCardArt(sourceId, localArt);
+  return <img key={art} src={art} data-card-id={sourceId} alt={resolved?.name || card.name} onError={(event) => {
+    const image = event.currentTarget;
+    if (detail && localArt && image.dataset.localFallbackTried !== 'true') {
+      image.dataset.localFallbackTried = 'true';
+      image.src = localArt;
+    } else showCardBackOnError(event);
+  }} />;
 }
 
 function EnergyPips({ types }: { types: EnergyType[] }) {
@@ -86,7 +96,7 @@ function CardInspector({ card, pokemon, effects = [], catalog, onInspectCard }: 
   const detailCard = !pokemon && catalogCard ? cardInfoToEngineCard(catalogCard, card.id, card.name, sourceId) : card;
   const rules = cardRulesText(detailCard, catalogCard);
   return <div className="card-inspector-layout">
-    <div className="inspector-art"><CardImage card={card} /><span>{detailCard.cardNumber || 'Captured card'}</span></div>
+    <div className="inspector-art"><CardImage card={card} detail /><span>{detailCard.cardNumber || 'Captured card'}</span></div>
     <div className="inspector-card-copy">
       <div className="inspector-eyebrow">{detailCard.cardType === CardType.Pokemon ? (detailCard as PokemonCard).stage : detailCard.cardType === CardType.Trainer ? (detailCard as TrainerCard).trainerType : (detailCard as EnergyCard).energySubtype}</div>
       <h2>{catalogCard?.name || detailCard.name}</h2>
@@ -152,14 +162,53 @@ function SelectionInspector({ selection, sourceName, onInspectCard }: { selectio
   </>;
 }
 
-export function ReviewOverlay({ inspector, catalog, onClose, onInspectCard }: { inspector: ReviewInspector | null; catalog: ReadonlyMap<string, CardInfo>; onClose: () => void; onInspectCard: (card: Card, pokemon?: PokemonInPlay) => void }) {
+export function ReviewOverlay({ inspector, catalog, onClose, onInspectCard, onRestore, frameLabel }: {
+  inspector: ReviewInspector | null;
+  catalog: ReadonlyMap<string, CardInfo>;
+  onClose: () => void;
+  onInspectCard: (card: Card, pokemon?: PokemonInPlay) => void;
+  onRestore?: (inspector: ReviewInspector) => void;
+  frameLabel?: string;
+}) {
+  const dialogRef = useRef<HTMLElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const restoreScroll = useRef(0);
+  const [trail, setTrail] = useState<{ inspector: ReviewInspector; scrollTop: number }[]>([]);
+  const parent = trail[trail.length - 1];
+  const back = () => {
+    if (!parent || !onRestore) { onClose(); return; }
+    restoreScroll.current = parent.scrollTop;
+    setTrail(value => value.slice(0, -1));
+    onRestore(parent.inspector);
+  };
+  useReplayDialogFocus(Boolean(inspector), dialogRef, parent ? back : onClose);
   useEffect(() => {
-    if (!inspector) return undefined;
-    const close = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', close);
-    return () => window.removeEventListener('keydown', close);
-  }, [inspector, onClose]);
+    if (!inspector) { setTrail([]); restoreScroll.current = 0; return; }
+    if (bodyRef.current) bodyRef.current.scrollTop = restoreScroll.current;
+    restoreScroll.current = 0;
+    dialogRef.current?.querySelector<HTMLButtonElement>('header button')?.focus({ preventScroll: true });
+  }, [inspector]);
   if (!inspector) return null;
+  const inspectCard = (card: Card, pokemon?: PokemonInPlay) => {
+    if (onRestore) setTrail(value => [...value, { inspector, scrollTop: bodyRef.current?.scrollTop || 0 }]);
+    onInspectCard(card, pokemon);
+  };
   const title = inspector.kind === 'card' ? inspector.title || 'Card details' : inspector.kind === 'zone' ? inspector.title : 'Search replay';
-  return <CardCatalogContext.Provider value={catalog}><div className="review-overlay-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><article className={`review-overlay review-${inspector.kind}`} role="dialog" aria-modal="true" aria-label={title}><header><div>{inspector.kind !== 'zone' && <span>{inspector.kind === 'selection' ? 'Exact captured choice' : 'Match card'}</span>}<h2>{title}</h2></div><button type="button" onClick={onClose} aria-label="Close inspector"><X size={21} weight="bold" /></button></header><div className="review-overlay-body">{inspector.kind === 'card' && <CardInspector card={inspector.card} pokemon={inspector.pokemon} effects={inspector.effects} catalog={catalog} onInspectCard={onInspectCard} />}{inspector.kind === 'zone' && <ZoneInspector inspector={inspector} onInspectCard={onInspectCard} />}{inspector.kind === 'selection' && <SelectionInspector selection={inspector.selection} sourceName={inspector.sourceName} onInspectCard={onInspectCard} />}</div></article></div></CardCatalogContext.Provider>;
+  const parentTitle = parent?.inspector.kind === 'zone' ? parent.inspector.title.split(' · ').slice(1).join(' · ') : parent?.inspector.kind === 'selection' ? 'Search' : 'Pokémon';
+  return <CardCatalogContext.Provider value={catalog}>
+    <div className="review-overlay-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <article ref={dialogRef} className={`review-overlay review-${inspector.kind}`} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1}>
+        <header>
+          {parent && onRestore && <button type="button" className="review-overlay-back" onClick={back} aria-label={`Back to ${parentTitle}`}><CaretLeft size={19} weight="bold" /><span>{parentTitle}</span></button>}
+          <div><span>{frameLabel || (inspector.kind === 'selection' ? 'Exact captured choice' : inspector.kind === 'card' ? 'Match card' : '')}</span><h2>{title}</h2></div>
+          <button type="button" onClick={onClose} aria-label="Close inspector"><X size={21} weight="bold" /></button>
+        </header>
+        <div ref={bodyRef} className="review-overlay-body">
+          {inspector.kind === 'card' && <CardInspector card={inspector.card} pokemon={inspector.pokemon} effects={inspector.effects} catalog={catalog} onInspectCard={inspectCard} />}
+          {inspector.kind === 'zone' && <ZoneInspector inspector={inspector} onInspectCard={inspectCard} />}
+          {inspector.kind === 'selection' && <SelectionInspector selection={inspector.selection} sourceName={inspector.sourceName} onInspectCard={inspectCard} />}
+        </div>
+      </article>
+    </div>
+  </CardCatalogContext.Provider>;
 }

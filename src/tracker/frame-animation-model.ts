@@ -12,10 +12,17 @@ export function resolveFrameNavigationTarget(current: number, request: FrameNavi
   return Math.max(0, Math.min(Math.max(0, last), requested));
 }
 
-export function frameNavigationMode(animationsEnabled: boolean, prefersReducedMotion: boolean, transitionActive: boolean, alreadyScrubbing: boolean): FrameNavigationMode {
-  if (!animationsEnabled || prefersReducedMotion) return 'instant';
+export function frameNavigationMode(animationsEnabled: boolean, prefersReducedMotion: boolean, transitionActive: boolean, alreadyScrubbing: boolean, context?: { compact: boolean; playback: boolean }): FrameNavigationMode {
+  if (!animationsEnabled || prefersReducedMotion || (context?.compact && !context.playback)) return 'instant';
   if (transitionActive || alreadyScrubbing) return 'scrub';
   return 'animate';
+}
+
+export const MOBILE_PLAYBACK_RATES = [0.75, 1, 1.5, 2] as const;
+
+export function replayFrameDelay(attack: boolean, pass: boolean, compact: boolean, rate = 1): number {
+  const duration = compact ? attack ? 1200 : pass ? 900 : 600 : attack ? 2600 : pass ? 1900 : 1200;
+  return duration / (compact && MOBILE_PLAYBACK_RATES.includes(rate as typeof MOBILE_PLAYBACK_RATES[number]) ? rate : 1);
 }
 
 export function frameCardTransitionName(id: string): string {

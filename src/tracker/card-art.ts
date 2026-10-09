@@ -102,6 +102,14 @@ export function resolvedCardArt(cardId: string | undefined, localArt?: string): 
   return localArt || publicCardArtUrl(cardId) || CARD_BACK_ART;
 }
 
+/** Fetch the large printing only when inspecting a card, not for every board thumbnail. */
+export function publicCardDetailArtUrl(cardId: string | undefined): string | undefined {
+  // Never replace an available exact captured printing with an alternate artwork alias.
+  if (cardId && cardArtUsesAlternate(cardId)) return undefined;
+  const art = publicCardArtUrl(cardId);
+  return art?.startsWith('https://images.pokemontcg.io/') ? art.replace(/\.png$/, '_hires.png') : art;
+}
+
 export function showCardBackOnError(event: { currentTarget: HTMLImageElement }): void {
   const image = event.currentTarget;
   const publicFallback = publicCardArtUrl(image.dataset.cardId);
