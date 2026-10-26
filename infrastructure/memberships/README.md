@@ -1,9 +1,9 @@
 # Trace memberships
 
-This is an isolated AWS membership stack, separate from film billing and the capture stack. Production billing and capture policy are enabled. The October 26 pricing release offers $5 monthly and $50 yearly Pro, with 30 days of Free replays and free deck/prize study. Billing still defaults off for newly configured stacks. See [current rollout status](../../docs/TRACE_MEMBERSHIPS_ROLLOUT.md) for deployed resources, provider checks and desktop publication status.
+This is an isolated AWS membership stack, separate from film billing and the capture stack. Production billing and capture policy are enabled. The October 26 pricing release offers $4.99 monthly and $49.99 yearly Pro, with 30 days of Free replays and free deck/prize study. Billing still defaults off for newly configured stacks. See [current rollout status](../../docs/TRACE_MEMBERSHIPS_ROLLOUT.md) for deployed resources, provider checks and desktop publication status.
 
 - **Free:** continuous recording, leaderboard eligibility, full replays from the last 30 days, own deck/prize inspection, captured opponent decklists, and one new replay share per rolling seven days per installation.
-- **Pro — USD $5/month or $50/year** (internal plan ID `trace`): full archive replay access and expanded sharing.
+- **Pro — USD $4.99/month or $49.99/year** (internal plan ID `trace`): full archive replay access and expanded sharing.
 - **Supporters Club — USD $39.99/month:** Pro plus exclusive Discord access/support and early features/nightly releases.
 - **Owner switch:** the configured owner's verified Cognito subject can receive both entitlements immediately via a separate database flag. This bypasses billing only. Native/server match-completion checks still apply.
 
@@ -114,4 +114,6 @@ Implementation references: [Cognito GetUser](https://docs.aws.amazon.com/cognito
 
 ### Pro monthly and yearly prices
 
-`TracePriceId` now selects the USD 5 monthly offer. `TraceAnnualPriceId` selects the USD 50 yearly offer. Keep the previous USD 14.99 monthly ID in `LegacyTracePriceId` when rolling out to an existing installation. Existing subscribers retain access, and new purchases use only the new offer IDs. The backend validates currency, amount, recurrence, mode and paid invoice evidence for each exact price. Configure both new prices and update the isolated Stripe portal before deploying the website offer. Existing customer subscriptions are not automatically repriced.
+`TracePriceId` now selects the USD 4.99 monthly offer. `TraceAnnualPriceId` selects the USD 49.99 yearly offer. Keep the previous USD 14.99 monthly ID in `LegacyTracePriceId` when rolling out to an existing installation. Existing subscribers retain access, and new purchases use only the new offer IDs. The backend validates currency, amount, recurrence, mode and paid invoice evidence for each exact price. Configure both new prices and update the isolated Stripe portal before deploying the website offer. Existing customer subscriptions are not automatically repriced.
+
+The previous $5 monthly and $50 yearly offers remain recognized through `PreviousTracePriceId` and `PreviousTraceAnnualPriceId`. They grant existing paid subscribers access and allow in-flight reservations to be recovered, but are not offered for new checkouts.

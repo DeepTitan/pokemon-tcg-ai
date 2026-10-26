@@ -43,7 +43,7 @@ export function ArchiveUpgradeModal({ onClose, onLink, feature = 'archive' }: { 
         }}>{busy ? 'Opening…' : 'Explore Trace Pro'}<ArrowUpRight size={17} weight="bold" aria-hidden="true" /></button>
         <button className="pro-keep-free" onClick={onClose}>Keep using Free</button>
       </div>
-      <p className="pro-price-note">$5 monthly or $50 yearly. Cancel anytime.</p>
+      <p className="pro-price-note">$4.99 monthly or $49.99 yearly. Cancel anytime.</p>
       <div className="pro-free-footer"><p>Your first 30 days of each replay, deck study, and prize inspection stay free.</p><button className="archive-upgrade-link" onClick={onLink}>Already a member?</button></div>
       {error && <p className="pro-error" role="alert">{error}</p>}
     </footer>

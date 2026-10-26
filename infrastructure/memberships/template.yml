@@ -59,12 +59,22 @@ Parameters:
   TraceAnnualPriceId:
     Type: String
     Default: ''
-    Description: Trace Pro USD 50 per year price.
+    Description: Trace Pro USD 49.99 per year price.
     AllowedPattern: '^$|^price_[A-Za-z0-9]+$'
   LegacyTracePriceId:
     Type: String
     Default: ''
     Description: Previous USD 14.99 monthly price, retained for existing subscribers only.
+    AllowedPattern: '^$|^price_[A-Za-z0-9]+$'
+  PreviousTracePriceId:
+    Type: String
+    Default: ''
+    Description: Previous USD 5 monthly price, retained for existing subscribers only.
+    AllowedPattern: '^$|^price_[A-Za-z0-9]+$'
+  PreviousTraceAnnualPriceId:
+    Type: String
+    Default: ''
+    Description: Previous USD 50 annual price, retained for existing subscribers only.
     AllowedPattern: '^$|^price_[A-Za-z0-9]+$'
   SupporterPriceId:
     Type: String
@@ -260,6 +270,8 @@ Resources:
           TRACE_PRICE_ID: !Ref TracePriceId
           TRACE_ANNUAL_PRICE_ID: !Ref TraceAnnualPriceId
           LEGACY_TRACE_PRICE_ID: !Ref LegacyTracePriceId
+          PREVIOUS_TRACE_PRICE_ID: !Ref PreviousTracePriceId
+          PREVIOUS_TRACE_ANNUAL_PRICE_ID: !Ref PreviousTraceAnnualPriceId
           SUPPORTER_PRICE_ID: !Ref SupporterPriceId
           STRIPE_PORTAL_CONFIG_ID: !Ref StripePortalConfigId
           WEB_ORIGIN: !Ref WebOrigin

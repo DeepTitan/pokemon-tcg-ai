@@ -25,7 +25,7 @@ CFG = Config('us-east-1_fixture', 'fixture-client', 'us-east-1', OWNER, True, Fa
 
 def price(plan='supporter'):
     return {'id': CFG.prices[plan], 'type': 'recurring', 'currency': 'usd',
-            'unit_amount': 3999 if plan == 'supporter' else 500, 'livemode': False,
+            'unit_amount': 3999 if plan == 'supporter' else 499, 'livemode': False,
             'active': True, 'billing_scheme': 'per_unit',
             'recurring': {'interval': 'month', 'interval_count': 1, 'usage_type': 'licensed'}}
 
