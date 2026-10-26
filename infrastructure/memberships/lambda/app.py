@@ -15,6 +15,8 @@ def service():
                         billing_enabled=os.environ.get('BILLING_ENABLED') == 'true',
                         stripe_live=os.environ.get('STRIPE_MODE') == 'live',
                         trace_price=os.environ.get('TRACE_PRICE_ID', ''),
+                        trace_annual_price=os.environ.get('TRACE_ANNUAL_PRICE_ID', ''),
+                        legacy_trace_price=os.environ.get('LEGACY_TRACE_PRICE_ID', ''),
                         supporter_price=os.environ.get('SUPPORTER_PRICE_ID', ''),
                         web_origin=os.environ.get('WEB_ORIGIN', 'https://victoryroad.app'))
         _service = MembershipService(config,

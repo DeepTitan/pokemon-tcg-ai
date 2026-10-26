@@ -36,7 +36,7 @@ CAPTURE_API = 'https://wfricgjx12.execute-api.us-east-1.amazonaws.com'
 MEMBER_API = 'https://scn2ntfvfa.execute-api.us-east-1.amazonaws.com'
 WEB = 'https://trace-memberships-staging-deeptitan-6729s-projects.vercel.app'
 CHANNEL_HELPER = Path(__file__).resolve().parents[3] / 'trace-memberships-web-20260927/scripts/smoke-trace-member-purchase-staging.py'
-FREE = {'recordMatches': True, 'leaderboard': True, 'recentReplayDays': 7,
+FREE = {'recordMatches': True, 'leaderboard': True, 'recentReplayDays': 30,
         'freeSharesPerWindow': 1, 'shareWindowDays': 7,
         'fullHistory': False, 'expandedSharing': False, 'opponentDecklists': True}
 SUPPORTER = {**FREE, 'fullHistory': True, 'expandedSharing': True, 'opponentDecklists': True}

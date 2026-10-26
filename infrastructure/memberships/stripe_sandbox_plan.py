@@ -7,7 +7,7 @@ import re
 import sys
 
 sys.path.insert(0, str(Path(__file__).parent / 'lambda'))
-from membership import EVENT_TYPES, PRICE_AMOUNTS
+from membership import EVENT_TYPES, PRICE_AMOUNTS, TRACE_ANNUAL_AMOUNT
 
 ORIGIN = 'https://trace-memberships-staging-deeptitan-6729s-projects.vercel.app'
 WEBHOOK = 'https://scn2ntfvfa.execute-api.us-east-1.amazonaws.com/v1/webhook'
@@ -37,6 +37,12 @@ def build_plan(ids):
             'recurring[interval]': 'month', 'recurring[interval_count]': 1,
             'recurring[usage_type]': 'licensed', 'metadata[plan]': plan,
         })
+    add('trace-annual-price', '/v1/prices', {
+        'product': ids.get('trace_product') or '<trace-product.id>',
+        'unit_amount': TRACE_ANNUAL_AMOUNT, 'currency': 'usd', 'billing_scheme': 'per_unit',
+        'recurring[interval]': 'year', 'recurring[interval_count]': 1,
+        'recurring[usage_type]': 'licensed', 'metadata[plan]': 'trace',
+    })
     add('portal', '/v1/billing_portal/configurations', {
         'business_profile[headline]': 'Manage your Trace plan',
         'default_return_url': ORIGIN + '/trace/account', 'login_page[enabled]': 'false',
@@ -47,6 +53,7 @@ def build_plan(ids):
         'features[subscription_cancel][mode]': 'at_period_end',
         'features[subscription_cancel][proration_behavior]': 'none',
         'features[subscription_update][enabled]': 'true',
+        'features[subscription_update][products][0][prices][1]': ids.get('trace_annual_price') or '<trace-annual-price.id>',
         'features[subscription_update][default_allowed_updates][0]': 'price',
         'features[subscription_update][proration_behavior]': 'always_invoice',
         **{f'features[subscription_update][products][{i}][product]': ids.get(plan + '_product') or '<' + plan + '-product.id>'
@@ -72,6 +79,7 @@ def main():
     for plan in ('trace', 'supporter'):
         parser.add_argument('--' + plan + '-product', type=resource_id('prod'))
         parser.add_argument('--' + plan + '-price', type=resource_id('price'))
+    parser.add_argument('--trace-annual-price', type=resource_id('price'))
     print(json.dumps(build_plan(vars(parser.parse_args())), indent=2))
 
 

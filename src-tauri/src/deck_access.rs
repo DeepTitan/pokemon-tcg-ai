@@ -173,24 +173,6 @@ impl MatchAccess {
         operation
     }
 
-    pub fn project_operation_for_plan(&self, operation: CapturedOperation, pro: bool) -> CapturedOperation {
-        let mut projected = self.project_operation(operation);
-        if !pro {
-            strip_inventories(&mut projected.operation, None);
-            redact_free_inventory(&mut projected.operation);
-        }
-        projected
-    }
-
-    pub fn project_review_for_plan(&self, review: Value, pro: bool) -> Value {
-        let mut projected = self.project_review(review);
-        if !pro {
-            projected["decklists"] = json!([]);
-            redact_free_review(&mut projected);
-        }
-        projected
-    }
-
     pub fn project_review(&self, mut review: Value) -> Value {
         strip_inventories(&mut review, None);
         redact_review(&mut review, self.local_player_name.as_deref());
@@ -457,7 +439,7 @@ fn redact_review(review: &mut Value, local: Option<&str>) {
 }
 
 pub fn project_summary_snapshot(snapshot: &mut Value, local: Option<&str>) {
-    redact_free_review(snapshot);
+    redact_summary_inventory(snapshot);
     let public = public_ids(&json!({"snapshot": snapshot}));
     redact_snapshot(snapshot, local, &Value::Null, &public);
 }
@@ -547,6 +529,25 @@ mod tests {
         assert_eq!(forged["matchCompleted"], true);
     }
     #[test]
+    fn own_deck_and_prizes_are_available_without_a_membership_projection() {
+        let mut access = MatchAccess::default();
+        access.observe(&start());
+        let review = access.project_review(json!({"localPlayer":"You", "turns":[{"canonical":{
+            "playerNames":["You","Opponent"], "state":{"players":[
+                {"deck":[{"id":"d","name":"My deck card"}], "prizes":[{"id":"p","name":"My prize"}]},
+                {"deck":[{"id":"x","name":"Hidden opponent deck"}], "prizes":[{"id":"y","name":"Hidden opponent prize"}]}
+            ]}
+        }}]}));
+        let text = review.to_string();
+        assert!(text.contains("My deck card"));
+        assert!(text.contains("My prize"));
+        assert!(text.contains("own_card"));
+        assert!(!text.contains("Hidden opponent deck"));
+        assert!(!text.contains("Hidden opponent prize"));
+        assert!(!text.contains("secret_card"));
+    }
+
+    #[test]
     fn unknown_identity_and_invalid_inventory_fail_closed() {
         let mut unknown = start();
         unknown.account_id = None;
@@ -615,24 +616,9 @@ mod tests {
     }
 }
 
-// Free retains the local hand and public board; inventories stay native.
-fn redact_free_inventory(value: &mut Value) {
+fn redact_summary_inventory(value: &mut Value) {
     match value {
-        Value::Array(values) => values.iter_mut().for_each(redact_free_inventory),
-        Value::Object(fields) => {
-            let pos = ["currentGamePos", "currentPos", "CurrentGamePos"].iter()
-                .find_map(|key| fields.get(*key).and_then(Value::as_u64));
-            if matches!(pos, Some(7 | 8 | 19 | 20 | 21 | 22)) {
-                fields.retain(|key, _| !["cardsourceid", "reviewsourceid", "cardid", "cardname", "name", "imageurl", "imagedataurl", "cardsource", "cardentitygetcardsource"].contains(&key.to_ascii_lowercase().as_str()));
-            }
-            fields.values_mut().for_each(redact_free_inventory);
-        }
-        _ => {}
-    }
-}
-fn redact_free_review(value: &mut Value) {
-    match value {
-        Value::Array(values) => values.iter_mut().for_each(redact_free_review),
+        Value::Array(values) => values.iter_mut().for_each(redact_summary_inventory),
         Value::Object(fields) => {
             for key in ["deck", "prizes", "deckCards", "prizeCards", "pendingCards"] {
                 if let Some(cards) = fields.get_mut(key).and_then(Value::as_array_mut) {
@@ -643,32 +629,22 @@ fn redact_free_review(value: &mut Value) {
                     }
                 }
             }
-            fields.values_mut().for_each(redact_free_review);
+            fields.values_mut().for_each(redact_summary_inventory);
         }
         _ => {}
     }
 }
 
 #[cfg(test)]
-mod plan_tests {
+mod summary_tests {
     use super::*;
     #[test]
-    fn free_hides_deck_and_prizes_but_retains_hand_and_board() {
+    fn summaries_hide_inventory_but_retain_hand_and_board() {
         let mut value = json!({"state":{"players":[{"deck":[{"id":"d","name":"Secret deck"}],"prizes":[{"id":"p","name":"Secret prize"}],"hand":[{"id":"h","name":"My hand"}],"active":{"card":{"id":"a","name":"Public active"}}}]}});
-        redact_free_review(&mut value);
+        redact_summary_inventory(&mut value);
         assert_eq!(value.pointer("/state/players/0/deck/0/name"),Some(&json!("Hidden card")));
         assert_eq!(value.pointer("/state/players/0/prizes/0/name"),Some(&json!("Hidden card")));
         assert_eq!(value.pointer("/state/players/0/hand/0/name"),Some(&json!("My hand")));
         assert_eq!(value.pointer("/state/players/0/active/card/name"),Some(&json!("Public active")));
-    }
-    #[test]
-    fn free_raw_projection_retains_hand_identity_and_counts() {
-        let mut value = json!([{"currentPos":7,"cardId":"secret","entityId":"d"},{"currentPos":19,"cardId":"secret","entityId":"p"},{"currentPos":11,"cardId":"hand","entityId":"h"},{"currentPos":3,"cardId":"active","entityId":"a"}]);
-        redact_free_inventory(&mut value);
-        assert!(value[0].get("cardId").is_none());
-        assert!(value[1].get("cardId").is_none());
-        assert_eq!(value[0]["entityId"],"d");
-        assert_eq!(value[2]["cardId"],"hand");
-        assert_eq!(value[3]["cardId"],"active");
     }
 }

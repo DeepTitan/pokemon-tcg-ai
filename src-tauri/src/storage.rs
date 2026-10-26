@@ -421,7 +421,7 @@ impl MatchStorage {
             [id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         ).optional().map_err(|e| e.to_string())?;
         let Some((saved_at, legacy, first_received)) = age else { return Ok(true); };
-        // Existing archives used to be exempt. Apply the same seven-day window,
+        // Existing archives used to be exempt. Apply the same 30-day window,
         // using their original capture date, never the date the app was upgraded.
         let timestamp = if legacy {
             let iso: Option<i64> = connection.query_row("SELECT unixepoch(?1)", [&first_received], |r| r.get(0))
@@ -1143,12 +1143,15 @@ mod tests {
     }
 
     #[test]
-    fn recent_replays_expire_at_seven_days_without_deleting_or_redating_data() {
+    fn recent_replays_expire_at_thirty_days_without_deleting_or_redating_data() {
         let (directory, storage) = temporary_storage();
         storage.record_operation(&operation()).unwrap();
         let connection = storage.connection().unwrap();
         connection.execute("UPDATE replay_access SET saved_at=100 WHERE match_id='live-match-1'", []).unwrap();
-        let boundary = 100 + crate::membership::RECENT_REPLAY_SECONDS;
+        let boundary = 100 + 30 * 86400;
+        for days in [7, 8, 29] {
+            assert!(!storage.replay_requires_pro_at("live-match-1", 100 + days * 86400).unwrap());
+        }
         assert!(storage.replay_requires_pro_at("live-match-1", 99).unwrap(), "a future native timestamp is not a verified recent replay");
         assert!(!storage.replay_requires_pro_at("live-match-1", 100).unwrap());
         assert!(!storage.replay_requires_pro_at("live-match-1", boundary - 1).unwrap());

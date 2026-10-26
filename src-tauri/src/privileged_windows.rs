@@ -131,23 +131,28 @@ fn netstat_connection_count(output: &str, pid: u32, server_ips: &[IpAddr]) -> us
         .count()
 }
 
-pub fn game_server_connection_count(pid: u32) -> usize {
-    let server_ips = (GAME_HOST, 443)
+pub fn game_server_connection_count(pid: u32, known: &[IpAddr]) -> Result<usize, String> {
+    let mut server_ips = (GAME_HOST, 443)
         .to_socket_addrs()
-        .map(|addresses| addresses.map(|address| address.ip()).collect::<Vec<_>>())
-        .unwrap_or_default();
+        .map_err(|error| format!("Could not resolve the game server: {error}"))?
+        .map(|address| address.ip())
+        .collect::<Vec<_>>();
     if server_ips.is_empty() {
-        return 0;
+        return Err("The game server returned no addresses.".into());
     }
-    hidden_command("netstat.exe")
+    server_ips.extend_from_slice(known);
+    let output = hidden_command("netstat.exe")
         .args(["-ano", "-p", "TCP"])
         .output()
-        .ok()
-        .filter(|output| output.status.success())
-        .map(|output| {
-            netstat_connection_count(&command_output_text(&output.stdout), pid, &server_ips)
-        })
-        .unwrap_or_default()
+        .map_err(|error| format!("Could not inspect game connections: {error}"))?;
+    if !output.status.success() {
+        return Err("Could not inspect game connections.".into());
+    }
+    Ok(netstat_connection_count(
+        &command_output_text(&output.stdout),
+        pid,
+        &server_ips,
+    ))
 }
 
 pub fn helper_ready() -> bool {

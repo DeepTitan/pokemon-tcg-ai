@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom';
 import { CardsThree } from '@phosphor-icons/react/CardsThree';
 import { Check } from '@phosphor-icons/react/Check';
 import { CopySimple } from '@phosphor-icons/react/CopySimple';
-import { LockSimple } from '@phosphor-icons/react/LockSimple';
 import { X } from '@phosphor-icons/react/X';
 import type { CapturedDecklist, CardInfo } from './types.js';
 import { cardArtUsesAlternate, resolvedCardArt, showCardBackOnError } from './card-art.js';
@@ -29,10 +28,10 @@ function DecklistCard({ cardId, count, card, onInspect }: { onInspect?: () => vo
   </figure>;
 }
 
-export function PlayerDecklist({ name, deck: suppliedDeck, catalog, loadDeck, unavailableReason, accessKey, onUpgrade, upgradeLabel, onInspectCard }: {
+export function PlayerDecklist({ name, deck: suppliedDeck, catalog, loadDeck, unavailableReason, accessKey, onInspectCard }: {
   onInspectCard?: (cardId: string) => void;
   name: string; deck?: CapturedDecklist; catalog: ReadonlyMap<string, CardInfo>;
-  loadDeck?: () => Promise<CapturedDecklist>; unavailableReason?: string; accessKey?: string; onUpgrade?: () => void; upgradeLabel?: string;
+  loadDeck?: () => Promise<CapturedDecklist>; unavailableReason?: string; accessKey?: string;
 }) {
   const [privateDeck, setPrivateDeck] = useState<CapturedDecklist>();
   const [loadState, setLoadState] = useState<'idle' | 'loading' | 'failed'>('idle');
@@ -55,7 +54,7 @@ export function PlayerDecklist({ name, deck: suppliedDeck, catalog, loadDeck, un
   const show = () => {
     clearTimeout(hoverTimer.current);
     cancelClose();
-    if ((!available && !onUpgrade) || isOpen.current) return;
+    if (!available || isOpen.current) return;
     isOpen.current = true;
     cancelClose(); const rect = button.current?.getBoundingClientRect();
     if (rect) setPosition({ left: Math.max(12, Math.min(rect.left, window.innerWidth - 612)),
@@ -117,16 +116,16 @@ export function PlayerDecklist({ name, deck: suppliedDeck, catalog, loadDeck, un
   return <>
     <span className="player-decklist-control">
     <button ref={button} type="button" className="player-decklist-trigger" aria-label={`${name} decklist`}
-      aria-disabled={!available && !onUpgrade} aria-describedby={!available && !onUpgrade ? `${id}-unavailable` : undefined}
-      aria-expanded={available || onUpgrade ? open : undefined} aria-controls={open ? id : undefined} aria-haspopup={available || onUpgrade ? 'dialog' : undefined}
+      aria-disabled={!available} aria-describedby={!available ? `${id}-unavailable` : undefined}
+      aria-expanded={available ? open : undefined} aria-controls={open ? id : undefined} aria-haspopup={available ? 'dialog' : undefined}
       onMouseEnter={() => { cancelClose(); clearTimeout(hoverTimer.current); hoverTimer.current = setTimeout(show, 100); }} onMouseLeave={leave} onFocus={() => { if (!suppressFocus.current) show(); }} onBlur={leave}
       onClick={show} onKeyDown={event => { if (event.key === 'ArrowDown') { event.preventDefault(); show(); setTimeout(() => panel.current?.focus(), 0); } }}>
       <CardsThree size={18} />
     </button>
-    {!available && !onUpgrade && !open && <span id={`${id}-unavailable`} role="tooltip" className="player-decklist-unavailable">{unavailableReason || 'Decklist not available'}</span>}
+    {!available && !open && <span id={`${id}-unavailable`} role="tooltip" className="player-decklist-unavailable">{unavailableReason || 'Decklist not available'}</span>}
     </span>
     {open && createPortal(<div ref={panel} id={id} role="dialog" aria-label={`${name} captured decklist`}
-      tabIndex={-1} className={`player-decklist-panel${!available && onUpgrade ? ' decklist-locked-preview' : ''}`} style={position} onMouseEnter={cancelClose} onMouseLeave={leave}
+      tabIndex={-1} className="player-decklist-panel" style={position} onMouseEnter={cancelClose} onMouseLeave={leave}
       onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) leave(); }}>
       <header><div className="decklist-heading"><strong>{name === 'You' ? 'Your decklist' : `${name}’s decklist`}</strong>
         {deck && <span className="decklist-total" title="Captured starting deck">{deck.total} cards</span>}</div>
@@ -140,10 +139,6 @@ export function PlayerDecklist({ name, deck: suppliedDeck, catalog, loadDeck, un
       {copyState === 'failed' && <p className="decklist-copy-error" role="alert">Couldn’t access the clipboard. Please try Copy again.</p>}
       {loadState === 'loading' && <p role="status" className="decklist-empty">Loading decklist…</p>}
       {loadState === 'failed' && <p role="alert" className="decklist-empty">{loadError}</p>}
-      {!available && (onUpgrade ? <div className="decklist-locked-body">
-        <div className="decklist-locked-grid" aria-hidden="true">{Array.from({ length: 10 }, (_, index) => <div className="study-card-placeholder" key={index}><i /><b /><em /></div>)}</div>
-        <div className="decklist-locked-unlock"><span className="decklist-plan-label"><LockSimple size={13} />{upgradeLabel?.includes('Supporters') ? 'SUPPORTERS CLUB' : 'PRO'}</span><p>{upgradeLabel?.includes('Supporters') ? 'Deck study' : 'See the full decklist'}</p><button type="button" onClick={onUpgrade}>{upgradeLabel?.includes('Supporters') ? 'Unlock with Supporters' : 'Unlock with Pro'}<span aria-hidden="true"> →</span></button></div>
-      </div> : <div className="decklist-empty"><p>{unavailableReason || 'No decklist was saved for this match.'}</p></div>)}
       {deck ? <>{exported.error && <p className="decklist-copy-error">{exported.error}</p>}
         <div className="player-decklist-grid">{entries.map(entry => {
           return <DecklistCard key={entry.cardId} cardId={entry.cardId} count={entry.count} card={catalog.get(entry.cardId)} onInspect={onInspectCard ? () => { close(); onInspectCard(entry.cardId); } : undefined} />;

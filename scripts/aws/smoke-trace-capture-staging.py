@@ -115,7 +115,7 @@ class Smoke:
         self.device = "trace-staging-smoke-" + self.run_id
         self.ids = {name: self.device + "-" + name for name in ("recent", "second", "old")}
         now = dt.datetime.now(dt.timezone.utc) - dt.timedelta(minutes=1)
-        self.payloads = {name: fixture(value, now - dt.timedelta(days=8 if name == "old" else 0)) for name, value in self.ids.items()}
+        self.payloads = {name: fixture(value, now - dt.timedelta(days=31 if name == "old" else 0)) for name, value in self.ids.items()}
         self.token = None
         self.register_attempted = False
         self.checks = []

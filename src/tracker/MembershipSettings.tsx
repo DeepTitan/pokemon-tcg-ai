@@ -26,16 +26,16 @@ export function MembershipSettings({ status, onRefresh, onChange }: {
       : status.status === 'unavailable' ? 'Free features are ready. Couldn’t verify paid extras; try refreshing your account.'
       : status.traceAccess ? status.admin ? 'Owner access' : status.plan === 'supporter' ? 'Supporters Club' : 'Trace Pro'
       : 'Trace Free'}</p>
-    <p>Recording, leaderboards and your last 7 days of replays are free.</p>
-    <p>Deck study is included for everyone.</p>
+    <p>Recording, leaderboards and your last 30 days of replays are free.</p>
+    <p>Deck and prize study are included for everyone.</p>
     {status?.capabilities?.fullHistory
       ? <p>Full replay history and unlimited sharing are included.</p>
-      : <><p>Share 1 new replay every 7 days. Trace Pro adds full history and unlimited sharing.</p><p>Older matches stay saved. Upgrade to replay them anytime.</p></>}
+      : <><p>Share 1 new replay every 7 days. Trace Pro adds full history and unlimited sharing for $5/month or $50/year.</p><p>Older matches stay saved. Upgrade to replay them anytime.</p></>}
     {link && <div className="membership-link-code"><p>Confirm this code in your browser.</p><strong>{link.userCode}</strong><a href={link.verificationUrl} target="_blank" rel="noreferrer">Open account linking</a></div>}
     {!notConfigured && <div className="membership-actions">
       {status?.linked ? <><button type="button" disabled={busy} onClick={() => void run(openMembershipAccount)}>Manage membership</button><button type="button" disabled={busy} onClick={() => void run(async () => { onChange(await unlinkMembership()); setLink(null); })}>Unlink this device</button></>
         : <button className="primary" type="button" disabled={busy || !status} onClick={() => void run(async () => setLink(await linkMembership()))}>{busy ? 'Opening…' : 'Link account'}</button>}
-      {!status?.linked && <button type="button" disabled={busy} onClick={() => void run(openMembershipAccount)}>View plans</button>}
+      {!status?.linked && <button type="button" disabled={busy} onClick={() => void run(() => openMembershipAccount('plans'))}>View plans</button>}
       <button type="button" disabled={busy} onClick={() => void run(onRefresh)}>Refresh account</button>
     </div>}
     {error && <p role="alert">{error}</p>}

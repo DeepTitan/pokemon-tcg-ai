@@ -13,7 +13,8 @@ from urllib.parse import urlencode
 
 ACCOUNT_URL = 'https://victoryroad.app/trace/account'
 LINK_URL = 'https://victoryroad.app/trace/link'
-PRICE_AMOUNTS = {'trace': 1499, 'supporter': 3999}
+PRICE_AMOUNTS = {'trace': 500, 'supporter': 3999}
+TRACE_ANNUAL_AMOUNT = 5000
 PAID_EVIDENCE_VERSION = 2
 DEVICE_ID = re.compile(r'^[A-Za-z0-9._-]{16,128}$')
 SUBJECT = re.compile(r'^[A-Za-z0-9_-]{1,128}$')
@@ -49,10 +50,35 @@ class Config:
     trace_price: str = ''
     supporter_price: str = ''
     web_origin: str = 'https://victoryroad.app'
+    trace_annual_price: str = ''
+    legacy_trace_price: str = ''
 
     @property
     def prices(self):
         return {'trace': self.trace_price, 'supporter': self.supporter_price}
+
+    @property
+    def price_catalog(self):
+        # Legacy prices grant existing paid access but are never offered to new buyers.
+        return [(self.trace_price, 'trace', 500, 'month'),
+                (self.trace_annual_price, 'trace', TRACE_ANNUAL_AMOUNT, 'year'),
+                (self.supporter_price, 'supporter', 3999, 'month'),
+                (self.legacy_trace_price, 'trace', 1499, 'month')]
+
+    def checkout_price(self, plan, billing_interval):
+        if plan not in ('trace', 'supporter'):
+            raise ApiError(400, 'invalid_plan')
+        if billing_interval not in ('month', 'year') or (plan == 'supporter' and billing_interval != 'month'):
+            raise ApiError(400, 'invalid_billing_interval')
+        identifier = self.trace_annual_price if billing_interval == 'year' else self.prices[plan]
+        if not identifier:
+            raise ApiError(503, 'billing_unavailable')
+        return identifier
+
+    def reserved_price(self, reservation):
+        # Recover old idempotent requests using their original price after a rollout.
+        return reservation.get('priceId') or (self.legacy_trace_price if reservation['plan'] == 'trace'
+                                              and self.legacy_trace_price else self.prices[reservation['plan']])
 
 
 def digest(value):
@@ -71,7 +97,7 @@ def iso_timestamp(value):
 
 def capabilities(paid=False):
     """Free features never depend on billing, linking, or subscription status."""
-    return {'recordMatches': True, 'leaderboard': True, 'recentReplayDays': 7,
+    return {'recordMatches': True, 'leaderboard': True, 'recentReplayDays': 30,
             'freeSharesPerWindow': 1, 'shareWindowDays': 7,
             'fullHistory': bool(paid), 'expandedSharing': bool(paid),
             'opponentDecklists': True}
@@ -172,11 +198,14 @@ def verified_event(raw, signature, secret, now):
 def price_plan(price, config, require_active=False):
     if not isinstance(price, dict):
         return None
-    plan = next((p for p, identifier in config.prices.items() if identifier and price.get('id') == identifier), None)
-    recurring = price.get('recurring') or {}
-    if not plan or price.get('currency') != 'usd' or price.get('unit_amount') != PRICE_AMOUNTS[plan]:
+    matches = [entry for entry in config.price_catalog if entry[0] and entry[0] == price.get('id')]
+    if len(matches) != 1:
         return None
-    if price.get('type') != 'recurring' or recurring.get('interval') != 'month' or recurring.get('interval_count') != 1:
+    _, plan, amount, interval = matches[0]
+    recurring = price.get('recurring') or {}
+    if price.get('currency') != 'usd' or type(price.get('unit_amount')) is not int or price['unit_amount'] != amount:
+        return None
+    if price.get('type') != 'recurring' or recurring.get('interval') != interval or recurring.get('interval_count') != 1:
         return None
     if recurring.get('usage_type') != 'licensed' or price.get('billing_scheme') != 'per_unit':
         return None
@@ -219,7 +248,8 @@ def invoice_covers_current_plan(sub, item, plan, config, now, invoice=None):
                 or line.get('livemode') is not config.stripe_live or line.get('currency') != 'usd'
                 or identifier(line.get('subscription')) != sub['id']
                 or identifier(line.get('subscription_item')) != item['id']
-                or price_plan(line.get('price'), config) != plan):
+                or price_plan(line.get('price'), config) != plan
+                or identifier(line.get('price')) != identifier(item.get('price'))):
             continue
         # Subscription-generated prorations may be invoiceitem lines. Manual
         # invoice items and credits alone never establish current service.
@@ -255,7 +285,7 @@ def subscription_snapshot(subscriptions, config, now, paid_invoices=()):
     candidates = []
     for sub in subscriptions:
         items = (sub.get('items') or {}).get('data') or []
-        known = [item for item in items if (item.get('price') or {}).get('id') in config.prices.values()]
+        known = [item for item in items if (item.get('price') or {}).get('id') in [entry[0] for entry in config.price_catalog if entry[0]]]
         if not known:
             continue  # Unrelated Victory Road subscriptions never grant Trace access.
         if sub.get('status') not in {'canceled', 'incomplete_expired'}:
@@ -335,7 +365,8 @@ class MembershipService:
         return device, credential_hash
 
     def require_billing(self):
-        if not self.config.billing_enabled or not all(self.config.prices.values()) or len(set(self.config.prices.values())) != 2:
+        configured = [entry[0] for entry in self.config.price_catalog if entry[0]]
+        if not self.config.billing_enabled or not all(self.config.prices.values()) or len(set(configured)) != len(configured):
             raise ApiError(503, 'billing_unavailable')
 
     def entitlement(self, subject=None, email=None):
@@ -409,13 +440,12 @@ class MembershipService:
         candidate = referral(token, self.stripe.proxy_secret(), self.now()) if token else None
         return {'version': 1, **(candidate or {})}
 
-    def checkout(self, subject, email, plan, referral_token=None):
+    def checkout(self, subject, email, plan, referral_token=None, billing_interval='month'):
         self.require_billing()
-        if plan not in PRICE_AMOUNTS:
-            raise ApiError(400, 'invalid_plan')
+        price_id = self.config.checkout_price(plan, billing_interval)
         if subject == self.config.owner_subject and self.store.owner_enabled(subject):
             raise ApiError(409, 'access_already_enabled')
-        if price_plan(self.stripe.price(self.config.prices[plan]), self.config, require_active=True) != plan:
+        if price_plan(self.stripe.price(price_id), self.config, require_active=True) != plan:
             raise ApiError(503, 'billing_unavailable')
         candidate = self.affiliate_candidate(referral_token)
         with self.store.account_lock(subject, self.now()) as lease:
@@ -449,7 +479,7 @@ class MembershipService:
                             # Never rotate an unresolved key while its session could
                             # still be payable, or mutate its idempotent parameters.
                             raise ApiError(409, 'billing_busy')
-                        recovered = self.stripe.checkout(account['customerId'], self.config.prices[pending['plan']], subject,
+                        recovered = self.stripe.checkout(account['customerId'], self.config.reserved_price(pending), subject,
                                                          pending['key'], pending['expiresAt'], affiliate=pending.get('affiliate'))
                         identifier = recovered['id']
                     if identifier:
@@ -462,17 +492,23 @@ class MembershipService:
                             or session.get('livemode') is not self.config.stripe_live
                             or int(session.get('expires_at', 0)) != int(pending['expiresAt'])):
                         raise ApiError(503, 'billing_unavailable')
+                    items = (session.get('line_items') or {}).get('data') or []
+                    if ((session.get('line_items') or {}).get('has_more') or len(items) != 1
+                            or items[0].get('quantity') != 1
+                            or price_plan(items[0].get('price'), self.config) != pending['plan']
+                            or (items[0].get('price') or {}).get('id') != self.config.reserved_price(pending)):
+                        raise ApiError(503, 'billing_unavailable')
                     if session.get('status') == 'open':
-                        if (pending['plan'] == plan and int(session.get('expires_at', 0)) > self.now()
+                        if (pending['plan'] == plan and self.config.reserved_price(pending) == price_id and int(session.get('expires_at', 0)) > self.now()
                                 and (not candidate.get('code') or candidate == pending.get('affiliate'))):
                             return {'url': self.stripe.checkout_url(session)}
                         self.stripe.expire_checkout(session['id'])
                     if session.get('status') == 'complete' and not self.completed_checkout_ended(
                             session, subject, account['customerId']):
                         raise ApiError(409, 'payment_processing')
-            pending = {'key': secrets.token_urlsafe(24), 'plan': plan, 'expiresAt': self.now() + 3600, 'affiliate': candidate}
+            pending = {'key': secrets.token_urlsafe(24), 'plan': plan, 'priceId': price_id, 'billingInterval': billing_interval, 'expiresAt': self.now() + 3600, 'affiliate': candidate}
             self.store.save_account(subject, {'checkout': pending}, lease, self.now())
-            session = self.stripe.checkout(account['customerId'], self.config.prices[plan], subject,
+            session = self.stripe.checkout(account['customerId'], price_id, subject,
                                            pending['key'], pending['expiresAt'], affiliate=pending.get('affiliate'))
             self.store.save_account(subject, {'checkout': {**pending, 'sessionId': session['id']}}, lease, self.now())
             return {'url': self.stripe.checkout_url(session)}
@@ -513,7 +549,7 @@ class MembershipService:
                     # Preserve the unresolved key until its old session cannot be
                     # payable; changing expiry under that key violates idempotency.
                     raise ApiError(409, 'billing_busy')
-                session = self.stripe.guest_checkout(record['customerId'], self.config.prices[record['plan']],
+                session = self.stripe.guest_checkout(record['customerId'], self.config.reserved_price(record),
                                                      proof, record['key'], int(record['expiresAt']), affiliate=record.get('affiliate'))
                 identifier = session['id']
             else:
@@ -529,7 +565,8 @@ class MembershipService:
             raise ApiError(503, 'billing_unavailable')
         items = (session.get('line_items') or {}).get('data') or []
         if ((session.get('line_items') or {}).get('has_more') or len(items) != 1
-                or items[0].get('quantity') != 1 or price_plan(items[0].get('price'), self.config) != record['plan']):
+                or items[0].get('quantity') != 1 or price_plan(items[0].get('price'), self.config) != record['plan']
+                or (items[0].get('price') or {}).get('id') != self.config.reserved_price(record)):
             raise ApiError(503, 'billing_unavailable')
         if session.get('status') == 'complete' and session.get('payment_status') == 'paid' and not record.get('paidAt'):
             record['paidAt'] = self.now()
@@ -553,13 +590,12 @@ class MembershipService:
             raise ApiError(409, 'purchase_not_active')
         return snapshot
 
-    def guest_checkout(self, plan, token, referral_token=None):
+    def guest_checkout(self, plan, token, referral_token=None, billing_interval='month'):
         self.require_billing()
         proof = checkout_digest(token)
         candidate = self.affiliate_candidate(referral_token)
-        if plan not in PRICE_AMOUNTS:
-            raise ApiError(400, 'invalid_plan')
-        if price_plan(self.stripe.price(self.config.prices[plan]), self.config, require_active=True) != plan:
+        price_id = self.config.checkout_price(plan, billing_interval)
+        if price_plan(self.stripe.price(price_id), self.config, require_active=True) != plan:
             raise ApiError(503, 'billing_unavailable')
         self.store.limit('guest-checkout:' + proof, 12, 600, self.now())
         with self.store.guest_lock(proof, self.now()) as lease:
@@ -571,7 +607,7 @@ class MembershipService:
                 if previous and previous.get('status') == 'complete':
                     raise ApiError(409, 'payment_already_completed')
                 if previous and previous.get('status') == 'open':
-                    if (record['plan'] == plan and int(previous.get('expires_at', 0)) > self.now()
+                    if (record['plan'] == plan and self.config.reserved_price(record) == price_id and int(previous.get('expires_at', 0)) > self.now()
                             and (not candidate.get('code') or candidate == record.get('affiliate'))):
                         return {'url': self.stripe.checkout_url(previous)}
                     self.stripe.expire_checkout(previous['id'])
@@ -583,7 +619,7 @@ class MembershipService:
                 customer = self.stripe.create_guest_customer(proof)
                 record['customerId'] = customer['id']
                 self.store.bind_guest_customer(proof, record, lease, self.now())
-            record = {**record, 'plan': plan, 'key': secrets.token_urlsafe(24), 'expiresAt': self.now() + 3600, 'affiliate': candidate}
+            record = {**record, 'plan': plan, 'priceId': price_id, 'billingInterval': billing_interval, 'key': secrets.token_urlsafe(24), 'expiresAt': self.now() + 3600, 'affiliate': candidate}
             record.pop('sessionId', None)
             self.store.save_guest(proof, record, lease, self.now())
             session = self.guest_session(proof, record, lease, create=True)
@@ -599,22 +635,22 @@ class MembershipService:
             if not record:
                 return {'state': 'none', 'plan': 'none', 'expiresAt': None}
             if record.get('claimedBy'):
-                return {'state': 'claimed', 'plan': record.get('plan', 'none'), 'expiresAt': None}
+                return {'state': 'claimed', 'plan': record.get('plan', 'none'), 'billingInterval': record.get('billingInterval', 'month'), 'expiresAt': None}
             if not record.get('customerId') or not record.get('key'):
                 return {'state': 'none', 'plan': 'none', 'expiresAt': None}
             session = self.guest_session(proof, record, lease)
             if not session or session.get('status') == 'expired':
-                return {'state': 'expired', 'plan': record['plan'], 'expiresAt': iso_timestamp(record['expiresAt'])}
+                return {'state': 'expired', 'plan': record['plan'], 'billingInterval': record.get('billingInterval', 'month'), 'expiresAt': iso_timestamp(record['expiresAt'])}
             if session.get('status') == 'open':
-                return {'state': 'open', 'plan': record['plan'], 'expiresAt': iso_timestamp(session['expires_at'])}
+                return {'state': 'open', 'plan': record['plan'], 'billingInterval': record.get('billingInterval', 'month'), 'expiresAt': iso_timestamp(session['expires_at'])}
             try:
                 self.paid_guest_subscription(proof, record, session)
             except ApiError as error:
                 if error.code in {'payment_processing', 'purchase_not_active'}:
-                    return {'state': 'processing', 'plan': record['plan'], 'expiresAt': None,
+                    return {'state': 'processing', 'plan': record['plan'], 'billingInterval': record.get('billingInterval', 'month'), 'expiresAt': None,
                             **({'reason': 'purchase_not_active'} if error.code == 'purchase_not_active' else {})}
                 raise
-            return {'state': 'paid', 'plan': record['plan'], 'expiresAt': None}
+            return {'state': 'paid', 'plan': record['plan'], 'billingInterval': record.get('billingInterval', 'month'), 'expiresAt': None}
 
     def retire_unused_customer(self, subject, account, lease):
         """An abandoned account checkout must not strand a legitimate guest purchase."""
@@ -807,7 +843,7 @@ class MembershipService:
             self.require_proxy(event)
             request = body(event)
             if path.endswith('/guest'):
-                return self.guest_checkout(request.get('plan'), request.get('checkoutToken'), request.get('referralToken'))
+                return self.guest_checkout(request.get('plan'), request.get('checkoutToken'), request.get('referralToken'), request.get('billingInterval', 'month'))
             if path.endswith('/status'):
                 return self.guest_status(request.get('checkoutToken'))
             subject, email = self.account_identity(event)
@@ -830,7 +866,7 @@ class MembershipService:
             return self.entitlement(subject, email)
         if path == '/v1/checkout':
             request = body(event)
-            return self.checkout(subject, email, request.get('plan'), request.get('referralToken'))
+            return self.checkout(subject, email, request.get('plan'), request.get('referralToken'), request.get('billingInterval', 'month'))
         if path == '/v1/portal':
             return self.portal(subject)
         return self.approve_link(subject, body(event).get('userCode'))

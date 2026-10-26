@@ -67,8 +67,17 @@ for (const capturePath of [automaticCapture, manualCapture]) {
 }
 const recorderSource = readFileSync(new URL('../../../src-tauri/src/capture.rs', import.meta.url), 'utf8');
 assert.doesNotMatch(recorderSource, /admit_match|require_trace/);
-// Entitlements may redact the JS view, but must never gate native recording.
+// Opponent privacy redaction must never gate native recording or own inventory.
 const projectionMarker = '// Full starting inventories stay in native storage.';
 assert.ok(recorderSource.includes(projectionMarker));
 assert.doesNotMatch(recorderSource.slice(0, recorderSource.indexOf(projectionMarker)), /crate::membership|has_full_history/);
-assert.match(recorderSource, /project_operation_for_plan\(operation, pro\)/);
+assert.match(recorderSource, /project_operation\(operation\)/);
+
+// A leftover native socket must not advertise capture for a closed client or
+// an observer/route that has stopped receiving the current game's traffic.
+assert.deepEqual(captureIndicator(environment({ clientAttached: true }, false)), { label: 'Ready', tone: 'ready' });
+for (const failed of [{ observerRunning: false }, { routeActive: false }]) {
+  const stale = environment({ ...failed, clientAttached: true, lastError: 'Capture unavailable' });
+  assert.deepEqual(captureIndicator(stale), { label: 'Attention', tone: 'error' });
+  assert.equal(visibleCaptureError(stale), 'Capture unavailable');
+}

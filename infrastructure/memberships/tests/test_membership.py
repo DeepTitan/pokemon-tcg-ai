@@ -25,7 +25,7 @@ CFG = Config('us-east-1_fixture', 'fixture-client', 'us-east-1', OWNER, True, Fa
 
 def price(plan='supporter'):
     return {'id': CFG.prices[plan], 'type': 'recurring', 'currency': 'usd',
-            'unit_amount': 3999 if plan == 'supporter' else 1499, 'livemode': False,
+            'unit_amount': 3999 if plan == 'supporter' else 500, 'livemode': False,
             'active': True, 'billing_scheme': 'per_unit',
             'recurring': {'interval': 'month', 'interval_count': 1, 'usage_type': 'licensed'}}
 
@@ -211,6 +211,7 @@ class FakeStripe:
             self.sessions[key] = {'id': 'cs_' + str(len(self.sessions)), 'status': 'open',
                                    'customer': customer, 'client_reference_id': subject,
                                    'mode': 'subscription', 'livemode': False,
+                                   'line_items': {'data': [{'price': self.price(identifier), 'quantity': 1}], 'has_more': False},
                                    'url': 'https://checkout.stripe.com/c/pay/fixture', 'expires_at': expires}
         if self.after_checkout:
             self.after_checkout()
@@ -248,7 +249,7 @@ class MembershipTests(unittest.TestCase):
         self.assertEqual(raised.exception.code, code)
 
     def test_free_capabilities_for_unlinked_and_inactive_accounts(self):
-        expected = {'recordMatches': True, 'leaderboard': True, 'recentReplayDays': 7,
+        expected = {'recordMatches': True, 'leaderboard': True, 'recentReplayDays': 30,
                     'freeSharesPerWindow': 1, 'shareWindowDays': 7,
                     'fullHistory': False, 'expandedSharing': False, 'opponentDecklists': True}
         unlinked = self.service.handle(request('devices/status', device=True))
@@ -288,7 +289,7 @@ class MembershipTests(unittest.TestCase):
             caps = account['capabilities']
             self.assertTrue(caps['recordMatches'])
             self.assertTrue(caps['leaderboard'])
-            self.assertEqual(caps['recentReplayDays'], 7)
+            self.assertEqual(caps['recentReplayDays'], 30)
             self.assertTrue(caps['fullHistory'])
             self.assertTrue(caps['expandedSharing'])
             self.assertTrue(caps['opponentDecklists'])

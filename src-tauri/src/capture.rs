@@ -82,6 +82,7 @@ pub struct CaptureState {
     pub waiting_for_match_end: AtomicBool,
     pub match_in_progress: AtomicBool,
     pub client_connections: AtomicU64,
+    activity: Mutex<crate::capture_health::CaptureActivity>,
     pub routed_pid: AtomicU64,
     pub frame_count: AtomicU64,
     pub operation_count: AtomicU64,
@@ -114,7 +115,11 @@ struct Recorder {
     capture_path: PathBuf,
 }
 
-impl Recorder {
+trait StreamRecorder: Sync {
+    fn inspect(&self, data: &[u8], host: &str);
+}
+
+impl StreamRecorder for Recorder {
     fn inspect(&self, data: &[u8], host: &str) {
         if !self.state.enabled.load(Ordering::Relaxed) {
             return;
@@ -124,7 +129,9 @@ impl Recorder {
             self.record(operation);
         }
     }
+}
 
+impl Recorder {
     fn record(&self, operation: CapturedOperation) {
         let match_id = format!(
             "live-{}",
@@ -159,9 +166,7 @@ impl Recorder {
             .try_state::<crate::storage::MatchStorage>()
             .and_then(|storage| storage.match_access(&match_id).ok())
             .unwrap_or_default();
-        let pro = self.app.try_state::<crate::membership::Membership>()
-            .is_some_and(|membership| membership.has_full_history());
-        let projected = access.project_operation_for_plan(operation, pro);
+        let projected = access.project_operation(operation);
         let _ = self.app.emit("match-operation", &projected);
     }
 
@@ -753,12 +758,19 @@ pub fn request_permission(app: &AppHandle) -> Result<CaptureStatus, String> {
 
 pub fn status(app: &AppHandle) -> CaptureStatus {
     let state = app.state::<Arc<CaptureState>>();
+    let client_pid = crate::pokemon_client_pid();
     CaptureStatus {
         permission_ready: permission_ready(app),
         enabled: state.enabled.load(Ordering::Relaxed),
         observer_running: state.observer_running.load(Ordering::Relaxed),
         route_active: state.route_active.load(Ordering::Relaxed),
-        client_attached: state.client_connections.load(Ordering::Relaxed) > 0,
+        client_attached: state.enabled.load(Ordering::Relaxed)
+            && state.observer_running.load(Ordering::Relaxed)
+            && state.route_active.load(Ordering::Relaxed)
+            && state
+                .activity
+                .lock()
+                .is_ok_and(|activity| activity.is_live(client_pid, now_millis())),
         waiting_for_match_end: state.waiting_for_match_end.load(Ordering::Relaxed),
         match_in_progress: state.match_in_progress.load(Ordering::Relaxed),
         frame_count: state.frame_count.load(Ordering::Relaxed),
@@ -1189,15 +1201,48 @@ where
     writer.flush().await
 }
 
-async fn forward_and_inspect<C, S>(
+fn now_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
+struct ActiveCaptureConnection {
+    state: Arc<CaptureState>,
+    id: u64,
+}
+
+impl ActiveCaptureConnection {
+    fn received(&self) {
+        if let Ok(mut activity) = self.state.activity.lock() {
+            activity.received(self.id, now_millis());
+        }
+    }
+}
+
+impl Drop for ActiveCaptureConnection {
+    fn drop(&mut self) {
+        if let Ok(mut activity) = self.state.activity.lock() {
+            activity.closed(self.id);
+        }
+        self.state
+            .client_connections
+            .fetch_sub(1, Ordering::Relaxed);
+    }
+}
+
+async fn forward_and_inspect<C, S, R>(
     client: C,
     server: S,
-    recorder: Recorder,
+    recorder: R,
     host: String,
+    connection: &ActiveCaptureConnection,
 ) -> Result<(), String>
 where
     C: AsyncRead + AsyncWrite + Unpin,
     S: AsyncRead + AsyncWrite + Unpin,
+    R: StreamRecorder,
 {
     let (mut client_read, mut client_write) = tokio::io::split(client);
     let (mut server_read, mut server_write) = tokio::io::split(server);
@@ -1237,7 +1282,13 @@ where
                 .map_err(|error| {
                     format!("Forwarding the Pokémon server to TCG Live failed: {error}")
                 })?;
-            for message in inspector.feed(&buffer[..count]) {
+            let messages = inspector.feed(&buffer[..count]);
+            // A completed Pokémon WebSocket response, including its heartbeat,
+            // is evidence of capture. An idle HTTPS/TLS socket is not.
+            if inspector.websocket {
+                connection.received();
+            }
+            for message in messages {
                 recorder.inspect(&message, &host);
             }
         }
@@ -1256,6 +1307,7 @@ async fn observe_connection(
     connector: TlsConnector,
     recorder: Recorder,
 ) -> Result<(), String> {
+    let client_pid = crate::pokemon_client_pid();
     let client = acceptor
         .accept(stream)
         .await
@@ -1278,6 +1330,12 @@ async fn observe_connection(
         .map_err(|error| {
             format!("Could not establish the upstream Pokémon TLS session: {error}")
         })?;
+    let id = recorder
+        .state
+        .activity
+        .lock()
+        .map_err(|_| "Capture activity lock failed")?
+        .opened(client_pid);
     recorder
         .state
         .client_connections
@@ -1285,12 +1343,11 @@ async fn observe_connection(
     if let Ok(mut last_error) = recorder.state.last_error.lock() {
         *last_error = None;
     }
-    let result = forward_and_inspect(client, server, recorder.clone(), host).await;
-    recorder
-        .state
-        .client_connections
-        .fetch_sub(1, Ordering::Relaxed);
-    result
+    let connection = ActiveCaptureConnection {
+        state: recorder.state.clone(),
+        id,
+    };
+    forward_and_inspect(client, server, recorder, host, &connection).await
 }
 
 fn connection_error_needs_attention(error: &str, healthy_connections: u64) -> bool {
@@ -1394,10 +1451,9 @@ async fn run_observer(
                 let recorder = recorder.clone();
                 tauri::async_runtime::spawn(async move {
                     if let Err(error) = observe_connection(stream, acceptor, connector, recorder.clone()).await {
-                        let healthy_connections = recorder
-                            .state
-                            .client_connections
-                            .load(Ordering::Relaxed);
+                        let client_pid = crate::pokemon_client_pid();
+                        let healthy_connections = u64::from(recorder.state.activity.lock()
+                            .is_ok_and(|activity| activity.is_live(client_pid, now_millis())));
                         let needs_attention = connection_error_needs_attention(
                             &error,
                             healthy_connections,
@@ -1426,7 +1482,6 @@ async fn run_observer(
     #[cfg(target_os = "windows")]
     crl_task.abort();
     state.observer_running.store(false, Ordering::Relaxed);
-    state.client_connections.store(0, Ordering::Relaxed);
     Ok(())
 }
 
@@ -1532,7 +1587,18 @@ impl SafeAttachGuard {
 }
 
 fn activate_route(state: &Arc<CaptureState>, pokemon_pid: u32) -> Result<(), String> {
-    let (reply, stream) = privileged::enable_route(std::process::id(), pokemon_pid)?;
+    if !CaptureManager::may_activate(state) {
+        return Err("Capture was paused.".into());
+    }
+    let (reply, mut stream) = privileged::enable_route(std::process::id(), pokemon_pid)?;
+    let mut route = state
+        .route_stream
+        .lock()
+        .map_err(|_| "Capture route lock failed")?;
+    if !CaptureManager::may_activate(state) {
+        privileged::disable_route(&mut stream);
+        return Err("Capture was paused.".into());
+    }
     if let Ok(mut upstream_ips) = state.upstream_ips.lock() {
         *upstream_ips = reply
             .server_ips
@@ -1540,9 +1606,7 @@ fn activate_route(state: &Arc<CaptureState>, pokemon_pid: u32) -> Result<(), Str
             .filter_map(|ip| ip.parse::<IpAddr>().ok())
             .collect();
     }
-    if let Ok(mut route) = state.route_stream.lock() {
-        *route = Some(stream);
-    }
+    *route = Some(stream);
     state.route_active.store(true, Ordering::Relaxed);
     state
         .routed_pid
@@ -1555,108 +1619,249 @@ fn activate_route(state: &Arc<CaptureState>, pokemon_pid: u32) -> Result<(), Str
     Ok(())
 }
 
+fn route_addresses_current(state: &CaptureState) -> Result<bool, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let pinned = state
+            .upstream_ips
+            .lock()
+            .map_err(|_| "Capture state lock failed")?
+            .clone();
+        privileged::route_addresses_current(&pinned)
+    }
+    #[cfg(target_os = "windows")]
+    {
+        // Windows uses a hostname route, not a snapshot of the DNS addresses.
+        let _ = state;
+        Ok(true)
+    }
+}
+
+// The real manager and deterministic tests execute the same tick. Only OS
+// observations and route side effects are injected; no test-specific decision
+// logic, clock sleeps, game process, or privileged helper is needed in tests.
+trait CaptureManagerIo {
+    fn client_pid(&mut self) -> Option<u32>;
+    fn connections(&mut self, state: &CaptureState, pid: u32) -> Result<usize, String>;
+    fn route_current(&mut self, state: &CaptureState) -> Result<bool, String>;
+    fn release(&mut self, state: &Arc<CaptureState>);
+    fn activate(&mut self, state: &Arc<CaptureState>, pid: u32) -> Result<(), String>;
+}
+
+struct SystemCaptureManagerIo;
+
+impl CaptureManagerIo for SystemCaptureManagerIo {
+    fn client_pid(&mut self) -> Option<u32> {
+        crate::pokemon_client_pid()
+    }
+    fn connections(&mut self, state: &CaptureState, pid: u32) -> Result<usize, String> {
+        let known = state
+            .upstream_ips
+            .lock()
+            .map_err(|_| "Capture route lock failed")?
+            .clone();
+        privileged::game_server_connection_count(pid, &known)
+    }
+    fn route_current(&mut self, state: &CaptureState) -> Result<bool, String> {
+        route_addresses_current(state)
+    }
+    fn release(&mut self, state: &Arc<CaptureState>) {
+        release_route(state);
+    }
+    fn activate(&mut self, state: &Arc<CaptureState>, pid: u32) -> Result<(), String> {
+        activate_route(state, pid)
+    }
+}
+
+#[derive(Default)]
+struct CaptureManager {
+    attach_guard: SafeAttachGuard,
+    idle_watch: crate::capture_health::IdleRouteWatch,
+    refresh_pending: bool,
+    last_observed_pid: Option<u32>,
+}
+
+impl CaptureManager {
+    fn may_activate(state: &CaptureState) -> bool {
+        state.enabled.load(Ordering::Relaxed) && !state.terminate.load(Ordering::Relaxed)
+    }
+
+    fn defer_unknown(&mut self, state: &CaptureState, error: String) -> std::time::Duration {
+        self.attach_guard.reset();
+        state.waiting_for_match_end.store(true, Ordering::Relaxed);
+        state.match_in_progress.store(true, Ordering::Relaxed);
+        if let Ok(mut last_error) = state.last_error.lock() {
+            *last_error = Some(error);
+        }
+        std::time::Duration::from_secs(1)
+    }
+
+    fn tick(
+        &mut self,
+        state: &Arc<CaptureState>,
+        io: &mut impl CaptureManagerIo,
+        now_ms: u64,
+    ) -> std::time::Duration {
+        if !state.enabled.load(Ordering::Relaxed) || state.terminate.load(Ordering::Relaxed) {
+            io.release(state);
+            self.attach_guard.reset();
+            self.refresh_pending = false;
+            self.idle_watch = crate::capture_health::IdleRouteWatch::default();
+            state.waiting_for_match_end.store(false, Ordering::Relaxed);
+            state.match_in_progress.store(false, Ordering::Relaxed);
+            return std::time::Duration::from_millis(500);
+        }
+
+        let pokemon_pid = io.client_pid();
+        if pokemon_pid != self.last_observed_pid {
+            self.attach_guard.reset();
+            self.last_observed_pid = pokemon_pid;
+        }
+        let check_idle = self.idle_watch.observe(pokemon_pid, now_ms);
+        if state.route_active.load(Ordering::Relaxed) {
+            let routed_pid = state.routed_pid.load(Ordering::Relaxed);
+            let client_started = pokemon_pid.is_some() && routed_pid == 0;
+            let client_replaced =
+                pokemon_pid.is_some_and(|pid| routed_pid != 0 && routed_pid != u64::from(pid));
+            let mut addresses_verified = false;
+            if check_idle || client_started {
+                match io.route_current(state) {
+                    Ok(current) => {
+                        addresses_verified = current;
+                        self.refresh_pending |= !current;
+                    }
+                    Err(error) => {
+                        // Failed DNS is not evidence that it is safe to
+                        // remove a working route. Retry on the next check.
+                        if let Ok(mut last_error) = state.last_error.lock() {
+                            *last_error = Some(error);
+                        }
+                    }
+                }
+            }
+            self.refresh_pending |= client_replaced;
+            if check_idle && !self.refresh_pending {
+                state.routed_pid.store(0, Ordering::Relaxed);
+            }
+            if client_started && addresses_verified && !self.refresh_pending {
+                // Bind a prearmed route to the actual client. Zero must not
+                // act as a wildcard across every subsequent game launch.
+                state
+                    .routed_pid
+                    .store(u64::from(pokemon_pid.unwrap()), Ordering::Relaxed);
+            }
+            if !self.refresh_pending {
+                let connections = pokemon_pid
+                    .map(|pid| {
+                        io.connections(state, pid)
+                            .unwrap_or(ACTIVE_MATCH_CONNECTION_FLOOR)
+                    })
+                    .unwrap_or_default();
+                state.match_in_progress.store(
+                    connections >= ACTIVE_MATCH_CONNECTION_FLOOR,
+                    Ordering::Relaxed,
+                );
+                state.waiting_for_match_end.store(false, Ordering::Relaxed);
+                return std::time::Duration::from_millis(750);
+            }
+            // Refresh while closed only after repeated absence checks and
+            // a fresh process lookup immediately before changing routing.
+            if pokemon_pid.is_none() {
+                if !check_idle || io.client_pid().is_some() {
+                    return std::time::Duration::from_millis(500);
+                }
+                if !Self::may_activate(state) {
+                    return std::time::Duration::from_millis(500);
+                }
+                io.release(state);
+                self.refresh_pending = false;
+                self.attach_guard.reset();
+            }
+            // With a running client, keep the old route until the existing
+            // stable-lobby safety guard permits the normal handoff below.
+        }
+
+        let Some(pokemon_pid) = pokemon_pid else {
+            if !self.idle_watch.absence_confirmed() || io.client_pid().is_some() {
+                return std::time::Duration::from_millis(500);
+            }
+            self.attach_guard.reset();
+            state.waiting_for_match_end.store(false, Ordering::Relaxed);
+            state.match_in_progress.store(false, Ordering::Relaxed);
+            if !Self::may_activate(state) {
+                return std::time::Duration::from_millis(500);
+            }
+            if let Err(error) = io.activate(state, 0) {
+                if !error.contains("no active game-server connection") {
+                    if let Ok(mut last_error) = state.last_error.lock() {
+                        *last_error = Some(error);
+                    }
+                }
+            }
+            return std::time::Duration::from_millis(500);
+        };
+
+        let connections = match io.connections(state, pokemon_pid) {
+            Ok(count) => count,
+            Err(error) => return self.defer_unknown(state, error),
+        };
+        let attach_state = self.attach_guard.observe(connections);
+        let match_in_progress = attach_state == SafeAttachState::MatchInProgress;
+        state
+            .match_in_progress
+            .store(match_in_progress, Ordering::Relaxed);
+        state.waiting_for_match_end.store(
+            match_in_progress
+                || (self.attach_guard.saw_match && attach_state != SafeAttachState::Ready),
+            Ordering::Relaxed,
+        );
+        if attach_state == SafeAttachState::Ready {
+            // DNS and process probes may take time. Recheck the exact
+            // client and match signal before any destructive route handoff.
+            if io.client_pid() != Some(pokemon_pid) {
+                self.attach_guard.reset();
+                return std::time::Duration::from_millis(500);
+            }
+            let final_connections = match io.connections(state, pokemon_pid) {
+                Ok(count) => count,
+                Err(error) => return self.defer_unknown(state, error),
+            };
+            if final_connections >= ACTIVE_MATCH_CONNECTION_FLOOR || !Self::may_activate(state) {
+                self.attach_guard.reset();
+                return std::time::Duration::from_millis(500);
+            }
+            io.release(state);
+            self.refresh_pending = false;
+            if let Err(error) = io.activate(state, pokemon_pid) {
+                if !error.contains("no active game-server connection") {
+                    if let Ok(mut last_error) = state.last_error.lock() {
+                        *last_error = Some(error);
+                    }
+                }
+            }
+            self.attach_guard.reset();
+        }
+        std::time::Duration::from_secs(1)
+    }
+}
+
 fn ensure_manager(state: &Arc<CaptureState>) {
     if state.manager_running.swap(true, Ordering::Relaxed) {
         return;
     }
-    let manager_state = state.clone();
-    tauri::async_runtime::spawn(async move {
-        let mut attach_guard = SafeAttachGuard::default();
-        while !manager_state.terminate.load(Ordering::Relaxed) {
-            if !manager_state.enabled.load(Ordering::Relaxed) {
-                release_route(&manager_state);
-                attach_guard.reset();
-                manager_state
-                    .waiting_for_match_end
-                    .store(false, Ordering::Relaxed);
-                manager_state
-                    .match_in_progress
-                    .store(false, Ordering::Relaxed);
-                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                continue;
-            }
-
-            let pokemon_pid = crate::pokemon_client_pid();
-            if manager_state.route_active.load(Ordering::Relaxed) {
-                // Routing is deliberately sticky for the lifetime of this client.
-                // Refreshing PF/hosts state underneath established sockets is the
-                // behavior that could eject a player from an active game.
-                let current_pid = pokemon_pid.map(u64::from).unwrap_or_default();
-                if current_pid == 0
-                    || manager_state.routed_pid.load(Ordering::Relaxed) == current_pid
-                    || manager_state.routed_pid.load(Ordering::Relaxed) == 0
-                {
-                    let connections = pokemon_pid
-                        .map(privileged::game_server_connection_count)
-                        .unwrap_or_default();
-                    manager_state.match_in_progress.store(
-                        connections >= ACTIVE_MATCH_CONNECTION_FLOOR,
-                        Ordering::Relaxed,
-                    );
-                    manager_state
-                        .waiting_for_match_end
-                        .store(false, Ordering::Relaxed);
-                    tokio::time::sleep(std::time::Duration::from_millis(750)).await;
-                    continue;
-                }
-                // The game process was genuinely replaced. Releasing our own
-                // route handle is safe because the old process no longer exists.
-                release_route(&manager_state);
-                attach_guard.reset();
-            }
-
-            let Some(pokemon_pid) = pokemon_pid else {
-                attach_guard.reset();
-                manager_state
-                    .waiting_for_match_end
-                    .store(false, Ordering::Relaxed);
-                manager_state
-                    .match_in_progress
-                    .store(false, Ordering::Relaxed);
-                if let Err(error) = activate_route(&manager_state, 0) {
-                    if !error.contains("no active game-server connection") {
-                        if let Ok(mut last_error) = manager_state.last_error.lock() {
-                            *last_error = Some(error);
-                        }
-                    }
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                continue;
-            };
-
-            let connections = privileged::game_server_connection_count(pokemon_pid);
-            let attach_state = attach_guard.observe(connections);
-            let match_in_progress = attach_state == SafeAttachState::MatchInProgress;
-            manager_state
-                .match_in_progress
-                .store(match_in_progress, Ordering::Relaxed);
-            manager_state.waiting_for_match_end.store(
-                match_in_progress
-                    || (attach_guard.saw_match && attach_state != SafeAttachState::Ready),
-                Ordering::Relaxed,
-            );
-            if attach_state == SafeAttachState::Ready {
-                if let Err(error) = activate_route(&manager_state, pokemon_pid) {
-                    if !error.contains("no active game-server connection") {
-                        if let Ok(mut last_error) = manager_state.last_error.lock() {
-                            *last_error = Some(error);
-                        }
-                    }
-                }
-                attach_guard.reset();
-            }
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    let state = state.clone();
+    // Process/DNS/helper inspection uses blocking OS calls. Keep it off the
+    // async workers that forward the game's traffic.
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut manager = CaptureManager::default();
+        let mut io = SystemCaptureManagerIo;
+        while !state.terminate.load(Ordering::Relaxed) {
+            std::thread::sleep(manager.tick(&state, &mut io, now_millis()));
         }
-        release_route(&manager_state);
-        manager_state
-            .waiting_for_match_end
-            .store(false, Ordering::Relaxed);
-        manager_state
-            .match_in_progress
-            .store(false, Ordering::Relaxed);
-        manager_state
-            .manager_running
-            .store(false, Ordering::Relaxed);
+        release_route(&state);
+        state.waiting_for_match_end.store(false, Ordering::Relaxed);
+        state.match_in_progress.store(false, Ordering::Relaxed);
+        state.manager_running.store(false, Ordering::Relaxed);
     });
 }
 
@@ -1892,3 +2097,7 @@ Sec-WebSocket-Extensions: permessage-deflate\r\n\r\n"
         assert_eq!(inspector.feed(&bytes), vec![first, second]);
     }
 }
+
+#[cfg(test)]
+#[path = "capture_manager_tests.rs"]
+mod manager_tests;

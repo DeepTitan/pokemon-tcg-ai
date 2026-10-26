@@ -34,7 +34,7 @@ class FreemiumTests(unittest.TestCase):
         fixtures.SharedReplayTests.setUp(self)
         app.devices.put_item(Item={'deviceId': self.device, 'tokenHash': 'fixture'})
 
-    def age(self, days=8):
+    def age(self, days=31):
         app.matches.items[(self.device, self.match)]['historyStartedAt'] = iso(NOW - dt.timedelta(days=days))
 
     def new_match(self):
@@ -46,18 +46,20 @@ class FreemiumTests(unittest.TestCase):
         self.membership.side_effect = OSError('offline')
         result = app.get_match(self.device, self.match, {})
         self.assertEqual(result['statusCode'], 200)
-        self.assertEqual(decode(result)['review'], app.visible_review(self.review, private_study=False))
-        self.membership.assert_called_once()
+        self.assertEqual(decode(result)['review'], app.visible_review(self.review))
+        self.membership.assert_not_called()
 
-    def test_own_inventory_requires_pro_while_hand_remains_free(self):
+    def test_own_inventory_and_hand_are_free_even_when_billing_is_offline(self):
         self.review['decklists'] = [{'playerName': self.review['localPlayer'], 'cards': [], 'total': 60}]
         self.review['turns'][0]['canonical'] = {'playerNames': [self.review['localPlayer']], 'state': {'players': [{'deck': [{'id': 'd', 'name': 'Deck secret'}], 'prizes': [{'id': 'p', 'name': 'Prize secret'}], 'hand': [{'id': 'h', 'name': 'My hand'}]}]}}
         self.upload()
+        self.membership.side_effect = OSError('offline')
         free = decode(app.get_match(self.device, self.match, {}))['review']
-        self.assertNotIn('decklists', free)
-        self.assertNotIn('Deck secret', json.dumps(free))
-        self.assertNotIn('Prize secret', json.dumps(free))
+        self.assertEqual(free['decklists'], self.review['decklists'])
+        self.assertIn('Deck secret', json.dumps(free))
+        self.assertIn('Prize secret', json.dumps(free))
         self.assertIn('My hand', json.dumps(free))
+        self.membership.side_effect = None
         self.membership.return_value = paid()
         pro = decode(app.get_match(self.device, self.match, {}))['review']
         self.assertIn('Deck secret', json.dumps(pro))
@@ -72,11 +74,18 @@ class FreemiumTests(unittest.TestCase):
         self.assertEqual(app.s3.reads, [])
         self.assertEqual(app.stored_review(self.item()), self.review)
 
-    def test_exact_seven_day_boundary_requires_full_history(self):
-        self.age(7)
+    def test_exact_thirty_day_boundary_requires_full_history(self):
+        self.age(30)
         self.assertEqual(app.get_match(self.device, self.match, {})['statusCode'], 403)
-        self.age(7 - 1 / 86400)
+        self.age(30 - 1 / 86400)
         self.assertEqual(app.get_match(self.device, self.match, {})['statusCode'], 200)
+
+    def test_days_eight_through_twenty_nine_need_no_membership(self):
+        self.membership.side_effect = OSError('offline')
+        for days in (8, 15, 29):
+            self.age(days)
+            self.assertEqual(app.get_match(self.device, self.match, {})['statusCode'], 200)
+        self.membership.assert_not_called()
 
     def test_old_replay_uses_fresh_explicit_premium_capability(self):
         self.age()
@@ -91,13 +100,13 @@ class FreemiumTests(unittest.TestCase):
     def test_legacy_age_survives_reupload_and_later_client_timestamp(self):
         legacy = app.matches.items[(self.device, self.match)]
         legacy.pop('historyStartedAt')
-        legacy['updatedAt'] = iso(NOW - dt.timedelta(days=8))
+        legacy['updatedAt'] = iso(NOW - dt.timedelta(days=31))
         self.review['importedAt'] = iso(NOW)
         self.upload()
-        self.assertEqual(self.item()['historyStartedAt'], iso(NOW - dt.timedelta(days=8)))
+        self.assertEqual(self.item()['historyStartedAt'], iso(NOW - dt.timedelta(days=31)))
         self.assertEqual(app.get_match(self.device, self.match, {})['statusCode'], 403)
         self.upload()
-        self.assertEqual(self.item()['historyStartedAt'], iso(NOW - dt.timedelta(days=8)))
+        self.assertEqual(self.item()['historyStartedAt'], iso(NOW - dt.timedelta(days=31)))
 
     def test_initial_old_import_is_not_treated_as_a_new_game(self):
         self.review['importedAt'] = iso(NOW - dt.timedelta(days=30))
