@@ -42,8 +42,7 @@ class MembershipPrivacyTests(unittest.TestCase):
         original = copy.deepcopy(self.review)
         self.upload()
         private = decode(app.get_match(self.device, self.match))['review']
-        self.assertNotIn('decklists', private)
-        self.assertEqual(app.visible_review(self.review, private_study=True)['decklists'], [own])
+        self.assertEqual(private['decklists'], [own])
         self.share()
         public = decode(app.get_shared_match(self.share_id))['review']
         self.assertNotIn('decklists', public)

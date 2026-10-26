@@ -27,7 +27,8 @@ REQUIRE_MEMBERSHIP = os.environ.get("REQUIRE_MEMBERSHIP", "false") == "true"
 DEVICE_ID = re.compile(r"^[A-Za-z0-9._-]{16,128}$")
 MATCH_ID = re.compile(r"^[A-Za-z0-9._:-]{1,220}$")
 SHARE_ID = re.compile(r"^[A-Za-z0-9_-]{20,64}$")
-FREE_HISTORY_SECONDS = 7 * 86400
+FREE_HISTORY_SECONDS = 30 * 86400
+FREE_SHARE_WINDOW_SECONDS = 7 * 86400
 MATCH_SUMMARY_FIELDS = ("importedAt", "source", "localPlayer", "opponent", "winner", "turnCount",
                         "localRating", "opponentRating", "ratingChange", "ratingAfter", "operationCount",
                         "durationSeconds", "socialPreview")
@@ -294,12 +295,8 @@ def get_match(device_id, match_id, event=None):
         if denied:
             return denied
     review = stored_review(item)
-    try:
-        private_study = has_paid_capability(device_membership(event or {}), "fullHistory")
-    except Exception:
-        private_study = False
     return compressed_response(200, {
-        "review": visible_review(review, private_study=private_study),
+        "review": visible_review(review),
         "reducerVersion": int(item.get("reducerVersion", 0)),
         "updatedAt": item.get("updatedAt"),
     })
@@ -406,7 +403,7 @@ def reserve_share(device_id, match_id, item, free_share):
                 "TableName": DEVICES_TABLE, "Key": attrs({"deviceId": device_id}),
                 "UpdateExpression": "SET lastFreeShareAt = :now, lastFreeShareId = :share",
                 "ConditionExpression": "attribute_exists(deviceId) AND (attribute_not_exists(lastFreeShareAt) OR lastFreeShareAt <= :cutoff)",
-                "ExpressionAttributeValues": attrs({":now": now, ":share": candidate, ":cutoff": now - FREE_HISTORY_SECONDS}),
+                "ExpressionAttributeValues": attrs({":now": now, ":share": candidate, ":cutoff": now - FREE_SHARE_WINDOW_SECONDS}),
             }})
         try:
             dynamodb_client.transact_write_items(TransactItems=writes)
@@ -423,8 +420,8 @@ def reserve_share(device_id, match_id, item, free_share):
             if free_share:
                 device = devices.get_item(Key={"deviceId": device_id}, ConsistentRead=True).get("Item") or {}
                 used = device.get("lastFreeShareAt")
-                if used is not None and int(used) > now - FREE_HISTORY_SECONDS:
-                    next_share = dt.datetime.fromtimestamp(int(used) + FREE_HISTORY_SECONDS, dt.timezone.utc)
+                if used is not None and int(used) > now - FREE_SHARE_WINDOW_SECONDS:
+                    next_share = dt.datetime.fromtimestamp(int(used) + FREE_SHARE_WINDOW_SECONDS, dt.timezone.utc)
                     return None, response(403, {"error": "share_limit_reached",
                                                "nextShareAt": next_share.isoformat().replace("+00:00", "Z")})
             item = current
@@ -439,18 +436,18 @@ def stored_review(item):
     return json.loads(gzip.decompress(stored))
 
 
-def visible_review(review, public=False, private_study=True):
+def visible_review(review, public=False):
     """Project a replay without the protected starting opponent inventory.
 
     Stored captures remain intact. Full lists are never a public-share feature;
     updated desktop clients retrieve their own opponent list separately after
-    checking current membership and native terminal match evidence.
+    checking native terminal match evidence.
     """
     if not isinstance(review, dict):
         return {}
     result = copy.deepcopy(review)
     local = result.get("localPlayer")
-    if not private_study or public:
+    if public:
         def mask_inventory(value):
             if isinstance(value, list):
                 for child in value:

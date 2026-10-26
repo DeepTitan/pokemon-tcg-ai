@@ -87,13 +87,12 @@ class GuestStripe(FakeStripe):
     def guest_checkout(self, customer, identifier, proof, key, expires, affiliate=None):
         if key not in self.sessions:
             self.calls.append('create_guest_checkout')
-            plan = next(p for p, value in CFG.prices.items() if value == identifier)
             self.sessions[key] = {
                 'id': 'cs_guest' + str(len(self.sessions)), 'status': 'open', 'payment_status': 'unpaid',
                 'mode': 'subscription', 'livemode': False, 'customer': customer,
                 'client_reference_id': 'guest_' + proof,
                 'metadata': {'trace_guest': proof, 'trace_reservation': key},
-                'line_items': {'data': [{'price': price(plan), 'quantity': 1}], 'has_more': False},
+                'line_items': {'data': [{'price': self.price(identifier), 'quantity': 1}], 'has_more': False},
                 'url': 'https://checkout.stripe.com/c/pay/guest', 'expires_at': expires,
             }
         if self.after_guest_checkout:
@@ -238,7 +237,7 @@ class GuestCheckoutTests(unittest.TestCase):
     def test_status_exposes_no_email_customer_session_or_proof_and_paid_retained(self):
         self.buy()
         result = self.service.guest_status(TOKEN)
-        self.assertEqual(result, {'state': 'paid', 'plan': 'supporter', 'expiresAt': None})
+        self.assertEqual(result, {'state': 'paid', 'plan': 'supporter', 'billingInterval': 'month', 'expiresAt': None})
         record = self.store.guests[self.proof]
         self.assertNotIn('ttl', record)
         self.assertNotIn('claimExpiresAt', record)
@@ -370,7 +369,7 @@ class GuestCheckoutTests(unittest.TestCase):
                 session = self.buy()
                 session['subscription']['status'] = status
                 result = self.service.guest_status(TOKEN)
-                self.assertEqual(result, {'state': 'processing', 'plan': 'supporter',
+                self.assertEqual(result, {'state': 'processing', 'plan': 'supporter', 'billingInterval': 'month',
                                           'expiresAt': None, 'reason': 'purchase_not_active'})
                 self.assert_error('payment_already_completed', lambda: self.service.guest_checkout('trace', TOKEN))
                 self.assertEqual(self.stripe.calls.count('create_guest_checkout'), 1)

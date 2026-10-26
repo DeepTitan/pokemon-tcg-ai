@@ -10,7 +10,7 @@ use std::{
 };
 
 const LEASE: Duration = Duration::from_secs(60);
-pub const RECENT_REPLAY_SECONDS: i64 = 7 * 24 * 60 * 60;
+pub const RECENT_REPLAY_SECONDS: i64 = 30 * 24 * 60 * 60;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -26,7 +26,7 @@ pub struct Capabilities {
 }
 impl Default for Capabilities {
     fn default() -> Self {
-        Self { record_matches: true, leaderboard: true, recent_replay_days: 7,
+        Self { record_matches: true, leaderboard: true, recent_replay_days: 30,
             full_history: false, expanded_sharing: false, opponent_decklists: true,
             free_shares_per_window: 1, share_window_days: 7 }
     }
@@ -216,7 +216,7 @@ impl Membership {
     }
     pub fn require_full_history(&self) -> Result<(), String> {
         if self.has_full_history() { Ok(()) }
-        else { Err("Trace Pro unlocks replays older than 7 days. Your matches are still saved. Link or refresh your membership in Settings.".into()) }
+        else { Err("Trace Pro unlocks replays older than 30 days. Your matches are still saved. Link or refresh your membership in Settings.".into()) }
     }
 }
 
@@ -290,7 +290,7 @@ mod tests {
             let status = MembershipStatus::denied(name).validated();
             assert!(status.capabilities.record_matches);
             assert!(status.capabilities.leaderboard);
-            assert_eq!(status.capabilities.recent_replay_days, 7);
+            assert_eq!(status.capabilities.recent_replay_days, 30);
             assert_eq!(status.capabilities.free_shares_per_window, 1);
             assert!(!status.capabilities.full_history);
             assert!(!status.capabilities.expanded_sharing);
@@ -304,7 +304,7 @@ mod tests {
         let invalid = invalid.validated();
         assert!(!invalid.capabilities.full_history);
         assert!(invalid.capabilities.record_matches);
-        assert_eq!(invalid.capabilities.recent_replay_days, 7);
+        assert_eq!(invalid.capabilities.recent_replay_days, 30);
     }
     #[test]
     fn older_service_flags_cannot_remove_free_deck_study() {

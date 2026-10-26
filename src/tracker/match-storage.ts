@@ -2,7 +2,8 @@ import type { CapturedOperation, MatchReview, MatchSummary } from './types.js';
 import { GamePhase } from '../engine/types.js';
 import { ratingFieldsForReview } from './rating-model.js';
 
-export const REDUCER_VERSION = 19;
+// Rebuild saved free-tier projections with their captured deck and prize identities.
+export const REDUCER_VERSION = 20;
 
 export function matchSummaryFromReview(review: MatchReview, operationCount = 0): MatchSummary {
   return {

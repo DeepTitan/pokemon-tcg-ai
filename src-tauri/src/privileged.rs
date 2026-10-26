@@ -398,6 +398,9 @@ fn established_game_destinations(pid: u32) -> Result<Vec<IpAddr>, String> {
         ])
         .output()
         .map_err(|error| error.to_string())?;
+    if !output.status.success() && !(output.status.code() == Some(1) && output.stderr.is_empty()) {
+        return Err("Could not inspect TCG Live's game-server sockets.".to_owned());
+    }
     let mut ips = Vec::new();
     for line in String::from_utf8_lossy(&output.stdout).lines() {
         let Some(remote) = line
@@ -452,16 +455,18 @@ fn pokemon_server_ips() -> Result<Vec<IpAddr>, String> {
     Ok(ips)
 }
 
-pub fn game_server_connection_count(pid: u32) -> usize {
-    let Ok(active) = established_game_destinations(pid) else {
-        return 0;
-    };
-    let Ok(resolved) = resolved_game_server_ips() else {
-        return 0;
-    };
-    // TCG Live also maintains asset and telemetry HTTPS sockets. Only the
-    // production game API opens the extra live-match connection.
-    active.iter().filter(|ip| resolved.contains(ip)).count()
+pub fn route_addresses_current(pinned: &[IpAddr]) -> Result<bool, String> {
+    let current = pokemon_server_ips()?;
+    Ok(crate::capture_health::addresses_cover(pinned, &current))
+}
+
+pub fn game_server_connection_count(pid: u32, known: &[IpAddr]) -> Result<usize, String> {
+    let active = established_game_destinations(pid)?;
+    let resolved = resolved_game_server_ips()?;
+    // Failed inspection is not an empty lobby: capture handoffs must fail closed.
+    Ok(crate::capture_health::game_connection_count(
+        &active, &resolved, known,
+    ))
 }
 
 fn hosts_without_override(contents: &str) -> String {

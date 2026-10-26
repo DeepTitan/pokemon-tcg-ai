@@ -20,7 +20,7 @@ fn share_failure_message(status: StatusCode, body: &Value) -> String {
             format!("Your free replay share is used for this 7-day period.{next} Trace Pro includes unlimited sharing.")
         }
         (StatusCode::FORBIDDEN, Some("history_membership_required")) =>
-            "Trace Pro is needed to create a new share link for a replay older than 7 days. Your match is still saved.".into(),
+            "Trace Pro is needed to create a new share link for a replay older than 30 days. Your match is still saved.".into(),
         (StatusCode::SERVICE_UNAVAILABLE, Some("membership_unavailable")) =>
             "Couldn’t verify paid sharing access. Try again shortly; your match is still saved.".into(),
         _ => format!("Could not create a share link ({status})."),

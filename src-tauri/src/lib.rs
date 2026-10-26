@@ -5,6 +5,8 @@ mod capture;
 mod capture;
 #[cfg(any(target_os = "windows", test))]
 mod capture_hosts;
+#[cfg(any(target_os = "macos", target_os = "windows", test))]
+mod capture_health;
 mod cards;
 mod cloud_sync;
 mod deck_access;
@@ -224,7 +226,7 @@ fn recent_match_operations(
             if storage.replay_requires_pro(&id)? && !membership.has_full_history() {
                 return Ok(None);
             }
-            Ok(Some(storage.match_access(&id)?.project_operation_for_plan(operation, membership.has_full_history())))
+            Ok(Some(storage.match_access(&id)?.project_operation(operation)))
         })
         .filter_map(|result| result.transpose())
         .collect()
@@ -299,13 +301,12 @@ async fn load_match_review(
     match_id: String,
 ) -> Result<tauri::ipc::Response, String> {
     verify_replay_access(&storage, &membership, &cloud_sync, &match_id).await?;
-    let pro = membership.has_full_history();
     let storage = storage.inner().clone();
     let json = tauri::async_runtime::spawn_blocking(move || -> Result<String, String> {
         let access = storage.match_access(&match_id)?;
         let value = storage
             .load_review(&match_id)?
-            .map(|review| access.project_review_for_plan(review, pro))
+            .map(|review| access.project_review(review))
             .unwrap_or(Value::Null);
         serde_json::to_string(&value).map_err(|e| e.to_string())
     })
@@ -365,14 +366,13 @@ async fn load_match_operations(
     match_id: String,
 ) -> Result<Vec<wire::CapturedOperation>, String> {
     verify_replay_access(&storage, &membership, &cloud_sync, &match_id).await?;
-    let pro = membership.has_full_history();
     let storage = storage.inner().clone();
     tauri::async_runtime::spawn_blocking(move || -> Result<Vec<_>, String> {
         let access = storage.match_access(&match_id)?;
         Ok(storage
             .load_operations(&match_id)?
             .into_iter()
-            .map(|operation| access.project_operation_for_plan(operation, pro))
+            .map(|operation| access.project_operation(operation))
             .collect())
     })
     .await
@@ -414,10 +414,13 @@ async fn start_tracking(app: tauri::AppHandle) -> Result<CaptureStatus, String> 
 }
 
 #[tauri::command]
-async fn open_membership_account() -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(|| {
-        open_account_url("https://victoryroad.app/trace/account")
-    })
+async fn open_membership_account(view: Option<String>) -> Result<(), String> {
+    let url = match view.as_deref() {
+        None | Some("account") => "https://victoryroad.app/trace/account",
+        Some("plans") => "https://victoryroad.app/trace#plans",
+        _ => return Err("Unknown membership page.".into()),
+    };
+    tauri::async_runtime::spawn_blocking(move || open_account_url(url))
     .await
     .map_err(|_| "Could not open your account.")?
 }

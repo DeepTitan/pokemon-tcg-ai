@@ -2,14 +2,14 @@
 
 This is an isolated AWS membership stack, separate from film billing and the capture stack. Staging membership/capture and the production account backend are deployed. Production capture points to the new backend with enforcement off; public billing and the coordinated website/desktop release are not complete. Billing defaults off. See [current rollout status](../../docs/TRACE_MEMBERSHIPS_ROLLOUT.md) for deployed resources, passed provider checks and remaining dependencies.
 
-- **Free:** continuous recording, leaderboard eligibility, full replays from the last seven days, captured opponent decklists, and one new replay share per rolling seven days per installation.
-- **Pro — USD $14.99/month** (internal plan ID `trace`): full archive replay access and expanded sharing.
+- **Free:** continuous recording, leaderboard eligibility, full replays from the last 30 days, own deck/prize inspection, captured opponent decklists, and one new replay share per rolling seven days per installation.
+- **Pro — USD $5/month or $50/year** (internal plan ID `trace`): full archive replay access and expanded sharing.
 - **Supporters Club — USD $39.99/month:** Pro plus exclusive Discord access/support and early features/nightly releases.
 - **Owner switch:** the configured owner's verified Cognito subject can receive both entitlements immediately via a separate database flag. This bypasses billing only. Native/server match-completion checks still apply.
 
 ## Access decisions
 
-Account and device responses include `capabilities: {recordMatches, leaderboard, recentReplayDays, freeSharesPerWindow, shareWindowDays, fullHistory, expandedSharing, opponentDecklists}`. The free baseline is `true, true, 7, 1, 7, false, false, true`. It also applies to unlinked installations and expired/canceled accounts. Active Pro enables `fullHistory` and `expandedSharing`; `opponentDecklists` is part of Free. A complete native captured list, verified player identity, and the replay archive window control access. Lists can be opened during the match. The legacy `traceAccess` Boolean still means **paid** access, for compatibility; it must no longer be used to gate all recording or downloads. Missing/offline membership cannot grant premium access but must leave the free baseline usable.
+Account and device responses include `capabilities: {recordMatches, leaderboard, recentReplayDays, freeSharesPerWindow, shareWindowDays, fullHistory, expandedSharing, opponentDecklists}`. The free baseline is `true, true, 30, 1, 7, false, false, true`. It also applies to unlinked installations and expired/canceled accounts. Active Pro enables `fullHistory` and `expandedSharing`; `opponentDecklists` is part of Free. A complete native captured list, verified player identity, and the replay archive window control access. Lists can be opened during the match. The legacy `traceAccess` Boolean still means **paid** access, for compatibility; it must no longer be used to gate all recording or downloads. Missing/offline membership cannot grant premium access but must leave the free baseline usable.
 
 The capture service enforces archive ages and the free share quota independently; see `../aws/README.md`. Ratings retain all accepted games, irrespective of subscription. Existing public links remain readable. A new link's free quota belongs to the capture installation, not a global account, so this is a product limit rather than strong anti-abuse protection.
 
@@ -110,3 +110,8 @@ Offline tests use synthetic accounts, fake persistence/Cognito/Stripe, determini
 YAML syntax, Python compilation and AWS CloudFormation template validation have passed. Real-AWS staging capture smoke tests passed with policy enforcement disabled and enabled. A disposable Cognito/protected-preview test verified actual login, secure sessions, Free downloads, refresh, logout and token revocation; it suppressed email and cleaned up its fixtures. Normal staging signup/email confirmation, recovery-email delivery with passing sender authentication, and both paid sandbox Stripe journeys have since passed; public rollout remains incomplete. Consult [rollout status](../../docs/TRACE_MEMBERSHIPS_ROLLOUT.md) for current evidence rather than treating offline tests as provider validation.
 
 Implementation references: [Cognito GetUser](https://docs.aws.amazon.com/cognito-user-identity-pools/latest/APIReference/API_GetUser.html), [Stripe webhook verification and delivery](https://docs.stripe.com/webhooks), [Checkout sessions](https://docs.stripe.com/api/checkout/sessions/create?api-version=2024-06-20).
+
+
+### Pro monthly and yearly prices
+
+`TracePriceId` now selects the USD 5 monthly offer. `TraceAnnualPriceId` selects the USD 50 yearly offer. Keep the previous USD 14.99 monthly ID in `LegacyTracePriceId` when rolling out to an existing installation. Existing subscribers retain access, and new purchases use only the new offer IDs. The backend validates currency, amount, recurrence, mode and paid invoice evidence for each exact price. Configure both new prices and update the isolated Stripe portal before deploying the website offer. Existing customer subscriptions are not automatically repriced.
