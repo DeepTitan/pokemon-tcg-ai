@@ -305,7 +305,7 @@ test('routing preserves public share/leaderboard before catch-all, and legacy ac
   assert.match(handler, /createMemberDownloadHandler/);
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   assert.doesNotMatch(html, /Private preview|Free beta|type="password"|releases\/latest\/download/);
-  assert.match(html, /\$5/); assert.match(html, /\$39\.99/);
+  assert.match(html, /\$4\.99/); assert.match(html, /\$39\.99/);
   const client = readFileSync(new URL('../member.js', import.meta.url), 'utf8');
   assert.doesNotMatch(client, /localStorage|sessionStorage|accessToken|refreshToken/);
 });

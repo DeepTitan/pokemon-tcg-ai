@@ -270,8 +270,8 @@ test('pricing toggle changes the displayed total and the exact checkout request 
   });
   vm.runInContext(readFileSync(new URL('../script.js', import.meta.url), 'utf8'), context);
   controls[1].click();
-  assert.equal(amount.textContent, '$50'); assert.equal(interval.textContent, '/ year');
-  assert.match(disclosure.textContent, /\$50 billed yearly/);
+  assert.equal(amount.textContent, '$49.99'); assert.equal(interval.textContent, '/ year');
+  assert.match(disclosure.textContent, /\$49\.99 billed yearly/);
   await proButton.click();
   assert.deepEqual(requests.at(-1).body, { plan: 'trace', billingInterval: 'year' });
 });

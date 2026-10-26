@@ -13,7 +13,7 @@ The membership proxy fails closed without a valid service URL. Public pricing, l
 
 `/trace/access` checks current account capabilities before redirecting to fixed installers. A verified Free account with server-confirmed `capabilities.recordMatches: true` can download; payment is not required. Legacy download grants do not grant access. The installers themselves are still existing public GitHub release assets: download gating is not the desktop entitlement boundary. Desktop and capture services enforce replay history, sharing, and opponent-decklist access independently.
 
-Free includes continuous recording, the latest 30 days of replays, own deck and prize study, leaderboard/results, and one new replay share per rolling seven days. Pro is displayed at $5/month or $50/year but retains the internal plan ID `trace`; it adds the full replay archive and unlimited replay sharing. Supporters Club remains $39.99/month with internal ID `supporter`, adding exclusive Discord access/support and early access to new features and nightly releases. Captured opponent starting decklists are available on every plan, including during the match, subject to the replay history window. They require a complete native captured list and verified player identity, and are not added to public replay payloads.
+Free includes continuous recording, the latest 30 days of replays, own deck and prize study, leaderboard/results, and one new replay share per rolling seven days. Pro is displayed at $4.99/month or $49.99/year but retains the internal plan ID `trace`; it adds the full replay archive and unlimited replay sharing. Supporters Club remains $39.99/month with internal ID `supporter`, adding exclusive Discord access/support and early access to new features and nightly releases. Captured opponent starting decklists are available on every plan, including during the match, subject to the replay history window. They require a complete native captured list and verified player identity, and are not added to public replay payloads.
 
 The service's legacy `traceAccess` stays a paid-access flag. Free access comes from the allowlisted `capabilities` object: `recordMatches`, `leaderboard`, `recentReplayDays: 30`, `fullHistory`, `expandedSharing`, `opponentDecklists`, `freeSharesPerWindow: 1`, and `shareWindowDays: 7`. Premium capability flags require current paid/admin access; missing/unknown permissions fail closed. Canceled or overdue subscriptions retain confirmed Free capabilities. Overdue accounts see Manage billing rather than a second checkout. Free users upgrading later use their existing signed-in account.
 
@@ -21,7 +21,7 @@ Owner access is displayed only when the member service returns `plan: supporter`
 
 ## Routes
 
-- `/trace`: public pricing (Free; $5 USD/month or $50 USD/year Pro; $39.99 USD/month Supporters Club).
+- `/trace`: public pricing (Free; $4.99 USD/month or $49.99 USD/year Pro; $39.99 USD/month Supporters Club).
 - `/trace/signup`, `/trace/confirm`, `/trace/login`, `/trace/recover`, `/trace/reset`: account lifecycle including resend confirmation code.
 - `/trace/account`: membership status, subscription management and authenticated downloads.
 - `/trace/connect?userCode=XXXXX-XXXXX`: link a desktop app only after explicit code confirmation and consent.

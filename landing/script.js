@@ -24,10 +24,10 @@ for (const control of billingButtons) control.addEventListener('click', () => {
   billingInterval = control.dataset.billingInterval === 'year' ? 'year' : 'month';
   billingButtons.forEach(button => button.setAttribute('aria-pressed', String(button === control)));
   const yearly = billingInterval === 'year';
-  document.querySelector('#pro-price .price-amount').textContent = yearly ? '$50' : '$5';
+  document.querySelector('#pro-price .price-amount').textContent = yearly ? '$49.99' : '$4.99';
   document.querySelector('#pro-price .price-interval').textContent = yearly ? '/ year' : '/ month';
   const disclosure = document.getElementById('billing-disclosure');
-  if (disclosure) disclosure.textContent = `Pro: ${yearly ? '$50 billed yearly — save $10 compared with monthly' : '$5 billed monthly'}. Supporters Club: $39.99 billed monthly. Secure checkout with Stripe.`;
+  if (disclosure) disclosure.textContent = `Pro: ${yearly ? '$49.99 billed yearly — save $9.89 compared with monthly' : '$4.99 billed monthly'}. Supporters Club: $39.99 billed monthly. Secure checkout with Stripe.`;
 });
 
 const message = document.getElementById('checkout-message');
