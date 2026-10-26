@@ -18,6 +18,14 @@
 
 ## Readiness and configuration
 
+### Additional signing diagnostics — October 26, 2026, 18:55 UTC
+
+- At the user's request, the prepared support request was **not submitted**. PR #9 adds read-only Azure health diagnostics and tests Microsoft's newer Artifact Signing client `1.0.146` in the focused smoke workflow; production release signing and publication gates are unchanged.
+- Run `40381943010` from `309da81205453bbc186a239808c9d27cf99d1350` confirmed subscription `Enabled`, provider `Registered`, signing-account provisioning `Succeeded`, correct East US endpoint, and PublicTrust profile `Active` / provisioning `Succeeded`. The active certificate was created October 26 at 06:29:50 and expires October 29 at 06:29:50; the timestamp endpoint returned HTTP 200. The portal independently showed the subscription Active.
+- Client `1.0.146` still received an accepted signing request followed by `Failed` with null signatures/certificate: operation `bfc5c82d-5b8b-42f8-a283-97bfc444e4dc`, October 26 at 18:55:45 UTC. This rules out the older client as the sole cause.
+- A [Microsoft employee's September 18 response to the same post-reactivation symptom](https://learn.microsoft.com/en-gb/answers/questions/6007861/struggling-with-failed-signing-please-help) says signing recovery takes **1–2 days** after a paused subscription is re-enabled. This is consistent with our observations, not confirmation of this account's internal cause. No subscription, resource, certificate, role assignment, or payment settings were changed.
+- Preserve the held desktop release and retry after the reactivation window; do not publish the superseded v0.1.99 draft or bypass signature validation. Prices remain verified at $4.99/month and $49.99/year. Evidence: `artifacts/pricing-release/azure-signing-diagnostics-20261026.json` and `azure-signing-new-client-20261026.log`.
+
 ### Desktop signing recheck — October 26, 2026, 18:48 UTC
 
 - Fresh Windows signing smoke run `40379556675` from current `main` source `b6fc375243e097fda5b43251b95fcac7df427a6b` failed on both attempts. GitHub OIDC authentication and signing submission passed, but Azure completed each operation with `status: Failed` and null signature/certificate fields. Operation IDs: `84378cb2-dd87-43a6-b7c7-5bebc3b9549c` at 18:39:54 UTC and `e6bcccfb-15a3-4519-ada8-e428e4ea996b` at 18:47:45 UTC.
