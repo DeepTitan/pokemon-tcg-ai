@@ -1,6 +1,6 @@
 # Trace memberships
 
-This is an isolated AWS membership stack, separate from film billing and the capture stack. Staging membership/capture and the production account backend are deployed. Production capture points to the new backend with enforcement off; public billing and the coordinated website/desktop release are not complete. Billing defaults off. See [current rollout status](../../docs/TRACE_MEMBERSHIPS_ROLLOUT.md) for deployed resources, passed provider checks and remaining dependencies.
+This is an isolated AWS membership stack, separate from film billing and the capture stack. Production billing and capture policy are enabled. The October 26 pricing release offers $5 monthly and $50 yearly Pro, with 30 days of Free replays and free deck/prize study. Billing still defaults off for newly configured stacks. See [current rollout status](../../docs/TRACE_MEMBERSHIPS_ROLLOUT.md) for deployed resources, provider checks and desktop publication status.
 
 - **Free:** continuous recording, leaderboard eligibility, full replays from the last 30 days, own deck/prize inspection, captured opponent decklists, and one new replay share per rolling seven days per installation.
 - **Pro — USD $5/month or $50/year** (internal plan ID `trace`): full archive replay access and expanded sharing.

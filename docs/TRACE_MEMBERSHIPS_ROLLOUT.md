@@ -2,20 +2,30 @@
 
 ## Agreed behavior
 
-- **Free:** continuous capture, leaderboard eligibility, full replays from the last seven days, post-match opponent decklists, and one new replay share per installation per rolling seven days. This is ongoing free access, not a seven-day recording trial.
-- **Pro:** USD $14.99/month for full archive access and expanded sharing. Internal plan ID remains `trace`.
-- **Supporters Club:** USD $39.99/month, including Pro, exclusive Discord access/support, and early features/nightly releases. Full opponent starting lists require authoritative match-end evidence; closing the client or an inferred winner cannot unlock them.
-- Subscription status never filters rating events, deletes captures or stops recording. The next desktop patch applies the seven-day replay window to existing local games too, while keeping their summaries visible and all original data saved. Existing public links remain accessible.
+- **Free:** continuous capture, leaderboard eligibility, full replays from the last 30 days, own deck/prize study, captured opponent decklists, and one new replay share per installation per rolling seven days. This is ongoing free access, not a recording trial.
+- **Pro:** USD $5/month or $50/year for full archive access and unlimited sharing. Internal plan ID remains `trace`.
+- **Supporters Club:** USD $39.99/month, including Pro, exclusive Discord access/support, and early features/nightly releases. Opponent starting lists require complete validated capture and verified player identity and are available during matches. Match results still require authoritative completion evidence.
+- Subscription status never filters rating events, deletes captures or stops recording. The desktop applies the 30-day replay window to existing local games too, while keeping their summaries visible and all original data saved. Existing public links remain accessible.
 - No Discord account or community join is required for signup, checkout, download, device linking or deployment.
 - One verified owner may bypass billing through a pinned Cognito subject and separate database switch. This grants product access, not AWS/billing administration, and never bypasses match-end evidence.
 
 ## Release locations
 
-- Desktop/capture/membership: `release/trace-memberships-20260927`, branch `codex/trace-memberships`, based on upstream `9bda5aa7585988e8c15851e396d05c82062efc45`.
-- Website: sibling `release/trace-memberships-web-20260927`, branch `codex/trace-memberships-web`, based on the separate deployed website source.
+- Desktop/capture/membership: GitHub `DeepTitan/pokemon-tcg-ai`, `main`. Pricing and idle capture recovery source: `b5d23798b9a1dc498be7245a61eef957f569165c`, merged in PR #7.
+- Website: the same GitHub repository's separate `codex/trace-pricing-website` branch, runtime source `fb707cc3ab79107f8b7eb6699f5c61083fb7317f`. Local checkout: `/Users/theisaiahw/.codex/worktrees/trace-pricing-website/victoryroad`. This preserves the independently deployed Trace website source; do not replace it with the main branch's old landing directory.
+- Trace Vercel project: `victoryroad` (`prj_xu8lQXM29IgPY7fLDvbkT4qah4Ta`), team `deeptitan-6729s-projects`. The `victoryroad-lovat.vercel.app` alias supplies the public `/trace` routes. The apex Victory Road site uses the separate `prize-map` project.
 - Do not deploy the dirty root workspace or unrelated Prize Map source.
 
 ## Readiness and configuration
+
+### Pricing release — October 26, 2026
+
+- Both AWS stacks reached `UPDATE_COMPLETE`. Deployed Lambda source matches the tested membership and capture source exactly; the new Free policy is 30 days with private deck/prize study included.
+- New active live prices on existing Trace Pro product `prod_VLc91SAAadBLMi`: `price_1UUgmc3qgXndaKhCnePvpFhA` (USD $5/month, default) and `price_1UUgnE3qgXndaKhC6SpQ6QlS` (USD $50/year). The former $14.99 monthly ID remains configured as `LegacyTracePriceId`; this release does not migrate existing subscription charges.
+- Dedicated portal `bpc_1UKvSh3qgXndaKhCohNHB9Li` now offers both new Pro prices and unchanged Supporters pricing. Price-only updates, quantity one, existing proration/cancellation behavior, and the unrelated film portal are preserved.
+- Website deployment `dpl_GVTZgrtGoGuZcA1WKWDh3rWXE3Dy` was staged, verified and promoted. All seven public HTTP checks passed. Both live checkout cadences returned the exact expected Stripe price, amount and quantity, and same-cadence retries reused their sessions. Validation sessions were expired; no payment was submitted and no subscription was created.
+- Desktop v0.1.99 remains a held draft from workflow run `40276564757`. macOS signing, notarization, Gatekeeper and clean-path launch checks passed. Windows capture tests and compilation passed, but the signing provider returned HTTP 403; focused signing run `40279110334` reproduced the provider failure with fresh authentication. Resume only after signing availability is restored, then verify Windows publisher signatures and the public updater manifest before claiming desktop publication.
+- Nonsecret release receipts are in `artifacts/pricing-release/`. The runtime log scan found two Node `url.parse()` deprecation warnings, without application failures.
 
 ### Staging and email checkpoint — September 29, 2026
 
