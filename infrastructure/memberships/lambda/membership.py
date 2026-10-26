@@ -13,8 +13,8 @@ from urllib.parse import urlencode
 
 ACCOUNT_URL = 'https://victoryroad.app/trace/account'
 LINK_URL = 'https://victoryroad.app/trace/link'
-PRICE_AMOUNTS = {'trace': 500, 'supporter': 3999}
-TRACE_ANNUAL_AMOUNT = 5000
+PRICE_AMOUNTS = {'trace': 499, 'supporter': 3999}
+TRACE_ANNUAL_AMOUNT = 4999
 PAID_EVIDENCE_VERSION = 2
 DEVICE_ID = re.compile(r'^[A-Za-z0-9._-]{16,128}$')
 SUBJECT = re.compile(r'^[A-Za-z0-9_-]{1,128}$')
@@ -52,6 +52,8 @@ class Config:
     web_origin: str = 'https://victoryroad.app'
     trace_annual_price: str = ''
     legacy_trace_price: str = ''
+    previous_trace_price: str = ''
+    previous_trace_annual_price: str = ''
 
     @property
     def prices(self):
@@ -60,10 +62,12 @@ class Config:
     @property
     def price_catalog(self):
         # Legacy prices grant existing paid access but are never offered to new buyers.
-        return [(self.trace_price, 'trace', 500, 'month'),
+        return [(self.trace_price, 'trace', PRICE_AMOUNTS['trace'], 'month'),
                 (self.trace_annual_price, 'trace', TRACE_ANNUAL_AMOUNT, 'year'),
                 (self.supporter_price, 'supporter', 3999, 'month'),
-                (self.legacy_trace_price, 'trace', 1499, 'month')]
+                (self.legacy_trace_price, 'trace', 1499, 'month'),
+                (self.previous_trace_price, 'trace', 500, 'month'),
+                (self.previous_trace_annual_price, 'trace', 5000, 'year')]
 
     def checkout_price(self, plan, billing_interval):
         if plan not in ('trace', 'supporter'):

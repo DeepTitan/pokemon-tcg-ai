@@ -19,6 +19,8 @@
     "LegacyTracePriceId": "",
     "SupporterPriceId": "",
     "StripePortalConfigId": "",
-    "OwnerSubject": ""
+    "OwnerSubject": "",
+    "PreviousTracePriceId": "",
+    "PreviousTraceAnnualPriceId": ""
   }
 }

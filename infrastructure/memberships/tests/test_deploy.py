@@ -67,6 +67,16 @@ class DeployTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             deploy.validate(self.config, allow_live=True)
 
+    def test_previous_prices_must_be_distinct_from_current_offer(self):
+        self.params.update(BillingEnabled='true', TracePriceId='price_current',
+                           SupporterPriceId='price_supporter', StripePortalConfigId='bpc_trace',
+                           StripeSecretArn='arn:aws:secretsmanager:us-east-1:123456789012:secret:trace-fixture')
+        for key in ('PreviousTracePriceId', 'PreviousTraceAnnualPriceId'):
+            self.params[key] = 'price_current'
+            with self.subTest(key=key), self.assertRaisesRegex(ValueError, 'must differ'):
+                deploy.validate(self.config)
+            self.params[key] = ''
+
     def test_unknown_fields_and_missing_configuration_are_not_silently_defaulted(self):
         bad = copy.deepcopy(self.config)
         bad['parameters']['Unexpected'] = 'value'

@@ -9,7 +9,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parent
 PARAMETERS = {'Environment', 'CaptureDevicesTableName', 'BillingEnabled', 'StripeMode', 'StripeSecretArn',
-              'TracePriceId', 'TraceAnnualPriceId', 'LegacyTracePriceId', 'SupporterPriceId', 'StripePortalConfigId', 'OwnerSubject',
+              'TracePriceId', 'TraceAnnualPriceId', 'LegacyTracePriceId', 'PreviousTracePriceId', 'PreviousTraceAnnualPriceId', 'SupporterPriceId', 'StripePortalConfigId', 'OwnerSubject',
               'ReservedConcurrency', 'SesIdentity', 'SesFromEmail', 'SesRegion',
               'WebOrigin', 'GoogleTriggerArn'}
 
@@ -45,6 +45,8 @@ def validate(config, allow_live=False):
     params.setdefault('GoogleTriggerArn', '')
     params.setdefault('TraceAnnualPriceId', '')
     params.setdefault('LegacyTracePriceId', '')
+    params.setdefault('PreviousTracePriceId', '')
+    params.setdefault('PreviousTraceAnnualPriceId', '')
     if not isinstance(params, dict) or set(params) != PARAMETERS or any(not isinstance(v, str) for v in params.values()):
         raise ValueError('Configuration needs exactly the documented string parameters.')
     for name, pattern in {'stackName': r'[A-Za-z][A-Za-z0-9-]{0,127}', 'region': r'[a-z]{2}-[a-z]+-\d',
@@ -68,7 +70,7 @@ def validate(config, allow_live=False):
         raise ValueError('Production/live billing must use the canonical victoryroad.app WebOrigin.')
     for key, pattern in {
         'StripeSecretArn': r'arn:aws:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+',
-        'TracePriceId': r'price_[A-Za-z0-9]+', 'TraceAnnualPriceId': r'price_[A-Za-z0-9]+', 'LegacyTracePriceId': r'price_[A-Za-z0-9]+', 'SupporterPriceId': r'price_[A-Za-z0-9]+',
+        'TracePriceId': r'price_[A-Za-z0-9]+', 'TraceAnnualPriceId': r'price_[A-Za-z0-9]+', 'LegacyTracePriceId': r'price_[A-Za-z0-9]+', 'PreviousTracePriceId': r'price_[A-Za-z0-9]+', 'PreviousTraceAnnualPriceId': r'price_[A-Za-z0-9]+', 'SupporterPriceId': r'price_[A-Za-z0-9]+',
         'StripePortalConfigId': r'bpc_[A-Za-z0-9]+',
     }.items():
         if params[key] and not re.fullmatch(pattern, params[key]):
@@ -79,7 +81,7 @@ def validate(config, allow_live=False):
         for name in ('StripeSecretArn', 'TracePriceId', 'SupporterPriceId', 'StripePortalConfigId'):
             if not params[name]:
                 raise ValueError(f'Billing needs {name}.')
-        prices = [params[key] for key in ('TracePriceId', 'TraceAnnualPriceId', 'LegacyTracePriceId', 'SupporterPriceId') if params[key]]
+        prices = [params[key] for key in ('TracePriceId', 'TraceAnnualPriceId', 'LegacyTracePriceId', 'PreviousTracePriceId', 'PreviousTraceAnnualPriceId', 'SupporterPriceId') if params[key]]
         if len(prices) != len(set(prices)):
             raise ValueError('Plan prices must differ.')
     if params['StripeMode'] == 'live' and params['BillingEnabled'] == 'true' and not allow_live:
