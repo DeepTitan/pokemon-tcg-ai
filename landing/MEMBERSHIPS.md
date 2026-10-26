@@ -1,6 +1,6 @@
 # Trace membership website
 
-Implementation prepared locally; no payments, accounts, emails, or production deployments were created during development.
+The October 26, 2026 pricing release is deployed at `https://victoryroad.app/trace`. Runtime source `fb707cc3ab79107f8b7eb6699f5c61083fb7317f` is preserved in `DeepTitan/pokemon-tcg-ai` on branch `codex/trace-pricing-website`. Vercel project `victoryroad` (`prj_xu8lQXM29IgPY7fLDvbkT4qah4Ta`) is separate from the apex site's `prize-map` project. Deployment `dpl_GVTZgrtGoGuZcA1WKWDh3rWXE3Dy` passed the full website suite, staged live-price checkout verification and all seven public HTTP checks before/after promotion. Validation checkouts were expired without payment or subscription creation.
 
 ## Production configuration
 
