@@ -3,7 +3,7 @@
 ## Agreed behavior
 
 - **Free:** continuous capture, leaderboard eligibility, full replays from the last 30 days, own deck/prize study, captured opponent decklists, and one new replay share per installation per rolling seven days. This is ongoing free access, not a recording trial.
-- **Pro:** USD $5/month or $50/year for full archive access and unlimited sharing. Internal plan ID remains `trace`.
+- **Pro:** USD $4.99/month or $49.99/year for full archive access and unlimited sharing. Internal plan ID remains `trace`.
 - **Supporters Club:** USD $39.99/month, including Pro, exclusive Discord access/support, and early features/nightly releases. Opponent starting lists require complete validated capture and verified player identity and are available during matches. Match results still require authoritative completion evidence.
 - Subscription status never filters rating events, deletes captures or stops recording. The desktop applies the 30-day replay window to existing local games too, while keeping their summaries visible and all original data saved. Existing public links remain accessible.
 - No Discord account or community join is required for signup, checkout, download, device linking or deployment.
@@ -11,12 +11,22 @@
 
 ## Release locations
 
-- Desktop/capture/membership: GitHub `DeepTitan/pokemon-tcg-ai`, `main`. Pricing and idle capture recovery source: `b5d23798b9a1dc498be7245a61eef957f569165c`, merged in PR #7.
-- Website: the same GitHub repository's separate `codex/trace-pricing-website` branch, runtime source `fb707cc3ab79107f8b7eb6699f5c61083fb7317f`. Local checkout: `/Users/theisaiahw/.codex/worktrees/trace-pricing-website/victoryroad`. This preserves the independently deployed Trace website source; do not replace it with the main branch's old landing directory.
+- Desktop/capture/membership: GitHub `DeepTitan/pokemon-tcg-ai`, `main`. Current pricing source: `64627d90a874474b87dd17a09aa8980e49afbc33`, merged in PR #8; includes the earlier idle capture recovery from PR #7.
+- Website: the same GitHub repository's separate `codex/trace-pricing-website` branch, runtime source `f55756a5ab0d99d79972a884bd8dd7d4b1ad1f9a`. Local checkout: `/Users/theisaiahw/.codex/worktrees/trace-pricing-website/victoryroad`. This preserves the independently deployed Trace website source; do not replace it with the main branch's old landing directory.
 - Trace Vercel project: `victoryroad` (`prj_xu8lQXM29IgPY7fLDvbkT4qah4Ta`), team `deeptitan-6729s-projects`. The `victoryroad-lovat.vercel.app` alias supplies the public `/trace` routes. The apex Victory Road site uses the separate `prize-map` project.
 - Do not deploy the dirty root workspace or unrelated Prize Map source.
 
 ## Readiness and configuration
+
+### Final price adjustment — October 26, 2026
+
+- Current Trace Pro prices are **$4.99/month** (`price_1UUs2p3qgXndaKhC0EvP86xr`, product default) and **$49.99/year** (`price_1UUs2p3qgXndaKhCE4lnH6xN`). The yearly offer saves $9.89 compared with twelve monthly payments.
+- The $5/$50 prices are preserved in `PreviousTracePriceId` / `PreviousTraceAnnualPriceId`, alongside the original $14.99 price in `LegacyTracePriceId`. Existing subscriptions retain their charges and access; new checkout and dedicated portal offers use $4.99/$49.99. Supporters Club remains $39.99/month.
+- Membership stack reached `UPDATE_COMPLETE`; deployed Lambda source and exact price configuration were verified. All 159 backend tests, 143 website tests, CI access checks and the tracker production build passed.
+- Website source `f55756a5ab0d99d79972a884bd8dd7d4b1ad1f9a` was staged and promoted as `dpl_4o6evXGFzJkBPMxqN3mZuhFRYpda`, https://victoryroad-h6ivm6pt6-deeptitan-6729s-projects.vercel.app. Public monthly/yearly copy and savings were verified. Both real checkout sessions had the exact amount, price, interval and quantity; retries reused sessions, and test sessions were expired without payment or a subscription.
+- The corresponding Film Archive offers were changed separately on product `prod_VCL6fmh9K853Nk`: monthly `price_1UUs583qgXndaKhCQJlOhoGX`, yearly `price_1UUs583qgXndaKhC93y10pGF`. Both live checkouts and the public shared upgrade dialog passed verification.
+- **Desktop remains unpublished.** Signing smoke run `40279110334`, attempt 3, now authenticates and submits to Azure successfully, but Azure returns signing operation `Failed` with no signature (operation `3269e1e7-bf53-45f1-9b4a-826433b36647`). No unsigned release was published. Draft v0.1.99 contains the superseded $5/$50 copy; after signing recovers, build a new patch version from `64627d90a874474b87dd17a09aa8980e49afbc33` or a verified descendant instead of publishing that old draft.
+- Receipts and screenshot: `artifacts/pricing-release/fractional-*`, `provider-checkout-verification.json` and `film-fractional-verification.json`. Temporary browser fixtures were cleared; no user's free unlocks were consumed.
 
 ### Pricing release — October 26, 2026
 
