@@ -20,6 +20,38 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
+      - name: Inspect Azure signing resource health
+        shell: pwsh
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          AZURE_ARTIFACT_SIGNING_ACCOUNT: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+          AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE: ${{ vars.AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE }}
+        run: |
+          # Diagnostics are read-only. A signer may lack ARM read permissions;
+          # report that explicitly and still exercise the actual signing request.
+          $PSNativeCommandUseErrorActionPreference = $false
+          function Read-AzureHealth([string]$Label, [string]$Url, [string]$Query) {
+            Write-Host "::group::$Label"
+            az rest --method get --url $Url --query $Query --output json --only-show-errors
+            if ($LASTEXITCODE -ne 0) {
+              Write-Warning "$Label could not be read with the existing signing identity (exit $LASTEXITCODE)."
+            }
+            Write-Host '::endgroup::'
+          }
+          $subscription = "/subscriptions/$env:AZURE_SUBSCRIPTION_ID"
+          $account = "$subscription/resourceGroups/trace-app-signing/providers/Microsoft.CodeSigning/codeSigningAccounts/$env:AZURE_ARTIFACT_SIGNING_ACCOUNT"
+          Read-AzureHealth 'Subscription' "https://management.azure.com${subscription}?api-version=2022-12-01" '{state:state}'
+          Read-AzureHealth 'Signing provider' "https://management.azure.com${subscription}/providers/Microsoft.CodeSigning?api-version=2021-04-01" '{registrationState:registrationState}'
+          Read-AzureHealth 'Signing account' "https://management.azure.com${account}?api-version=2025-10-13" '{location:location,provisioningState:properties.provisioningState,accountUri:properties.accountUri,sku:properties.sku.name}'
+          Read-AzureHealth 'Certificate profile' "https://management.azure.com${account}/certificateProfiles/${env:AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE}?api-version=2025-10-13" '{provisioningState:properties.provisioningState,status:properties.status,profileType:properties.profileType,certificates:properties.certificates[].{status:status,createdDate:createdDate,expiryDate:expiryDate}}'
+          try {
+            $timestamp = Invoke-WebRequest 'http://timestamp.acs.microsoft.com' -TimeoutSec 30
+            Write-Host "Timestamp service HTTP status: $($timestamp.StatusCode)"
+          } catch {
+            Write-Warning "Timestamp service health probe failed: $($_.Exception.Message)"
+          }
+          exit 0
+
       - name: Build, sign, and verify a Windows executable
         shell: pwsh
         env:
@@ -43,7 +75,7 @@ jobs:
           $clientRoot = Join-Path $env:RUNNER_TEMP 'artifact-signing-client'
           $clientArchive = Join-Path $env:RUNNER_TEMP 'artifact-signing-client.zip'
           Invoke-WebRequest `
-            -Uri 'https://www.nuget.org/api/v2/package/Microsoft.ArtifactSigning.Client/1.0.128' `
+            -Uri 'https://www.nuget.org/api/v2/package/Microsoft.ArtifactSigning.Client/1.0.146' `
             -OutFile $clientArchive
           Expand-Archive -LiteralPath $clientArchive -DestinationPath $clientRoot -Force
 

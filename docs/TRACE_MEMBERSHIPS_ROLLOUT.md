@@ -18,6 +18,14 @@
 
 ## Readiness and configuration
 
+### Desktop signing recheck — October 26, 2026, 18:48 UTC
+
+- Fresh Windows signing smoke run `40379556675` from current `main` source `b6fc375243e097fda5b43251b95fcac7df427a6b` failed on both attempts. GitHub OIDC authentication and signing submission passed, but Azure completed each operation with `status: Failed` and null signature/certificate fields. Operation IDs: `84378cb2-dd87-43a6-b7c7-5bebc3b9549c` at 18:39:54 UTC and `e6bcccfb-15a3-4519-ada8-e428e4ea996b` at 18:47:45 UTC.
+- Azure portal showed `trace-public-trust` Active, including a current Active certificate created October 26 and expiring October 29. These observations do not establish why the signing service failed. No signing resources or permissions were changed.
+- Read-only production checks confirmed both active live Trace Stripe prices are exactly $4.99/month and $49.99/year on the existing Trace Pro product. The desktop upgrade modal and account settings, public Trace pricing HTML/script, and configured backend IDs match. Production capture/membership endpoint pairing passed with enforcement enabled.
+- The public updater still advertises v0.1.98. No new desktop version was published. Do not publish draft v0.1.99: it contains the superseded $5/$50 source and is bound to a different source SHA. When signing recovers, choose a fresh patch release version for the verified current source, preserving the existing signed-release gates.
+- Evidence: `artifacts/pricing-release/desktop-release-recheck-20261026.json`, `desktop-live-prices-20261026.json`, `desktop-endpoint-pair-20261026.json`, and the two signing logs. A concrete Microsoft support request is prepared locally as `azure-signing-support-request.txt`; submission requires the user's authorization to contact Microsoft.
+
 ### Final price adjustment — October 26, 2026
 
 - Current Trace Pro prices are **$4.99/month** (`price_1UUs2p3qgXndaKhC0EvP86xr`, product default) and **$49.99/year** (`price_1UUs2p3qgXndaKhCE4lnH6xN`). The yearly offer saves $9.89 compared with twelve monthly payments.
