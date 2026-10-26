@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../landing');
 const port = Number(process.env.TRACE_MEMBERSHIP_PREVIEW_PORT || 5190);
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.ttf': 'font/ttf', '.json': 'application/json', '.jpg': 'image/jpeg' };
-const freeCapabilities = { recordMatches: true, leaderboard: true, recentReplayDays: 7, fullHistory: false, expandedSharing: false, opponentDecklists: false, freeSharesPerWindow: 1, shareWindowDays: 7 };
+const freeCapabilities = { recordMatches: true, leaderboard: true, recentReplayDays: 30, fullHistory: false, expandedSharing: false, opponentDecklists: false, freeSharesPerWindow: 1, shareWindowDays: 7 };
 const account = { email: 'player@example.test', plan: 'supporter', traceAccess: true, opponentDecklists: true, admin: false, status: 'active', expiresAt: '2099-10-27T08:00:00Z', cancelAtPeriodEnd: false, capabilities: { ...freeCapabilities, fullHistory: true, expandedSharing: true, opponentDecklists: true } };
 const extraAccountStates = {
   past_due: { plan: 'trace', status: 'past_due', traceAccess: false, opponentDecklists: false, expiresAt: null, capabilities: freeCapabilities },

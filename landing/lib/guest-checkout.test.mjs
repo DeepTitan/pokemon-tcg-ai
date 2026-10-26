@@ -6,7 +6,7 @@ import { ACCESS_COOKIE, REFRESH_COOKIE, CHECKOUT_COOKIE, createMembershipHandler
 const proof = 'a'.repeat(64);
 const checkoutUrl = 'https://checkout.stripe.com/c/pay/cs_test_offline';
 const token = 'private.access.token';
-const none = { email: 'player@example.test', plan: 'none', status: 'none', admin: false, traceAccess: false, opponentDecklists: false, expiresAt: null, cancelAtPeriodEnd: false, capabilities: { recordMatches: true, leaderboard: true, recentReplayDays: 7, fullHistory: false, expandedSharing: false, opponentDecklists: false, freeSharesPerWindow: 1, shareWindowDays: 7 } };
+const none = { email: 'player@example.test', plan: 'none', status: 'none', admin: false, traceAccess: false, opponentDecklists: false, expiresAt: null, cancelAtPeriodEnd: false, capabilities: { recordMatches: true, leaderboard: true, recentReplayDays: 30, fullHistory: false, expandedSharing: false, opponentDecklists: false, freeSharesPerWindow: 1, shareWindowDays: 7 } };
 const active = { ...none, plan: 'supporter', status: 'active', traceAccess: true, opponentDecklists: true, expiresAt: '2099-10-01T00:00:00Z', capabilities: { ...none.capabilities, fullHistory: true, expandedSharing: true, opponentDecklists: true } };
 const result = () => ({ statusCode: 200, headers: {}, setHeader(k, v) { this.headers[k.toLowerCase()] = v; }, end(body) { this.body = body; } });
 const json = (res) => JSON.parse(res.body);
@@ -164,7 +164,7 @@ test('free plan starts signup while paid plan buttons still directly open Stripe
   assert.doesNotMatch(html, /href="\/trace\/signup\?plan=/);
   assert.match(html, /href="\/trace\/signup">Start free/);
   assert.match(html, /<h3>Free<\/h3>/); assert.match(html, /<h3>Pro<\/h3>/);
-  assert.match(html, /Last 7 days/); assert.match(html, /Full archive/);
+  assert.match(html, /Last 30 days/); assert.match(html, /Full archive/);
   assert.match(html, /Exclusive Discord access/); assert.match(html, /nightly releases/); assert.match(html, /Deck study/); assert.doesNotMatch(html, /opponent decklist/i);
 });
 
@@ -221,4 +221,57 @@ test('account checkout and guest resume share the pricing lock; billing portal s
   await Promise.all([context.billing('checkout', button(), { plan: 'trace' }), context.billing('checkout/guest', button(), { plan: 'supporter' })]);
   await context.billing('portal', button());
   assert.deepEqual(paths, ['/trace/api/checkout', '/trace/api/checkout/guest', '/trace/api/portal']);
+});
+
+test('monthly and annual choices reach the billing service for both checkout paths', async () => {
+  for (const action of ['checkout', 'checkout/guest']) for (const interval of ['month', 'year']) {
+    const calls = [];
+    const result = await invoke(action, { cookie: `${ACCESS_COOKIE}=${token}; ${CHECKOUT_COOKIE}=${proof}`,
+      body: { plan: 'trace', billingInterval: interval, priceId: 'untrusted_price' },
+      service: { configured: true, guestConfigured: true, call: async (name, input) => {
+        calls.push({ name, input });
+        return { status: 200, body: name === 'account' ? none : name === 'checkout/status' ? { state: 'none', plan: 'none', expiresAt: null } : { url: checkoutUrl } };
+      } } });
+    assert.equal(result.statusCode, 200);
+    const checkout = calls.find(call => call.name === 'checkout' || call.name === 'checkout/guest');
+    assert.equal(checkout.input.body.billingInterval, interval);
+    assert.equal(checkout.input.body.priceId, undefined);
+  }
+});
+
+test('unsupported billing intervals cannot start a provider request', async () => {
+  for (const [plan, billingInterval] of [['trace', 'week'], ['trace', {}], ['supporter', 'year']]) {
+    const result = await invoke('checkout/guest', { cookie: `${CHECKOUT_COOKIE}=${proof}`, body: { plan, billingInterval },
+      service: { configured: true, guestConfigured: true, call: async () => { throw Error('must not call'); } } });
+    assert.equal(result.statusCode, 400);
+  }
+});
+
+test('yearly checkout status preserves cadence without exposing provider details', async () => {
+  const result = await invoke('checkout/status', { cookie: `${CHECKOUT_COOKIE}=${proof}`,
+    service: { configured: true, guestConfigured: true, call: async () => ({ status: 200, body: { state: 'open', plan: 'trace', billingInterval: 'year', expiresAt: '2099-01-01T00:00:00Z', priceId: 'private_price' } }) } });
+  assert.equal(json(result).billingInterval, 'year');
+  assert.equal(json(result).priceId, undefined);
+});
+
+test('pricing toggle changes the displayed total and the exact checkout request together', async () => {
+  const controls = ['month', 'year'].map(interval => ({ dataset: { billingInterval: interval }, setAttribute() {}, addEventListener(_event, fn) { this.click = fn; } }));
+  const proButton = { dataset: { plan: 'trace' }, textContent: 'Get Pro', addEventListener(_event, fn) { this.click = fn; } };
+  const supporterButton = { dataset: { plan: 'supporter' }, textContent: 'Join', addEventListener(_event, fn) { this.click = fn; } };
+  const amount = {}, interval = {}, disclosure = {}, requests = [];
+  const message = { replaceChildren() {}, scrollIntoView() {} };
+  const context = vm.createContext({
+    document: { getElementById: id => id === 'billing-disclosure' ? disclosure : id === 'year' ? {} : message,
+      querySelectorAll: selector => selector === '[data-plan]' ? [proButton, supporterButton] : controls,
+      querySelector: selector => selector.endsWith('.price-amount') ? amount : interval },
+    navigator: { locks: { request: (_key, fn) => fn() } }, URL, Date,
+    location: { href: 'https://victoryroad.app/trace', assign() {} },
+    fetch: async (url, init) => { requests.push({ url, body: JSON.parse(init.body) }); return { ok: true, json: async () => url.endsWith('/prepare') ? { ready: true } : { url: checkoutUrl } }; },
+  });
+  vm.runInContext(readFileSync(new URL('../script.js', import.meta.url), 'utf8'), context);
+  controls[1].click();
+  assert.equal(amount.textContent, '$50'); assert.equal(interval.textContent, '/ year');
+  assert.match(disclosure.textContent, /\$50 billed yearly/);
+  await proButton.click();
+  assert.deepEqual(requests.at(-1).body, { plan: 'trace', billingInterval: 'year' });
 });

@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import { publicAccount } from './membership.mjs';
 
-const free = { email: 'player@example.test', plan: 'none', status: 'none', admin: false, traceAccess: false, opponentDecklists: false, expiresAt: null, cancelAtPeriodEnd: false, capabilities: { recordMatches: true, leaderboard: true, recentReplayDays: 7, fullHistory: false, expandedSharing: false, opponentDecklists: false, freeSharesPerWindow: 1, shareWindowDays: 7 } };
+const free = { email: 'player@example.test', plan: 'none', status: 'none', admin: false, traceAccess: false, opponentDecklists: false, expiresAt: null, cancelAtPeriodEnd: false, capabilities: { recordMatches: true, leaderboard: true, recentReplayDays: 30, fullHistory: false, expandedSharing: false, opponentDecklists: false, freeSharesPerWindow: 1, shareWindowDays: 7 } };
 const pro = { ...free, plan: 'trace', status: 'active', traceAccess: true, expiresAt: '2099-10-01T00:00:00Z', capabilities: { ...free.capabilities, fullHistory: true, expandedSharing: true } };
 
 function browser(search = '') {
@@ -218,4 +218,16 @@ test('an explicit installer choice is respected before automatic OS detection', 
   view.context.renderAccount(free);
   assert.match(view.html(), /id="platform-windows" aria-pressed="true"/);
   assert.match(view.html(), /account-primary-download[^>]+platform=windows/);
+});
+
+test('resuming an annual upgrade preserves annual billing after sign-in', async () => {
+  const view = browser();
+  let sent;
+  view.context.billing = async (action, _button, payload) => { sent = { action, payload }; };
+  view.context.renderAccount(free, { state: 'open', plan: 'trace', billingInterval: 'year' });
+  view.element('resume-upgrade').listeners.click({ currentTarget: {} });
+  assert.equal(sent.action, 'checkout/guest');
+  assert.equal(sent.payload.billingInterval, 'year');
+  assert.match(view.html(), /30 days of replays/);
+  assert.doesNotMatch(view.html(), /\$14\.99/);
 });

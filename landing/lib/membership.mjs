@@ -95,7 +95,7 @@ export function publicAccount(value) {
     cancelAtPeriodEnd: value.cancelAtPeriodEnd === true,
     capabilities: {
       recordMatches, leaderboard: knownStatus && supplied.leaderboard === true,
-      recentReplayDays: recordMatches && supplied.recentReplayDays === 7 ? 7 : 0,
+      recentReplayDays: recordMatches && supplied.recentReplayDays === 30 ? 30 : 0,
       fullHistory: traceAccess && supplied.fullHistory === true,
       expandedSharing: traceAccess && supplied.expandedSharing === true,
       opponentDecklists: recordMatches,
@@ -110,7 +110,7 @@ function publicPurchase(value) {
   const { state, plan, expiresAt } = value;
   return ['none', 'open', 'processing', 'paid', 'expired', 'claimed'].includes(state) && ['none', 'trace', 'supporter'].includes(plan) &&
     (expiresAt === null || (typeof expiresAt === 'string' && Number.isFinite(Date.parse(expiresAt))))
-    ? { state, plan, expiresAt, ...(value.reason === 'purchase_not_active' ? { reason: 'purchase_not_active' } : {}) } : null;
+    ? { state, plan, expiresAt, ...(value.billingInterval === 'year' || value.billingInterval === 'month' ? { billingInterval: value.billingInterval } : {}), ...(value.reason === 'purchase_not_active' ? { reason: 'purchase_not_active' } : {}) } : null;
 }
 
 function inputFor(action, raw) {
@@ -146,7 +146,9 @@ function inputFor(action, raw) {
   if (action === 'auth/reset') return { email, code, password };
   if (action === 'checkout' || action === 'checkout/guest') {
     if (!['trace', 'supporter'].includes(body.plan)) throw new Error('input');
-    return { plan: body.plan };
+    const billingInterval = body.billingInterval ?? 'month';
+    if (!['month', 'year'].includes(billingInterval) || (body.plan === 'supporter' && billingInterval !== 'month')) throw new Error('input');
+    return { plan: body.plan, ...(body.billingInterval === undefined ? {} : { billingInterval }) };
   }
   if (action === 'devices/link/approve') {
     const userCode = typeof body.userCode === 'string' ? body.userCode.replace(/[\s-]/g, '').toUpperCase() : '';

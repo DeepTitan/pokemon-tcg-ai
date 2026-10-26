@@ -6,7 +6,7 @@ const ORIGIN = 'https://victoryroad.app';
 const access = 'private.access.token';
 const refresh = 'private.refresh.token';
 const cookies = `${ACCESS_COOKIE}=${access}; ${REFRESH_COOKIE}=${refresh}`;
-const freeCapabilities = { recordMatches: true, leaderboard: true, recentReplayDays: 7, fullHistory: false, expandedSharing: false, opponentDecklists: true, freeSharesPerWindow: 1, shareWindowDays: 7 };
+const freeCapabilities = { recordMatches: true, leaderboard: true, recentReplayDays: 30, fullHistory: false, expandedSharing: false, opponentDecklists: true, freeSharesPerWindow: 1, shareWindowDays: 7 };
 const account = { email: 'member@example.test', plan: 'supporter', traceAccess: true, opponentDecklists: true, admin: false, status: 'active', expiresAt: '2099-01-01T00:00:00Z', cancelAtPeriodEnd: false, capabilities: { ...freeCapabilities, fullHistory: true, expandedSharing: true, opponentDecklists: true } };
 const freeAccount = { ...account, plan: 'none', status: 'none', traceAccess: false, opponentDecklists: true, expiresAt: null, capabilities: freeCapabilities };
 const session = { accessToken: access, refreshToken: refresh, expiresIn: 3600 };
@@ -305,7 +305,7 @@ test('routing preserves public share/leaderboard before catch-all, and legacy ac
   assert.match(handler, /createMemberDownloadHandler/);
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   assert.doesNotMatch(html, /Private preview|Free beta|type="password"|releases\/latest\/download/);
-  assert.match(html, /\$14\.99/); assert.match(html, /\$39\.99/);
+  assert.match(html, /\$5/); assert.match(html, /\$39\.99/);
   const client = readFileSync(new URL('../member.js', import.meta.url), 'utf8');
   assert.doesNotMatch(client, /localStorage|sessionStorage|accessToken|refreshToken/);
 });
