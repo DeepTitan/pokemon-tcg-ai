@@ -18,6 +18,14 @@
 
 ## Readiness and configuration
 
+### Trace 0.1.100 published — October 27, 2026
+
+- [Release v0.1.100](https://github.com/DeepTitan/pokemon-tcg-ai/releases/tag/v0.1.100) is public and latest, published at 23:47:36 UTC from exact source `0fb9556bac7827163fea80ef5b03b277f6be380e`. [Release workflow 40602052771](https://github.com/DeepTitan/pokemon-tcg-ai/actions/runs/40602052771) passed every job.
+- Tracker regression suites passed on both platforms; all 76 Windows native tests passed. Windows installer and extracted packaged app passed Authenticode and publisher-chain verification. macOS passed signing, notarization, stapling, Gatekeeper, clean-install launch, and relocated capture-helper checks.
+- The public latest updater returns 0.1.100 for all four platform keys. All three installer/update downloads returned HTTP 200; public signature files match the manifest. Both updater payloads passed cryptographic verification in CI. The updater's notes were changed to user-facing release text after publication, preserving every other manifest field, URL, and signature, then verified through the public latest endpoint.
+- Fresh read-only production checks confirmed active live Stripe prices of $4.99/month and $49.99/year, matching the deployed backend and desktop source. Capture/membership endpoint pairing passed with enforcement enabled.
+- The superseded v0.1.99 draft remains unpublished. No Microsoft support request was sent. Evidence is in `artifacts/pricing-release/trace-full-release-20261027.log`, `public-release-verification-20261027.json`, `live-trace-prices-20261027.json`, and `desktop-endpoint-pair-20261027.json`.
+
 ### Signing recovered — October 27, 2026
 
 - Fresh smoke run `40601727120` from `309da81205453bbc186a239808c9d27cf99d1350` passed Azure signing, Authenticode verification, and Windows certificate-chain trust using Microsoft Artifact Signing client `1.0.146`. The full release workflow now pins that same verified client version.
