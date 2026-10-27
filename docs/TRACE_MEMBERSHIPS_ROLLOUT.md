@@ -18,6 +18,13 @@
 
 ## Readiness and configuration
 
+### Signing recovered — October 27, 2026
+
+- Fresh smoke run `40601727120` from `309da81205453bbc186a239808c9d27cf99d1350` passed Azure signing, Authenticode verification, and Windows certificate-chain trust using Microsoft Artifact Signing client `1.0.146`. The full release workflow now pins that same verified client version.
+- The production capture/membership endpoint pairing check passed again with enforcement enabled. Both desktop pricing surfaces still show $4.99/month and $49.99/year.
+- Full desktop publication remains subject to the release workflow's platform build, signing, notarization, package, and updater checks. Use a fresh v0.1.100 candidate; the old v0.1.99 draft belongs to superseded $5/$50 source and must remain unpublished. No support request was sent.
+- Evidence: `artifacts/pricing-release/azure-signing-recovered-20261027.log` and `desktop-endpoint-pair-20261027.json`.
+
 ### Additional signing diagnostics — October 26, 2026, 18:55 UTC
 
 - At the user's request, the prepared support request was **not submitted**. PR #9 adds read-only Azure health diagnostics and tests Microsoft's newer Artifact Signing client `1.0.146` in the focused smoke workflow; production release signing and publication gates are unchanged.
