@@ -241,7 +241,7 @@ jobs:
 
           $clientRoot = Join-Path $env:RUNNER_TEMP 'artifact-signing-client'
           $clientArchive = Join-Path $env:RUNNER_TEMP 'artifact-signing-client.zip'
-          $clientVersion = '1.0.128'
+          $clientVersion = '1.0.146'
           Invoke-WebRequest `
             -Uri "https://www.nuget.org/api/v2/package/Microsoft.ArtifactSigning.Client/$clientVersion" `
             -OutFile $clientArchive
