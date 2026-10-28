@@ -2,6 +2,12 @@
 
 final result: passed
 
+## Correct Pro layout
+
+The previous capture hid the upgrade button but retained the free layout's 64px top reservation. The replacement renders the real Pro state in the isolated fixture, without CSS hiding. Neither the button nor `has-upgrade-banner` is rendered, and the workspace uses its normal 32px native titlebar spacing. The archive and board move up together; the content is not cropped or stretched. No real membership or native app state was changed.
+
+New lossless 1×/2× assets use `trace-replay-pro` names. Capture masters are `artifacts/trust-redesign/pro-layout-1x.png` and `pro-layout-2x.png`. The same recorded match at action 75 is preserved.
+
 ## Preview without the upgrade banner
 
 At the user's request, the landing screenshot was recaptured with the upgrade banner hidden in the isolated capture fixture. The recorded match, action 75, board layout and controls are preserved. This is a presentation change to the website image; the shipped app's upgrade controls and real account permissions are unchanged.
