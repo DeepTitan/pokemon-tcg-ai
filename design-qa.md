@@ -2,6 +2,14 @@
 
 final result: passed
 
+## Screenshot sharpness correction
+
+The original `current-app.png` capture was actually a compressed JPEG at 1440 × 960. Its WebP conversion preserved that already-soft source. The replacement is a fresh PNG capture from the current app renderer at the same recorded match position (action 75), rendered at both 1× and 2× pixel density. Lossless WebP encoding preserves the new capture's pixels. The files are 1440 × 960 (296,110 bytes) and 2880 × 1920 (1,556,760 bytes).
+
+The landing uses responsive image candidates and sizes matching the existing frame. New asset names avoid reusing cached copies of the soft image. The layout, match content, and account state are unchanged. Capture masters are saved under `artifacts/trust-redesign/current-app-lossless-1x.png` and `artifacts/trust-redesign/current-app-retina.png`.
+
+Validation: decoded WebP pixels exactly match both PNG capture masters. At 390px with 2× density, the browser selects the 1440px file; at 1440px with 2× density, it selects the 2880px file. Both render without horizontal overflow, with Pro closed by default. The landing build passed all seven required checks, and the preview console has no errors.
+
 ## User-requested refinement
 
 Release-notes links were subsequently removed from both the replay caption and footer at the user's request. The caption's empty link spacing was removed too. The local preview was rebuilt and refreshed; browser verification found zero release-notes links and both installer destinations unchanged. The public production landing already contains no release-notes text. Earlier comparison captures below document the selected layout before this intentional copy removal. No website deployment was performed.
