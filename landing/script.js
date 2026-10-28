@@ -19,15 +19,17 @@ let openingCheckout = false;
 const buttons = [...document.querySelectorAll('[data-plan]')];
 const billingButtons = [...document.querySelectorAll('[data-billing-interval]')];
 let billingInterval = 'month';
-for (const control of billingButtons) control.addEventListener('click', () => {
-  if (openingCheckout) return;
-  billingInterval = control.dataset.billingInterval === 'year' ? 'year' : 'month';
-  billingButtons.forEach(button => button.setAttribute('aria-pressed', String(button === control)));
+function selectBillingInterval(interval) {
+  billingInterval = interval === 'year' ? 'year' : 'month';
+  billingButtons.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.billingInterval === billingInterval)));
   const yearly = billingInterval === 'year';
   document.querySelector('#pro-price .price-amount').textContent = yearly ? '$49.99' : '$4.99';
   document.querySelector('#pro-price .price-interval').textContent = yearly ? '/ year' : '/ month';
   const disclosure = document.getElementById('billing-disclosure');
   if (disclosure) disclosure.textContent = `Pro: ${yearly ? '$49.99 billed yearly — save $9.89 compared with monthly' : '$4.99 billed monthly'}. Supporters Club: $39.99 billed monthly. Secure checkout with Stripe.`;
+}
+for (const control of billingButtons) control.addEventListener('click', () => {
+  if (!openingCheckout) selectBillingInterval(control.dataset.billingInterval);
 });
 
 const message = document.getElementById('checkout-message');
@@ -62,6 +64,8 @@ buttons.forEach((button) => button.addEventListener('click', async () => {
     if (url.origin !== 'https://checkout.stripe.com' || url.username || url.password || !/^\/(?:c\/)?pay\/[^/]+/.test(url.pathname)) throw new Error('We could not open secure checkout. Please try again.');
     location.assign(url.href);
   } catch (error) {
+    const handoff = document.getElementById('trace-checkout-handoff');
+    if (handoff && !handoff.hidden) { handoff.hidden = true; document.body.classList.remove('checkout-handoff'); }
     message.textContent = error.message || 'We could not open checkout. Please try again.';
     if (['subscription_exists', 'payment_already_completed', 'purchase_already_claimed'].includes(error.code)) {
       const link = document.createElement('a'); link.href = '/trace/account'; link.textContent = 'Open My account';
@@ -71,3 +75,19 @@ buttons.forEach((button) => button.addEventListener('click', async () => {
     [...buttons, ...billingButtons].forEach((item) => { item.disabled = false; }); button.textContent = previous; openingCheckout = false;
   }
 }));
+
+// The desktop already collected the plan choice. Continue through the same
+// cookie-bound, idempotent checkout used by the website, without another plan form.
+const desktopChoice = new URL(location.href).searchParams;
+if (desktopChoice.get('checkout') === 'trace' && ['month', 'year'].includes(desktopChoice.get('billingInterval'))) {
+  selectBillingInterval(desktopChoice.get('billingInterval'));
+  const clean = new URL(location.href);
+  clean.searchParams.delete('checkout'); clean.searchParams.delete('billingInterval');
+  history.replaceState(history.state, '', clean.pathname + clean.search + clean.hash);
+  const handoff = document.getElementById('trace-checkout-handoff');
+  if (handoff) {
+    document.getElementById('trace-checkout-price').textContent = `Trace Pro · ${billingInterval === 'year' ? '$49.99 / year' : '$4.99 / month'}`;
+    handoff.hidden = false; document.body.classList.add('checkout-handoff'); handoff.focus();
+  }
+  buttons.find(button => button.dataset.plan === 'trace')?.click();
+}
