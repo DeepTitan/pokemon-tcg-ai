@@ -2,6 +2,12 @@
 
 final result: passed
 
+## Preview without the upgrade banner
+
+At the user's request, the landing screenshot was recaptured with the upgrade banner hidden in the isolated capture fixture. The recorded match, action 75, board layout and controls are preserved. This is a presentation change to the website image; the shipped app's upgrade controls and real account permissions are unchanged.
+
+New lossless 1440 × 960 and 2880 × 1920 captures use `trace-replay-clean` asset names to avoid cached copies. The PNG masters are `artifacts/trust-redesign/clean-app-1x.png` and `clean-app-2x.png`. Both WebP files preserve their capture pixels exactly.
+
 ## Screenshot sharpness correction
 
 The original `current-app.png` capture was actually a compressed JPEG at 1440 × 960. Its WebP conversion preserved that already-soft source. The replacement is a fresh PNG capture from the current app renderer at the same recorded match position (action 75), rendered at both 1× and 2× pixel density. Lossless WebP encoding preserves the new capture's pixels. The files are 1440 × 960 (296,110 bytes) and 2880 × 1920 (1,556,760 bytes).
