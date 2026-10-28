@@ -1373,3 +1373,11 @@ h3 {
 .pricing-table .price .price-amount { display:inline; font-size:inherit; margin:0; }
 @media(max-width:740px) { .plan-introduction { flex-direction:column; align-items:flex-start; gap:18px; } }
 @media(max-width:540px) { .pricing-table .plan-purpose { min-height:38px; font-size:11px; } }
+
+/* A desktop plan choice goes straight to the existing Stripe checkout. */
+.trace-checkout-handoff[hidden] { display: none; }
+body.checkout-handoff > :not(#trace-checkout-handoff) { display: none; }
+.trace-checkout-handoff { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px; text-align: center; background: #fffdf7; color: #233450; }
+.trace-checkout-handoff h1 { font-size: clamp(26px, 4vw, 36px); font-weight: 600; margin: 20px 0 12px; }
+.trace-checkout-handoff p { margin: 6px 0; color: #526679; }
+.trace-checkout-handoff a { color: #526679; margin-top: 24px; font-size: 14px; }
