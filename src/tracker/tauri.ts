@@ -175,9 +175,15 @@ export async function loadOpponentDecklist(matchId: string): Promise<CapturedDec
   return invoke<CapturedDecklist>('load_opponent_decklist', { matchId });
 }
 
-export async function openMembershipAccount(view: 'account' | 'plans' = 'account'): Promise<void> {
+export async function openMembershipAccount(view: 'account' | 'plans' | 'checkout-month' | 'checkout-year' = 'account'): Promise<void> {
   if (!isTauri()) {
-    window.open(view === 'plans' ? 'https://victoryroad.app/trace#plans' : 'https://victoryroad.app/trace/account', '_blank', 'noopener,noreferrer');
+    const urls = {
+      account: 'https://victoryroad.app/trace/account',
+      plans: 'https://victoryroad.app/trace#plans',
+      'checkout-month': 'https://victoryroad.app/trace?checkout=trace&billingInterval=month#plans',
+      'checkout-year': 'https://victoryroad.app/trace?checkout=trace&billingInterval=year#plans',
+    };
+    window.open(urls[view], '_blank', 'noopener,noreferrer');
     return;
   }
   return invoke<void>('open_membership_account', { view });

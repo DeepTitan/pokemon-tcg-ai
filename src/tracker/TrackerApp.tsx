@@ -23,7 +23,7 @@ import type { Card, PlayerState, PokemonInPlay } from '../engine/types.js';
 import { parseBattleLog } from './battle-log-parser.js';
 import { DEMO_BATTLE_LOG } from './demo-log.js';
 import { readArchiveSearchIndex, searchArchive } from './archive-search.js';
-import { ArchiveUpgradeModal } from './ArchiveUpgradeModal.js';
+import { ArchiveUpgradeModal, type UpgradePreview } from './ArchiveUpgradeModal.js';
 import { InfiniteArchiveList } from './InfiniteArchiveList.js';
 import { CaptureSetupModal } from './CaptureSetupModal.js';
 import {
@@ -73,6 +73,7 @@ import type {
   TrackedPokemon, TrackedTurn, TrackerEnvironment, TrackerEventKind,
 } from './types.js';
 import './tracker.css';
+import './ArchiveUpgradeModal.css';
 import { PlayerDecklist } from './PlayerDecklist.js';
 import { BoardZoomViewport } from './BoardZoomViewport.js';
 import { replayShortcut, replayShortcutFrame } from './replay-shortcuts.js';
@@ -555,6 +556,37 @@ export function PlayerField({ board, decklist, deckAccess, canonical, pendingCar
   );
 }
 
+function makeUpgradePreview(summary: MatchSummary | undefined, review: MatchReview | null, turn: TrackedTurn | null | undefined, catalog: ReadonlyMap<string, CardInfo>): UpgradePreview | undefined {
+  let finalBoard = false;
+  if (summary) {
+    if (!summary.finalSnapshot) return undefined;
+    finalBoard = true;
+    turn = { index: 0, label: 'Final board', player: summary.localPlayer, events: [], snapshot: summary.finalSnapshot };
+    review = { id: summary.id, importedAt: summary.importedAt, source: summary.source, localPlayer: summary.localPlayer,
+      opponent: summary.opponent, players: [summary.localPlayer, summary.opponent], turns: [turn], rawLog: '' };
+  }
+  if (!review || !turn) return undefined;
+  const local = turn.snapshot.players[review.localPlayer];
+  const opponent = turn.snapshot.players[review.opponent];
+  if (!local || !opponent) return undefined;
+  const canonical = trackedTurnToCanonical(review, turn);
+  const statuses = deriveReviewTurnStatus(review, turn.index, canonical);
+  const matchup = archiveMatchup(summary || matchSummaryFromReview(review), catalog);
+  const title = matchup.localCard && matchup.opponentCard ? `${matchup.localCard.name} vs. ${matchup.opponentCard.name}` : `${review.localPlayer} vs. ${review.opponent}`;
+  const ignore = () => {};
+  const shared = { visibility: canonical.visibility, catalog, choiceFrames: [], currentReviewIndex: turn.index,
+    turnNumber: canonical.state.turnNumber, stadiumCard: canonical.state.stadium, stadiumName: statuses.stadiumName,
+    stadiumOwner: statuses.stadiumOwner, localPlayerName: local.name, opponentName: opponent.name,
+    defeatedIds: new Set<string>(), defeatedNames: new Set<string>(), damageChanges: new Map(), positionChanges: new Map(),
+    onOpenPokemon: ignore, onOpenChoice: ignore, onOpenCard: ignore, onOpenZone: ignore };
+  return { title, caption: `${finalBoard ? 'Final board' : 'Current replay'} · vs. ${review.opponent}`, board:
+    <div className="board-frame">
+      <PlayerField {...shared} board={opponent} canonical={canonical.state.players[canonical.localPlayerIndex === 0 ? 1 : 0]} status={statuses.players[opponent.name]} opponent avatar={TRAINER_ART[0]} />
+      <div className="midline"><span /></div>
+      <PlayerField {...shared} board={local} canonical={canonical.state.players[canonical.localPlayerIndex]} status={statuses.players[local.name]} avatar={TRAINER_ART[2]} />
+    </div> };
+}
+
 function Toggle({ on, disabled, onChange }: { on: boolean; disabled?: boolean; onChange: () => void }) {
   return <button className={`tracking-toggle ${on ? 'on' : ''}`} type="button" disabled={disabled} onClick={onChange} aria-pressed={on} aria-label="Toggle automatic capture"><span>Auto capture</span><b>{on ? 'On' : 'Off'}</b><i><span /></i></button>;
 }
@@ -677,8 +709,8 @@ export default function TrackerApp() {
   });
   const [safetyDismissed, setSafetyDismissed] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [showArchiveUpgrade, setShowArchiveUpgrade] = useState(false);
-  const [showProUpgrade, setShowProUpgrade] = useState(false);
+  const [upgrade, setUpgrade] = useState<{ feature: 'archive' | 'pro' | 'share'; summary?: MatchSummary } | null>(null);
+  const upgradeAfterLink = useRef<MatchSummary | null>(null);
   const [showSetup, setShowSetup] = useState(false);
   const [membership, setMembership] = useState<MembershipStatus | null>(null);
   const refreshMembership = useCallback(async () => {
@@ -1351,7 +1383,7 @@ export default function TrackerApp() {
   }, [selectedEventKey, selectedReview?.id, timeline.entries.length]);
 
   useEffect(() => {
-    if (!selectedReview || showSetup || showSettings || showArchiveUpgrade || showProUpgrade || inspector || restoringReview || environment.capture.waitingForMatchEnd) return undefined;
+    if (!selectedReview || showSetup || showSettings || upgrade || inspector || restoringReview || environment.capture.waitingForMatchEnd) return undefined;
 
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target instanceof HTMLElement ? event.target : null;
@@ -1368,11 +1400,12 @@ export default function TrackerApp() {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [environment.capture.waitingForMatchEnd, inspector, keyMoments, navigateToFrame, selectedReview, showSetup, showSettings, showArchiveUpgrade, showProUpgrade, restoringReview]);
+  }, [environment.capture.waitingForMatchEnd, inspector, keyMoments, navigateToFrame, selectedReview, showSetup, showSettings, upgrade, restoringReview]);
 
   useEffect(() => {
     if (environment.capture.waitingForMatchEnd) setPlaying(false);
-  }, [environment.capture.waitingForMatchEnd]);
+    if (upgrade) setPlaying(false);
+  }, [environment.capture.waitingForMatchEnd, upgrade]);
 
   useEffect(() => {
     if (!playing || !selectedReview) return undefined;
@@ -1532,7 +1565,9 @@ export default function TrackerApp() {
         setNotice('Share link created. Copy it from the dialog.');
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
+      const message = caught instanceof Error ? caught.message : String(caught);
+      if (message.startsWith('Your free replay share is used for this 7-day period.')) setUpgrade({ feature: 'share' });
+      else setError(message);
     } finally {
       setSharing(false);
     }
@@ -1556,6 +1591,18 @@ export default function TrackerApp() {
   const accountSettings = <MembershipSettings status={membership} onRefresh={refreshMembership} onChange={setMembership} />;
 
   const fullHistory = Boolean(membership?.traceAccess && membership.capabilities?.fullHistory);
+  const upgradePreview = useMemo(() => upgrade
+    ? makeUpgradePreview(upgrade.summary, selectedReview, selectedTurn, cardCatalog) : undefined,
+  [upgrade, selectedReview, selectedTurn, cardCatalog]);
+  useEffect(() => {
+    if (!fullHistory || (!upgrade && !upgradeAfterLink.current)) return;
+    const target = upgrade?.summary || upgradeAfterLink.current;
+    upgradeAfterLink.current = null;
+    setUpgrade(null);
+    if (target) void selectSummary(target);
+    setNotice('Trace Pro is ready. Your full archive and unlimited sharing are unlocked.');
+  }, [fullHistory, upgrade, selectSummary]);
+
 
   const selectedShareUrl = selectedReview ? shareLinks[selectedReview.id] : null;
 
@@ -1563,7 +1610,7 @@ export default function TrackerApp() {
     <div className={`app-shell ${sharedMode ? 'shared-replay' : ''} ${!sharedMode && !membership?.traceAccess ? 'has-upgrade-banner' : ''}`}>
       {!sharedMode && <div className="window-drag-region" onMouseDown={beginWindowDrag} aria-hidden="true" />}
 
-      {!sharedMode && !membership?.traceAccess && <div className="trace-upgrade-bar" onMouseDown={beginWindowDrag}><button className="trace-upgrade-button" type="button" aria-haspopup="dialog" onClick={() => setShowProUpgrade(true)}><Sparkle size={19} weight="duotone" aria-hidden="true" />Upgrade to Pro<ArrowUpRight size={16} weight="bold" aria-hidden="true" /></button></div>}
+      {!sharedMode && !membership?.traceAccess && <div className="trace-upgrade-bar" onMouseDown={beginWindowDrag}><button className="trace-upgrade-button" type="button" aria-haspopup="dialog" onClick={() => setUpgrade({ feature: 'pro' })}><Sparkle size={19} weight="duotone" aria-hidden="true" />Upgrade to Pro<ArrowUpRight size={16} weight="bold" aria-hidden="true" /></button></div>}
 
       <main className={`workspace ${archiveOpen ? 'archive-open' : 'archive-collapsed'} ${timelineOpen ? 'timeline-open' : 'timeline-collapsed'} ${sharedMode ? `shared-mode ${sharedAccessOpen ? 'shared-access-open' : 'shared-access-collapsed'}` : ''}`}>
         {sharedMode && <SharedAccessRail open={sharedAccessOpen} onToggle={() => {
@@ -1593,7 +1640,7 @@ export default function TrackerApp() {
           <InfiniteArchiveList itemCount={summaries.length} hasMore={isTauri() && summaries.length < archiveTotal} searchActive={searchActive} loadMore={loadOlderMatches}>
             {visibleSummaries.map((summary) => <ArchiveRow key={summary.id} summary={summary} selected={summary.id === selectedId} catalog={cardCatalog} locked={Boolean(summary.replayRequiresPro && !fullHistory)} onSelect={() => {
               if (summary.replayRequiresPro && !fullHistory) {
-                setShowArchiveUpgrade(true);
+                setUpgrade({ feature: 'archive', summary });
               } else void selectSummary(summary);
             }} />)}
             {searchActive && !visibleSummaries.length && !searchLoading && !searchError && <div className="empty-library"><MagnifyingGlass size={28} /><strong>No matching games</strong><p>Try part of a player’s name, a Pokémon, or a different date.</p><button type="button" onClick={() => setArchiveQuery('')}>Clear search</button></div>}
@@ -1691,8 +1738,7 @@ export default function TrackerApp() {
 
       {!sharedMode && environment.capture.waitingForMatchEnd && !safetyDismissed && !showSetup && !showSettings && <div className="capture-safety-backdrop"><section className="capture-safety-dialog" role="alertdialog" aria-modal="true" aria-labelledby="capture-safety-title" aria-describedby="capture-safety-description"><div className="capture-safety-icon" aria-hidden="true"><ShieldCheck size={33} weight="fill" /><i /></div><span>Safe connection</span><h2 id="capture-safety-title">TCG Live is already connected</h2><p id="capture-safety-description">Trace can’t safely tell whether a match is active. It won’t interrupt your connection or install an update.</p><div className="capture-safety-waiting"><i aria-hidden="true" /><span><strong>In a match? Finish playing first.</strong><small>Already on Home? Quit TCG Live, leave Trace open until it says Ready, then reopen TCG Live.</small></span></div><div className="modal-actions"><button type="button" onClick={() => setSafetyDismissed(true)}>Continue reviewing</button><button type="button" onClick={openSettings}>Open Settings</button></div></section></div>}
       {!sharedMode && showSetup && <CaptureSetupModal onClose={closeSetup} onCapture={capture => setEnvironment(current => ({ ...current, capture }))} />}
-      {!sharedMode && showProUpgrade && <ArchiveUpgradeModal feature="pro" onClose={() => setShowProUpgrade(false)} onLink={() => { setShowProUpgrade(false); openSettings(); }} />}
-      {!sharedMode && showArchiveUpgrade && <ArchiveUpgradeModal onClose={() => setShowArchiveUpgrade(false)} onLink={() => { setShowArchiveUpgrade(false); openSettings(); }} />}
+      {!sharedMode && upgrade && <ArchiveUpgradeModal feature={upgrade.feature} preview={upgradePreview} onClose={() => setUpgrade(null)} onLink={() => { upgradeAfterLink.current = upgrade.summary || null; setUpgrade(null); openSettings(); }} />}
       {!sharedMode && showSettings && <UpdateSettingsModal onClose={() => setShowSettings(false)} version={appVersion}>{isTauri() && accountSettings}</UpdateSettingsModal>}
       {shareUrl && <div className="modal-backdrop share-modal-backdrop"><div className="share-modal" role="dialog" aria-modal="true" aria-labelledby="share-match-title"><div className="modal-title"><div><span>Ready to send</span><h2 id="share-match-title">Share this match</h2></div><button type="button" onClick={() => setShareUrl(null)} aria-label="Close share dialog"><X size={21} weight="bold" /></button></div><p>Anyone with this link can click through the replay in their browser.</p><div className="share-link-row"><input value={shareUrl} readOnly aria-label="Share link" onFocus={(event) => event.currentTarget.select()} /><button className="primary" type="button" onClick={() => void copyShareUrl(shareUrl)}><Copy size={16} weight="bold" />Copy link</button></div></div></div>}
       <ReviewOverlay inspector={inspector} catalog={cardCatalog} onClose={() => setInspector(null)} onInspectCard={openCard} />
