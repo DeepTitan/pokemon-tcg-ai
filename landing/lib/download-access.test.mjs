@@ -15,9 +15,9 @@ test('legacy passwords and grant cookies cannot authorize downloads', async () =
     else assert.equal(result.headers.location, 'https://victoryroad.app/trace/login?download=mac');
   }
 });
-test('public landing does not expose password unlock or direct installer links', () => {
+test('public landing offers current public installers without password unlock', () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-  assert.doesNotMatch(html, /Private preview|access-password|releases\/latest\/download/);
+  assert.doesNotMatch(html, /Private preview|access-password/);
   const handler = readFileSync(new URL('../../api/download-access.mjs', import.meta.url), 'utf8');
   assert.match(handler, /createMemberDownloadHandler/);
 });

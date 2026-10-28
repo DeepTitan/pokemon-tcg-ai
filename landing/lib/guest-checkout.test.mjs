@@ -158,14 +158,16 @@ test('proxy secret is sent only server-to-server on guest routes and unconfigure
   assert.equal((await invoke('checkout/prepare', { service: missing })).statusCode, 503);
 });
 
-test('free plan starts signup while paid plan buttons still directly open Stripe', () => {
+test('landing offers direct free downloads before optional Pro checkout', () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-  assert.match(html, /data-plan="trace"/); assert.match(html, /data-plan="supporter"/);
-  assert.doesNotMatch(html, /href="\/trace\/signup\?plan=/);
-  assert.match(html, /href="\/trace\/signup">Start free/);
-  assert.match(html, /<h3>Free<\/h3>/); assert.match(html, /<h3>Pro<\/h3>/);
-  assert.match(html, /Last 30 days/); assert.match(html, /Full archive/);
-  assert.match(html, /Exclusive Discord access/); assert.match(html, /nightly releases/); assert.match(html, /Deck study/); assert.doesNotMatch(html, /opponent decklist/i);
+  for (const asset of ['Trace_x64-setup.exe', 'Trace_aarch64.dmg']) {
+    assert.ok(html.includes(`href="https://github.com/DeepTitan/pokemon-tcg-ai/releases/latest/download/${asset}"`));
+  }
+  assert.ok(html.indexOf('aria-label="Download Trace"') < html.indexOf('id="plans"'));
+  assert.match(html, /<details id="pro-details">/);
+  assert.match(html, /data-plan="trace"/);
+  assert.doesNotMatch(html, /data-plan="supporter"|Supporters Club|pricing-table|Compare plans/);
+  assert.match(html, /last 30 days/);
 });
 
 test('two browser tabs serialize prepare and checkout under the same Web Lock; unsupported browsers do not start requests', async () => {

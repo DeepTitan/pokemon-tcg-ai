@@ -17,7 +17,7 @@
   <link rel="stylesheet" href="/trace-styles.css" />
   <title>Trace — Review the spot. Find the line.</title>
 </head>
-<body class="landing-page trace-web">
+<body class="landing-page trace-web download-first">
   <section id="trace-checkout-handoff" class="trace-checkout-handoff" hidden tabindex="-1" aria-labelledby="trace-checkout-title" aria-live="polite">
     <img src="/trace-assets/trace-mascot.png" alt="" width="64" height="72">
     <h1 id="trace-checkout-title">Opening secure checkout…</h1>
@@ -28,54 +28,52 @@
 
   <header class="trace-topbar"><div class="trace-topbar-inner">
     <a class="trace-logo" href="/trace" aria-label="Trace home"><img src="/trace/leaderboard-static/training/assets/trace-mascot.png" alt=""><span>Trace</span></a>
-    <nav class="trace-tabs" aria-label="Main navigation"><a href="/trace/leaderboard">Leaderboard</a><a href="/trace/training">Training</a><a href="/trace#plans" aria-current="page">Plans</a><a href="/trace/account">My account</a></nav>
+    <nav class="trace-tabs" aria-label="Main navigation"><a href="/trace/leaderboard">Leaderboard</a><a href="/trace/training">Training</a><a href="/trace#download" aria-current="page">Download</a><a href="/trace/account">My account</a></nav>
     <a class="trace-victory" href="https://victoryroad.app" aria-label="Victory Road"><img src="/trace/leaderboard-static/training/assets/victory-road.png" alt="Victory Road"></a>
   </div></header>
   <main class="trace-container">
-    <section class="hero" aria-labelledby="hero-title">
-      <div class="hero-copy"><p class="eyebrow">Pokémon TCG Live</p>
+    <section class="hero" id="download" aria-labelledby="hero-title">
+      <div class="hero-copy"><p class="eyebrow">Free for Pokémon TCG Live</p>
         <h1 id="hero-title">Review the spot.<br /><span>Find the line.</span></h1>
-        <p class="hero-description">Replay your matches. Learn from every turn.</p>
-        <a class="compare-plans-link" href="#plans">Compare plans <img src="/trace-assets/plan-arrow-down.svg" alt="" width="18" height="18" /></a>
-        <p class="compatibility">macOS Apple silicon · Windows 64-bit</p>
+        <p class="hero-description">Automatically record your matches. Revisit any turn, study your deck, and see what you’d play next.</p>
+        <div class="download-actions" aria-label="Download Trace">
+          <a class="button primary" href="https://github.com/DeepTitan/pokemon-tcg-ai/releases/latest/download/Trace_x64-setup.exe"><img src="/trace-assets/windows.svg" alt="" width="18" height="18" />Download for Windows</a>
+          <a class="button secondary" href="https://github.com/DeepTitan/pokemon-tcg-ai/releases/latest/download/Trace_aarch64.dmg"><img src="/trace-assets/apple.svg" alt="" width="18" height="20" />Download for Mac</a>
+        </div>
+        <p class="download-reassurance">Free to use. No subscription needed.</p>
+        <p class="compatibility">Windows 64-bit · Mac with Apple silicon</p>
       </div>
-      <div class="replay-frame"><img src="/trace-assets/trace-match-dragapult-alakazam.png" alt="Trace match review showing the board, match history, and turn controls" width="1800" height="1125" /></div>
+      <div class="replay-frame"><img src="/trace-assets/trace-match-dragapult-alakazam.png" alt="Trace replay showing the actual board, match history, and turn controls" width="1800" height="1125" /></div>
     </section>
-    <section class="plans-section" id="plans" aria-labelledby="plans-title">
-      <div class="section-heading"><h2 id="plans-title">A little more room to grow.</h2><p>USD · Cancel anytime</p></div>
-      <div class="plan-introduction"><p>Start free with recording, deck and prize study, and 30 days of replays. Go Pro for your full match archive and unlimited sharing.</p><div class="pro-billing-switch" role="group" aria-label="Pro billing period"><button type="button" data-billing-interval="month" aria-pressed="true">Monthly</button><button type="button" data-billing-interval="year" aria-pressed="false">Yearly <span>Save $9.89</span></button></div></div>
-      <table role="table" class="pricing-table" aria-labelledby="plans-title">
-        <colgroup><col class="pricing-feature-column" /><col /><col /><col /></colgroup>
-        <thead><tr>
-          <td class="pricing-corner">Feature</td>
-          <th scope="col" id="plan-free"><h3>Free</h3><p class="plan-purpose">Play, capture, learn.</p><p class="price">$0<span>/ month</span></p>
-            <a class="button secondary" href="/trace/signup">Start free <img class="plan-arrow" src="/trace-assets/plan-arrow-right.svg" alt="" width="16" height="16" /></a>
-          </th>
-          <th scope="col" id="plan-pro" class="pricing-pro"><h3>Pro</h3><p class="plan-purpose">Your full match library.</p><p class="price" id="pro-price"><span class="price-amount">$4.99</span><span class="price-interval">/ month</span></p>
-            <button class="button primary" type="button" data-plan="trace">Get Pro</button>
-          </th>
-          <th scope="col" id="plan-supporter"><h3>Supporters Club</h3><p class="plan-purpose">Help shape what’s next.</p><p class="price">$39.99<span>/ month</span></p>
-            <button class="button secondary" type="button" data-plan="supporter">Join the club</button>
-          </th>
-        </tr></thead>
-        <tbody>
-          <tr><th scope="row" id="feature-recording">Automatic recording &amp; leaderboard</th><td headers="feature-recording plan-free"><img class="plan-inclusion" src="/trace-assets/plan-check.svg" alt="Included" width="20" height="20" /></td><td class="pricing-pro" headers="feature-recording plan-pro"><img class="plan-inclusion" src="/trace-assets/plan-check.svg" alt="Included" width="20" height="20" /></td><td headers="feature-recording plan-supporter"><img class="plan-inclusion" src="/trace-assets/plan-check.svg" alt="Included" width="20" height="20" /></td></tr>
-          <tr><th scope="row" id="feature-deck-study">Deck study</th><td headers="feature-deck-study plan-free"><img class="plan-inclusion" src="/trace-assets/plan-check.svg" alt="Included" width="20" height="20" /></td><td class="pricing-pro" headers="feature-deck-study plan-pro"><img class="plan-inclusion" src="/trace-assets/plan-check.svg" alt="Included" width="20" height="20" /></td><td headers="feature-deck-study plan-supporter"><img class="plan-inclusion" src="/trace-assets/plan-check.svg" alt="Included" width="20" height="20" /></td></tr>
-          <tr><th scope="row" id="feature-history">Replay history</th><td headers="feature-history plan-free">Last 30 days</td><td class="pricing-pro" headers="feature-history plan-pro">Full archive</td><td headers="feature-history plan-supporter">Full archive</td></tr>
-          <tr><th scope="row" id="feature-study">Your deck &amp; prize insights</th><td headers="feature-study plan-free"><img class="plan-inclusion" src="/trace-assets/plan-check.svg" alt="Included" width="20" height="20" /></td><td class="pricing-pro" headers="feature-study plan-pro"><img class="plan-inclusion" src="/trace-assets/plan-check.svg" alt="Included" width="20" height="20" /></td><td headers="feature-study plan-supporter"><img class="plan-inclusion" src="/trace-assets/plan-check.svg" alt="Included" width="20" height="20" /></td></tr>
-          <tr><th scope="row" id="feature-sharing">Replay sharing</th><td headers="feature-sharing plan-free">1 every 7 days</td><td class="pricing-pro" headers="feature-sharing plan-pro">Unlimited</td><td headers="feature-sharing plan-supporter">Unlimited</td></tr>
-          <tr><th scope="row" id="feature-community">Exclusive Discord access &amp; support</th><td headers="feature-community plan-free"><img class="plan-inclusion" src="/trace-assets/plan-minus.svg" alt="Not included" width="20" height="20" /></td><td class="pricing-pro" headers="feature-community plan-pro"><img class="plan-inclusion" src="/trace-assets/plan-minus.svg" alt="Not included" width="20" height="20" /></td><td headers="feature-community plan-supporter"><img class="plan-inclusion" src="/trace-assets/plan-check.svg" alt="Included" width="20" height="20" /></td></tr>
-          <tr><th scope="row" id="feature-early">Early features &amp; nightly releases</th><td headers="feature-early plan-free"><img class="plan-inclusion" src="/trace-assets/plan-minus.svg" alt="Not included" width="20" height="20" /></td><td class="pricing-pro" headers="feature-early plan-pro"><img class="plan-inclusion" src="/trace-assets/plan-minus.svg" alt="Not included" width="20" height="20" /></td><td headers="feature-early plan-supporter"><img class="plan-inclusion" src="/trace-assets/plan-check.svg" alt="Included" width="20" height="20" /></td></tr>
-        </tbody>
-      </table>
-      <p id="checkout-message" class="message error checkout-message" role="alert" hidden></p>
-      <div class="plan-footer"><p id="billing-disclosure">Pro: $4.99 billed monthly. Supporters Club: $39.99 billed monthly. Secure checkout with Stripe.</p><a href="/trace/login">Sign in</a></div>
-      <noscript><p class="checkout-note">Enable JavaScript to open secure checkout.</p></noscript>
+    <section class="free-features" aria-labelledby="free-features-title">
+      <div class="free-features-heading"><p class="eyebrow">Included for free</p><h2 id="free-features-title">More to learn from every game.</h2></div>
+      <div class="feature-grid">
+        <article><span class="feature-number" aria-hidden="true">01</span><h3>Play. Trace records.</h3><p>Keep Trace open while you play Pokémon TCG Live. Your matches are captured automatically.</p></article>
+        <article><span class="feature-number" aria-hidden="true">02</span><h3>Go back to that turn.</h3><p>Replay your last 30 days of games. Step through the board and take another look at your decisions.</p></article>
+        <article><span class="feature-number" aria-hidden="true">03</span><h3>Know your deck.</h3><p>Review your deck and prizes, follow your results, and share one replay every seven days.</p></article>
+      </div>
     </section>
-    <section class="faq-section" aria-label="Getting started and billing"><div class="faq-list">
-      <details><summary>Getting started</summary><p>Create a free account, confirm your email, and download Trace. Choose Link account in the app and confirm its code. If you buy a plan first, use the same email at checkout and signup.</p></details>
-      <details><summary>Billing &amp; cancellation</summary><p>Open Account → Manage billing to change or cancel your plan. Paid features stay active until the end of your billing period. Free recording continues.</p></details>
+    <section class="faq-section getting-started" aria-label="Getting started"><div class="faq-list">
+      <details><summary>How do I get started?</summary><p>Download Trace for your computer and open the installer. Follow the capture setup in the app, then play Pokémon TCG Live with Trace running.</p></details>
+      <details><summary>Is Trace free?</summary><p>Yes. Automatic recording, your last 30 days of replays, deck and prize study, leaderboards, and one new replay share every seven days are free. There’s no subscription required to get started.</p></details>
+      <details><summary>Where do I link my account?</summary><p>Choose Link account in Trace, then <a href="/trace/connect">enter its code on the website</a>. You can <a href="/trace/signup">create a free account</a> or sign in to your existing one.</p></details>
     </div></section>
+    <section class="optional-pro" id="plans" aria-label="Optional Trace Pro">
+      <details id="pro-details">
+        <summary><span>Want your full archive? <strong>Explore Trace Pro</strong></span><span class="pro-optional-label">Optional</span></summary>
+        <div class="pro-details-content">
+          <div class="pro-explanation"><h2>Keep every game in reach.</h2><p>Revisit any saved match, even after 30 days. Share unlimited replays with teammates or your coach.</p><p class="pro-free-note">Recording, recent replays, deck and prize study stay free.</p></div>
+          <div class="pro-purchase">
+            <div class="pro-billing-switch" role="group" aria-label="Pro billing period"><button type="button" data-billing-interval="month" aria-pressed="true">Monthly</button><button type="button" data-billing-interval="year" aria-pressed="false">Yearly</button></div>
+            <p id="pro-price" class="pro-price"><span class="price-amount">$4.99</span><span class="price-interval">/ month</span></p>
+            <button class="button secondary" type="button" data-plan="trace">Get Trace Pro</button>
+            <p id="billing-disclosure" class="pro-billing-note">$4.99 billed monthly. USD · Cancel anytime.</p>
+          </div>
+          <p id="checkout-message" class="message error checkout-message" role="alert" hidden></p>
+          <noscript><p class="checkout-note">Enable JavaScript to open secure checkout.</p></noscript>
+        </div>
+      </details>
+    </section>
   </main>
   <footer class="site-footer"><a href="/trace/privacy">Privacy</a><p>Unofficial Pokémon TCG Live companion.<br />Not affiliated with The Pokémon Company International.</p><div><a href="/discord">Community &amp; support</a><span>© <span id="year">2026</span> Victory Road</span></div></footer>
   <script src="/trace-script.js" defer></script>

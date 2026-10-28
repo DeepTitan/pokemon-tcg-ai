@@ -26,11 +26,14 @@ function selectBillingInterval(interval) {
   document.querySelector('#pro-price .price-amount').textContent = yearly ? '$49.99' : '$4.99';
   document.querySelector('#pro-price .price-interval').textContent = yearly ? '/ year' : '/ month';
   const disclosure = document.getElementById('billing-disclosure');
-  if (disclosure) disclosure.textContent = `Pro: ${yearly ? '$49.99 billed yearly — save $9.89 compared with monthly' : '$4.99 billed monthly'}. Supporters Club: $39.99 billed monthly. Secure checkout with Stripe.`;
+  if (disclosure) disclosure.textContent = `${yearly ? '$49.99 billed yearly' : '$4.99 billed monthly'}. USD · Cancel anytime.`;
 }
 for (const control of billingButtons) control.addEventListener('click', () => {
   if (!openingCheckout) selectBillingInterval(control.dataset.billingInterval);
 });
+
+const proDetails = document.getElementById('pro-details');
+if (new URL(location.href).hash === '#plans' && proDetails) proDetails.open = true;
 
 const message = document.getElementById('checkout-message');
 buttons.forEach((button) => button.addEventListener('click', async () => {
@@ -66,6 +69,7 @@ buttons.forEach((button) => button.addEventListener('click', async () => {
   } catch (error) {
     const handoff = document.getElementById('trace-checkout-handoff');
     if (handoff && !handoff.hidden) { handoff.hidden = true; document.body.classList.remove('checkout-handoff'); }
+    if (proDetails) proDetails.open = true;
     message.textContent = error.message || 'We could not open checkout. Please try again.';
     if (['subscription_exists', 'payment_already_completed', 'purchase_already_claimed'].includes(error.code)) {
       const link = document.createElement('a'); link.href = '/trace/account'; link.textContent = 'Open My account';
