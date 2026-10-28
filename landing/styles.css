@@ -1381,3 +1381,56 @@ body.checkout-handoff > :not(#trace-checkout-handoff) { display: none; }
 .trace-checkout-handoff h1 { font-size: clamp(26px, 4vw, 36px); font-weight: 600; margin: 20px 0 12px; }
 .trace-checkout-handoff p { margin: 6px 0; color: #526679; }
 .trace-checkout-handoff a { color: #526679; margin-top: 24px; font-size: 14px; }
+
+/* Download is the landing page's primary action; Pro is an optional detail. */
+.landing-page.download-first .hero { grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr); gap:40px; padding:64px 0 56px; scroll-margin-top:90px; }
+.landing-page.download-first .hero h1 { font-size:clamp(36px,4vw,48px); font-weight:500; line-height:1.12; letter-spacing:-1.3px; }
+.download-first .hero-description { max-width:400px; line-height:1.65; font-size:16px; margin-bottom:24px; }
+.download-actions { display:flex; flex-wrap:wrap; gap:10px; }
+.download-actions .button { min-height:48px; font-size:14px; padding:12px 15px; gap:8px; border-radius:6px; }
+.download-actions img { object-fit:contain; flex:none; }
+.download-reassurance { font-size:13px; color:var(--green); margin:16px 0 0; }
+.download-first .compatibility { font-size:12px; margin-top:6px; }
+.free-features { padding:36px 0 40px; border-top:1px solid var(--line); }
+.free-features-heading .eyebrow { margin-bottom:10px; }
+.download-first .free-features h2 { font-size:27px; font-weight:500; line-height:1.25; letter-spacing:-.5px; }
+.feature-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:36px; margin-top:28px; }
+.feature-number { color:#7b8878; font-size:12px; font-variant-numeric:tabular-nums; }
+.download-first .feature-grid h3 { font-size:18px; font-weight:500; margin:12px 0 10px; letter-spacing:-.2px; }
+.feature-grid p { color:var(--muted); font-size:14px; line-height:1.7; margin:0; max-width:310px; }
+.landing-page.download-first .getting-started { padding-bottom:24px; }
+.optional-pro { margin:0 0 32px; border-top:1px solid var(--line); border-bottom:1px solid var(--line); scroll-margin-top:90px; }
+.optional-pro summary { display:flex; align-items:center; gap:16px; padding:20px 0; list-style:none; color:var(--muted); font-size:14px; line-height:1.5; cursor:pointer; }
+.optional-pro summary::-webkit-details-marker { display:none; }
+.optional-pro summary strong { color:var(--ink); font-weight:500; }
+.optional-pro summary::after { content:'+'; font-size:22px; font-weight:400; margin-left:0; }
+.optional-pro details[open]>summary::after { content:'−'; }
+.pro-optional-label { margin-left:auto; font-size:12px; }
+.pro-details-content { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:24px 48px; padding:12px 0 28px; }
+.download-first .pro-explanation h2 { font-size:24px; font-weight:500; line-height:1.3; }
+.pro-explanation p { max-width:490px; font-size:15px; line-height:1.7; color:var(--muted); margin:12px 0; }
+.pro-explanation .pro-free-note { font-size:13px; }
+.pro-purchase { min-width:245px; }
+.pro-price { display:flex; align-items:baseline; gap:5px; margin:16px 0; font-size:22px; font-weight:500; }
+.pro-price .price-interval { font-size:14px; color:var(--muted); font-weight:400; }
+.pro-billing-note { font-size:12px; color:var(--muted); line-height:1.5; margin:12px 0 0; }
+.pro-details-content .checkout-message,.pro-details-content noscript { grid-column:1/-1; margin:0; }
+@media(max-width:940px) {
+  .landing-page.download-first .hero { grid-template-columns:minmax(0,1fr); gap:28px; padding:36px 0 40px; }
+  .download-first .hero-copy { max-width:620px; }
+  .download-first .hero-description { max-width:540px; }
+  .download-first .replay-frame { max-width:740px; width:100%; }
+}
+@media(max-width:600px) {
+  .feature-grid { grid-template-columns:minmax(0,1fr); gap:24px; }
+  .feature-grid p { max-width:none; }
+  .download-first .feature-grid h3 { margin-top:8px; }
+  .download-actions { flex-direction:column; align-items:stretch; }
+  .download-actions .button { justify-content:center; }
+  .free-features { padding:28px 0; }
+  .download-first .free-features h2 { font-size:24px; }
+  .pro-details-content { grid-template-columns:minmax(0,1fr); gap:16px; }
+  .pro-purchase { min-width:0; }
+  .pro-optional-label { display:none; }
+  .optional-pro summary::after { margin-left:auto; }
+}

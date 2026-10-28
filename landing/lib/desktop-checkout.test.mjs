@@ -14,13 +14,13 @@ function page(query = '', result = { url: 'https://checkout.stripe.com/c/pay/cs_
     addEventListener(_event, callback) { this.callback = callback; },
     setAttribute(k,v) { this[k]=v; },
     click() { pending = this.callback(); return pending; } });
-  const pro = makeButton({ plan: 'trace' }), supporter = makeButton({ plan: 'supporter' });
+  const pro = makeButton({ plan: 'trace' });
   const controls = ['month', 'year'].map(billingInterval => makeButton({ billingInterval }));
   const location = { href: `https://victoryroad.app/trace${query}`, assign(url) { redirects.push(url); } };
   const history = { state: null, replaceState(_s,_t,url) { location.href = new URL(url,location.href).href; } };
   const context = { URL, Date, location, history,
     document: { getElementById: element, querySelector: element,
-      querySelectorAll: selector => selector === '[data-plan]' ? [pro,supporter] : controls,
+      querySelectorAll: selector => selector === '[data-plan]' ? [pro] : controls,
       createElement: () => element('link'), body: { classList: { add: value=>classes.add(value), remove: value=>classes.delete(value) } } },
     navigator: { locks: { request: async (_name, callback) => callback() } },
     fetch: async (url, options) => { requests.push({url,body:JSON.parse(options.body)}); const prepare=url.endsWith('/prepare');
@@ -52,6 +52,7 @@ test('failed handoff returns to the chosen plan and permits retry',async()=>{
   const p=page('?checkout=trace&billingInterval=year',{error:'Try again.'},true);
   await p.done();assert.equal(p.element('trace-checkout-handoff').hidden,true);assert.equal(p.classes.has('checkout-handoff'),false);
   assert.equal(p.element('checkout-message').hidden,false);assert.equal(p.pro.disabled,false);
+  assert.equal(p.element('pro-details').open,true);
   await p.retry();assert.equal(p.requests.at(-1).body.billingInterval,'year');
 });
 test('an existing member is sent to their account instead of another checkout',async()=>{
@@ -61,4 +62,8 @@ test('an existing member is sent to their account instead of another checkout',a
 test('handoff rejects untrusted billing destinations',async()=>{
   const p=page('?checkout=trace&billingInterval=month',{url:'https://checkout.stripe.com.evil.test/c/pay/anything'});await p.done();
   assert.equal(p.redirects.length,0);assert.equal(p.element('trace-checkout-handoff').hidden,true);
+});
+
+test('legacy plan links reveal Pro without starting a checkout',()=>{
+  const p=page('#plans');assert.equal(p.element('pro-details').open,true);assert.equal(p.requests.length,0);
 });

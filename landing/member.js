@@ -194,11 +194,10 @@ function renderAuth(name) {
     }); });
   }
 }
-function upgradeRow(plan) {
-  const supporter = plan === 'supporter';
-  const yearly = !supporter && context().billingInterval === 'year';
-  const price = supporter ? '39.99' : yearly ? '50' : '5';
-  return `<article class="account-upgrade ${context().plan === plan ? 'plan-selected' : ''}"><div class="upgrade-copy"><h3>${planNames[plan]}</h3><p>${supporter ? 'Everything in Pro, exclusive Discord access and support, and early access to new features and nightly releases.' : 'Revisit your full replay archive and share unlimited games with your practice group.'}</p></div><p class="upgrade-price">$${price}<span>/ ${yearly ? 'year' : 'month'}</span></p><button type="button" class="button secondary" data-checkout="${plan}">Choose ${planNames[plan]}</button></article>`;
+function upgradeRow() {
+  const yearly = context().billingInterval === 'year';
+  const price = yearly ? '49.99' : '4.99';
+  return `<article class="account-upgrade plan-selected"><div class="upgrade-copy"><h3>Pro</h3><p>Revisit your full replay archive and share unlimited games with your practice group.</p></div><p class="upgrade-price">$${price}<span>/ ${yearly ? 'year' : 'month'}</span></p><button type="button" class="button secondary" data-checkout="trace">Choose Pro</button></article>`;
 }
 function dateLabel(value) {
   if (!value) return '';
@@ -259,11 +258,11 @@ function renderAccount(account, purchase = { state: 'none', plan: 'none' }) {
       ${paidInactive ? '<p class="billing-attention">Your paid features are inactive. Check your billing to restore them.</p>' : ''}
       ${!canUseTrace ? '<p class="billing-attention">Access unavailable</p>' : ''}
       ${(!admin && hasBilling) || !canUseTrace || (success && !active) ? `<div class="membership-actions">${!admin && hasBilling ? '<button type="button" class="text-button manage-billing" id="manage-billing">Manage billing</button>' : ''}${(!canUseTrace || (success && !active)) ? '<button class="text-button" id="refresh-account" type="button">Refresh account</button>' : ''}</div>` : ''}
-      ${!active && !paidInactive ? '<a class="account-quiet-link compare-plans" href="/trace#plans">Compare plans</a>' : ''}
+      ${!active && !paidInactive ? '<a class="account-quiet-link compare-plans" href="/trace#plans">About Trace Pro</a>' : ''}
       </div></section>
     </div>
     ${unfinishedUpgrade ? `<section class="account-pending"><div><h2>Finish your upgrade</h2><p>Your ${planNames[purchase.plan]} checkout is ${purchase.state === 'expired' ? 'expired' : 'unfinished'}. ${canUseTrace ? 'You can keep using Free.' : ''}</p></div><button class="button secondary" type="button" id="resume-upgrade">Continue to Stripe</button></section>` : ''}
-    ${context().plan && !active && ['none', 'canceled', 'incomplete_expired'].includes(account.status) ? `<section class="account-upgrades" aria-labelledby="upgrade-heading"><div class="upgrade-heading"><h2 id="upgrade-heading">Upgrade your plan</h2><p>USD · ${context().billingInterval === 'year' && context().plan === 'trace' ? 'Yearly' : 'Monthly'} · Cancel anytime</p></div><div class="account-upgrade-list">${upgradeRow(context().plan)}</div></section>` : ''}`, 'My account');
+    ${context().plan === 'trace' && !active && ['none', 'canceled', 'incomplete_expired'].includes(account.status) ? `<section class="account-upgrades" aria-labelledby="upgrade-heading"><div class="upgrade-heading"><h2 id="upgrade-heading">Upgrade your plan</h2><p>USD · ${context().billingInterval === 'year' && context().plan === 'trace' ? 'Yearly' : 'Monthly'} · Cancel anytime</p></div><div class="account-upgrade-list">${upgradeRow()}</div></section>` : ''}`, 'My account');
   for (const selected of ['mac', 'windows']) {
     document.getElementById(`platform-${selected}`)?.addEventListener('click', () => {
       downloadPlatformChoice = selected;

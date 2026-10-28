@@ -62,7 +62,7 @@ test('free account offers downloads and account linking before optional upgrades
   assert.match(html, /No subscription needed/);
   for (const platform of ['mac', 'windows']) assert.match(html, new RegExp(`id="platform-${platform}"`));
   assert.match(html, /data-route href="\/trace\/connect">Enter code<\/a>/);
-  assert.match(html, /Compare plans/);
+  assert.match(html, /About Trace Pro/);
   assert.match(html, /Download platform/);
   assert.doesNotMatch(html, /data-checkout=|id="refresh-account"/);
   assert.doesNotMatch(html, /Opponent decklist|See the other side|No active plan|Choose a monthly plan to use Trace/i);
@@ -177,6 +177,11 @@ test('an explicit plan choice retains checkout without showing competing plan bu
   view.context.renderAccount(free);
   assert.match(view.html(), /data-checkout="trace"/);
   assert.doesNotMatch(view.html(), /data-checkout="supporter"/);
+  assert.match(view.html(), /\$4\.99/);
+  const annual = browser('?plan=trace&billingInterval=year'); annual.context.renderAccount(free);
+  assert.match(annual.html(), /\$49\.99/);
+  const retired = browser('?plan=supporter'); retired.context.renderAccount(free);
+  assert.doesNotMatch(retired.html(), /data-checkout="supporter"/);
 });
 
 
