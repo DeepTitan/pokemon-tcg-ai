@@ -11,12 +11,22 @@
 
 ## Release locations
 
-- Desktop/capture/membership: GitHub `DeepTitan/pokemon-tcg-ai`, `main`. Current pricing source: `64627d90a874474b87dd17a09aa8980e49afbc33`, merged in PR #8; includes the earlier idle capture recovery from PR #7.
-- Website: the same GitHub repository's separate `codex/trace-pricing-website` branch, runtime source `f55756a5ab0d99d79972a884bd8dd7d4b1ad1f9a`. Local checkout: `/Users/theisaiahw/.codex/worktrees/trace-pricing-website/victoryroad`. This preserves the independently deployed Trace website source; do not replace it with the main branch's old landing directory.
+- Desktop/capture/membership: GitHub `DeepTitan/pokemon-tcg-ai`, `main`. Current published source: `83a3a9bff91ee6f3e1b96dfecb4c0dff83b617b8`, merged in PR #12; includes the new upgrade modal, earlier pricing changes, and idle capture recovery.
+- Website: the same GitHub repository's separate `codex/trace-pricing-website` branch, deployed runtime source `e59470e99b6e73e82bfa68dfe06b53effbcdc5db`, merged in PR #13. Local checkout: `/Users/theisaiahw/.codex/worktrees/trace-pricing-website/victoryroad`. This preserves the independently deployed Trace website source; do not replace it with the main branch's old landing directory.
 - Trace Vercel project: `victoryroad` (`prj_xu8lQXM29IgPY7fLDvbkT4qah4Ta`), team `deeptitan-6729s-projects`. The `victoryroad-lovat.vercel.app` alias supplies the public `/trace` routes. The apex Victory Road site uses the separate `prize-map` project.
 - Do not deploy the dirty root workspace or unrelated Prize Map source.
 
 ## Readiness and configuration
+
+### Trace 0.1.101 upgrade experience published — October 28, 2026
+
+- [Release v0.1.101](https://github.com/DeepTitan/pokemon-tcg-ai/releases/tag/v0.1.101) is public and latest, published at 19:12:31 UTC from exact source `83a3a9bff91ee6f3e1b96dfecb4c0dff83b617b8`. [Release workflow 40750349724](https://github.com/DeepTitan/pokemon-tcg-ai/actions/runs/40750349724) passed every job; the public tag resolves to that source.
+- The top-right Upgrade button, locked archive rows, and exhausted sharing allowance open the approved board-preview modal with context-specific copy, lighter typography, and $4.99/month or $49.99/year choices. It uses the actual current/final board when available and a clearly labeled example otherwise. The preview never fetches a gated replay. Existing Free and admin entitlements are unchanged.
+- The chosen billing interval continues through the existing protected website checkout flow. Website deployment `dpl_CipShuiFuj4cRTw3ZeKkhrdeF6N9` was staged, verified, and promoted. The public script at `victoryroad.app/trace-script.js` matches the tested runtime source. All 150 website tests passed, including interval handoff, duplicate-click prevention, failure/retry, existing-member routing, and destination validation.
+- Browser verification confirmed both live Stripe checkout amounts, the actual production modal, annual disclosure, Escape/focus recovery, and existing-admin routing to account management. No payment was submitted, subscription created, or admin access changed. These checks do not claim a newly completed live paid-entitlement journey.
+- Tracker regression suites passed on both platforms, along with 77 Windows native tests. Windows installer and packaged executable passed signing/publisher-chain checks. macOS passed signing, notarization, stapling, Gatekeeper, clean-install launch, and relocated helper verification. The production capture/membership endpoint pair passed with enforcement enabled.
+- The public updater returns 0.1.101 for all four platform keys. All installer/update downloads and signature files returned HTTP 200 and matched GitHub asset SHA-256 digests; signatures match the manifest and both payloads passed cryptographic verification in CI. The final notes-only metadata update was verified through the public latest endpoint with every URL and signature preserved. The superseded v0.1.99 draft remains unpublished.
+- Evidence: `artifacts/upgrade-release/release-workflow.log`, `public-release-verification.json`, `ui-and-checkout-verification.json`, `endpoint-pair.json`, and modal/checkout screenshots. Repository-wide TypeScript checking still reports pre-existing errors outside the changed modules; the tracker build and required release suites passed.
 
 ### Trace 0.1.100 published — October 27, 2026
 
