@@ -220,6 +220,16 @@ impl Membership {
     }
 }
 
+pub fn account_url(view: Option<&str>) -> Result<&'static str, String> {
+    match view {
+        None | Some("account") => Ok("https://victoryroad.app/trace/account"),
+        Some("plans") => Ok("https://victoryroad.app/trace#plans"),
+        Some("checkout-month") => Ok("https://victoryroad.app/trace?checkout=trace&billingInterval=month#plans"),
+        Some("checkout-year") => Ok("https://victoryroad.app/trace?checkout=trace&billingInterval=year#plans"),
+        _ => Err("Unknown membership page.".into()),
+    }
+}
+
 pub fn validate_link(link: &MembershipLink) -> Result<(), String> {
     let url = Url::parse(&link.verification_url).map_err(|_| "Invalid account link.")?;
     let valid_code = link.user_code.len() == 11
@@ -455,6 +465,22 @@ mod tests {
         ] {
             link.verification_url = url.into();
             assert!(validate_link(&link).is_err());
+        }
+    }
+
+    #[test]
+    fn checkout_navigation_preserves_interval_and_rejects_arbitrary_urls() {
+        assert_eq!(account_url(None).unwrap(), "https://victoryroad.app/trace/account");
+        for (view, interval) in [("checkout-month", "month"), ("checkout-year", "year")] {
+            let url = Url::parse(account_url(Some(view)).unwrap()).unwrap();
+            assert_eq!(url.origin().ascii_serialization(), "https://victoryroad.app");
+            assert_eq!(url.path(), "/trace");
+            let query: std::collections::HashMap<_, _> = url.query_pairs().collect();
+            assert_eq!(query.get("checkout").unwrap(), "trace");
+            assert_eq!(query.get("billingInterval").unwrap(), interval);
+        }
+        for view in ["checkout", "checkout-year&redirect=evil", "https://evil.test", "javascript:alert(1)"] {
+            assert!(account_url(Some(view)).is_err());
         }
     }
 }

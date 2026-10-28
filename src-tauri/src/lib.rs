@@ -415,11 +415,7 @@ async fn start_tracking(app: tauri::AppHandle) -> Result<CaptureStatus, String> 
 
 #[tauri::command]
 async fn open_membership_account(view: Option<String>) -> Result<(), String> {
-    let url = match view.as_deref() {
-        None | Some("account") => "https://victoryroad.app/trace/account",
-        Some("plans") => "https://victoryroad.app/trace#plans",
-        _ => return Err("Unknown membership page.".into()),
-    };
+    let url = membership::account_url(view.as_deref())?;
     tauri::async_runtime::spawn_blocking(move || open_account_url(url))
     .await
     .map_err(|_| "Could not open your account.")?

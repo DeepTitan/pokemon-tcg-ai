@@ -2961,45 +2961,6 @@ button.stadium-marker:focus-visible {
 .session-card.replay-locked:focus-visible { background: #ece8df; border-color: #bdb5a5; transform: none; }
 .archive-upgrade-action { display: flex; align-items: center; gap: 5px; margin-top: 7px; color: #735518; font-size: 11px; font-weight: 800; line-height: 1.4; }
 .archive-upgrade-action > svg:last-child { margin-left: auto; }
-/* Benefits lead the upgrade conversation; billing choices live on the plans page. */
-.archive-upgrade-modal { width: min(660px, calc(100vw - 32px)); max-height: calc(100vh - 48px); box-sizing: border-box; padding: 0; border: 1px solid #d8d0c1; border-radius: 20px; background: #fffdf7; color: #223653; text-align: left; box-shadow: 0 24px 90px #17202c38; overflow: auto; }
-.archive-upgrade-modal::backdrop { background: #18212e65; backdrop-filter: blur(3px); }
-.archive-upgrade-close { position: absolute; right: 14px; top: 14px; z-index: 1; display: grid; place-items: center; width: 32px; height: 32px; padding: 0; background: #fffdf7b3; border: 0; border-radius: 50%; color: #647078; cursor: pointer; }
-.pro-intro { display: flex; align-items: center; gap: 10px; padding: 34px 36px 28px; background: #f1eee4; border-bottom: 1px solid #e3ddcf; }
-.pro-intro-copy { flex: 1; min-width: 0; }
-.pro-wordmark { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; color: #33435b; font-size: 17px; font-weight: 900; }
-.pro-wordmark b { padding: 3px 6px; border: 1px solid #c7aa62; border-radius: 5px; color: #785719; background: #f8e8bb; font-size: 9px; letter-spacing: .1em; }
-.archive-upgrade-modal h2 { margin: 0 0 14px; font-size: 31px; line-height: 1.16; letter-spacing: -.035em; font-weight: 900; }
-.archive-upgrade-modal p { margin: 0; color: #5c6672; font-size: 14px; line-height: 1.55; }
-.pro-intro p { max-width: 355px; }
-.pro-mascot { width: 145px; height: 165px; object-fit: contain; flex-shrink: 0; }
-.pro-benefits { display: grid; gap: 22px; padding: 28px 36px; }
-.pro-benefits > div { display: flex; align-items: flex-start; gap: 14px; }
-.pro-benefits > div > span { display: grid; place-items: center; flex: 0 0 40px; height: 40px; border-radius: 10px; color: #526b63; background: #edf0e8; }
-.pro-benefits h3 { margin: 0 0 4px; font-size: 15px; line-height: 1.35; font-weight: 800; }
-.pro-benefits p { max-width: 450px; font-size: 13px; }
-.pro-decision { padding: 0 36px 22px; }
-.pro-decision-actions { display: flex; align-items: center; gap: 18px; }
-.archive-upgrade-primary { display: inline-flex; align-items: center; justify-content: center; gap: 14px; min-height: 46px; padding: 12px 20px; border: 1px solid #d2aa3a; border-radius: 9px; background: #f4d572; color: #342b17; font: inherit; font-size: 14px; font-weight: 800; cursor: pointer; }
-.archive-upgrade-primary:hover { background: #f8df91; }
-.archive-upgrade-primary:disabled { opacity: .6; cursor: wait; }
-.pro-keep-free { padding: 10px 0; border: 0; background: transparent; color: #5c6672; font: inherit; font-size: 13px; cursor: pointer; }
-.archive-upgrade-modal .pro-price-note { margin-top: 11px; font-size: 12px; color: #71767b; }
-.pro-free-footer { display: flex; align-items: flex-start; gap: 24px; padding-top: 20px; margin-top: 22px; border-top: 1px solid #e8e2d6; }
-.pro-free-footer p { flex: 1; font-size: 11px; line-height: 1.5; }
-.archive-upgrade-link { padding: 0; border: 0; background: transparent; color: #526679; font: inherit; font-size: 11px; white-space: nowrap; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
-.archive-upgrade-modal button:focus-visible { outline: 2px solid #427da8; outline-offset: 3px; }
-.archive-upgrade-modal .pro-error { margin-top: 12px; color: #9c3a35; }
-@media (max-width: 540px) {
- .pro-intro { padding: 28px 24px 24px; }
- .pro-mascot { width: 80px; height: 110px; }
- .archive-upgrade-modal h2 { font-size: 25px; }
- .pro-benefits { padding: 24px; }
- .pro-decision { padding: 0 24px 20px; }
- .pro-decision-actions { gap: 14px; flex-wrap: wrap; }
- .pro-free-footer { flex-direction: column; gap: 10px; }
-}
-
 /* Match the review dialogs: a short, restrained reveal rather than a hard pop. */
 .player-decklist-panel { animation: review-dialog-in .18s cubic-bezier(.2,.8,.2,1) both; }
 :root .player-decklist-trigger { transition: background .16s ease, border-color .16s ease, box-shadow .16s ease; }
