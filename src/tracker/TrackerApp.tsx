@@ -513,7 +513,7 @@ function OpponentHandSummary({ boardName, count, onOpen }: { boardName: string; 
   );
 }
 
-export function PlayerField({ board, decklist, deckAccess, canonical, pendingCards, prizeKnowledge: providedPrizeKnowledge, visibility, catalog, choiceFrames, currentReviewIndex, turnNumber, status, handoff, stadiumCard, stadiumName, stadiumOwner, localPlayerName, opponentName, defeatedIds, defeatedNames, damageChanges, positionChanges, attackerId, opponent = false, avatar, onOpenPokemon, onOpenChoice, onOpenCard, onOpenZone }: { board: TrackedPlayerBoard; decklist?: CapturedDecklist; deckAccess?: { visible?: boolean; loadDeck?: () => Promise<CapturedDecklist>; unavailableReason: string; accessKey: string }; canonical: PlayerState; pendingCards?: Card[]; prizeKnowledge?: PrizeKnowledge; visibility: Record<string, ReviewCardVisibility>; catalog: ReadonlyMap<string, CardInfo>; choiceFrames: TurnChoiceFrame[]; currentReviewIndex: number; turnNumber: number; status: PlayerTurnStatus; handoff?: TurnHandoffRole; stadiumCard: Card | null; stadiumName?: string; stadiumOwner?: string; localPlayerName: string; opponentName: string; defeatedIds: ReadonlySet<string>; defeatedNames: ReadonlySet<string>; damageChanges: ReadonlyMap<string, PokemonDamageChange>; positionChanges: ReadonlyMap<string, PokemonPositionChange>; attackerId?: string; opponent?: boolean; avatar: string; onOpenPokemon: (id: string) => void; onOpenChoice: (card: TrackedCard) => void; onOpenCard: (card: Card) => void; onOpenZone: (title: string, subtitle: string, cards: Card[], visibility: Record<string, ReviewCardVisibility>) => void }) {
+export function PlayerField({ board, decklist, deckAccess, canonical, pendingCards, prizeKnowledge: providedPrizeKnowledge, visibility, catalog, choiceFrames, currentReviewIndex, turnNumber, status, handoff, stadiumCard, stadiumName, stadiumOwner, localPlayerName, opponentName, defeatedIds, defeatedNames, damageChanges, positionChanges, attackerId, opponent = false, avatar, onOpenPokemon, onOpenChoice, onOpenCard, onOpenZone }: { board: TrackedPlayerBoard; decklist?: CapturedDecklist; deckAccess?: { visible?: boolean; loadDeck?: () => Promise<CapturedDecklist>; unavailableReason: string; accessKey: string }; canonical: PlayerState; pendingCards?: Card[]; prizeKnowledge?: PrizeKnowledge; visibility: Record<string, ReviewCardVisibility>; catalog: ReadonlyMap<string, CardInfo>; choiceFrames: TurnChoiceFrame[]; currentReviewIndex: number; turnNumber: number; status: PlayerTurnStatus; handoff?: TurnHandoffRole; stadiumCard: Card | null; stadiumName?: string; stadiumOwner?: string; localPlayerName: string; opponentName: string; defeatedIds: ReadonlySet<string>; defeatedNames: ReadonlySet<string>; damageChanges: ReadonlyMap<string, PokemonDamageChange>; positionChanges: ReadonlyMap<string, PokemonPositionChange>; attackerId?: string; opponent?: boolean; avatar: string; onOpenPokemon: (id: string) => void; onOpenChoice: (card: TrackedCard) => void; onOpenCard: (card: Card) => void; onOpenZone: (title: string, subtitle: string, cards: Card[], visibility: Record<string, ReviewCardVisibility>, layout?: 'prizes') => void }) {
   const benches = [...board.bench, ...Array.from({ length: Math.max(0, 5 - board.bench.length) }, () => null)].slice(0, 5);
   const tone = opponent ? 'coral' : 'blue';
   const isDefeated = (pokemon: TrackedPokemon | null) => Boolean(pokemon && (defeatedIds.has(pokemon.id) || defeatedNames.has(pokemon.name)));
@@ -527,7 +527,7 @@ export function PlayerField({ board, decklist, deckAccess, canonical, pendingCar
   const prizeKnowledge = (!opponent && providedPrizeKnowledge) || derivePrizeKnowledge({ deck: decklist, player: canonical, pendingCards, board, visibility, catalog,
     local: !opponent, stadium: stadiumCard, stadiumOwner });
   const openPrizes = () => onOpenZone(`${board.name} · Prize cards`,
-    prizeKnowledge.note, prizeKnowledge.cards, prizeKnowledge.visibility);
+    prizeKnowledge.note, prizeKnowledge.cards, prizeKnowledge.visibility, 'prizes');
   const prizeCount = board.prizesKnown !== false && Number.isInteger(board.prizesTaken)
     ? prizesRemaining(board) : canonical.prizes.length;
   const handCount = Math.max(canonical.hand.length, board.handCount);
@@ -1467,8 +1467,8 @@ export default function TrackerApp() {
     openCard(cardInfoToEngineCard(info, tracked.id, info?.name || tracked.name, tracked.cardId));
   }, [cardCatalog, openCard]);
 
-  const openZone = useCallback((title: string, subtitle: string, cards: Card[], visibility: Record<string, ReviewCardVisibility>) => {
-    setInspector({ kind: 'zone', title, subtitle, cards, visibility });
+  const openZone = useCallback((title: string, subtitle: string, cards: Card[], visibility: Record<string, ReviewCardVisibility>, layout?: 'prizes') => {
+    setInspector({ kind: 'zone', title, subtitle, cards, visibility, layout });
   }, []);
 
   const openSelection = useCallback((selection = selectedCanonical?.selection) => {

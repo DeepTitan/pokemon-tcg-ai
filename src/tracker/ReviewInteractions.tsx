@@ -8,12 +8,13 @@ import { X } from '@phosphor-icons/react/X';
 import type { Card, PokemonInPlay } from '../engine/types.js';
 import { cardSourceIdFromReviewCard } from './card-adapter.js';
 import { sortCardsForDisplay } from './card-order-model.js';
+import { prizeSlotStates } from './prize-layout-model.js';
 import { publicCardArtUrl, resolvedCardArt, showCardBackOnError } from './card-art.js';
 import type { CardInfo, ReviewAppliedEffect, ReviewCardVisibility, ReviewSelection } from './types.js';
 
 export type ReviewInspector =
   | { kind: 'card'; card: Card; pokemon?: PokemonInPlay; effects?: ReviewAppliedEffect[]; title?: string }
-  | { kind: 'zone'; title: string; subtitle: string; cards: Card[]; visibility: Record<string, ReviewCardVisibility> }
+  | { kind: 'zone'; title: string; subtitle: string; cards: Card[]; visibility: Record<string, ReviewCardVisibility>; layout?: 'prizes' }
   | { kind: 'selection'; selection: ReviewSelection; sourceName?: string };
 
 const CardCatalogContext = createContext<ReadonlyMap<string, CardInfo>>(new Map());
@@ -60,6 +61,20 @@ function ZoneInspector({ inspector, onInspectCard }: { inspector: Extract<Review
   const catalog = useContext(CardCatalogContext);
   const orderedCards = sortCardsForDisplay(inspector.cards, (card) => catalogCardFor(card, catalog)?.name || card.name);
   const knownCount = orderedCards.filter((card) => inspector.visibility[card.id] !== 'hidden').length;
+  if (inspector.layout === 'prizes') return <>
+    <div className="zone-summary"><span>{orderedCards.length} cards</span><p>{inspector.subtitle}</p></div>
+    <div className="prize-inspector-grid" aria-label={`${orderedCards.length} Prize cards remaining`}>
+      {prizeSlotStates(orderedCards.length).map((state, index) => {
+        if (state === 'taken') return <span key={`taken-${index}`} className="prize-card-silhouette" role="img" aria-label="Prize taken" />;
+        const card = orderedCards[index], hidden = inspector.visibility[card.id] === 'hidden';
+        const label = hidden ? 'Unrevealed Prize card' : catalogCardFor(card, catalog)?.name || card.name;
+        return <button key={card.id} className="prize-inspector-card" type="button" disabled={hidden}
+          title={label} aria-label={label} onClick={() => onInspectCard(card)}>
+          {hidden ? <img src="/tracker-assets/pokemon-card-back.jpg" alt="Face-down Prize card" /> : <CardImage card={card} />}
+        </button>;
+      })}
+    </div>
+  </>;
   const groups: { card: Card; count: number; hidden: boolean }[] = [];
   const byPrinting = new Map<string, typeof groups[number]>();
   for (const card of orderedCards) {
@@ -124,5 +139,5 @@ export function ReviewOverlay({ inspector, catalog, onClose, onInspectCard }: { 
       </div>
     </CardCatalogContext.Provider>, document.body);
   const title = inspector.kind === 'zone' ? inspector.title : 'Search replay';
-  return <CardCatalogContext.Provider value={catalog}><div className="review-overlay-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><article className={`review-overlay review-${inspector.kind}`} role="dialog" aria-modal="true" aria-label={title}><header><div>{inspector.kind !== 'zone' && <span>{inspector.kind === 'selection' ? 'Exact captured choice' : 'Match card'}</span>}<h2>{title}</h2></div><button type="button" onClick={onClose} aria-label="Close inspector"><X size={21} weight="bold" /></button></header><div className="review-overlay-body">{inspector.kind === 'zone' && <ZoneInspector inspector={inspector} onInspectCard={onInspectCard} />}{inspector.kind === 'selection' && <SelectionInspector selection={inspector.selection} sourceName={inspector.sourceName} onInspectCard={onInspectCard} />}</div></article></div></CardCatalogContext.Provider>;
+  return <CardCatalogContext.Provider value={catalog}><div className="review-overlay-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><article className={`review-overlay review-${inspector.kind}${inspector.kind === 'zone' && inspector.layout === 'prizes' ? ' review-prizes' : ''}`} role="dialog" aria-modal="true" aria-label={title}><header><div>{inspector.kind !== 'zone' && <span>{inspector.kind === 'selection' ? 'Exact captured choice' : 'Match card'}</span>}<h2>{title}</h2></div><button type="button" onClick={onClose} aria-label="Close inspector"><X size={21} weight="bold" /></button></header><div className="review-overlay-body">{inspector.kind === 'zone' && <ZoneInspector inspector={inspector} onInspectCard={onInspectCard} />}{inspector.kind === 'selection' && <SelectionInspector selection={inspector.selection} sourceName={inspector.sourceName} onInspectCard={onInspectCard} />}</div></article></div></CardCatalogContext.Provider>;
 }
