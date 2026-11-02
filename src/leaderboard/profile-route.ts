@@ -29,6 +29,7 @@ export function playerProfileShareHref(name: string, generatedAt?: string): stri
   return versionedShareHref(playerProfileHref(name), generatedAt);
 }
 
-export function leaderboardShareHref(generatedAt?: string): string {
-  return versionedShareHref(LEADERBOARD_HREF, generatedAt);
+export function leaderboardShareHref(generatedAt?: string, ranking: 'live' | 'trace' = 'live'): string {
+  const href = versionedShareHref(LEADERBOARD_HREF, generatedAt);
+  return ranking === 'trace' ? `${href}${href.includes('?') ? '&' : '?'}ranking=trace` : href;
 }

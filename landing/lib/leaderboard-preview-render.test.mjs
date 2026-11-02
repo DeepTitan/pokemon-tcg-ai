@@ -23,9 +23,23 @@ const snapshot = () => ({
 const markup = svg => svg.replace(/href="data:[^"]+"/g, 'href="embedded-image"');
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 
-test('leaderboard follows current shared ratings, registered population and screenshot colors', async () => {
+test('default board preview uses raw Live ratings and ranks observed-only players', () => {
+  const data = snapshot();
+  data.players[0].latestLiveRating = 1600;
+  data.players[2].latestLiveRating = 1950;
+  const live = markup(leaderboardPreviewSvg(data));
+  assert.match(live, />Live rating</);
+  assert.match(live, />1,950</);
+  assert.ok(live.indexOf('NewPlayer') < live.indexOf('isaiahw'));
+  const trace = markup(leaderboardPreviewSvg(data, undefined, 'trace'));
+  assert.match(trace, />Trace rating</);
+  assert.ok(trace.indexOf('isaiahw') < trace.indexOf('NewPlayer'));
+  assert.doesNotMatch(trace, />1,950</);
+});
+
+test('Trace view follows current shared ratings, registered population and screenshot colors', async () => {
   const data = snapshot(), before = structuredClone(data);
-  const svg = markup(leaderboardPreviewSvg(data));
+  const svg = markup(leaderboardPreviewSvg(data, undefined, 'trace'));
   const rated = getLeaderboardPreviewData(data).registeredRows.find(row => row.playerId === 'a');
   for (const label of ['Trace', 'Leaderboard', 'Trace rating', 'isaiahw', 'NewPlayer', '2 Trace players', '1W  1L', '50%', Math.round(rated.rating).toLocaleString('en-US')]) assert.ok(svg.includes(label), label);
   assert.doesNotMatch(svg, /Spysimon|Provisional|>1500<|>1,500</);

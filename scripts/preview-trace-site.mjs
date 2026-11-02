@@ -5,6 +5,7 @@ import {fileURLToPath} from 'node:url';
 import leaderboardPage from '../landing/api/leaderboard-page.mjs';
 import leaderboardData from '../landing/api/leaderboard-data.mjs';
 import leaderboardArt from '../landing/api/leaderboard-art.mjs';
+import leaderboardPreview from '../landing/api/leaderboard-preview.mjs';
 import trainingData from '../landing/api/training-data.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../landing/dist');
 const mime={'.html':'text/html; charset=utf-8','.css':'text/css','.js':'text/javascript','.json':'application/json','.png':'image/png','.jpg':'image/jpeg','.svg':'image/svg+xml','.ttf':'font/ttf','.woff2':'font/woff2'};
@@ -15,6 +16,7 @@ http.createServer(async(req,res)=>{
   if(p==='/trace/leaderboard-static/training/status.json')return await trainingData(req,res);
   if(p==='/trace/leaderboard-static/events.json')return await leaderboardData(req,res);
   if(p==='/trace/leaderboard')return await leaderboardPage(req,res);
+  if(p==='/trace/leaderboard-preview.png')return await leaderboardPreview(req,res);
   if(p.startsWith('/trace/players/')){req.query.player=decodeURIComponent(p.slice('/trace/players/'.length));return await leaderboardPage(req,res)}
   if(p.startsWith('/trace/leaderboard-static/card-art/')){req.query.cardId=path.basename(p,'.png');return await leaderboardArt(req,res)}
   const relative=p==='/trace/training'?'/trace/leaderboard-static/training/index.html':p==='/'?'/index.html':p;

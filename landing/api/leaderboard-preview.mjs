@@ -21,8 +21,8 @@ function fail(response, method, status, message) {
  */
 export function createLeaderboardPreviewHandler({
   readFeed = loadLeaderboardFeed,
-  render = async (snapshot, playerId) => (await import('../lib/leaderboard-preview-render.mjs'))
-    .renderLeaderboardPreview(snapshot, playerId),
+  render = async (snapshot, playerId, ranking) => (await import('../lib/leaderboard-preview-render.mjs'))
+    .renderLeaderboardPreview(snapshot, playerId, ranking),
 } = {}) {
   const rendered = new Map();
   return async function handler(request, response) {
@@ -47,10 +47,12 @@ export function createLeaderboardPreviewHandler({
           ?? feed.snapshot.players.find(entry => entry.name === requested) ?? null;
       if (player === null) { fail(response, method, 404, 'Player not found.'); return; }
       const version = leaderboardPreviewVersion(feed.snapshot);
-      const key = JSON.stringify([version, player?.id]);
+      const selectedRanking = request.query?.ranking ?? new URL(request.url || '/', 'https://victoryroad.app').searchParams.get('ranking');
+      const ranking = !player && selectedRanking === 'trace' ? 'trace' : 'live';
+      const key = JSON.stringify([version, player?.id, ranking]);
       let pending = rendered.get(key);
       if (!pending) {
-        pending = Promise.resolve().then(() => render(feed.snapshot, player?.id)).then(bytes => {
+        pending = Promise.resolve().then(() => render(feed.snapshot, player?.id, ranking)).then(bytes => {
           const png = Buffer.from(bytes);
           return { png, etag: `"${createHash('sha256').update(png).digest('hex')}"` };
         });

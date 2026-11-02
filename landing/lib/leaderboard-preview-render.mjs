@@ -97,26 +97,26 @@ function pokemonCell(side, x, top) {
     ${lines.map((label, i) => text(fit(label, 130, 15), x + 44, top + (lines.length > 1 ? 25 : 36) + i * 19, 15, 600)).join('')}`;
 }
 
-function board(snapshot) {
-  const { registeredRows } = getLeaderboardPreviewData(snapshot);
+function board(snapshot, ranking) {
+  const { registeredRows } = getLeaderboardPreviewData(snapshot, ranking);
   const rows = registeredRows.slice(0, 10);
   const start = 195, rowHeight = 36;
   return `${header()}
     ${text('Leaderboard', 38, 115, 40, 700)}
-    ${text('Pokémon TCG Live · All-time', 39, 145, 19, 600, muted)}
+    ${text(ranking === 'trace' ? 'Trace rankings' : 'Pokémon TCG Live', 39, 145, 19, 600, muted)}
     <rect x="38" y="161" width="1124" height="${34 + Math.max(rows.length, 1) * rowHeight}" fill="${surface}" stroke="${line}"/>
     <rect x="39" y="162" width="1122" height="33" fill="${ink}"/>
     ${text('Rank', 55, 184, 14, 500, '#ffffff')}${text('Player', 169, 184, 14, 500, '#ffffff')}
-    ${text('Trace rating', 643, 184, 14, 500, '#ffffff')}${text('Record', 838, 184, 14, 500, '#ffffff')}${text('Win rate', 1053, 184, 14, 500, '#ffffff')}
+    ${text(ranking === 'trace' ? 'Trace rating' : 'Live rating', 643, 184, 14, 500, '#ffffff')}${text('Record', 838, 184, 14, 500, '#ffffff')}${text('Win rate', 1053, 184, 14, 500, '#ffffff')}
     ${rows.map((row, i) => {
-      const top = start + i * rowHeight, medal = row.games ? ['#c79b36', '#bac4d0', '#b98759'][i] : undefined;
+      const top = start + i * rowHeight, medal = row.displayRating !== undefined ? ['#c79b36', '#bac4d0', '#b98759'][i] : undefined;
       const barWidth = 140, winsWidth = row.games ? row.wins / row.games * barWidth : 0, lossesWidth = row.games ? row.losses / row.games * barWidth : 0;
       const fill = i % 2 ? '#f6f5f1' : surface;
       return `<rect x="39" y="${top}" width="1122" height="${rowHeight}" fill="${fill}"/>
         ${medal ? `<rect x="39" y="${top}" width="3" height="${rowHeight}" fill="${medal}"/><rect x="55" y="${top + 5}" width="26" height="26" fill="${medal}"/>` : ''}
-        ${text(row.games ? i + 1 : '—', 68, top + 24, 18, medal ? 700 : 400, ink, 'text-anchor="middle"')}
+        ${text(row.displayRating !== undefined ? i + 1 : '—', 68, top + 24, 18, medal ? 700 : 400, ink, 'text-anchor="middle"')}
         ${text(fit(row.name, 430, 19), 169, top + 25, 19, 700)}
-        ${text(row.games ? number(row.rating) : '—', 644, top + 26, 22, 700)}
+        ${text(row.displayRating !== undefined ? number(row.displayRating) : '—', 644, top + 26, 22, 700)}
         ${text(record(row), 839, top + (row.games ? 20 : 25), row.games ? 17 : 15, 400)}
         ${row.games ? `<rect x="839" y="${top + 27}" width="140" height="4" fill="#9aa5b2"/><rect x="839" y="${top + 27}" width="${winsWidth.toFixed(2)}" height="4" fill="#287247"/><rect x="${(839 + winsWidth).toFixed(2)}" y="${top + 27}" width="${lossesWidth.toFixed(2)}" height="4" fill="#a8443b"/>` : ''}
         ${text(percent(row), 1054, top + 25, 19, 700)}${rule(top + rowHeight)}`;
@@ -174,12 +174,12 @@ function profile(snapshot, playerId) {
 }
 
 /** A screenshot-like view built only from the current public feed and shared Elo replay. */
-export function leaderboardPreviewSvg(snapshot, playerId) {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" font-family="Roboto, sans-serif">${playerId ? profile(snapshot, playerId) : board(snapshot)}</svg>`;
+export function leaderboardPreviewSvg(snapshot, playerId, ranking = 'live') {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" font-family="Roboto, sans-serif">${playerId ? profile(snapshot, playerId) : board(snapshot, ranking)}</svg>`;
 }
 
-export async function renderLeaderboardPreview(snapshot, playerId) {
-  return new Resvg(leaderboardPreviewSvg(snapshot, playerId), {
+export async function renderLeaderboardPreview(snapshot, playerId, ranking = 'live') {
+  return new Resvg(leaderboardPreviewSvg(snapshot, playerId, ranking), {
     font: { fontFiles, loadSystemFonts: false, defaultFontFamily: 'Roboto', sansSerifFamily: 'Roboto' },
     imageRendering: 0, textRendering: 1,
   }).render().asPng();

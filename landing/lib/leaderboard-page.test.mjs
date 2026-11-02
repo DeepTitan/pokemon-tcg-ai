@@ -45,13 +45,21 @@ test('board metadata comes from current matches and cannot be held in a CDN cach
   const response = await request();
   assert.equal(response.statusCode, 200);
   assert.match(response.body, /<title>Trace leaderboard<\/title>/);
-  assert.ok(response.body.includes(social.escapePreviewHtml('See who’s climbing. Check the Trace leaderboard and explore each player’s match history.')));
+  assert.ok(response.body.includes(social.escapePreviewHtml('See Pokémon TCG Live rankings, Trace ratings, and each player’s recorded match history.')));
   assert.match(response.body, /https:\/\/victoryroad\.app\/trace\/leaderboard"/);
   assert.equal(response.headers['content-type'], 'text/html; charset=utf-8');
   for (const header of ['cache-control', 'cdn-cache-control', 'vercel-cdn-cache-control']) assert.equal(response.headers[header], 'no-store');
   assert.equal(response.headers['x-content-type-options'], 'nosniff');
   assert.equal(response.headers['content-length'], Buffer.byteLength(response.body));
   assert.ok(response.body.indexOf('property="og:image"') < response.body.indexOf('</head>'));
+});
+
+test('Trace share metadata preserves the selected ranking in its URL and image', async () => {
+  const response = await request({ url: '/trace/leaderboard?v=example&ranking=trace' });
+  assert.equal(response.statusCode, 200);
+  assert.ok(response.body.includes(social.escapePreviewHtml(leaderboardPreviewUrl(snapshot, undefined, 'trace'))));
+  assert.match(response.body, /property="og:url" content="https:\/\/victoryroad.app\/trace\/leaderboard\?v=example&amp;ranking=trace"/);
+  assert.ok(response.body.includes('Check the Trace rankings'));
 });
 
 test('known players get a live PNG URL and accurate alt text with current rating metadata', async () => {

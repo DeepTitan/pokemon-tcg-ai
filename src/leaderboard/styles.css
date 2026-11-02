@@ -37,6 +37,18 @@ h2 { font-size: 24px; font-weight: 700; line-height: 1.25; letter-spacing: -.8px
 h3 { font-size: 17px; font-weight: 700; line-height: 1.4; margin: 0 0 8px; }
 .eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 1.4px; color: var(--muted); }
 .board { scroll-margin-top: 20px; }
+.ranking-tabs { display: flex; gap: 12px; border-bottom: 1px solid var(--line); margin: 0 0 20px; }
+.ranking-tabs [role="tab"] { border: 0; border-bottom: 3px solid transparent; margin-bottom: -1px; padding: 14px 18px; background: transparent; color: var(--muted); font-size: 16px; line-height: 1.4; font-weight: 500; white-space: nowrap; }
+.ranking-tabs [role="tab"]:hover { color: var(--accent); background: #ffffff50; }
+.ranking-tabs [role="tab"][aria-selected="true"] { color: var(--accent); border-bottom-color: #e9c34c; font-weight: 700; }
+.ranking-tabs [role="tab"]:focus-visible { outline-offset: -5px; }
+.trace-ranking-info { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; min-height: 24px; padding: 2px; border: 0; background: transparent; color: inherit; opacity: .8; }
+.trace-ranking-info:hover, .trace-ranking-info:focus-visible { opacity: 1; }
+.trace-ranking-explanation { position: fixed; z-index: 1000; width: min(300px, calc(100vw - 24px)); padding: 14px 16px; border: 1px solid #d9d0c1; border-radius: 3px; box-shadow: 0 4px 14px #172b491a; background: #fffdf8; color: #172b49; font: 14px/1.6 'Trace UI', sans-serif; font-weight: 400; }
+@media(max-width:640px) {
+  .ranking-tabs { gap: 4px; margin-bottom: 16px; }
+  .ranking-tabs [role="tab"] { padding: 12px 10px; font-size: 14px; }
+}
 .controls { display: grid; grid-template-columns: minmax(180px, 1fr) 180px auto; gap: 10px; align-items: center; margin-bottom: 12px; }
 .search { position: relative; flex: 1 1 48%; min-width: 180px; }
 .search > svg { position: absolute; top: 50%; left: 15px; transform: translateY(-50%); pointer-events: none; }
@@ -82,7 +94,7 @@ td { border-bottom: 1px solid var(--line); }
 .leaderboard-table .rating { font-size: 19px; font-weight: 700; letter-spacing: -.2px; text-align: right; }
 .leaderboard-table th:nth-child(3), .leaderboard-table th:last-child, .leaderboard-table .win-rate { text-align: right; }
 .leaderboard-table .win-rate { font-weight: 500; }
-.rating-column-title { display: flex; gap: 6px; align-items: center; justify-content: flex-end; }
+.rating-column-title { display: flex; gap: 6px; align-items: center; justify-content: flex-end; min-height: 24px; }
 .rating-column-title a { display: inline-flex; }
 .record, .win-rate { white-space: nowrap; font-variant-numeric: tabular-nums; }
 .record-counts { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
