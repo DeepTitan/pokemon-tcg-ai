@@ -1,3 +1,4 @@
+import { competitiveRatingResult } from '../src/tracker/rating-model.js';
 import type { HistoryMatch, HistorySide, MatchHistoryPreview } from '../src/leaderboard/history.js';
 import { validateLiveScaleCalibrations, type LiveScaleCalibration } from '../src/leaderboard/live-scale.js';
 
@@ -8,6 +9,7 @@ export interface PublicLeaderboardPlayer {
   latestLiveRating?: number;
   liveRatingObservedAt?: string;
   liveRatingTiming?: 'pre-match' | 'post-match' | 'match-snapshot';
+  liveRatingCalculated?: boolean;
   liveRatingBefore?: number;
   liveRatingChange?: number;
 }
@@ -58,6 +60,7 @@ function projectPlayer(input: unknown): PublicLeaderboardPlayer {
   }
   if (owns(player, 'liveRatingObservedAt')) result.liveRatingObservedAt = text(player.liveRatingObservedAt, 'Live observation time');
   if (owns(player, 'liveRatingTiming')) result.liveRatingTiming = timing(player.liveRatingTiming);
+  if (player.liveRatingCalculated === true) result.liveRatingCalculated = true;
   return result;
 }
 function projectHistory(input: unknown, playerIds: readonly string[]): MatchHistoryPreview {
@@ -131,6 +134,31 @@ export function projectPublicLeaderboardSnapshot(input: unknown): PublicLeaderbo
     result.liveScaleCalibrations = calibrations.map(({ seasonId, scale, offset, availableAt }) => ({
       seasonId, scale, offset, availableAt, evidence: 'Verified season-scale mapping.',
     }));
+  }
+  // Only advance the exact latest observation. Never apply an older result to
+  // a newer snapshot, or apply a result twice when this boundary runs again.
+  const ids = new Map<string, number>();
+  for (const match of result.matches) ids.set(match.id, (ids.get(match.id) ?? 0) + 1);
+  for (const player of result.players) {
+    if (player.liveRatingTiming === 'post-match' || player.latestLiveRating === undefined) continue;
+    const candidates = result.matches.filter(match => match.playerIds.includes(player.id)
+      && match.playedAt === player.liveRatingObservedAt);
+    if (candidates.length !== 1) continue;
+    const match = candidates[0];
+    if (!match.confirmed || ids.get(match.id) !== 1 || match.outcome.type !== 'win'
+      || !match.playerIds.includes(match.outcome.winnerId)
+      || match.playerIds[0] === match.playerIds[1]
+      || match.liveRatingEligibility?.timing === 'post-match') continue;
+    const opponent = match.playerIds.find(id => id !== player.id)!;
+    const before = match.liveRatings?.[player.id], opposing = match.liveRatings?.[opponent];
+    if (before === undefined || opposing === undefined || before < 0 || opposing < 0
+      || before !== player.latestLiveRating) continue;
+    const calculated = competitiveRatingResult(before, opposing, match.outcome.winnerId === player.id)!;
+    player.latestLiveRating = calculated.ratingAfter;
+    player.liveRatingBefore = before;
+    player.liveRatingChange = calculated.change;
+    player.liveRatingTiming = 'post-match';
+    player.liveRatingCalculated = true;
   }
   return result;
 }

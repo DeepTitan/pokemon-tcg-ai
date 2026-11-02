@@ -7,7 +7,7 @@ export function rankingViewFromSearch(search: string): RankingView {
   return new URLSearchParams(search).get('ranking') === 'trace' ? 'trace' : 'live';
 }
 
-/** Live values are raw observations, never initialized or inferred from Trace Elo. */
+/** Live values come from the shared Live feed, never from Trace Elo. */
 export function leaderboardRating(row: EloLeaderboardRow, view: RankingView, player?: LivePlayer): number | undefined {
   if (view === 'trace') return row.games > 0 ? row.rating : undefined;
   const rating = player?.latestLiveRating;
