@@ -37,3 +37,7 @@ Verify the public feed, exact historical rating parity, latest known completed m
 The publisher intentionally scans and replays the compact source table for each batch at the current small volume. Before substantial growth, replace full-feed delivery and replay with checkpointed/incremental processing and paginated histories; monitor invocation duration, throttles, stream iterator age and the failure queue. Lambda/API response limits still apply to the compressed snapshot.
 
 A failure-queue entry may contain only stream sequence references. Resolve it before the stream expires. After expiry, backfill current matches and reconcile stored sourceKey hashes against the complete current match index to remove orphan projections from missed deletions.
+
+## Recorded client-close forfeits
+
+As of November 2, recorded client-close defeats count toward Trace Elo, wins/losses and ranked-match totals when both match-local Live ratings are unambiguous. They remain separately published in `clientExitMatches`, retain `confirmed: false` and `resultReason: local-client-closed`, and remain labeled in profile history. Use `traceRatingEvents(snapshot)` before rating replay, history eligibility and social-preview calculation so the separate collection is included exactly once. The ranked eligibility adapter treats the recorded loss as a forfeit without rewriting the original evidence. Missing paired ratings, contradictory results and other unconfirmed outcomes remain excluded. The existing chronological Trace formula is unchanged.
