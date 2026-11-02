@@ -3,9 +3,10 @@ import { createRoot } from 'react-dom/client';
 import { PlayerField } from '../TrackerApp.js';
 import { ReviewOverlay, type ReviewInspector } from '../ReviewInteractions.js';
 import { cardInfoToEngineCard, cardSourceIdFromReviewCard, hiddenReviewCard } from '../card-adapter.js';
+import { deriveReviewPrizeKnowledge } from '../review-prize-knowledge.js';
 import fixture from './fixtures/captured-decklist.json';
 import type { Card, PlayerState, PokemonInPlay } from '../../engine/types.js';
-import type { CardInfo, TrackedPlayerBoard, ReviewCardVisibility, CapturedDecklist } from '../types.js';
+import type { CardInfo, TrackedPlayerBoard, ReviewCardVisibility, CapturedDecklist, MatchReview, TrackedTurn } from '../types.js';
 
 const catalog = new Map(fixture.cards.map(c => [c.id, { ...c, imageDataUrl: `/api/turnlume/card-art/${c.id}.png` } as CardInfo]));
 const starting = fixture.deck as CapturedDecklist;
@@ -17,8 +18,10 @@ const pokemon = (card: Card) => ({ card, attachedEnergy:[], attachedTools:[], st
 const tracked = (card: Card) => ({ id:card.id, cardId:cardSourceIdFromReviewCard(card), name:card.name, imageDataUrl:card.imageUrl });
 function Preview() {
   const [stage, setStage] = useState(1), [inspector, setInspector] = useState<ReviewInspector | null>(null);
-  const remaining = stage === 2 ? 5 : 6;
-  const hand = [...cards.slice(0,7), ...(stage === 2 ? [prizes[0]] : [])];
+  function frame(stage: number): TrackedTurn {
+  const taking = stage === 2 || stage === 4;
+  const remaining = taking ? 5 : 6;
+  const hand = [...cards.slice(0,7), ...(taking ? [prizes[0]] : [])];
   const deck = cards.slice(7).map(c => stage === 0 ? hiddenReviewCard(c.id) : c);
   const player = { active:pokemon(inPlay[0]), bench:inPlay.slice(1).map(pokemon), hand, deck, discard:[], lostZone:[],
     prizes:Array.from({length:remaining},(_,i)=>hiddenReviewCard(`hidden-prize-${i}`)) } as unknown as PlayerState;
@@ -27,9 +30,19 @@ function Preview() {
     handCount:hand.length, deckCount:deck.length, deckCountKnown:true, knownHand:hand.map(c=>c.name),
     discard:[], discardCards:[], prizesTaken:6-remaining } as TrackedPlayerBoard;
   const visibility = Object.fromEntries([...inPlay,...hand,...deck,...player.prizes].map(c=>[c.id,cardSourceIdFromReviewCard(c)?'known':'hidden'])) as Record<string,ReviewCardVisibility>;
+  if (stage >= 3) { player.hand.splice(1,1); board.handCount--; }
+  return { index:stage,label:'Turn 1',events:[],snapshot:{players:{You:board},stadium:null},
+    canonical:{ playerNames:['You','Opponent'],localPlayerIndex:0,visibility,selections:[],appliedEffects:{},
+      state:{players:[player,player],stadium:null,currentPlayer:0} } } as unknown as TrackedTurn;
+  }
+  const selected = frame(stage);
+  const review = { id:'prize-preview',localPlayer:'You',opponent:'Opponent',players:['You','Opponent'],
+    decklists:[{...starting,playerName:'You'}],turns:stage>=3 ? [frame(1),selected] : [selected] } as MatchReview;
+  const player = selected.canonical!.state.players[0], board = selected.snapshot.players.You, visibility = selected.canonical!.visibility;
+  const prizeKnowledge = deriveReviewPrizeKnowledge(review,review.turns.length-1,catalog);
   return <main style={{padding:24,maxWidth:1400,margin:'auto'}}><nav style={{display:'flex',gap:12,marginBottom:20}} aria-label="Preview stage">
-    {['Before search','After full search','After taking a prize'].map((label,i)=><button key={label} onClick={()=>{setStage(i);setInspector(null);}} aria-pressed={stage===i}>{label}</button>)}
-  </nav><PlayerField board={board} decklist={{...starting,playerName:'You'}} canonical={player} visibility={visibility} catalog={catalog}
+    {['Before search','After full search','After taking a prize','Missing card data','Take prize with missing data'].map((label,i)=><button key={label} onClick={()=>{setStage(i);setInspector(null);}} aria-pressed={stage===i}>{label}</button>)}
+  </nav><PlayerField board={board} decklist={{...starting,playerName:'You'}} canonical={player} visibility={visibility} catalog={catalog} prizeKnowledge={prizeKnowledge}
     choiceFrames={[]} currentReviewIndex={stage} turnNumber={1} status={{isCurrentTurn:true,supporterUsed:false,stadiumUsed:false,itemLocked:false}}
     stadiumCard={null} localPlayerName="You" opponentName="Opponent" defeatedIds={new Set()} defeatedNames={new Set()} damageChanges={new Map()} positionChanges={new Map()}
     avatar="/tracker-assets/trainer-casey.png" onOpenPokemon={()=>{}} onOpenChoice={()=>{}} onOpenCard={card=>setInspector({kind:'card',card})}

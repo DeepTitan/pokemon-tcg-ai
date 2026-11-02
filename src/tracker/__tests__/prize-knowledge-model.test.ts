@@ -71,7 +71,7 @@ const zones = fixture();
 const [basic, evolution, energy, tool, lost, stadium] = zones.player.deck.splice(0, 6);
 zones.board.deckCount! -= 6;
 zones.player.active = { card: evolution, attachedEnergy: [energy], attachedTools: [tool],
-  previousStage: { card: basic, attachedEnergy: [energy], attachedTools: [] } } as PokemonInPlay;
+  previousStage: { card: basic, attachedEnergy: [energy], attachedTools: [] } } as unknown as PokemonInPlay;
 zones.player.lostZone.push(lost);
 zones.stadium = stadium; zones.stadiumOwner = 'You';
 assert.deepEqual(ids(derivePrizeKnowledge(zones).cards), ids(derivePrizeKnowledge(input).cards), 'Count all physical cards once, including repeated evolution attachments');
@@ -133,7 +133,7 @@ for (const change of [
   x => { x.board.active!.cardId = 'test_b'; },
   x => { x.player.deck[0] = hiddenReviewCard(x.player.deck[0].id); },
   x => { x.local = false; },
-]) {
+] satisfies ((x: typeof evolved) => void)[]) {
   const invalid = structuredClone(evolved); change(invalid);
   assert.equal(derivePrizeKnowledge(invalid).kind, 'unavailable', 'Reject incomplete, conflicting or unrelated stacks; preserve hidden-zone safeguards');
 }
@@ -146,4 +146,49 @@ for (const i of [0, 1, 2, 1, 0]) {
     catalog: new Map(), stadiumOwner: 'pau1ek' });
   assert.equal(actual.kind, 'inferred', `Recorded pau1ek action ${frame.index} must retain prize knowledge`);
   assert.deepEqual(ids(actual.cards), ['me1_131', 'sv6_129'], 'Recorded prizes remain Ultra Ball and Drakloak across the evolution');
+}
+
+// Missing metadata must not remove an identified public attachment from the
+// accounting. This applies to both new captures and already saved reviews.
+for (const zone of ['energyCards', 'toolCards'] as const) {
+  const attached = fixture();
+  const [pokemon, attachment] = attached.player.hand.splice(0, 2);
+  attached.board.handCount -= 2;
+  attached.player.active = { card: pokemon, attachedEnergy: [], attachedTools: [] } as unknown as PokemonInPlay;
+  attached.board.active = { ...tracked(pokemon), [zone]: [tracked(attachment)] } as unknown as TrackedPokemon;
+  delete attached.visibility[attachment.id];
+  const before = JSON.stringify(attached);
+  assert.deepEqual(ids(derivePrizeKnowledge(attached).cards), ids(derivePrizeKnowledge(input).cards),
+    `${zone} with a captured identity is sufficient even without metadata or canonical visibility`);
+  assert.equal(JSON.stringify(attached), before);
+  const duplicate = structuredClone(attached);
+  duplicate.player.active!.attachedTools = [attachment as any];
+  assert.equal(derivePrizeKnowledge(duplicate).kind, 'inferred', 'Count canonical/public references once');
+  duplicate.player.active!.attachedTools = [makeCard(attachment.id, 'test_b') as any];
+  assert.equal(derivePrizeKnowledge(duplicate).kind, 'unavailable', 'Reject conflicting identities');
+  for (const change of [
+    (x: typeof attached) => { x.board.active![zone]![0].cardId = undefined; },
+    x => { x.board.active!.id = 'wrong-parent'; },
+    x => { x.board.active!.cardId = 'test_b'; },
+    x => { x.board.active![zone]![0].id = x.player.prizes[0].id; },
+    x => { x.local = false; },
+  ] satisfies ((x: typeof attached) => void)[]) {
+    const invalid = structuredClone(attached); change(invalid);
+    assert.equal(derivePrizeKnowledge(invalid).kind, 'unavailable');
+  }
+}
+
+const absentVisibility = fixture();
+absentVisibility.player.prizes[0] = makeCard('prize-0', 'test_b');
+delete absentVisibility.visibility['prize-0'];
+const masked = derivePrizeKnowledge({ ...absentVisibility, deck: undefined });
+assert.equal(masked.visibility['prize-0'], 'hidden', 'An absent visibility entry must not reveal an unverified prize');
+
+const attachmentProof = JSON.parse(readFileSync(new URL('./fixtures/prize-attachment-proof.json', import.meta.url), 'utf8'));
+for (const recorded of attachmentProof.cases) {
+  const results = recorded.frames.map((frame: any) => derivePrizeKnowledge({ ...frame, deck: recorded.deck,
+    local: true, catalog: new Map() }));
+  assert.equal(results[0].kind, 'inferred');
+  assert.equal(results[1].kind, 'inferred', `Recorded ${recorded.description} must retain prize visibility`);
+  assert.deepEqual(ids(results[1].cards), ids(results[0].cards), 'The real attachment does not change prize contents');
 }
