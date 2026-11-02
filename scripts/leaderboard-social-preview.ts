@@ -1,4 +1,4 @@
-import { ACTIVE_ELO_OPTIONS, replayEloRatings, type EloLeaderboardRow, type LiveEloEvent } from '../src/leaderboard/elo.js';
+import { ACTIVE_ELO_OPTIONS, replayEloRatings, traceRatingEvents, type EloLeaderboardRow, type LiveEloEvent } from '../src/leaderboard/elo.js';
 import type { LiveScaleCalibration } from '../src/leaderboard/live-scale.js';
 import { leaderboardRating, sortLeaderboardRows, type RankingView } from '../src/leaderboard/ranking-view.js';
 
@@ -7,6 +7,7 @@ export interface SocialPreviewSnapshot {
   generatedAt: string;
   players: readonly { id: string; name: string; traceStatus?: 'trace-user' | 'opponent-only'; latestLiveRating?: number }[];
   matches: readonly LiveEloEvent[];
+  clientExitMatches?: readonly LiveEloEvent[];
   liveScaleCalibrations?: readonly LiveScaleCalibration[];
 }
 
@@ -32,7 +33,7 @@ const record = (row: EloLeaderboardRow) => `${row.wins}W · ${row.losses}L${row.
 export const escapePreviewHtml = (value: string) => value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!);
 
 export function getLeaderboardPreviewData(snapshot: SocialPreviewSnapshot, ranking: RankingView = 'trace') {
-  const replay = replayEloRatings(snapshot.matches, snapshot.players, {
+  const replay = replayEloRatings(traceRatingEvents(snapshot), snapshot.players, {
     ...ACTIVE_ELO_OPTIONS, liveScaleCalibrations: snapshot.liveScaleCalibrations,
   });
   const profiles = new Map(snapshot.players.map(player => [player.id, player]));

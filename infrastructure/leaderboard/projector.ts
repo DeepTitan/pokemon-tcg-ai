@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { buildLeaderboardDataset, projectLeaderboardReview, type LiveRatingAudit } from '../../scripts/export-trace-leaderboard.js';
 import { projectPublicLeaderboardSnapshot, type PublicLeaderboardSnapshot } from '../../scripts/leaderboard-public-snapshot.js';
-import { ACTIVE_ELO_OPTIONS, replayEloRatings } from '../../src/leaderboard/elo.js';
+import { ACTIVE_ELO_OPTIONS, replayEloRatings, traceRatingEvents } from '../../src/leaderboard/elo.js';
 import type { CardInfo } from '../../src/tracker/types.js';
 import type { MatchHistoryPreview } from '../../src/leaderboard/history.js';
 
@@ -124,6 +124,6 @@ export function buildPublicSnapshot(records: readonly SourceProjection[], genera
   const dataset = JSON.parse(JSON.stringify(buildLeaderboardDataset(inputs, generatedAt, audit)));
   const publicSnapshot = projectPublicLeaderboardSnapshot(dataset);
   // Fail before publication if the feed cannot be replayed by the shipped engine.
-  replayEloRatings(publicSnapshot.matches, publicSnapshot.players, ACTIVE_ELO_OPTIONS);
+  replayEloRatings(traceRatingEvents(publicSnapshot), publicSnapshot.players, ACTIVE_ELO_OPTIONS);
   return publicSnapshot;
 }

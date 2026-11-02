@@ -2,7 +2,7 @@ import { type LeaderboardRow, type RatingPlayerSeed, type RatingUpdate } from '.
 import { ELO_OPTIONS, ACTIVE_ELO_OPTIONS } from './parameters.js';
 import { prepareRankedEloEvents, type LiveEloEvent } from './ranked-events.js';
 import { matchLiveScale, normalizeMatchLive, validateLiveScaleCalibrations, type LiveScaleCalibration } from './live-scale.js';
-export { prepareRankedEloEvents, type LiveEloEvent } from './ranked-events.js';
+export { prepareRankedEloEvents, traceRatingEvents, type LiveEloEvent } from './ranked-events.js';
 export { ELO_OPTIONS, ACTIVE_ELO_OPTIONS } from './parameters.js';
 
 export type EloLeaderboardRow = Omit<LeaderboardRow, 'rd'>;

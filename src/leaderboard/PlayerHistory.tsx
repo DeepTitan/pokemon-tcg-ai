@@ -64,14 +64,14 @@ export default function PlayerHistory({ player, matches, updates, names, onClose
         const own = match.history?.players[player.playerId], other = match.history?.players[opponentId];
         const result = match.outcome.type === 'draw' ? 'Draw' : match.outcome.winnerId === player.playerId ? 'Win' : 'Loss';
         const clientClosed = match.resultReason === 'local-client-closed';
-        const update = clientClosed ? undefined : updatesByMatch.get(match.id);
+        const update = updatesByMatch.get(match.id);
         const ownLive = match.liveRatings?.[player.playerId];
         const liveChange = clientClosed && ownLive !== undefined && liveElo !== undefined && match.outcome.type === 'win'
           ? competitiveRatingResult(ownLive, liveElo, match.outcome.winnerId === player.playerId) : undefined;
         return <tr key={match.id} className={`history-row-${result.toLowerCase()}`} aria-label={`${result} against ${opponent}${clientClosed ? ' · Client closed' : ''}`}>
           <td><span className={`history-result ${result.toLowerCase()}`}>{result}</span>{clientClosed && <small className="history-client-closed" title="Result inferred when the recorder closed TCG Live.">Client closed</small>}</td>
           <td className={`history-trace-change${update ? update.adjustment > 0 ? ' is-positive' : update.adjustment < 0 ? ' is-negative' : '' : ''}`}
-            title={update ? `${player.name}’s Trace rating: ${rating(update.before.rating)} → ${rating(update.after.rating)}` : clientClosed ? 'No Trace points. Result inferred from the client closing.' : 'Trace rating change unavailable'}>
+            title={update ? `${player.name}’s Trace rating: ${rating(update.before.rating)} → ${rating(update.after.rating)}` : clientClosed ? 'Trace points unavailable for this client-close result.' : 'Trace rating change unavailable'}>
             {update ? ratingChange(update.adjustment) : '—'}
             {liveChange && <small className="history-live-change" title={`Calculated Live rating: ${ownLive?.toLocaleString()} → ${liveChange.ratingAfter.toLocaleString()}`}>
               {liveChange.change > 0 ? '+' : liveChange.change < 0 ? '−' : ''}{Math.abs(liveChange.change)} Live Elo
@@ -88,7 +88,7 @@ export default function PlayerHistory({ player, matches, updates, names, onClose
     {shown < history.length && <button type="button" className="secondary history-more" onClick={() => setShown(value => value + 12)}>Show more matches · {history.length - shown} left</button>}
     <details className="history-details"><summary>About this history</summary>
       <p>Points are from {player.name}’s side. Their Pokémon and prizes appear first, followed by the opponent’s.</p>
-      <p>Trace points and the profile totals cover confirmed matches with both players’ Live ratings. Client-close games appear here too: their result is inferred, their Live Elo change is calculated, and they award no Trace points. Trace points are rounded to one decimal.</p>
+      <p>Trace points and the profile totals include recorded client-close defeats as losses when both players’ Live ratings are available. Their result is inferred from the client closing. The separate Live Elo change is calculated using the in-game ratings. Trace points are rounded to one decimal.</p>
       <p>Pokémon are the main ones seen in the recorded deck or match. A dash means that detail wasn’t recorded.</p>
       <p>The Live rating is the opponent’s in-game rating recorded with that match. For some older matches, we do not know exactly when the rating was captured. Some dates show when a match was imported.</p>
     </details></div>

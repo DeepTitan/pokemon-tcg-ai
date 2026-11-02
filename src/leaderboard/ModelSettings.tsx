@@ -41,7 +41,7 @@ export default function ModelSettings() {
     <div className="model-basics">
       <div>
         <h2>Which matches count?</h2>
-        <p>Ranked matches need a clear result and both players’ Live ratings recorded with the match. Matches without these details do not affect your score or appear in your match history.</p>
+        <p>Ranked matches need a result and both players’ Live ratings recorded with the match. Recorded client-close defeats count as losses and remain labeled in the history. Matches without these details do not affect your score or appear in your match history.</p>
       </div>
       <div>
         <h2>What happens when Live resets?</h2>

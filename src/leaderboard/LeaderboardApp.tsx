@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Crown, MagnifyingGlass } from '@phosphor-icons/react';
-import { ACTIVE_ELO_OPTIONS, prepareRankedEloEvents, replayEloRatings, type EloRatingUpdate as RatingUpdate } from './elo.js';
+import { ACTIVE_ELO_OPTIONS, prepareRankedEloEvents, traceRatingEvents, replayEloRatings, type EloRatingUpdate as RatingUpdate } from './elo.js';
 import RatingScore from './RatingScore.js';
 import ModelSettings from './ModelSettings.js';
 import TraceHeader from './TraceHeader.js';
@@ -73,8 +73,8 @@ export default function LeaderboardApp() {
     return () => { window.removeEventListener('hashchange', sync); window.removeEventListener('popstate', sync); };
   }, []);
   useEffect(() => startSnapshotRefresh({ url: LEADERBOARD_DATA_HREF, onSnapshot: setSnapshot, onStatus: setRefreshStatus }), []);
-  const result = useMemo(() => snapshot ? replayEloRatings(snapshot.matches, snapshot.players, { ...ACTIVE_ELO_OPTIONS, liveScaleCalibrations: snapshot.liveScaleCalibrations }) : null, [snapshot]);
-  const eligibleHistory = useMemo(() => snapshot ? prepareRankedEloEvents(snapshot.matches).accepted : [], [snapshot]);
+  const result = useMemo(() => snapshot ? replayEloRatings(traceRatingEvents(snapshot), snapshot.players, { ...ACTIVE_ELO_OPTIONS, liveScaleCalibrations: snapshot.liveScaleCalibrations }) : null, [snapshot]);
+  const eligibleHistory = useMemo(() => snapshot ? prepareRankedEloEvents(traceRatingEvents(snapshot)).accepted : [], [snapshot]);
   const profiles = useMemo(() => new Map(snapshot?.players.map(player => [player.id, player]) ?? []), [snapshot]);
   const names = useMemo(() => new Map(snapshot?.players.map(player => [player.id, player.name]) ?? []), [snapshot]);
   const ratingUpdates = useMemo(() => {
@@ -111,7 +111,7 @@ export default function LeaderboardApp() {
       {showMethod ? <div className="method-page"><a className="back-link" href={`${LEADERBOARD_HREF}${rankingView === 'trace' ? '?ranking=trace' : ''}`}>Back to leaderboard</a><ModelSettings/></div> : profileName !== null ? !result ? loading : selectedRow ? <PlayerProfile
         key={selectedRow.playerId} row={selectedRow} registered={selectedRegistered}
         rank={selectedRow.games ? (selectedRegistered ? registered : sorted).indexOf(selectedRow) + 1 : null}
-        rankScope={selectedRegistered ? 'registered' : 'all'} matches={[...eligibleHistory, ...(snapshot?.clientExitMatches ?? [])]}
+        rankScope={selectedRegistered ? 'registered' : 'all'} matches={eligibleHistory}
         updates={ratingUpdates.get(selectedRow.playerId) ?? []} names={names}
         latestLiveRating={selectedSeed?.latestLiveRating} liveRatingObservedAt={selectedSeed?.liveRatingObservedAt}
         liveRatingTiming={selectedSeed?.liveRatingTiming} liveRatingBefore={selectedSeed?.liveRatingBefore} liveRatingChange={selectedSeed?.liveRatingChange}
@@ -155,7 +155,7 @@ export default function LeaderboardApp() {
       </>}
       <section className="source-note" id="coverage"><details open={coverageOpen} onToggle={event => setCoverageOpen(event.currentTarget.open)}><summary>{showMethod ? 'About the match data' : 'Which matches count?'}</summary>
         {!showMethod && profileName === null && rankingView === 'live' && <p>Live rankings use each player’s latest in-game rating recorded by Trace. They cover observed players, not the full Pokémon TCG Live ladder, and may lag behind in-game changes or resets. Records and win rates cover the ranked matches recorded by Trace across all seasons.</p>}
-        {!showMethod && <p>A ranked match counts when Trace has the result and both players’ Live ratings. A Live rating is the in-game rating in Pokémon TCG Live. Missing ratings, conflicting ratings or an unclear result mean the match is left out.</p>}
+        {!showMethod && <p>A ranked match counts when Trace has the result and both players’ Live ratings. A Live rating is the in-game rating in Pokémon TCG Live. Recorded client-close defeats count as losses. Missing ratings, conflicting ratings or an unclear result mean the match is left out.</p>}
         <p>{result ? `${number(result.ratedMatchCount)} matches counted · ${number(result.rejectedMatches.length)} left out of this leaderboard.` : 'Loading match totals…'} Trace can only count recorded matches.</p>
         <details className="source-data-details"><summary>Notes about this data</summary>
           <p>Players are matched by their exact names. Changing a name can split a player’s match history.</p>
