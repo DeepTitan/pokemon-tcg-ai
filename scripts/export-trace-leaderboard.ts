@@ -9,6 +9,7 @@ import { gunzipSync } from 'node:zlib';
 
 import { projectHistoryPreview, mergeHistoryPreviews } from './leaderboard-history-preview.js';
 import { buildLeaderboardCardCatalog } from './leaderboard-card-catalog.js';
+import { competitiveRatingResult } from '../src/tracker/rating-model.js';
 import type { CardInfo } from '../src/tracker/types.js';
 import type { MatchHistoryPreview } from '../src/leaderboard/history.js';
 
@@ -26,6 +27,7 @@ export interface LeaderboardPlayer {
   liveRatingObservedAt?: string;
   liveRatingTiming?: 'pre-match' | 'post-match' | 'match-snapshot';
   liveRatingMatchId?: string;
+  liveRatingCalculated?: boolean;
   liveRatingBefore?: number;
   liveRatingChange?: number;
 }
@@ -115,6 +117,8 @@ export function buildLeaderboardDataset(inputs: readonly LeaderboardSourceReview
   const players = new Map<string, LeaderboardPlayer>();
   const candidates = new Map<string, LeaderboardMatch[]>();
   const observations = new Map<string, LiveRatingObservation>();
+  const exitResults: Array<{ id: string; at: string; playerIds: [string, string]; ratings: [number, number] }> = [];
+  const resultEvidence = new Map<string, Set<string>>();
   // Post-game metadata is separate: usable only after that game, never in its prediction.
   const postgame = new Map<string, { matchId: string; playerId: string; at: string; after: Set<number>; changes: Set<number>; conflict: boolean }>();
   const ratingEvidence = new Map<string, { matchId: string; playerId: string; values: Set<number>; sources: Set<string>; sourceConflict: boolean }>();
@@ -175,7 +179,22 @@ export function buildLeaderboardDataset(inputs: readonly LeaderboardSourceReview
     if (!id) { reject('missing-match-id'); continue; }
     if (!names[0] || !names[1] || names[0] === names[1]) { reject('missing-or-ambiguous-player'); continue; }
     if (!time) { reject('missing-timestamp'); continue; }
-    if (hasInferredExit(review)) { reject('inferred-client-exit'); continue; }
+    const result = text(review.winner);
+    if (result || review.result === 'draw' || record(review.outcome).type === 'draw') {
+      const evidence = resultEvidence.get(id) ?? new Set<string>();
+      evidence.add(JSON.stringify([[...names].sort(), result, review.result === 'draw' || record(review.outcome).type === 'draw']));
+      resultEvidence.set(id, evidence);
+    }
+    if (hasInferredExit(review)) {
+      // The tracker records a client-close defeat. It can inform the calculated
+      // Live display without admitting an inferred result to the Trace replay.
+      if (review.recording !== true && result === names[1] && review.result !== 'draw'
+        && record(review.outcome).type !== 'draw' && live[0] !== undefined && live[1] !== undefined) {
+        exitResults.push({ id, at: time.value, playerIds: names.map(leaderboardPlayerId) as [string, string],
+          ratings: [live[0], live[1]] });
+      }
+      reject('inferred-client-exit'); continue;
+    }
     if (review.recording === true) { reject('recording-incomplete'); continue; }
     const winner = text(review.winner);
     const explicitDraw = review.result === 'draw' || record(review.outcome).type === 'draw';
@@ -285,6 +304,23 @@ export function buildLeaderboardDataset(inputs: readonly LeaderboardSourceReview
     player.liveRatingMatchId = evidence.matchId;
     player.liveRatingBefore = before;
     player.liveRatingChange = change;
+  }
+  for (const result of exitResults.sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id))) {
+    if (matchesById.has(result.id) || resultEvidence.get(result.id)?.size !== 1
+      || result.playerIds.some(id => disputedRatingKeys.has(JSON.stringify([result.id, id])))) continue;
+    result.playerIds.forEach((id, index) => {
+      const player = players.get(id)!;
+      const before = result.ratings[index];
+      if (player.liveRatingTiming === 'post-match' || player.liveRatingMatchId !== result.id
+        || player.liveRatingObservedAt !== result.at || player.latestLiveRating !== before) return;
+      const calculated = competitiveRatingResult(before, result.ratings[1 - index], index === 1)!;
+      if (calculated.ratingAfter < 0) return;
+      player.latestLiveRating = calculated.ratingAfter;
+      player.liveRatingBefore = before;
+      player.liveRatingChange = calculated.change;
+      player.liveRatingTiming = 'post-match';
+      player.liveRatingCalculated = true;
+    });
   }
   const sortedPlayers = [...players.values()].sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
   return {
