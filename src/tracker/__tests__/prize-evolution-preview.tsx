@@ -18,7 +18,7 @@ function Preview() {
       status={{isCurrentTurn:true,supporterUsed:false,stadiumUsed:false,itemLocked:false}} stadiumCard={frame.stadium as Card} stadiumOwner="pau1ek"
       localPlayerName="isaiahw" opponentName="pau1ek" defeatedIds={new Set()} defeatedNames={new Set()} damageChanges={new Map()} positionChanges={new Map()}
       avatar="/tracker-assets/trainer-casey.png" onOpenPokemon={()=>{}} onOpenChoice={()=>{}} onOpenCard={card=>setInspector({kind:'card',card})}
-      onOpenZone={(title,subtitle,cards,visibility)=>setInspector({kind:'zone',title,subtitle,cards,visibility})}/>
+      onOpenZone={(title,subtitle,cards,visibility,layout)=>setInspector({kind:'zone',title,subtitle,cards,visibility,layout})}/>
     <ReviewOverlay inspector={inspector} catalog={catalog} onClose={()=>setInspector(null)} onInspectCard={card=>setInspector({kind:'card',card})}/>
   </main>;
 }
