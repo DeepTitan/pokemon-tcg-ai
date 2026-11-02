@@ -1,0 +1,1000 @@
+[
+  {
+    "name": "banban3200",
+    "before": 1766,
+    "opponentRating": 1756,
+    "predicted": -13,
+    "observed": 11,
+    "start": "2026-09-08T05:37:32.590Z",
+    "end": "2026-09-08T06:31:35.343Z",
+    "fromId": "live-5b68bb83cf884f91915a15fd666056f4:4109683a-4cd7-41f5-8bc5-fa1f239349d2",
+    "toId": "live-765ab5a42ef642e583516cb58a2664c1:c8fe4fae-7b1d-4fc7-9961-4e46f11e6fff",
+    "records": [
+      {
+        "id": "live-5b68bb83cf884f91915a15fd666056f4:4109683a-4cd7-41f5-8bc5-fa1f239349d2",
+        "localPlayer": "isaiahw",
+        "opponent": "banban3200",
+        "localRating": 1756,
+        "opponentRating": 1766,
+        "winner": "isaiahw",
+        "resultReason": null,
+        "importedAt": "2026-09-08T05:37:32.590Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-09-08T05:37:32.590Z",
+        "lastLabels": [
+          "Turn 4 \u00b7 Action 81",
+          "Turn 4 \u00b7 Action 82"
+        ]
+      },
+      {
+        "id": "live-765ab5a42ef642e583516cb58a2664c1:c8fe4fae-7b1d-4fc7-9961-4e46f11e6fff",
+        "localPlayer": "isaiahw",
+        "opponent": "banban3200",
+        "localRating": 1792,
+        "opponentRating": 1777,
+        "winner": "isaiahw",
+        "resultReason": null,
+        "importedAt": "2026-09-08T06:31:35.343Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-09-08T06:31:35.343Z",
+        "lastLabels": [
+          "Turn 3 \u00b7 Action 34",
+          "Turn 3 \u00b7 Action 35"
+        ]
+      }
+    ],
+    "finding": "Only two opponent observations; no intervening archive. Residual +24 remains unexplained."
+  },
+  {
+    "name": "Tswizz",
+    "before": 1601,
+    "opponentRating": 1608,
+    "predicted": 12,
+    "observed": -1,
+    "start": "2026-09-09T17:21:21.095Z",
+    "end": "2026-09-09T18:06:05.656Z",
+    "fromId": "live-c381d8b35ac244cbb4ce3d505f90ded8:416ab4e4-d1d8-4f38-bb52-cd86f3d0726c",
+    "toId": "live-b7044d5601614d1a99708b2087ee3d17:9b7bbf4f-a3ee-4b09-b3b3-a3ce4b146463",
+    "records": [
+      {
+        "id": "live-b7044d5601614d1a99708b2087ee3d17:9b7bbf4f-a3ee-4b09-b3b3-a3ce4b146463",
+        "localPlayer": "Tswizz",
+        "opponent": "R0sdan",
+        "localRating": 1600,
+        "opponentRating": 1598,
+        "winner": "Tswizz",
+        "resultReason": null,
+        "importedAt": "2026-09-09T18:06:05.656Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-09-09T18:06:05.656Z",
+        "lastLabels": [
+          "Turn 5 \u00b7 Action 66",
+          "Turn 5 \u00b7 Action 67"
+        ]
+      },
+      {
+        "id": "live-c381d8b35ac244cbb4ce3d505f90ded8:416ab4e4-d1d8-4f38-bb52-cd86f3d0726c",
+        "localPlayer": "Tswizz",
+        "opponent": "Guitar5646",
+        "localRating": 1601,
+        "opponentRating": 1608,
+        "winner": "Tswizz",
+        "resultReason": null,
+        "importedAt": "2026-09-09T17:21:21.095Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-09-09T17:21:21.095Z",
+        "lastLabels": [
+          "Turn 5 \u00b7 Action 67",
+          "Turn 5 \u00b7 Action 68"
+        ]
+      },
+      {
+        "id": "live-cb86bf1ac9a24f7182400f082b445cc8:c9d3933c-e19f-44aa-a94c-5679224bccad",
+        "localPlayer": "Tswizz",
+        "opponent": "Bababryant",
+        "localRating": 1613,
+        "opponentRating": 1623,
+        "winner": "Bababryant",
+        "resultReason": "local-client-closed",
+        "importedAt": "2026-09-09T17:33:55.032Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-09-09T17:33:55.032Z",
+        "lastLabels": [
+          "Turn 6 \u00b7 Action 83",
+          "Turn 6 \u00b7 Client closed"
+        ]
+      }
+    ],
+    "finding": "Excluded client-close loss vs Bababryant: 1601 \u2192 1613 \u2192 1600. Both steps match exactly."
+  },
+  {
+    "name": "Kaerukun_57",
+    "before": 1842,
+    "opponentRating": 1853,
+    "predicted": 12,
+    "observed": 21,
+    "start": "2026-09-14T05:31:01.613Z",
+    "end": "2026-09-14T06:01:09.840Z",
+    "fromId": "live-71efe9a517684597a2927d0884ae0d35:11792bab-fef5-4cb7-b109-4fefc11e7606",
+    "toId": "live-a2addeed1e5a4d02a0d94aac657bcf35:b761e427-6143-438b-9293-3a1482898eea",
+    "records": [
+      {
+        "id": "live-71efe9a517684597a2927d0884ae0d35:11792bab-fef5-4cb7-b109-4fefc11e7606",
+        "localPlayer": "isaiahw",
+        "opponent": "Kaerukun_57",
+        "localRating": 1853,
+        "opponentRating": 1842,
+        "winner": "Kaerukun_57",
+        "resultReason": null,
+        "importedAt": "2026-09-14T05:31:01.613Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-09-14T05:31:01.613Z",
+        "lastLabels": [
+          "Turn 17 \u00b7 Action 130",
+          "Turn 17 \u00b7 Action 131"
+        ]
+      },
+      {
+        "id": "live-a2addeed1e5a4d02a0d94aac657bcf35:b761e427-6143-438b-9293-3a1482898eea",
+        "localPlayer": "isaiahw",
+        "opponent": "Kaerukun_57",
+        "localRating": 1840,
+        "opponentRating": 1863,
+        "winner": "isaiahw",
+        "resultReason": null,
+        "importedAt": "2026-09-14T06:01:09.840Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-09-14T06:01:09.840Z",
+        "lastLabels": [
+          "Turn 32 \u00b7 Action 177",
+          "Turn 32 \u00b7 Action 178"
+        ]
+      }
+    ],
+    "finding": "Only two opponent observations; no intervening archive. Residual +9 remains unexplained."
+  },
+  {
+    "name": "Flor2nce",
+    "before": 1638,
+    "opponentRating": 1632,
+    "predicted": -13,
+    "observed": -27,
+    "start": "2026-09-15T18:41:32.244Z",
+    "end": "2026-09-15T19:27:47.300Z",
+    "fromId": "live-2c86b8ff537347c087adfc551cc9f6d1:7083c4bb-b030-476f-a3d2-c1d22b3af814",
+    "toId": "live-64d0eb148de446018c92eda90ceef8ec:4ff9e335-3e4b-4339-9848-dc4f6cdb46c3",
+    "records": [
+      {
+        "id": "live-2c86b8ff537347c087adfc551cc9f6d1:7083c4bb-b030-476f-a3d2-c1d22b3af814",
+        "localPlayer": "Flor2nce",
+        "opponent": "kazuo_poke",
+        "localRating": 1638,
+        "opponentRating": 1632,
+        "winner": "kazuo_poke",
+        "resultReason": null,
+        "importedAt": "2026-09-15T18:41:32.244Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-09-15T18:41:32.244Z",
+        "lastLabels": [
+          "Turn 3 \u00b7 Action 30",
+          "Turn 3 \u00b7 Action 31"
+        ]
+      },
+      {
+        "id": "live-64d0eb148de446018c92eda90ceef8ec:4ff9e335-3e4b-4339-9848-dc4f6cdb46c3",
+        "localPlayer": "Flor2nce",
+        "opponent": "MoG",
+        "localRating": 1611,
+        "opponentRating": 1610,
+        "winner": "Flor2nce",
+        "resultReason": null,
+        "importedAt": "2026-09-15T19:27:47.300Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-09-15T19:27:47.300Z",
+        "lastLabels": [
+          "Turn 3 \u00b7 Action 38",
+          "Turn 3 \u00b7 Action 39"
+        ]
+      },
+      {
+        "id": "live-91fbf0e0cb064c2791067405aa22442f:5ffec3e2-8ef5-4895-9543-309773e4c619",
+        "localPlayer": "Flor2nce",
+        "opponent": "Hirono427",
+        "localRating": 1625,
+        "opponentRating": 1586,
+        "winner": null,
+        "resultReason": null,
+        "importedAt": "2026-09-15T18:45:48.421Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-09-15T18:45:48.421Z",
+        "lastLabels": [
+          "Turn 2 \u00b7 Action 18",
+          "Turn 2 \u00b7 Action 19"
+        ]
+      }
+    ],
+    "finding": "Unfinished record vs Hirono427 starts at 1625. 1638 \u2192 1625 matches; a loss vs 1586 predicts 1611 exactly. Loss is inferred from ratings, not independently confirmed."
+  },
+  {
+    "name": "Flor2nce",
+    "before": 1611,
+    "opponentRating": 1610,
+    "predicted": 12,
+    "observed": 25,
+    "start": "2026-09-15T19:27:47.300Z",
+    "end": "2026-09-15T19:34:26.802Z",
+    "fromId": "live-64d0eb148de446018c92eda90ceef8ec:4ff9e335-3e4b-4339-9848-dc4f6cdb46c3",
+    "toId": "live-ad997361d0cb4992b83ba680c1bb6cde:33b926e6-b3ac-47b4-a475-c94a432cb3c6",
+    "records": [
+      {
+        "id": "live-64d0eb148de446018c92eda90ceef8ec:4ff9e335-3e4b-4339-9848-dc4f6cdb46c3",
+        "localPlayer": "Flor2nce",
+        "opponent": "MoG",
+        "localRating": 1611,
+        "opponentRating": 1610,
+        "winner": "Flor2nce",
+        "resultReason": null,
+        "importedAt": "2026-09-15T19:27:47.300Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-09-15T19:27:47.300Z",
+        "lastLabels": [
+          "Turn 3 \u00b7 Action 38",
+          "Turn 3 \u00b7 Action 39"
+        ]
+      },
+      {
+        "id": "live-ad997361d0cb4992b83ba680c1bb6cde:33b926e6-b3ac-47b4-a475-c94a432cb3c6",
+        "localPlayer": "Flor2nce",
+        "opponent": "Nicolasero",
+        "localRating": 1636,
+        "opponentRating": 1631,
+        "winner": "Flor2nce",
+        "resultReason": null,
+        "importedAt": "2026-09-15T19:34:26.802Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-09-15T19:34:26.802Z",
+        "lastLabels": [
+          "Turn 3 \u00b7 Action 44",
+          "Turn 3 \u00b7 Action 45"
+        ]
+      }
+    ],
+    "finding": "No intervening archive found. Predicted 1623; next observed 1636. Residual +13 remains unexplained."
+  },
+  {
+    "name": "TwelvePeers",
+    "before": 1697,
+    "opponentRating": 1679,
+    "predicted": -14,
+    "observed": -27,
+    "start": "2026-09-22T13:42:49.571Z",
+    "end": "2026-09-22T14:23:49.167Z",
+    "fromId": "live-6db06262825046b9876fac011e2fc04b:2c8954c0-26e5-4a49-8343-afdb35453c04",
+    "toId": "live-5ff2c57104bc4aa1a3c65b6ba7ac7ef0:573ea9f9-cbbc-4d3a-ba9a-941f5707bbb2",
+    "records": [
+      {
+        "id": "live-4e99d5e37a184b0d9efc8026cb9f9d98:5732c042-c669-4717-b028-2dfe0eede187",
+        "localPlayer": "TwelvePeers",
+        "opponent": "TVHenry010798",
+        "localRating": 1683,
+        "opponentRating": 1680,
+        "winner": "TVHenry010798",
+        "resultReason": "local-client-closed",
+        "importedAt": "2026-09-22T13:53:59.108Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-09-22T13:53:59.108Z",
+        "lastLabels": [
+          "Turn 1 \u00b7 Action 14",
+          "Turn 1 \u00b7 Client closed"
+        ]
+      },
+      {
+        "id": "live-5ff2c57104bc4aa1a3c65b6ba7ac7ef0:573ea9f9-cbbc-4d3a-ba9a-941f5707bbb2",
+        "localPlayer": "TwelvePeers",
+        "opponent": "kaxxi23",
+        "localRating": 1670,
+        "opponentRating": 1689,
+        "winner": "TwelvePeers",
+        "resultReason": null,
+        "importedAt": "2026-09-22T14:23:49.167Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-09-22T14:23:49.167Z",
+        "lastLabels": [
+          "Turn 1 \u00b7 Action 13",
+          "Turn 1 \u00b7 Action 14"
+        ]
+      },
+      {
+        "id": "live-6db06262825046b9876fac011e2fc04b:2c8954c0-26e5-4a49-8343-afdb35453c04",
+        "localPlayer": "TwelvePeers",
+        "opponent": "bamyu",
+        "localRating": 1697,
+        "opponentRating": 1679,
+        "winner": "bamyu",
+        "resultReason": null,
+        "importedAt": "2026-09-22T13:42:49.571Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-09-22T13:42:49.571Z",
+        "lastLabels": [
+          "Turn 4 \u00b7 Action 73",
+          "Turn 4 \u00b7 Action 74"
+        ]
+      }
+    ],
+    "finding": "Excluded client-close loss vs TVHenry010798: 1697 \u2192 1683 \u2192 1670. Both steps match exactly."
+  },
+  {
+    "name": "TwelvePeers",
+    "before": 1763,
+    "opponentRating": 1751,
+    "predicted": -13,
+    "observed": -26,
+    "start": "2026-09-22T18:11:35.670Z",
+    "end": "2026-09-22T18:28:04.000Z",
+    "fromId": "live-2e38cb5902c74182ae635f2203c6d5e5:3ccfde19-a473-41af-acf4-4dcfdfa211d0",
+    "toId": "live-9c23c5ea93e847cda7ca00de48bc738b:7f3f6684-ad99-40e1-bb7c-26eb8a3eed62",
+    "records": [
+      {
+        "id": "live-2ccc1fd187344f66a63d0ed3f5d59b34:f2b68b28-fdeb-4f77-80e8-c98f77380a68",
+        "localPlayer": "TwelvePeers",
+        "opponent": "DenDen",
+        "localRating": 1750,
+        "opponentRating": 1737,
+        "winner": "DenDen",
+        "resultReason": "local-client-closed",
+        "importedAt": "2026-09-22T18:14:35.499Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-09-22T18:14:35.499Z",
+        "lastLabels": [
+          "Turn 1 \u00b7 Action 8",
+          "Turn 1 \u00b7 Client closed"
+        ]
+      },
+      {
+        "id": "live-2e38cb5902c74182ae635f2203c6d5e5:3ccfde19-a473-41af-acf4-4dcfdfa211d0",
+        "localPlayer": "TwelvePeers",
+        "opponent": "Andio875",
+        "localRating": 1763,
+        "opponentRating": 1751,
+        "winner": "Andio875",
+        "resultReason": null,
+        "importedAt": "2026-09-22T18:11:35.670Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-09-22T18:11:35.670Z",
+        "lastLabels": [
+          "Turn 2 \u00b7 Action 17",
+          "Turn 2 \u00b7 Action 18"
+        ]
+      },
+      {
+        "id": "live-9c23c5ea93e847cda7ca00de48bc738b:7f3f6684-ad99-40e1-bb7c-26eb8a3eed62",
+        "localPlayer": "TwelvePeers",
+        "opponent": "MinatosErbe",
+        "localRating": 1737,
+        "opponentRating": 1724,
+        "winner": "MinatosErbe",
+        "resultReason": null,
+        "importedAt": "2026-09-22T18:28:04.000Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-09-22T18:28:04.000Z",
+        "lastLabels": [
+          "Turn 2 \u00b7 Action 25",
+          "Turn 3 \u00b7 Action 26"
+        ]
+      }
+    ],
+    "finding": "Excluded client-close loss vs DenDen: 1763 \u2192 1750 \u2192 1737. Both steps match exactly."
+  },
+  {
+    "name": "TwelvePeers",
+    "before": 1565,
+    "opponentRating": 1528,
+    "predicted": -14,
+    "observed": -27,
+    "start": "2026-09-23T23:00:10.379Z",
+    "end": "2026-09-23T23:24:32.371Z",
+    "fromId": "live-43f2e94aba93456580f8c2ffefb79cf0:4b780768-eb6f-4c82-9490-c9ebc977fb67",
+    "toId": "live-a51d63450fdc46bea62dd5851bee52ea:4ff9e335-3e4b-4339-9848-dc4f6cdb46c3",
+    "records": [
+      {
+        "id": "live-43f2e94aba93456580f8c2ffefb79cf0:4b780768-eb6f-4c82-9490-c9ebc977fb67",
+        "localPlayer": "TwelvePeers",
+        "opponent": "xorrokawaii",
+        "localRating": 1565,
+        "opponentRating": 1528,
+        "winner": "xorrokawaii",
+        "resultReason": null,
+        "importedAt": "2026-09-23T23:00:10.379Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-09-23T23:00:10.379Z",
+        "lastLabels": [
+          "Turn 5 \u00b7 Action 43",
+          "Turn 5 \u00b7 Action 44"
+        ]
+      },
+      {
+        "id": "live-552808e82acd4af5bf82fbd97efe1fd3:2c8954c0-26e5-4a49-8343-afdb35453c04",
+        "localPlayer": "TwelvePeers",
+        "opponent": "Vincent_TCGO",
+        "localRating": 1551,
+        "opponentRating": 1549,
+        "winner": "Vincent_TCGO",
+        "resultReason": "local-client-closed",
+        "importedAt": "2026-09-23T23:08:25.850Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-09-23T23:08:25.850Z",
+        "lastLabels": [
+          "Turn 3 \u00b7 Promotion",
+          "Turn 3 \u00b7 Client closed"
+        ]
+      },
+      {
+        "id": "live-a51d63450fdc46bea62dd5851bee52ea:4ff9e335-3e4b-4339-9848-dc4f6cdb46c3",
+        "localPlayer": "TwelvePeers",
+        "opponent": "Maxikaaa77",
+        "localRating": 1538,
+        "opponentRating": 1517,
+        "winner": "TwelvePeers",
+        "resultReason": null,
+        "importedAt": "2026-09-23T23:24:32.371Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-09-23T23:24:32.371Z",
+        "lastLabels": [
+          "Turn 4 \u00b7 Action 77",
+          "Turn 4 \u00b7 Action 78"
+        ]
+      }
+    ],
+    "finding": "Excluded client-close loss vs Vincent_TCGO: 1565 \u2192 1551 \u2192 1538. Both steps match exactly."
+  },
+  {
+    "name": "TwelvePeers",
+    "before": 1598,
+    "opponentRating": 1588,
+    "predicted": 12,
+    "observed": -2,
+    "start": "2026-10-02T21:16:08.634Z",
+    "end": "2026-10-02T22:02:10.263Z",
+    "fromId": "live-6475c06ee5af4ce594642e5fb9fe574f:16773183-4e1d-493f-8bd0-41769e15e1fe",
+    "toId": "live-7c005c658755473e90e5c87a3c480474:4ff9e335-3e4b-4339-9848-dc4f6cdb46c3",
+    "records": [
+      {
+        "id": "live-6475c06ee5af4ce594642e5fb9fe574f:16773183-4e1d-493f-8bd0-41769e15e1fe",
+        "localPlayer": "TwelvePeers",
+        "opponent": "DUBNATION",
+        "localRating": 1598,
+        "opponentRating": 1588,
+        "winner": "TwelvePeers",
+        "resultReason": null,
+        "importedAt": "2026-10-02T21:16:08.634Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-10-02T21:16:08.634000Z",
+        "lastLabels": [
+          "Turn 5 \u00b7 Action 76",
+          "Turn 5 \u00b7 Action 77"
+        ]
+      },
+      {
+        "id": "live-7286ea85a785411d8302c238c254a69d:5732c042-c669-4717-b028-2dfe0eede187",
+        "localPlayer": "TwelvePeers",
+        "opponent": "PokeMasterShack",
+        "localRating": 1610,
+        "opponentRating": 1593,
+        "winner": "PokeMasterShack",
+        "resultReason": "local-client-closed",
+        "importedAt": "2026-10-02T21:43:53.190Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-10-02T21:43:53.190000Z",
+        "lastLabels": [
+          "Turn 5 \u00b7 Action 65",
+          "Turn 5 \u00b7 Client closed"
+        ]
+      },
+      {
+        "id": "live-7c005c658755473e90e5c87a3c480474:4ff9e335-3e4b-4339-9848-dc4f6cdb46c3",
+        "localPlayer": "TwelvePeers",
+        "opponent": "GiraffeVGC",
+        "localRating": 1596,
+        "opponentRating": 1568,
+        "winner": "TwelvePeers",
+        "resultReason": null,
+        "importedAt": "2026-10-02T22:02:10.263Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-10-02T22:02:10.263000Z",
+        "lastLabels": [
+          "Turn 2 \u00b7 Action 23",
+          "Turn 2 \u00b7 Action 24"
+        ]
+      }
+    ],
+    "finding": "Excluded client-close loss vs PokeMasterShack: 1598 \u2192 1610 \u2192 1596. Both steps match exactly."
+  },
+  {
+    "name": "TwelvePeers",
+    "before": 1621,
+    "opponentRating": 1606,
+    "predicted": 11,
+    "observed": -3,
+    "start": "2026-10-07T18:55:13.032Z",
+    "end": "2026-10-07T19:12:38.167Z",
+    "fromId": "live-1cb7d0baeac249b89960b47ada66e75c:983220a9-715a-4fce-8c9b-2c35ea026191",
+    "toId": "live-da46b40596ca4598940b71e068def661:5935ddec-4168-4853-9f1c-8704d20caa9a",
+    "records": [
+      {
+        "id": "live-1cb7d0baeac249b89960b47ada66e75c:983220a9-715a-4fce-8c9b-2c35ea026191",
+        "localPlayer": "TwelvePeers",
+        "opponent": "Glider-Pirot",
+        "localRating": 1621,
+        "opponentRating": 1606,
+        "winner": "TwelvePeers",
+        "resultReason": null,
+        "importedAt": "2026-10-07T18:55:13.032Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-10-07T18:55:13.032000Z",
+        "lastLabels": [
+          "Turn 2 \u00b7 Action 29",
+          "Turn 2 \u00b7 Action 30"
+        ]
+      },
+      {
+        "id": "live-da46b40596ca4598940b71e068def661:5935ddec-4168-4853-9f1c-8704d20caa9a",
+        "localPlayer": "TwelvePeers",
+        "opponent": "SethFlashFire",
+        "localRating": 1618,
+        "opponentRating": 1611,
+        "winner": "SethFlashFire",
+        "resultReason": null,
+        "importedAt": "2026-10-07T19:12:38.167Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-10-07T19:12:38.167000Z",
+        "lastLabels": [
+          "Turn 2 \u00b7 Action 18",
+          "Turn 2 \u00b7 Action 19"
+        ]
+      }
+    ],
+    "finding": "No intervening archive found. Predicted 1632; next observed 1618. Residual \u221214 remains unexplained."
+  },
+  {
+    "name": "JakePTCG",
+    "before": 1757,
+    "opponentRating": 1727,
+    "predicted": -14,
+    "observed": -29,
+    "start": "2026-10-07T19:10:28.927Z",
+    "end": "2026-10-07T20:09:00.483Z",
+    "fromId": "live-4b97968aece2462491847993a16f3d21:8ef29e48-7afe-484e-a2c7-dea1254622ab",
+    "toId": "live-44c75f5ff1d34b6097ffd7f9b7ebf7e0:07349b6c-753b-4fff-a231-1c4cab2d040a",
+    "records": [
+      {
+        "id": "live-28f1a66334234e4b95c0456895118fb2:197be8d0-e2e7-48bc-860d-3e9029959f52",
+        "localPlayer": "JakePTCG",
+        "opponent": "PokeSophi090815",
+        "localRating": null,
+        "opponentRating": null,
+        "winner": "JakePTCG",
+        "resultReason": null,
+        "importedAt": "2026-10-07T19:52:13.083Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-10-07T19:51:09.345000Z",
+        "lastLabels": [
+          "Turn 4 \u00b7 Action 27",
+          "Turn 4 \u00b7 Action 28"
+        ]
+      },
+      {
+        "id": "live-44c75f5ff1d34b6097ffd7f9b7ebf7e0:07349b6c-753b-4fff-a231-1c4cab2d040a",
+        "localPlayer": "JakePTCG",
+        "opponent": "arialace34",
+        "localRating": 1728,
+        "opponentRating": 1793,
+        "winner": "arialace34",
+        "resultReason": null,
+        "importedAt": "2026-10-07T20:09:00.483Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-10-07T20:09:00.483000Z",
+        "lastLabels": [
+          "Turn 6 \u00b7 Action 94",
+          "Turn 6 \u00b7 Action 95"
+        ]
+      },
+      {
+        "id": "live-4b97968aece2462491847993a16f3d21:8ef29e48-7afe-484e-a2c7-dea1254622ab",
+        "localPlayer": "JakePTCG",
+        "opponent": "bottithe69315",
+        "localRating": 1757,
+        "opponentRating": 1727,
+        "winner": "bottithe69315",
+        "resultReason": null,
+        "importedAt": "2026-10-07T19:10:28.927Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-10-07T19:10:28.927000Z",
+        "lastLabels": [
+          "Turn 3 \u00b7 Action 55",
+          "Turn 3 \u00b7 Action 56"
+        ]
+      },
+      {
+        "id": "live-507c1e7c78d54dcaab8f2b359ab9db7b:991f97d1-b56c-4327-b684-d1fc00c166e1",
+        "localPlayer": "JakePTCG",
+        "opponent": "OffDaChain3173",
+        "localRating": null,
+        "opponentRating": null,
+        "winner": "JakePTCG",
+        "resultReason": null,
+        "importedAt": "2026-10-07T19:20:17.971Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-10-07T19:20:17.971000Z",
+        "lastLabels": [
+          "Turn 5 \u00b7 Action 77",
+          "Turn 5 \u00b7 Action 78"
+        ]
+      },
+      {
+        "id": "live-b26c1a34399644b5a97f1f4436811867:a4da3f7c-3a32-4c2c-be1c-19d60fe04e07",
+        "localPlayer": "JakePTCG",
+        "opponent": "Sophia_0623",
+        "localRating": null,
+        "opponentRating": null,
+        "winner": "Sophia_0623",
+        "resultReason": null,
+        "importedAt": "2026-10-07T20:02:18.358Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-10-07T19:57:44.337000Z",
+        "lastLabels": [
+          "Turn 5 \u00b7 Action 29",
+          "Turn 5 \u00b7 Action 30"
+        ]
+      },
+      {
+        "id": "live-d23c2376ec0e46838fcbaed30bdbb4dd:197be8d0-e2e7-48bc-860d-3e9029959f52",
+        "localPlayer": "JakePTCG",
+        "opponent": "SaintMomboom",
+        "localRating": 1743,
+        "opponentRating": 1787,
+        "winner": null,
+        "resultReason": null,
+        "importedAt": "2026-10-07T19:36:03.915Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-10-07T19:36:03.915000Z",
+        "lastLabels": [
+          "Turn 5 \u00b7 Action 77",
+          "Turn 5 \u00b7 Action 78"
+        ]
+      }
+    ],
+    "finding": "Four intervening records: wins vs OffDaChain3173 and PokeSophi090815, loss vs Sophia_0623 (all missing ratings), plus unfinished SaintMomboom match at 1743 vs 1787. First step 1757 \u2192 1743 matches. Remaining sequence cannot be calculated from available ratings."
+  },
+  {
+    "name": "JakePTCG",
+    "before": 1654,
+    "opponentRating": 1607,
+    "predicted": 10,
+    "observed": -2,
+    "start": "2026-10-08T00:53:32.502Z",
+    "end": "2026-10-08T01:13:34.519Z",
+    "fromId": "live-c1a7279eb646493396687ee6a409479c:beb02a67-abc6-47de-a65a-f32e7c026e10",
+    "toId": "live-030cedede6814b19a650ccbaf2815449:c2eb9abb-9774-4b8f-901f-4fbf838da0ee",
+    "records": [
+      {
+        "id": "live-030cedede6814b19a650ccbaf2815449:c2eb9abb-9774-4b8f-901f-4fbf838da0ee",
+        "localPlayer": "JakePTCG",
+        "opponent": "Yarbroughs",
+        "localRating": 1652,
+        "opponentRating": 1632,
+        "winner": "JakePTCG",
+        "resultReason": null,
+        "importedAt": "2026-10-08T01:13:34.519Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-10-08T01:13:34.519000Z",
+        "lastLabels": [
+          "Turn 3 \u00b7 Action 50",
+          "Turn 3 \u00b7 Action 51"
+        ]
+      },
+      {
+        "id": "live-8de417e6a06e4d48afab2962ab0c3dc0:e7e6cd80-36aa-4e09-af18-0d1aa219af65",
+        "localPlayer": "JakePTCG",
+        "opponent": "rayuma",
+        "localRating": null,
+        "opponentRating": null,
+        "winner": "rayuma",
+        "resultReason": null,
+        "importedAt": "2026-10-08T01:10:43.857Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-10-08T01:08:38.598000Z",
+        "lastLabels": [
+          "Turn 3 \u00b7 Action 21",
+          "Turn 3 \u00b7 Action 22"
+        ]
+      },
+      {
+        "id": "live-c1a7279eb646493396687ee6a409479c:beb02a67-abc6-47de-a65a-f32e7c026e10",
+        "localPlayer": "JakePTCG",
+        "opponent": "chincheachilla",
+        "localRating": 1654,
+        "opponentRating": 1607,
+        "winner": "JakePTCG",
+        "resultReason": null,
+        "importedAt": "2026-10-08T00:53:32.502Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-10-08T00:53:32.502000Z",
+        "lastLabels": [
+          "Turn 6 \u00b7 Action 75",
+          "Turn 6 \u00b7 Action 76"
+        ]
+      }
+    ],
+    "finding": "Intervening confirmed loss vs rayuma has no ratings. First win predicts 1664; next observed 1652. Missing loss could explain \u221212, but cannot verify without opponent rating."
+  },
+  {
+    "name": "sugapon",
+    "before": 1663,
+    "opponentRating": 1645,
+    "predicted": -14,
+    "observed": -3,
+    "start": "2026-10-13T17:53:08.174Z",
+    "end": "2026-10-13T18:32:28.296Z",
+    "fromId": "live-af9e9d91f1e341908d2df1a85b0e4119:e7e6cd80-36aa-4e09-af18-0d1aa219af65",
+    "toId": "live-5d134dba8a3942edbc1a4509fa9184cf:d3614277-2363-4eef-9bcd-7f7033e11d87",
+    "records": [
+      {
+        "id": "live-5d134dba8a3942edbc1a4509fa9184cf:d3614277-2363-4eef-9bcd-7f7033e11d87",
+        "localPlayer": "JakePTCG",
+        "opponent": "sugapon",
+        "localRating": 1657,
+        "opponentRating": 1660,
+        "winner": "sugapon",
+        "resultReason": null,
+        "importedAt": "2026-10-13T18:32:28.296Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-10-13T18:32:28.296000Z",
+        "lastLabels": [
+          "Turn 5 \u00b7 Action 90",
+          "Turn 5 \u00b7 Action 91"
+        ]
+      },
+      {
+        "id": "live-af9e9d91f1e341908d2df1a85b0e4119:e7e6cd80-36aa-4e09-af18-0d1aa219af65",
+        "localPlayer": "JakePTCG",
+        "opponent": "sugapon",
+        "localRating": 1645,
+        "opponentRating": 1663,
+        "winner": "JakePTCG",
+        "resultReason": null,
+        "importedAt": "2026-10-13T17:53:08.174Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-10-13T17:53:08.174000Z",
+        "lastLabels": [
+          "Turn 6 \u00b7 Action 105",
+          "Turn 6 \u00b7 Action 106"
+        ]
+      }
+    ],
+    "finding": "Only two opponent observations; no intervening archive. Residual +11 remains unexplained."
+  },
+  {
+    "name": "JESPOSAN",
+    "before": 1599,
+    "opponentRating": 1609,
+    "predicted": 12,
+    "observed": 11,
+    "start": "2026-10-14T02:02:42.265Z",
+    "end": "2026-10-14T02:27:58.316Z",
+    "fromId": "live-7937bfcc338047379bff462acf51df9f:3715d646-8a6e-42ce-9dbe-45958ecb6ed1",
+    "toId": "live-9f9b257c9135403cb8b3484e4ecc8f0a:261c2f04-a4fb-46b2-9f5a-f131f6db46b8",
+    "records": [
+      {
+        "id": "live-7937bfcc338047379bff462acf51df9f:3715d646-8a6e-42ce-9dbe-45958ecb6ed1",
+        "localPlayer": "JakePTCG",
+        "opponent": "JESPOSAN",
+        "localRating": 1609,
+        "opponentRating": 1599,
+        "winner": "JESPOSAN",
+        "resultReason": null,
+        "importedAt": "2026-10-14T02:02:42.265Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-10-14T02:02:42.265000Z",
+        "lastLabels": [
+          "Turn 1 \u00b7 Action 1",
+          "Turn 1 \u00b7 Action 2"
+        ]
+      },
+      {
+        "id": "live-9f9b257c9135403cb8b3484e4ecc8f0a:261c2f04-a4fb-46b2-9f5a-f131f6db46b8",
+        "localPlayer": "JakePTCG",
+        "opponent": "JESPOSAN",
+        "localRating": 1608,
+        "opponentRating": 1610,
+        "winner": "JakePTCG",
+        "resultReason": null,
+        "importedAt": "2026-10-14T02:27:58.316Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-10-14T02:27:58.316000Z",
+        "lastLabels": [
+          "Turn 7 \u00b7 Action 113",
+          "Turn 7 \u00b7 Action 114"
+        ]
+      }
+    ],
+    "finding": "Only two opponent observations; no intervening archive. Residual \u22121 remains unexplained. Do not treat this as proven rounding error."
+  },
+  {
+    "name": "Arachiino",
+    "before": 1706,
+    "opponentRating": 1729,
+    "predicted": -12,
+    "observed": 0,
+    "start": "2026-10-29T19:36:47.822Z",
+    "end": "2026-10-29T20:09:28.048Z",
+    "fromId": "live-07581b8b973842f98b47c5d65c37c1c6:b288c210-e039-42ff-9baa-f58a514fddda",
+    "toId": "live-d6de474f45ec46ea9387517a3d7a8826:47621ae2-e413-40cf-9ce9-1c10c0e7fb77",
+    "records": [
+      {
+        "id": "live-07581b8b973842f98b47c5d65c37c1c6:b288c210-e039-42ff-9baa-f58a514fddda",
+        "localPlayer": "JakePTCG",
+        "opponent": "Arachiino",
+        "localRating": 1729,
+        "opponentRating": 1706,
+        "winner": "JakePTCG",
+        "resultReason": null,
+        "importedAt": "2026-10-29T19:36:47.822Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-10-29T19:36:47.822000Z",
+        "lastLabels": [
+          "Turn 6 \u00b7 Action 96",
+          "Turn 6 \u00b7 Action 97"
+        ]
+      },
+      {
+        "id": "live-d6de474f45ec46ea9387517a3d7a8826:47621ae2-e413-40cf-9ce9-1c10c0e7fb77",
+        "localPlayer": "JakePTCG",
+        "opponent": "Arachiino",
+        "localRating": 1715,
+        "opponentRating": 1706,
+        "winner": "JakePTCG",
+        "resultReason": null,
+        "importedAt": "2026-10-29T20:09:28.048Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-10-29T20:09:28.048000Z",
+        "lastLabels": [
+          "Turn 5 \u00b7 Action 86",
+          "Turn 5 \u00b7 Action 87"
+        ]
+      }
+    ],
+    "finding": "Only two opponent observations; no intervening archive. Residual +12 remains unexplained."
+  },
+  {
+    "name": "panther_1988",
+    "before": 1801,
+    "opponentRating": 1778,
+    "predicted": 11,
+    "observed": -3,
+    "start": "2026-11-01T02:09:11.074Z",
+    "end": "2026-11-01T02:27:10.782Z",
+    "fromId": "live-6b724a113e8447b38ebba0debfbdf11f:2856aee7-2fee-4d73-8366-0d262b018b71",
+    "toId": "live-3061a8e9c0b840dbab5f5b6ca9b314d4:2b1b4a3a-9bcd-4a94-88ba-36a59cc8bfee",
+    "records": [
+      {
+        "id": "live-6b724a113e8447b38ebba0debfbdf11f:2856aee7-2fee-4d73-8366-0d262b018b71",
+        "localPlayer": "SaintMomboom",
+        "opponent": "panther_1988",
+        "localRating": 1778,
+        "opponentRating": 1801,
+        "winner": "panther_1988",
+        "resultReason": null,
+        "importedAt": "2026-11-01T02:09:11.074Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-11-01T02:09:11.074000Z",
+        "lastLabels": [
+          "Turn 3 \u00b7 Action 41",
+          "Turn 3 \u00b7 Action 42"
+        ]
+      },
+      {
+        "id": "live-3061a8e9c0b840dbab5f5b6ca9b314d4:2b1b4a3a-9bcd-4a94-88ba-36a59cc8bfee",
+        "localPlayer": "AudioPusher",
+        "opponent": "panther_1988",
+        "localRating": 1808,
+        "opponentRating": 1798,
+        "winner": "panther_1988",
+        "resultReason": null,
+        "importedAt": "2026-11-01T02:27:10.782Z",
+        "playedAt": null,
+        "startedAt": null,
+        "recording": null,
+        "indexTime": "2026-11-01T02:27:10.782000Z",
+        "lastLabels": [
+          "Turn 6 \u00b7 Action 73",
+          "Turn 6 \u00b7 Action 74"
+        ]
+      }
+    ],
+    "finding": "Opponent observed by two different recorders. No intervening archive. Residual \u221214 remains unexplained."
+  }
+]
