@@ -129,10 +129,9 @@ function profile(snapshot, playerId) {
   const { row, rank, rankLabel, isRegistered, updates } = getPlayerPreviewData(snapshot, playerId);
   const names = new Map(snapshot.players.map(player => [player.id, player.name]));
   const playerUpdates = new Map(updates.filter(update => update.playerId === playerId).map(update => [update.matchId, update]));
-  // Only replay-accepted matches can appear; missing ranked Elo, duplicates and
-  // unconfirmed matches never acquire a fictitious rating change in this image.
+  // Only replay-accepted matches appear, including recorded client-close forfeits.
   const seen = new Set();
-  const history = snapshot.matches.filter(match => {
+  const history = [...snapshot.matches, ...(snapshot.clientExitMatches ?? [])].filter(match => {
     if (!playerUpdates.has(match.id) || seen.has(match.id)) return false;
     seen.add(match.id); return true;
   }).sort((a, b) => b.playedAt.localeCompare(a.playedAt) || a.id.localeCompare(b.id)).slice(0, 6);
@@ -163,6 +162,7 @@ function profile(snapshot, playerId) {
         <rect x="39" y="${top}" width="4" height="59" fill="${color}"/>
         <rect x="54" y="${top + 13}" width="78" height="34" rx="2" fill="${color}"/>
         ${text(result, 93, top + 37, 20, 900, '#ffffff', 'text-anchor="middle"')}
+        ${match.resultReason === 'local-client-closed' ? text('Client closed', 93, top + 57, 9, 500, muted, 'text-anchor="middle"') : ''}
         ${text(delta(update.adjustment), 156, top + 37, 23, 800, update.adjustment > 0 ? '#287247' : update.adjustment < 0 ? '#a8443b' : ink)}
         ${text(fit(opponent, 182, 18), 287, top + 26, 18, 800)}
         ${text(played, 287, top + 46, 12, 600, muted)}
