@@ -8,4 +8,4 @@ export interface MatchHistoryPreview {
   players: Record<string, HistorySide>;
   durationSeconds?: number;
 }
-export type HistoryMatch = LiveEloEvent & { history?: MatchHistoryPreview };
+export type HistoryMatch = LiveEloEvent & { history?: MatchHistoryPreview; resultReason?: 'local-client-closed' };

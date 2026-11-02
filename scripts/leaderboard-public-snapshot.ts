@@ -24,6 +24,7 @@ export interface PublicLeaderboardSnapshot {
   sourceLabel: 'Trace matches';
   players: PublicLeaderboardPlayer[];
   matches: PublicLeaderboardMatch[];
+  clientExitMatches?: PublicLeaderboardMatch[];
   liveScaleCalibrations?: LiveScaleCalibration[];
 }
 
@@ -121,6 +122,13 @@ export function projectPublicLeaderboardSnapshot(input: unknown): PublicLeaderbo
     schema: 'trace-leaderboard/v1', generatedAt: text(snapshot.generatedAt, 'snapshot time'), sourceLabel: 'Trace matches',
     players: array(snapshot.players, 'players').map(projectPlayer), matches: array(snapshot.matches, 'matches').map(projectMatch),
   };
+  if (owns(snapshot, 'clientExitMatches')) {
+    result.clientExitMatches = array(snapshot.clientExitMatches, 'client-close matches').map(input => {
+      const source = object(input, 'client-close match');
+      if (source.confirmed !== false || source.resultReason !== 'local-client-closed') throw new TypeError('Invalid client-close match');
+      return { ...projectMatch(source), resultReason: 'local-client-closed' as const };
+    });
+  }
   if (owns(snapshot, 'liveScaleCalibrations')) {
     const calibrations = array(snapshot.liveScaleCalibrations, 'Live scale mappings').map(input => {
       const calibration = object(input, 'Live scale mapping');

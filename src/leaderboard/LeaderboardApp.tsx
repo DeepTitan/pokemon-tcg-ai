@@ -111,7 +111,7 @@ export default function LeaderboardApp() {
       {showMethod ? <div className="method-page"><a className="back-link" href={`${LEADERBOARD_HREF}${rankingView === 'trace' ? '?ranking=trace' : ''}`}>Back to leaderboard</a><ModelSettings/></div> : profileName !== null ? !result ? loading : selectedRow ? <PlayerProfile
         key={selectedRow.playerId} row={selectedRow} registered={selectedRegistered}
         rank={selectedRow.games ? (selectedRegistered ? registered : sorted).indexOf(selectedRow) + 1 : null}
-        rankScope={selectedRegistered ? 'registered' : 'all'} matches={eligibleHistory}
+        rankScope={selectedRegistered ? 'registered' : 'all'} matches={[...eligibleHistory, ...(snapshot?.clientExitMatches ?? [])]}
         updates={ratingUpdates.get(selectedRow.playerId) ?? []} names={names}
         latestLiveRating={selectedSeed?.latestLiveRating} liveRatingObservedAt={selectedSeed?.liveRatingObservedAt}
         liveRatingTiming={selectedSeed?.liveRatingTiming} liveRatingBefore={selectedSeed?.liveRatingBefore} liveRatingChange={selectedSeed?.liveRatingChange}

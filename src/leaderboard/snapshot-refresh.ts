@@ -17,6 +17,7 @@ export interface LeaderboardSnapshot {
   revision?: string;
   players: SnapshotPlayer[];
   matches: HistoryMatch[];
+  clientExitMatches?: HistoryMatch[];
   liveScaleCalibrations?: LiveScaleCalibration[];
 }
 export interface SnapshotRefreshStatus {
@@ -38,7 +39,10 @@ export function isLeaderboardSnapshot(value: unknown): value is LeaderboardSnaps
   if (!value.players.every(player => record(player) && text(player.id) && text(player.name)
     && ['latestLiveRating', 'liveRatingBefore', 'liveRatingChange'].every(key => player[key] === undefined || finite(player[key]))
     && (player.liveRatingObservedAt === undefined || text(player.liveRatingObservedAt)))) return false;
-  if (!value.matches.every(match => {
+  if (value.clientExitMatches !== undefined && (!Array.isArray(value.clientExitMatches)
+    || !value.clientExitMatches.every(match => record(match) && match.confirmed === false
+      && match.resultReason === 'local-client-closed'))) return false;
+  if (![...value.matches, ...(value.clientExitMatches as unknown[] ?? [])].every(match => {
     if (!record(match) || !text(match.id) || !text(match.playedAt) || typeof match.confirmed !== 'boolean'
       || !Array.isArray(match.playerIds) || !match.playerIds.every(text) || !record(match.outcome)
       || !['win', 'draw'].includes(String(match.outcome.type))) return false;
@@ -132,7 +136,7 @@ export function startSnapshotRefresh(options: {
           if (controller.signal.aborted) throw new Error('The refresh timed out.');
           if (!isLeaderboardSnapshot(data)) throw new Error('Invalid leaderboard snapshot.');
           // Build timestamps alone do not require replaying every player's rating.
-          const nextFingerprint = JSON.stringify([data.schema, data.sourceLabel, data.players, data.matches, data.liveScaleCalibrations]);
+          const nextFingerprint = JSON.stringify([data.schema, data.sourceLabel, data.players, data.matches, data.clientExitMatches, data.liveScaleCalibrations]);
           if (!(data.revision && data.revision === revision)) {
             if (nextFingerprint !== fingerprint) options.onSnapshot(data);
             fingerprint = nextFingerprint;

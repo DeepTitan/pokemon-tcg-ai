@@ -11,7 +11,7 @@ import { projectHistoryPreview, mergeHistoryPreviews } from './leaderboard-histo
 import { buildLeaderboardCardCatalog } from './leaderboard-card-catalog.js';
 import { competitiveRatingResult } from '../src/tracker/rating-model.js';
 import type { CardInfo } from '../src/tracker/types.js';
-import type { MatchHistoryPreview } from '../src/leaderboard/history.js';
+import type { HistoryMatch, MatchHistoryPreview } from '../src/leaderboard/history.js';
 
 type Json = Record<string, unknown>;
 export interface LeaderboardSourceReview {
@@ -117,7 +117,7 @@ export function buildLeaderboardDataset(inputs: readonly LeaderboardSourceReview
   const players = new Map<string, LeaderboardPlayer>();
   const candidates = new Map<string, LeaderboardMatch[]>();
   const observations = new Map<string, LiveRatingObservation>();
-  const exitResults: Array<{ id: string; at: string; playerIds: [string, string]; ratings: [number, number] }> = [];
+  const exitResults: Array<{ id: string; at: string; playerIds: [string, string]; ratings: [number, number]; history?: MatchHistoryPreview }> = [];
   const resultEvidence = new Map<string, Set<string>>();
   // Post-game metadata is separate: usable only after that game, never in its prediction.
   const postgame = new Map<string, { matchId: string; playerId: string; at: string; after: Set<number>; changes: Set<number>; conflict: boolean }>();
@@ -191,7 +191,7 @@ export function buildLeaderboardDataset(inputs: readonly LeaderboardSourceReview
       if (review.recording !== true && result === names[1] && review.result !== 'draw'
         && record(review.outcome).type !== 'draw' && live[0] !== undefined && live[1] !== undefined) {
         exitResults.push({ id, at: time.value, playerIds: names.map(leaderboardPlayerId) as [string, string],
-          ratings: [live[0], live[1]] });
+          ratings: [live[0], live[1]], history: review.history as MatchHistoryPreview | undefined });
       }
       reject('inferred-client-exit'); continue;
     }
@@ -305,9 +305,19 @@ export function buildLeaderboardDataset(inputs: readonly LeaderboardSourceReview
     player.liveRatingBefore = before;
     player.liveRatingChange = change;
   }
+  const clientExitMatches = new Map<string, HistoryMatch>();
   for (const result of exitResults.sort((a, b) => a.at.localeCompare(b.at) || a.id.localeCompare(b.id))) {
     if (matchesById.has(result.id) || resultEvidence.get(result.id)?.size !== 1
       || result.playerIds.some(id => disputedRatingKeys.has(JSON.stringify([result.id, id])))) continue;
+    if (!clientExitMatches.has(result.id)) {
+      const namesById = result.playerIds.map(id => players.get(id)!.name);
+      clientExitMatches.set(result.id, { id: result.id, playedAt: result.at, playerIds: result.playerIds,
+        confirmed: false, resultReason: 'local-client-closed',
+        outcome: { type: 'win', winnerId: result.playerIds[1] },
+        liveRatings: Object.fromEntries(result.playerIds.map((id, index) => [id, result.ratings[index]])),
+        ...(result.history ? { history: { ...result.history, players: Object.fromEntries(result.playerIds.map((id, index) => [id, result.history!.players[namesById[index]] ?? {}])) } } : {}),
+      });
+    }
     result.playerIds.forEach((id, index) => {
       const player = players.get(id)!;
       const before = result.ratings[index];
@@ -329,6 +339,7 @@ export function buildLeaderboardDataset(inputs: readonly LeaderboardSourceReview
     sourceLabel: 'Local Trace archive and cached cloud reviews',
     players: sortedPlayers,
     matches,
+    clientExitMatches: [...clientExitMatches.values()],
     liveRatingObservations: sortedObservations,
     diagnostics: {
       inputRecords: inputs.length, humanSourceRecords, uniqueObservedMatchIds: observedIds.size,

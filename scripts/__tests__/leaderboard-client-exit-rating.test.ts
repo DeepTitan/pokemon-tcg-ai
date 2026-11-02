@@ -31,3 +31,18 @@ assert.equal(published(build(exit, { ...exit, resultReason: undefined, winner: '
 assert.notEqual(published(build(exit, { ...exit, localRating: 1600 })).players.find(p => p.name === 'seality5')!.liveRatingTiming, 'post-match',
   'Either disputed starting rating blocks the calculation');
 console.log('Client-close Live ratings: correct loss, no Trace admission, no double application, newer observations and conflicts respected');
+assert.equal(view.clientExitMatches?.length, 1);
+assert.equal(view.clientExitMatches![0].confirmed, false);
+assert.equal(view.clientExitMatches![0].resultReason, 'local-client-closed');
+assert.deepEqual(view.clientExitMatches![0].liveRatings, Object.fromEntries(view.players.map(p => [p.id, p.liveRatingBefore])));
+assert.equal(published(build(exit, exit)).clientExitMatches?.length, 1, 'Duplicate captures create one history row');
+assert.equal(published(build(exit, future)).clientExitMatches?.length, 1, 'Keep historical client-close games after a newer observation');
+assert.equal(published(build(exit, { ...exit, localRating: 1600 })).clientExitMatches?.length, 0, 'Do not publish a disputed client-close calculation');
+const secretHistory = build({ ...exit, rawLog: 'PRIVATE', history: { players: {
+  isaiahw: { pokemon: { name: 'Dragapult ex', cardId: 'sv6_130', secret: 'PRIVATE' }, prizesTaken: 1, decklist: 'PRIVATE' },
+  seality5: { prizesTaken: 2 },
+}, rawLog: 'PRIVATE' } });
+const safe = published(secretHistory);
+assert.ok(!JSON.stringify(safe).includes('PRIVATE'));
+assert.equal(safe.clientExitMatches![0].history!.players[isaiah.id].prizesTaken, 1);
+assert.throws(() => projectPublicLeaderboardSnapshot({ ...view, clientExitMatches: [{ ...view.clientExitMatches![0], confirmed: true }] }));
