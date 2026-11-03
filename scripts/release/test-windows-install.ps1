@@ -136,7 +136,7 @@ try {
 
     # Standard WebView2 accessibility switch, scoped to this test process. No
     # app-side fixture, mocked IPC, or test feature exists in the release binary.
-    $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--force-renderer-accessibility=complete'
+    $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--force-renderer-accessibility=complete --remote-debugging-port=9222'
     $recorder = Start-Process $tracePath -PassThru
     $null = Wait-Until { Find-Control 'Set up Trace' -Button } 'fresh-install setup screen'
     Assert-NoNotification
@@ -197,6 +197,13 @@ try {
     $receipt.passed = $true
 } catch {
     $receipt.error = $_.Exception.Message
+    try {
+        & node "$PSScriptRoot/read-windows-setup-diagnostics.mjs" (Join-Path $outputRoot 'native-status.json')
+        Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
+            Where-Object LocalPort -in @(80, 443) |
+            Select-Object LocalAddress, LocalPort, OwningProcess, @{Name='Process';Expression={(Get-Process -Id $_.OwningProcess).ProcessName}} |
+            ConvertTo-Json | Set-Content (Join-Path $outputRoot 'listener-status.json')
+    } catch { Write-Warning "Could not save native diagnostics: $_" }
     try { Save-UiEvidence 'failure' } catch { Write-Warning "Could not save UI evidence: $_" }
     throw
 } finally {
@@ -204,6 +211,8 @@ try {
     # Copy only diagnostics, never device credentials, private keys, or profile data.
     Get-ChildItem (Join-Path $profileRoot 'capture') -Filter '*errors.log' -ErrorAction SilentlyContinue |
         Copy-Item -Destination $outputRoot
+    $routeEvents = Join-Path $profileRoot 'capture/capture-route-events.jsonl'
+    if (Test-Path $routeEvents) { Copy-Item $routeEvents -Destination $outputRoot }
     if ($recorder) {
         $recorder.Refresh()
         if (-not $recorder.HasExited) { Stop-Process -Id $recorder.Id -Force }
