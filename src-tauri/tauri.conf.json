@@ -19,6 +19,7 @@
     },
     "windows": [
       {
+        "create": false,
         "title": "Trace",
         "url": "tracker.html",
         "width": 1440,

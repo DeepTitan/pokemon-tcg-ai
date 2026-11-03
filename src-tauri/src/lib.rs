@@ -8,6 +8,7 @@ mod capture_hosts;
 #[cfg(any(target_os = "macos", target_os = "windows", test))]
 mod capture_health;
 mod cards;
+mod background;
 mod cloud_sync;
 mod deck_access;
 mod membership;
@@ -194,20 +195,28 @@ async fn open_leaderboard() -> Result<(), String> {
 }
 
 #[tauri::command]
-fn tracker_environment(app: tauri::AppHandle) -> TrackerEnvironment {
-    let pid = pokemon_client_pid();
-    TrackerEnvironment {
-        client_installed: pokemon_client_installed(),
-        client_running: pid.is_some(),
-        pid,
-        capture_mode: capture_mode(),
-        capture: capture::status(&app),
-    }
+async fn tracker_environment(app: tauri::AppHandle) -> Result<TrackerEnvironment, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let pid = pokemon_client_pid();
+        TrackerEnvironment {
+            client_installed: pokemon_client_installed(),
+            client_running: pid.is_some(),
+            pid,
+            capture_mode: capture_mode(),
+            capture: capture::status(&app),
+        }
+    })
+    .await
+    .map_err(|error| format!("Could not check the capture setup: {error}"))
 }
 
 #[tauri::command]
-fn capture_status(app: tauri::AppHandle) -> CaptureStatus {
-    capture::status(&app)
+async fn capture_status(app: tauri::AppHandle) -> Result<CaptureStatus, String> {
+    // Certificate and helper checks invoke system commands. Keep them off the
+    // UI thread so a slow OS response cannot freeze setup or the recorder UI.
+    tauri::async_runtime::spawn_blocking(move || capture::status(&app))
+        .await
+        .map_err(|error| format!("Could not check recording status: {error}"))
 }
 
 #[tauri::command]
@@ -410,7 +419,12 @@ async fn request_capture_permission(app: tauri::AppHandle) -> Result<CaptureStat
 
 #[tauri::command]
 async fn start_tracking(app: tauri::AppHandle) -> Result<CaptureStatus, String> {
-    capture::start(app).await
+    let background = app.state::<background::BackgroundState>();
+    let _operation = background.operation.lock().await;
+    let status = capture::start(app.clone()).await?;
+    background.remember_recording(true)?;
+    background::report_error(&app, None);
+    Ok(status)
 }
 
 #[tauri::command]
@@ -536,8 +550,13 @@ async fn resolve_card_sources(
 }
 
 #[tauri::command]
-fn stop_tracking(app: tauri::AppHandle) -> CaptureStatus {
-    capture::stop(&app)
+async fn stop_tracking(app: tauri::AppHandle) -> Result<CaptureStatus, String> {
+    let background = app.state::<background::BackgroundState>();
+    let _operation = background.operation.lock().await;
+    background.remember_recording(false)?;
+    let status = capture::stop(&app);
+    background::report_error(&app, None);
+    Ok(status)
 }
 
 #[tauri::command]
@@ -552,11 +571,8 @@ pub fn run() {
     {
         builder = builder.plugin(tauri_plugin_clipboard_manager::init());
         builder = builder.plugin(tauri_plugin_process::init());
-        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            if !background::is_background_launch(&args) { background::show_window(app); }
         }));
         builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
         builder = builder.on_tray_icon_event(|app, event| {
@@ -568,11 +584,7 @@ pub fn run() {
                     ..
                 }
             ) {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.unminimize();
-                    let _ = window.set_focus();
-                }
+                background::show_window(app);
             }
         });
     }
@@ -596,6 +608,7 @@ pub fn run() {
             let cloud_sync = cloud_sync::CloudSync::new(cloud_sync_path);
             app.manage(storage.clone());
             app.manage(cloud_sync.clone());
+            app.manage(background::BackgroundState::load(app.path().app_data_dir()?.join("background-recording.json")));
             let membership = membership::Membership::new();
             app.manage(membership.clone());
             let membership_cloud = cloud_sync.clone();
@@ -612,11 +625,20 @@ pub fn run() {
                     tokio::time::sleep(std::time::Duration::from_secs(20)).await;
                 }
             });
+            background::setup(app.handle())?;
             Ok(())
         })
         .on_window_event(|window, event| {
-            if matches!(event, tauri::WindowEvent::Destroyed) {
-                capture::shutdown(window.app_handle());
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main" {
+                    api.prevent_close();
+                    // Drop the webview, not the recorder. Reopening creates a
+                    // fresh archive from SQLite, including games captured while
+                    // no UI existed (or its event loop was suspended).
+                    let _ = window.destroy();
+                    #[cfg(target_os = "macos")]
+                    let _ = window.app_handle().set_activation_policy(tauri::ActivationPolicy::Accessory);
+                }
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -642,19 +664,36 @@ pub fn run() {
             request_capture_permission,
             start_tracking,
             stop_tracking,
+            background::background_status,
+            background::set_launch_at_login,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Trace")
         .run(|app, event| {
-            if matches!(
-                event,
-                tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
-            ) {
-                capture::shutdown(app);
+            match event {
+                tauri::RunEvent::ExitRequested { code, api, .. } => {
+                    if code.is_none() && app.webview_windows().is_empty() {
+                        // Windows normally exits when its last window closes.
+                        // The tray and native recorder still own this process.
+                        api.prevent_exit();
+                        return;
+                    }
+                    // Restart is protected by the updater's client-closed guard.
+                    // Explicit quit must not pull the recorder out of a live game.
+                    if code != Some(tauri::RESTART_EXIT_CODE) && pokemon_client_pid().is_some() {
+                        api.prevent_exit();
+                        background::report_error(app, Some("Finish your match and close Pokémon TCG Live before quitting Trace. Closing Trace's window keeps recording in the background.".into()));
+                        background::show_window(app);
+                    }
+                }
+                tauri::RunEvent::Exit => capture::shutdown(app),
+                #[cfg(target_os = "macos")]
+                tauri::RunEvent::Reopen { .. } => background::show_window(app),
+                _ => {}
             }
         });
 }
 
 pub fn run_privileged_helper_if_requested() -> bool {
-    privileged::run_if_requested()
+    background::uninstall_if_requested() || privileged::run_if_requested()
 }

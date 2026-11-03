@@ -171,8 +171,16 @@ browser approval remain to be observed during the coordinated release.
 ## Optional deeper packaged UI coverage
 
 The normal release path's copied macOS app launch checks only that its process
-stays alive. Windows E2E currently tests native/reducer behavior and privileged
-route-cleanup commands, not the GUI.
+stays alive. Both held candidates and public releases now require a separate,
+fresh Windows runner to install the signed NSIS package and exercise the real
+first-run UI. It verifies certificate trust, active routing before readiness,
+absence of error notifications, persisted recording preferences, window
+close/reopen, the registered sign-in task, crash cleanup, and uninstall. The
+job receives no signing secrets and stores screenshots plus a JSON receipt as
+`windows-first-install-<tag>`. It does not launch Pokémon or test a real match.
+The hosted runner is already elevated, so the test does not exercise the UAC
+consent prompt. `scripts/release/test-windows-install.ps1` refuses to run on a
+non-hosted machine because setup changes its certificate store and hosts file.
 
 Hosted runners can isolate fixture tests from the owner's installed Trace,
 but a deterministic packaged fixture harness is still needed. Startup opens
@@ -181,7 +189,7 @@ and starts cloud sync. A fresh profile enters onboarding that cannot be
 dismissed before capture setup succeeds. Browser-only mocks therefore do not
 isolate native side effects or make the account controls reachable.
 
-Deeper UI automation would use a separate, nonpublishing hosted macOS/Windows
+Deeper membership UI automation would use a separate, nonpublishing hosted macOS/Windows
 fixture job with no provider or signing secrets, an optional native fixture
 feature and a separate Tauri identifier. Its startup should use synthetic
 storage and local service fixtures, bypass privileged capture setup and route

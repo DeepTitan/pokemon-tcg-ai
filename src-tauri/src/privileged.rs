@@ -25,7 +25,7 @@ use std::{
 const HELPER_ARGUMENT: &str = "--match-lens-capture-helper";
 // Increment this only when the privileged routing protocol or helper behavior
 // changes. App-only releases must continue reusing an already-approved helper.
-const HELPER_VERSION: &str = "0.1.12";
+const HELPER_VERSION: &str = "0.1.13";
 const HELPER_LABEL: &str = "com.isaiahw.matchlens.capture-helper";
 const LEGACY_HELPER_PATH: &str =
     "/Library/PrivilegedHelperTools/com.isaiahw.matchlens.capture-helper";
@@ -386,9 +386,14 @@ fn process_uid(pid: u32) -> Option<u32> {
 }
 
 fn established_game_destinations(pid: u32) -> Result<Vec<IpAddr>, String> {
+    // Socket inspection does not need filesystem metadata. Network volumes
+    // (for example WebDAV drives) can block lsof's stat/readlink calls and
+    // strand the capture manager before it ever installs the game route.
     let output = Command::new("/usr/sbin/lsof")
         .args([
             "-nP",
+            "-b",
+            "-w",
             "-a",
             "-p",
             &pid.to_string(),
@@ -693,36 +698,7 @@ fn pf_rules(interface: &str, ips: &[IpAddr]) -> String {
     rules
 }
 
-fn reconnect_rules(interface: &str, ips: &[IpAddr]) -> String {
-    ips.iter()
-        .map(|ip| {
-            format!(
-                "block return-rst out quick on {interface} {} proto tcp from any to {ip} port 443\n",
-                if ip.is_ipv4() { "inet" } else { "inet6" }
-            )
-        })
-        .collect()
-}
-
-fn pf_state_kill_args(ip: IpAddr) -> [String; 4] {
-    [
-        "-k".to_owned(),
-        if ip.is_ipv4() { "0.0.0.0/0" } else { "::/0" }.to_owned(),
-        "-k".to_owned(),
-        ip.to_string(),
-    ]
-}
-
-fn kill_existing_pf_states(ips: &[IpAddr]) -> Result<(), String> {
-    for ip in ips {
-        let args = pf_state_kill_args(*ip);
-        let args = args.iter().map(String::as_str).collect::<Vec<_>>();
-        pfctl(&args, None)?;
-    }
-    Ok(())
-}
-
-fn enable_pf(pid: u32, ips: &[IpAddr]) -> Result<String, String> {
+fn enable_pf(ips: &[IpAddr]) -> Result<String, String> {
     let interface = default_interface()?;
     let enabled = pfctl(&["-E"], None)?;
     let token = enabled
@@ -731,30 +707,10 @@ fn enable_pf(pid: u32, ips: &[IpAddr]) -> Result<String, String> {
         .and_then(|value| value.split_whitespace().next())
         .map(str::to_owned)
         .ok_or("macOS did not return a Packet Filter ownership token.".to_owned())?;
-    let reset_rules = reconnect_rules(&interface, ips);
-    if let Err(error) = pfctl(&["-a", PF_ANCHOR, "-f", "-"], Some(&reset_rules)) {
-        let mut token = Some(token);
-        disable_pf(&mut token);
-        return Err(error);
-    }
-    // PF state deletion alone does not close an established application
-    // socket. With the scoped return-rst rules active first, the next packet
-    // on each stale Pokémon connection is rejected back to TCG Live, which
-    // reconnects without restarting or leaving the game.
-    if let Err(error) = kill_existing_pf_states(ips) {
-        let mut token = Some(token);
-        disable_pf(&mut token);
-        return Err(error);
-    }
-    for _ in 0..40 {
-        let stale_connection_active = established_game_destinations(pid)
-            .map(|active| active.iter().any(|ip| ips.contains(ip)))
-            .unwrap_or(false);
-        if !stale_connection_active {
-            break;
-        }
-        thread::sleep(Duration::from_millis(100));
-    }
+    // Arm routing for new connections only. Never reset existing game
+    // sockets: even a short interruption can strand TCG Live mid-action.
+    // The manager waits for the client to close before installing this route.
+    // If the client launches during that check, existing PF states survive.
     let rules = pf_rules(&interface, ips);
     if let Err(error) = pfctl(&["-a", PF_ANCHOR, "-f", "-"], Some(&rules)) {
         let mut token = Some(token);
@@ -810,7 +766,7 @@ fn handle_client(mut stream: UnixStream, owner_uid: u32) {
                 } else {
                     match pokemon_server_ips().and_then(|ips| {
                         let next_relay = start_relay()?;
-                        match enable_pf(pokemon_pid, &ips) {
+                        match enable_pf(&ips) {
                             Ok(next_token) => Ok((ips, next_relay, next_token)),
                             Err(error) => {
                                 next_relay.stop();
@@ -889,8 +845,8 @@ pub fn run_if_requested() -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        enclosing_app_bundle, helper_install_command, helper_plist, pf_rules, pf_state_kill_args,
-        reconnect_rules, HelperInstallSource, HELPER_BUNDLE_EXECUTABLE_PATH,
+        enclosing_app_bundle, helper_install_command, helper_plist, pf_rules,
+        HelperInstallSource, HELPER_BUNDLE_EXECUTABLE_PATH,
     };
     use std::{
         net::{IpAddr, Ipv4Addr},
@@ -949,40 +905,12 @@ mod tests {
     }
 
     #[test]
-    fn stale_state_cleanup_is_scoped_to_the_game_server_destination() {
-        let game_ip = IpAddr::V4(Ipv4Addr::new(3, 86, 122, 250));
-        assert_eq!(
-            pf_state_kill_args(game_ip),
-            ["-k", "0.0.0.0/0", "-k", "3.86.122.250"].map(str::to_owned)
-        );
-    }
-
-    #[test]
     fn ipv6_game_servers_are_routed_through_ipv6_loopback() {
         let game_ip = "2600:1f18:24e6:b901::1".parse().unwrap();
         let rules = pf_rules("en0", &[game_ip]);
         assert_eq!(
             rules,
             "rdr pass on lo0 inet6 proto tcp from any to 2600:1f18:24e6:b901::1 port 443 -> ::1 port 443\npass out quick on en0 inet6 proto tcp from any port 49000:49099 to 2600:1f18:24e6:b901::1 port 443\npass out quick on en0 route-to (lo0 ::1) inet6 proto tcp from any to 2600:1f18:24e6:b901::1 port 443\n"
-        );
-        assert_eq!(
-            pf_state_kill_args(game_ip),
-            ["-k", "::/0", "-k", "2600:1f18:24e6:b901::1"].map(str::to_owned)
-        );
-    }
-
-    #[test]
-    fn stale_connections_receive_a_scoped_tcp_reset() {
-        let rules = reconnect_rules(
-            "en0",
-            &[
-                IpAddr::V4(Ipv4Addr::new(3, 86, 122, 250)),
-                IpAddr::V6("2600:1f18:24e6:b901::1".parse().unwrap()),
-            ],
-        );
-        assert_eq!(
-            rules,
-            "block return-rst out quick on en0 inet proto tcp from any to 3.86.122.250 port 443\nblock return-rst out quick on en0 inet6 proto tcp from any to 2600:1f18:24e6:b901::1 port 443\n"
         );
     }
 }

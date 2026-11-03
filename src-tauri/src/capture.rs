@@ -75,6 +75,7 @@ fn hidden_windows_command(program: &str) -> Command {
 #[derive(Default)]
 pub struct CaptureState {
     pub enabled: AtomicBool,
+    pub recording_paused: AtomicBool,
     pub observer_running: AtomicBool,
     pub route_active: AtomicBool,
     pub manager_running: AtomicBool,
@@ -121,7 +122,7 @@ trait StreamRecorder: Sync {
 
 impl StreamRecorder for Recorder {
     fn inspect(&self, data: &[u8], host: &str) {
-        if !self.state.enabled.load(Ordering::Relaxed) {
+        if !self.state.enabled.load(Ordering::Relaxed) || self.state.recording_paused.load(Ordering::Relaxed) {
             return;
         }
         self.state.frame_count.fetch_add(1, Ordering::Relaxed);
@@ -761,7 +762,7 @@ pub fn status(app: &AppHandle) -> CaptureStatus {
     let client_pid = crate::pokemon_client_pid();
     CaptureStatus {
         permission_ready: permission_ready(app),
-        enabled: state.enabled.load(Ordering::Relaxed),
+        enabled: state.enabled.load(Ordering::Relaxed) && !state.recording_paused.load(Ordering::Relaxed),
         observer_running: state.observer_running.load(Ordering::Relaxed),
         route_active: state.route_active.load(Ordering::Relaxed),
         client_attached: state.enabled.load(Ordering::Relaxed)
@@ -1544,47 +1545,9 @@ fn release_route(state: &Arc<CaptureState>) {
     }
 }
 
-// TCG Live holds two HTTPS connections open in its home/lobby screen and opens
-// another connection for a live match. Never install or refresh capture routing
-// while that match connection exists: both the macOS PF handoff and the legacy
-// Windows reconnect path can interrupt the game. A short stable-lobby window
-// also protects startup during matchmaking and the transition out of a game.
+// Socket counts are only a status hint. Neither platform may change routing
+// for a running client: a reconnecting match can have no established sockets.
 const ACTIVE_MATCH_CONNECTION_FLOOR: usize = 3;
-const SAFE_ATTACH_STABLE_POLLS: u8 = 5;
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum SafeAttachState {
-    MatchInProgress,
-    Stabilizing,
-    Ready,
-}
-
-#[derive(Default)]
-struct SafeAttachGuard {
-    safe_polls: u8,
-    saw_match: bool,
-}
-
-impl SafeAttachGuard {
-    fn observe(&mut self, game_server_connections: usize) -> SafeAttachState {
-        if game_server_connections >= ACTIVE_MATCH_CONNECTION_FLOOR {
-            self.safe_polls = 0;
-            self.saw_match = true;
-            return SafeAttachState::MatchInProgress;
-        }
-        self.safe_polls = self.safe_polls.saturating_add(1);
-        if self.safe_polls >= SAFE_ATTACH_STABLE_POLLS {
-            SafeAttachState::Ready
-        } else {
-            SafeAttachState::Stabilizing
-        }
-    }
-
-    fn reset(&mut self) {
-        self.safe_polls = 0;
-        self.saw_match = false;
-    }
-}
 
 fn activate_route(state: &Arc<CaptureState>, pokemon_pid: u32) -> Result<(), String> {
     if !CaptureManager::may_activate(state) {
@@ -1648,7 +1611,45 @@ trait CaptureManagerIo {
     fn activate(&mut self, state: &Arc<CaptureState>, pid: u32) -> Result<(), String>;
 }
 
-struct SystemCaptureManagerIo;
+struct SystemCaptureManagerIo {
+    event_path: PathBuf,
+}
+
+impl SystemCaptureManagerIo {
+    fn record_event(&self, event: &str, client_pid: Option<u32>, error: Option<&str>) {
+        // Keep a bounded local timeline without packet contents, player names,
+        // credentials, or match data. Logging must never gate capture/cleanup.
+        if let Some(parent) = self.event_path.parent() {
+            if fs::create_dir_all(parent).is_err() {
+                return;
+            }
+        }
+        if fs::metadata(&self.event_path).is_ok_and(|meta| meta.len() >= 1_048_576) {
+            let previous = self.event_path.with_extension("previous.jsonl");
+            if previous.exists() && fs::remove_file(&previous).is_err() {
+                return;
+            }
+            if fs::rename(&self.event_path, previous).is_err() {
+                return;
+            }
+        }
+        let mut options = OpenOptions::new();
+        options.create(true).append(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        if let Ok(mut file) = options.open(&self.event_path) {
+            let line = serde_json::json!({
+                "at": unix_timestamp(), "event": event,
+                "appPid": std::process::id(), "clientPid": client_pid,
+                "error": error,
+            });
+            let _ = writeln!(file, "{line}");
+        }
+    }
+}
 
 impl CaptureManagerIo for SystemCaptureManagerIo {
     fn client_pid(&mut self) -> Option<u32> {
@@ -1666,16 +1667,28 @@ impl CaptureManagerIo for SystemCaptureManagerIo {
         route_addresses_current(state)
     }
     fn release(&mut self, state: &Arc<CaptureState>) {
+        let active = state.route_active.load(Ordering::Relaxed);
+        if active {
+            self.record_event("route_release_started", None, None);
+        }
         release_route(state);
+        if active {
+            self.record_event("route_release_finished", None, None);
+        }
     }
     fn activate(&mut self, state: &Arc<CaptureState>, pid: u32) -> Result<(), String> {
-        activate_route(state, pid)
+        self.record_event("route_activation_started", Some(pid), None);
+        let result = activate_route(state, pid);
+        self.record_event(
+            if result.is_ok() { "route_activation_finished" } else { "route_activation_failed" },
+            Some(pid), result.as_ref().err().map(String::as_str),
+        );
+        result
     }
 }
 
 #[derive(Default)]
 struct CaptureManager {
-    attach_guard: SafeAttachGuard,
     idle_watch: crate::capture_health::IdleRouteWatch,
     refresh_pending: bool,
     last_observed_pid: Option<u32>,
@@ -1684,16 +1697,7 @@ struct CaptureManager {
 impl CaptureManager {
     fn may_activate(state: &CaptureState) -> bool {
         state.enabled.load(Ordering::Relaxed) && !state.terminate.load(Ordering::Relaxed)
-    }
-
-    fn defer_unknown(&mut self, state: &CaptureState, error: String) -> std::time::Duration {
-        self.attach_guard.reset();
-        state.waiting_for_match_end.store(true, Ordering::Relaxed);
-        state.match_in_progress.store(true, Ordering::Relaxed);
-        if let Ok(mut last_error) = state.last_error.lock() {
-            *last_error = Some(error);
-        }
-        std::time::Duration::from_secs(1)
+            && !state.recording_paused.load(Ordering::Relaxed)
     }
 
     fn tick(
@@ -1704,7 +1708,6 @@ impl CaptureManager {
     ) -> std::time::Duration {
         if !state.enabled.load(Ordering::Relaxed) || state.terminate.load(Ordering::Relaxed) {
             io.release(state);
-            self.attach_guard.reset();
             self.refresh_pending = false;
             self.idle_watch = crate::capture_health::IdleRouteWatch::default();
             state.waiting_for_match_end.store(false, Ordering::Relaxed);
@@ -1713,11 +1716,18 @@ impl CaptureManager {
         }
 
         let pokemon_pid = io.client_pid();
-        if pokemon_pid != self.last_observed_pid {
-            self.attach_guard.reset();
-            self.last_observed_pid = pokemon_pid;
-        }
+        self.last_observed_pid = pokemon_pid;
         let check_idle = self.idle_watch.observe(pokemon_pid, now_ms);
+        if state.recording_paused.load(Ordering::Relaxed) {
+            // Pause retention immediately, but preserve forwarding until the
+            // client closes. Pausing must never disconnect a running game.
+            if pokemon_pid.is_none() && self.idle_watch.absence_confirmed() && io.client_pid().is_none() {
+                io.release(state);
+                self.refresh_pending = false;
+            }
+            state.waiting_for_match_end.store(false, Ordering::Relaxed);
+            return std::time::Duration::from_millis(750);
+        }
         if state.route_active.load(Ordering::Relaxed) {
             let routed_pid = state.routed_pid.load(Ordering::Relaxed);
             let client_started = pokemon_pid.is_some() && routed_pid == 0;
@@ -1775,17 +1785,14 @@ impl CaptureManager {
                 }
                 io.release(state);
                 self.refresh_pending = false;
-                self.attach_guard.reset();
             }
-            // With a running client, keep the old route until the existing
-            // stable-lobby safety guard permits the normal handoff below.
+            // Keep the existing route until the client closes on both platforms.
         }
 
-        let Some(pokemon_pid) = pokemon_pid else {
+        if pokemon_pid.is_none() {
             if !self.idle_watch.absence_confirmed() || io.client_pid().is_some() {
                 return std::time::Duration::from_millis(500);
             }
-            self.attach_guard.reset();
             state.waiting_for_match_end.store(false, Ordering::Relaxed);
             state.match_in_progress.store(false, Ordering::Relaxed);
             if !Self::may_activate(state) {
@@ -1799,53 +1806,17 @@ impl CaptureManager {
                 }
             }
             return std::time::Duration::from_millis(500);
-        };
-
-        let connections = match io.connections(state, pokemon_pid) {
-            Ok(count) => count,
-            Err(error) => return self.defer_unknown(state, error),
-        };
-        let attach_state = self.attach_guard.observe(connections);
-        let match_in_progress = attach_state == SafeAttachState::MatchInProgress;
-        state
-            .match_in_progress
-            .store(match_in_progress, Ordering::Relaxed);
-        state.waiting_for_match_end.store(
-            match_in_progress
-                || (self.attach_guard.saw_match && attach_state != SafeAttachState::Ready),
-            Ordering::Relaxed,
-        );
-        if attach_state == SafeAttachState::Ready {
-            // DNS and process probes may take time. Recheck the exact
-            // client and match signal before any destructive route handoff.
-            if io.client_pid() != Some(pokemon_pid) {
-                self.attach_guard.reset();
-                return std::time::Duration::from_millis(500);
-            }
-            let final_connections = match io.connections(state, pokemon_pid) {
-                Ok(count) => count,
-                Err(error) => return self.defer_unknown(state, error),
-            };
-            if final_connections >= ACTIVE_MATCH_CONNECTION_FLOOR || !Self::may_activate(state) {
-                self.attach_guard.reset();
-                return std::time::Duration::from_millis(500);
-            }
-            io.release(state);
-            self.refresh_pending = false;
-            if let Err(error) = io.activate(state, pokemon_pid) {
-                if !error.contains("no active game-server connection") {
-                    if let Ok(mut last_error) = state.last_error.lock() {
-                        *last_error = Some(error);
-                    }
-                }
-            }
-            self.attach_guard.reset();
         }
-        std::time::Duration::from_secs(1)
+
+        // A background recorder may launch after the game during sign-in or
+        // crash recovery. Wait for a clean launch on both platforms.
+        state.match_in_progress.store(true, Ordering::Relaxed);
+        state.waiting_for_match_end.store(true, Ordering::Relaxed);
+        std::time::Duration::from_millis(750)
     }
 }
 
-fn ensure_manager(state: &Arc<CaptureState>) {
+fn ensure_manager(state: &Arc<CaptureState>, event_path: PathBuf) {
     if state.manager_running.swap(true, Ordering::Relaxed) {
         return;
     }
@@ -1854,11 +1825,23 @@ fn ensure_manager(state: &Arc<CaptureState>) {
     // async workers that forward the game's traffic.
     tauri::async_runtime::spawn_blocking(move || {
         let mut manager = CaptureManager::default();
-        let mut io = SystemCaptureManagerIo;
+        let mut io = SystemCaptureManagerIo { event_path };
+        io.record_event("manager_started", None, None);
+        let mut was_waiting = false;
         while !state.terminate.load(Ordering::Relaxed) {
-            std::thread::sleep(manager.tick(&state, &mut io, now_millis()));
+            let delay = manager.tick(&state, &mut io, now_millis());
+            let waiting = state.waiting_for_match_end.load(Ordering::Relaxed);
+            if waiting != was_waiting {
+                io.record_event(
+                    if waiting { "waiting_for_client_close" } else { "wait_finished" },
+                    manager.last_observed_pid, None,
+                );
+                was_waiting = waiting;
+            }
+            std::thread::sleep(delay);
         }
-        release_route(&state);
+        io.release(&state);
+        io.record_event("manager_stopped", None, None);
         state.waiting_for_match_end.store(false, Ordering::Relaxed);
         state.match_in_progress.store(false, Ordering::Relaxed);
         state.manager_running.store(false, Ordering::Relaxed);
@@ -1873,20 +1856,20 @@ pub async fn start(app: AppHandle) -> Result<CaptureStatus, String> {
     let state = app.state::<Arc<CaptureState>>().inner().clone();
     ensure_observer(&app, &state).await?;
     state.terminate.store(false, Ordering::Relaxed);
+    state.recording_paused.store(false, Ordering::Relaxed);
     state.enabled.store(true, Ordering::Relaxed);
     if let Ok(mut last_error) = state.last_error.lock() {
         *last_error = None;
     }
-    ensure_manager(&state);
+    ensure_manager(&state, capture_dir(&app)?.join("capture-route-events.jsonl"));
     Ok(status(&app))
 }
 
 pub fn stop(app: &AppHandle) -> CaptureStatus {
     let state = app.state::<Arc<CaptureState>>().inner().clone();
-    state.enabled.store(false, Ordering::Relaxed);
+    state.recording_paused.store(true, Ordering::Relaxed);
     state.waiting_for_match_end.store(false, Ordering::Relaxed);
     state.match_in_progress.store(false, Ordering::Relaxed);
-    release_route(&state);
     status(app)
 }
 
@@ -1906,7 +1889,7 @@ pub fn shutdown(app: &AppHandle) {
 
 #[cfg(test)]
 mod tests {
-    use super::{SafeAttachGuard, SafeAttachState, WebSocketInspector};
+    use super::WebSocketInspector;
     use flate2::{Compress, Compression, FlushCompress};
     use std::{
         io,
@@ -1914,36 +1897,6 @@ mod tests {
         task::{Context, Poll},
     };
     use tokio::io::AsyncWrite;
-
-    #[test]
-    fn safe_attach_waits_for_a_live_match_then_requires_a_stable_lobby() {
-        let mut guard = SafeAttachGuard::default();
-        assert_eq!(guard.observe(3), SafeAttachState::MatchInProgress);
-        assert!(guard.saw_match);
-        for _ in 0..super::SAFE_ATTACH_STABLE_POLLS - 1 {
-            assert_eq!(guard.observe(2), SafeAttachState::Stabilizing);
-        }
-        assert_eq!(guard.observe(2), SafeAttachState::Ready);
-    }
-
-    #[test]
-    fn safe_attach_does_not_mistake_the_two_lobby_sockets_for_a_match() {
-        let mut guard = SafeAttachGuard::default();
-        for _ in 0..super::SAFE_ATTACH_STABLE_POLLS - 1 {
-            assert_eq!(guard.observe(2), SafeAttachState::Stabilizing);
-        }
-        assert_eq!(guard.observe(2), SafeAttachState::Ready);
-        assert!(!guard.saw_match);
-    }
-
-    #[test]
-    fn a_match_socket_resets_lobby_stability() {
-        let mut guard = SafeAttachGuard::default();
-        assert_eq!(guard.observe(2), SafeAttachState::Stabilizing);
-        assert_eq!(guard.observe(2), SafeAttachState::Stabilizing);
-        assert_eq!(guard.observe(3), SafeAttachState::MatchInProgress);
-        assert_eq!(guard.observe(2), SafeAttachState::Stabilizing);
-    }
 
     #[cfg(target_os = "windows")]
     use std::net::TcpListener;

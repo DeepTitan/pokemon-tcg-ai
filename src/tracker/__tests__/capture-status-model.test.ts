@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { captureIndicator, visibleCaptureError } from '../capture-status-model.js';
+import { captureIndicator, visibleCaptureError, recordingNotice } from '../capture-status-model.js';
 import type { TrackerEnvironment } from '../types.js';
 
 function environment(overrides: Partial<TrackerEnvironment['capture']> = {}, clientRunning = true): TrackerEnvironment {
@@ -28,6 +28,8 @@ function environment(overrides: Partial<TrackerEnvironment['capture']> = {}, cli
 
 assert.deepEqual(captureIndicator(environment({ enabled: false })), { label: 'Paused', tone: 'paused' });
 assert.deepEqual(captureIndicator(environment({}, false)), { label: 'Ready', tone: 'ready' });
+assert.deepEqual(captureIndicator(environment({ routeActive: false }, false)), { label: 'Connecting', tone: 'connecting' });
+assert.deepEqual(captureIndicator(environment({ observerRunning: false }, false)), { label: 'Connecting', tone: 'connecting' });
 assert.deepEqual(captureIndicator(environment({ waitingForMatchEnd: true, matchInProgress: true, lastError: 'stale route warning' })), { label: 'Waiting', tone: 'waiting' });
 assert.equal(visibleCaptureError(environment({ waitingForMatchEnd: true, matchInProgress: true, lastError: 'stale route warning' })), null);
 assert.deepEqual(captureIndicator(environment()), { label: 'Connecting', tone: 'connecting' });
@@ -40,6 +42,14 @@ const healthyCaptureWithAuxiliaryFailure = environment({
 assert.deepEqual(captureIndicator(healthyCaptureWithAuxiliaryFailure), { label: 'Live', tone: 'live' });
 assert.equal(visibleCaptureError(healthyCaptureWithAuxiliaryFailure), null);
 assert.equal(visibleCaptureError(environment({ lastError: 'route failed' })), 'route failed');
+
+const firstInstall = environment({ permissionReady: false, enabled: false, lastError: 'Trace needs its one-time local capture permission first.' }, false);
+assert.equal(visibleCaptureError(firstInstall), null);
+assert.equal(recordingNotice(firstInstall, false, firstInstall.capture.lastError, null), null);
+assert.equal(recordingNotice(environment(), true, 'Resource temporarily unavailable (os error 35)', null), null);
+assert.equal(recordingNotice(environment(), false, 'Resource temporarily unavailable (os error 35)', null), 'Recording needs attention. Open Settings to reconnect Trace.');
+assert.equal(recordingNotice(environment(), false, null, null), null, 'recovery removes the recording notice');
+assert.match(recordingNotice(environment(), false, 'Sign-in registration failed', null)!, /automatic startup/);
 
 const trackerAppSource = readFileSync(new URL('../TrackerApp.tsx', import.meta.url), 'utf8');
 assert.match(trackerAppSource, /className="capture-safety-backdrop"/);
@@ -57,14 +67,16 @@ console.log('capture-status-model: healthy recordings, modal waiting state, and 
 
 // Capture startup and operation storage must stay independent of paid account checks.
 assert.doesNotMatch(trackerAppSource, /membershipSessionReady|membershipBlocked/);
-const automaticCapture = trackerAppSource.match(/useEffect\(\(\) => \{\s*if \(sharedMode \|\| !isTauri\(\) \|\| !environment\.capture\.permissionReady[\s\S]*?\}, \[[^\]]+\]\);/)?.[0];
+const backgroundSource = readFileSync(new URL('../../../src-tauri/src/background.rs', import.meta.url), 'utf8');
+const automaticCapture = backgroundSource.match(/if state\.should_record\(\) && permission_ready \{[\s\S]*?drop\(_operation\);/)?.[0];
 const manualCapture = trackerAppSource.match(/const changeTracking = useCallback\([\s\S]*?\}, \[[^\]]+\]\);/)?.[0];
 assert.ok(automaticCapture, 'automatic capture startup remains covered');
 assert.ok(manualCapture, 'manual capture toggle remains covered');
 for (const capturePath of [automaticCapture, manualCapture]) {
   assert.doesNotMatch(capturePath, /membership|traceAccess|fullHistory|showStudyUpgrade/);
-  assert.match(capturePath, /startTracking\(\)/);
 }
+assert.match(automaticCapture, /crate::capture::start\(app.clone\(\)\)/);
+assert.match(manualCapture, /startTracking\(\)/);
 const recorderSource = readFileSync(new URL('../../../src-tauri/src/capture.rs', import.meta.url), 'utf8');
 assert.doesNotMatch(recorderSource, /admit_match|require_trace/);
 // Opponent privacy redaction must never gate native recording or own inventory.

@@ -35,5 +35,9 @@
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
+  ${If} $UpdateMode <> 1
+    IfFileExists "$INSTDIR\${MAINBINARYNAME}.exe" 0 +2
+      ExecWait '"$INSTDIR\${MAINBINARYNAME}.exe" --trace-uninstall-background'
+  ${EndIf}
   !insertmacro TRACE_CLEAN_CAPTURE_ROUTE
 !macroend

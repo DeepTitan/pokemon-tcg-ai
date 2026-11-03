@@ -1,0 +1,61 @@
+name: Trace background recording
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/trace-recording-socket-check]
+  pull_request:
+    paths:
+      - 'src-tauri/**'
+      - 'src/tracker/**'
+      - 'scripts/release/test-windows-background.ps1'
+      - 'scripts/release/test-windows-install.ps1'
+      - '.github/workflows/trace-release-checkpoint.yml'
+      - '.github/workflows/trace-background-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          cache-on-failure: true
+      - run: npm ci --ignore-scripts
+      - run: node scripts/release/trace-release-checkpoint.test.mjs
+      - name: Validate Windows install test syntax
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $parseErrors = $null
+          $tokens = $null
+          $null = [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path 'scripts/release/test-windows-install.ps1'), [ref]$tokens, [ref]$parseErrors)
+          if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
+      - run: npm run tracker:test-setup
+      - run: npm run tracker:build
+      - run: cargo test --manifest-path src-tauri/Cargo.toml --lib --locked
+      - name: Validate real Windows sign-in registration
+        if: runner.os == 'Windows'
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib --locked windows_sign_in_task_registers_with_scheduler -- --ignored
+      - name: Build native executable
+        # main.rs suppresses the Windows console in production. Apply that
+        # setting to the executable without rebuilding every dependency in release.
+        run: cargo rustc --manifest-path src-tauri/Cargo.toml --locked --bin match-lens -- -C debug-assertions=no
+      - name: Verify Windows background startup and window lifecycle
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/release/test-windows-background.ps1

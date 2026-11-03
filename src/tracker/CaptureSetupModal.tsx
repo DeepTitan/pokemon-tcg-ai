@@ -4,7 +4,7 @@ import { replayShortcut, replayShortcutFrame } from './replay-shortcuts.js';
 import type { KeyMoment } from './key-moment-navigation.js';
 import { check } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
-import { getTrackerEnvironment, isTauri, requestCapturePermission, startTracking } from './tauri.js';
+import { getTrackerEnvironment, isTauri, requestCapturePermission, startTracking, setLaunchAtLogin } from './tauri.js';
 import type { CaptureStatus } from './types.js';
 import { createSetupFlow, initialSetup, setupBusy, setupLabel, type SetupState } from './setup-flow.js';
 
@@ -93,6 +93,7 @@ export function CaptureSetupModal({ onClose, onCapture }: { onClose: () => void;
         };
       },
       permission: requestCapturePermission, start: startTracking, restart: relaunch,
+      background: () => setLaunchAtLogin(true),
       capture: capture => captureCallback.current(capture),
     }, setState);
     flow.current = controller;
@@ -119,7 +120,7 @@ export function CaptureSetupView({ state, onClose, onAction }: { state: SetupSta
   }}>
     <header className="capture-onboarding-header"><img src="/tracker-assets/trace-mascot.png" alt="" /><div><span>Your Trace</span><h2 id="capture-setup-title">{state.phase === 'ready' ? 'Trace is ready' : 'Set up Trace'}</h2></div></header>
     <p id="capture-setup-description" className="capture-onboarding-intro" role={state.phase === 'failed' ? 'alert' : 'status'} aria-live="polite">{state.message}</p>
-    {state.phase === 'ready' ? <><h3 className="setup-demo-heading">How to review your games</h3><KeyboardGuide /></> : <p className="capture-privacy-disclosure">By connecting, Trace securely sends and stores captured match data, including player names and game actions.</p>}
+    {state.phase === 'ready' ? <><h3 className="setup-demo-heading">How to review your games</h3><KeyboardGuide /></> : <><p>Trace will start in the background when you sign in and keep recording when you close its window. You can pause recording or turn off startup in Settings.</p><p className="capture-privacy-disclosure">By connecting, Trace securely sends and stores captured match data, including player names and game actions.</p></>}
     <div className="connect-actions setup-single-action"><button className="primary connect-capture-button" type="button" disabled={busy} onClick={state.phase === 'ready' ? onClose : onAction}>{busy && <CircleNotch size={16} className="capture-connect-spinner" />}{setupLabel(state.phase)}</button></div>
   </section></div>;
 }
