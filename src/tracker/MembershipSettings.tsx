@@ -31,9 +31,10 @@ export function MembershipSettings({ status, onRefresh, onChange }: {
     {status?.capabilities?.fullHistory
       ? <p>Full replay history and unlimited sharing are included.</p>
       : <><p>Share 1 new replay every 7 days. Trace Pro adds full history and unlimited sharing for $4.99/month or $49.99/year.</p><p>Older matches stay saved. Upgrade to replay them anytime.</p></>}
+    {status?.purchaseAccount && <p>Your account was created with your checkout email. {status.traceAccess ? 'Pro is ready on this device.' : 'Manage your membership to restore Pro.'} Sign in with that email to use your account elsewhere.</p>}
     {link && <div className="membership-link-code"><p>Confirm this code in your browser.</p><strong>{link.userCode}</strong><a href={link.verificationUrl} target="_blank" rel="noreferrer">Open account linking</a></div>}
     {!notConfigured && <div className="membership-actions">
-      {status?.linked ? <><button type="button" disabled={busy} onClick={() => void run(openMembershipAccount)}>Manage membership</button><button type="button" disabled={busy} onClick={() => void run(async () => { onChange(await unlinkMembership()); setLink(null); })}>Unlink this device</button></>
+      {status?.linked ? <><button type="button" disabled={busy} onClick={() => void run(() => openMembershipAccount(status.purchaseAccount ? 'billing' : 'account'))}>Manage membership</button>{!status.purchaseAccount && <button type="button" disabled={busy} onClick={() => void run(async () => { onChange(await unlinkMembership()); setLink(null); })}>Unlink this device</button>}</>
         : <button className="primary" type="button" disabled={busy || !status} onClick={() => void run(async () => setLink(await linkMembership()))}>{busy ? 'Opening…' : 'Link account'}</button>}
       {!status?.linked && <button type="button" disabled={busy} onClick={() => void run(() => openMembershipAccount('plans'))}>View plans</button>}
       <button type="button" disabled={busy} onClick={() => void run(onRefresh)}>Refresh account</button>

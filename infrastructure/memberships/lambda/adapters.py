@@ -104,6 +104,37 @@ class Store:
     def capture_device(self, device):
         return self.devices.get_item(Key={'deviceId': device}, ConsistentRead=True).get('Item')
 
+    def device_purchase(self, device):
+        return self.get('DEVICE_PURCHASE#' + device)
+
+    def bind_device_purchase(self, device, record, lease, now):
+        self.transact([
+            self.lock_check('DEVICE_PURCHASE#' + device, lease, now),
+            {'ConditionCheck': {'TableName': self.devices.name,
+                'Key': self.serialized({'deviceId': device}), 'ConditionExpression': 'tokenHash = :hash',
+                'ExpressionAttributeValues': self.serialized({':hash': record['credentialHash']})}},
+            {'Put': {'TableName': self.table.name,
+                'Item': self.serialized({**record, 'pk': 'DEVICE_PURCHASE#' + device, 'createdAt': now}),
+                'ConditionExpression': 'attribute_not_exists(pk)'}}])
+
+    def purchases_for_email(self, email):
+        from membership import digest
+        return list((self.get('PURCHASE_EMAIL#' + digest(email)) or {}).get('proofs', []))
+
+    def save_purchase_account(self, proof, record, email, snapshot, lease, account_lease, now):
+        from membership import digest
+        from device_checkout import purchase_subject
+        # A purchase profile is not a verified login identity and cannot receive owner access.
+        account = {'pk': 'ACCOUNT#' + purchase_subject(proof), 'email': email, 'emailVerified': False,
+                   'customerId': record['customerId'], 'snapshot': snapshot, 'createdAt': record['paidAt']}
+        self.transact([self.lock_check('GUEST#' + proof, lease, now),
+            self.lock_check(purchase_subject(proof), account_lease, now),
+            {'Put': {'TableName': self.table.name, 'Item': self.serialized(account)}},
+            {'Update': {'TableName': self.table.name,
+                'Key': self.serialized({'pk': 'PURCHASE_EMAIL#' + digest(email)}),
+                'UpdateExpression': 'ADD proofs :proofs',
+                'ExpressionAttributeValues': self.serialized({':proofs': {proof}})}}])
+
     def guest(self, proof):
         return self.get('GUEST#' + proof)
 
@@ -135,6 +166,8 @@ class Store:
         if previous:
             update['ExpressionAttributeValues'][':previous'] = self.serializer.serialize(previous)
         claimed = {**record, 'claimedBy': subject, 'claimedAt': now, 'ttl': now + 90 * 86400}
+        if record.get('desktop'):
+            claimed.pop('ttl', None)
         guest_put = self.guest_put(proof, claimed)
         guest_put['Put'].update(
             ConditionExpression='sessionId = :session AND (attribute_not_exists(claimedBy) OR claimedBy = :subject)',
@@ -505,14 +538,15 @@ class Stripe:
         # coverage. Older omitted invoices cannot strengthen insufficient evidence.
         return result['data']
 
-    def checkout(self, customer, price, subject, key, expires, affiliate=None):
+    def checkout(self, customer, price, subject, key, expires, affiliate=None, desktop=False):
         from affiliates import checkout_fields
         return self.request('POST', '/v1/checkout/sessions', {
             'mode': 'subscription', 'customer': customer, 'client_reference_id': subject,
             'managed_payments[enabled]': 'false',
             'line_items[0][price]': price, 'line_items[0][quantity]': 1,
             'payment_method_types[0]': 'card', 'subscription_data[metadata][trace_subject]': subject,
-            'success_url': self.account_url + '?checkout=success', 'cancel_url': self.account_url + '?checkout=cancel',
+            'success_url': self.account_url + ('?desktopCheckout=success' if desktop else '?checkout=success'),
+            'cancel_url': self.account_url + ('?desktopCheckout=cancel' if desktop else '?checkout=cancel'),
             'expires_at': expires, **checkout_fields(affiliate),
         }, 'trace-checkout-' + key)
 
@@ -520,7 +554,7 @@ class Stripe:
         # Checkout collects the email for this deliberately blank anonymous customer.
         return self.request('POST', '/v1/customers', {'metadata[trace_guest]': proof}, 'trace-guest-customer-' + proof)
 
-    def guest_checkout(self, customer, price, proof, key, expires, affiliate=None):
+    def guest_checkout(self, customer, price, proof, key, expires, affiliate=None, desktop=False):
         from affiliates import checkout_fields
         return self.request('POST', '/v1/checkout/sessions', {
             'mode': 'subscription', 'customer': customer, 'client_reference_id': 'guest_' + proof,
@@ -528,7 +562,7 @@ class Stripe:
             'line_items[0][price]': price, 'line_items[0][quantity]': 1, 'payment_method_types[0]': 'card',
             'metadata[trace_guest]': proof, 'metadata[trace_reservation]': key,
             'subscription_data[metadata][trace_guest]': proof, 'subscription_data[metadata][trace_reservation]': key,
-            'success_url': self.account_url + '?checkout=success', 'cancel_url': self.account_url + '?checkout=cancel',
+            'success_url': self.account_url + ('?desktopCheckout=success' if desktop else '?checkout=success'), 'cancel_url': self.account_url + ('?desktopCheckout=cancel' if desktop else '?checkout=cancel'),
             'expires_at': expires, **checkout_fields(affiliate),
         }, 'trace-guest-checkout-' + key)
 

@@ -27,6 +27,8 @@ class Serializer:
             return {'BOOL': value}
         if isinstance(value, int):
             return {'N': str(value)}
+        if isinstance(value, set):
+            return {'SS': sorted(value)}
         if isinstance(value, dict):
             return {'M': {k: self.serialize(v) for k, v in value.items()}}
         return {'S': value}
@@ -318,6 +320,30 @@ class AdapterTests(unittest.TestCase):
         retired = next(item['Delete'] for item in items if 'Delete' in item)
         self.assertEqual(retired['Key'], {'pk': {'S': 'CUSTOMER#cus_old'}})
         self.assertIn('#subject = :subject', retired['ConditionExpression'])
+
+    def test_native_checkout_uses_fixed_return_pages_and_keeps_email_collection(self):
+        stripe = adapters.Stripe('secret-arn', 'bpc_fixture', False)
+        stripe.request = Mock(return_value={'id': 'cs_guest'})
+        stripe.guest_checkout('cus_guest', 'price_trace', 'hashed-proof', 'reservation', 1234, desktop=True)
+        data = stripe.request.call_args.args[2]
+        self.assertEqual(data['success_url'], 'https://victoryroad.app/trace/account?desktopCheckout=success')
+        self.assertEqual(data['cancel_url'], 'https://victoryroad.app/trace/account?desktopCheckout=cancel')
+        self.assertNotIn('customer_email', data)
+        self.assertEqual(data['customer'], 'cus_guest')
+
+    def test_purchase_account_writes_check_both_leases_and_do_not_verify_email(self):
+        store = adapters.Store('accounts', 'devices', 'owners')
+        store.table.name = 'accounts'
+        store.transact = Mock()
+        store.save_purchase_account('proof', {'customerId': 'cus_paid', 'paidAt': 10}, 'payer@example.test', {'status': 'active'}, 'guest-lease', 'account-lease', 12)
+        operations = store.transact.call_args.args[0]
+        self.assertEqual(len(operations), 4)
+        self.assertIn('ConditionCheck', operations[0])
+        self.assertIn('ConditionCheck', operations[1])
+        account = operations[2]['Put']['Item']
+        self.assertEqual(account['emailVerified'], {'BOOL': False})
+        self.assertEqual(account['customerId'], {'S': 'cus_paid'})
+        self.assertEqual(operations[3]['Update']['UpdateExpression'], 'ADD proofs :proofs')
 
     def test_guest_stripe_session_collects_email_and_binds_proof_to_subscription(self):
         stripe = adapters.Stripe('secret-arn', 'bpc_fixture', False)

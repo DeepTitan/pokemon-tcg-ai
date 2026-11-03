@@ -83,6 +83,8 @@ class FakeStore:
         self.devices = {DEVICE: {'tokenHash': digest('capture-secret')}}
         self.links, self.codes, self.events, self.counts = {}, {}, set(), {}
         self.owners, self.locks = {}, {}
+        self.device_purchases = {}
+        self.purchase_emails = {}
         self.fail_save = False
         self.fail_receipt = False
 
@@ -100,6 +102,18 @@ class FakeStore:
 
     def device_link(self, device):
         return deepcopy(self.links.get(device))
+
+    def device_purchase(self, device):
+        return deepcopy(self.device_purchases.get(device))
+
+    def bind_device_purchase(self, device, record, lease, now):
+        assert self.locks.get('DEVICE_PURCHASE#' + device) is lease
+        assert self.devices[device]['tokenHash'] == record['credentialHash']
+        assert device not in self.device_purchases
+        self.device_purchases[device] = deepcopy(record)
+
+    def purchases_for_email(self, email):
+        return list(self.purchase_emails.get(email, set()))
 
     def customer_subject(self, customer):
         return self.customers.get(customer)
@@ -205,7 +219,7 @@ class FakeStripe:
         self.calls.append('customer')
         return {'id': 'cus_new'}
 
-    def checkout(self, customer, identifier, subject, key, expires, affiliate=None):
+    def checkout(self, customer, identifier, subject, key, expires, affiliate=None, desktop=False):
         if key not in self.sessions:
             self.calls.append('create_checkout')
             self.sessions[key] = {'id': 'cs_' + str(len(self.sessions)), 'status': 'open',

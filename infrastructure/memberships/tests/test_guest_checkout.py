@@ -21,6 +21,16 @@ class GuestStore(FakeStore):
     def guest(self, proof):
         return deepcopy(self.guests.get(proof))
 
+    def save_purchase_account(self, proof, record, email, snapshot, lease, account_lease, now):
+        from device_checkout import purchase_subject
+        assert self.locks.get('GUEST#' + proof) is lease
+        assert self.locks.get(purchase_subject(proof)) is account_lease
+        if self.fail_save:
+            raise RuntimeError('Synthetic purchase account failure')
+        self.accounts[purchase_subject(proof)] = {'email': email, 'emailVerified': False,
+            'customerId': record['customerId'], 'snapshot': deepcopy(snapshot)}
+        self.purchase_emails.setdefault(email, set()).add(proof)
+
     def guest_customer_proof(self, customer):
         return self.guest_customers.get(customer)
 
@@ -84,7 +94,7 @@ class GuestStripe(FakeStripe):
             raise ApiError(503, 'billing_unavailable')
         return deepcopy(self.by_customer.get(customer, self.current if customer == 'cus_fixture' else []))
 
-    def guest_checkout(self, customer, identifier, proof, key, expires, affiliate=None):
+    def guest_checkout(self, customer, identifier, proof, key, expires, affiliate=None, desktop=False):
         if key not in self.sessions:
             self.calls.append('create_guest_checkout')
             self.sessions[key] = {
