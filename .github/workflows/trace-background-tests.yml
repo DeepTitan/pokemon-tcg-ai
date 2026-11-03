@@ -48,12 +48,19 @@ jobs:
         shell: pwsh
         run: |
           $traceExe = (Resolve-Path 'src-tauri/target/debug/match-lens.exe').Path
+          $image = [IO.File]::ReadAllBytes($traceExe)
+          $peOffset = [BitConverter]::ToInt32($image, 0x3c)
+          $subsystem = [BitConverter]::ToUInt16($image, $peOffset + 92)
+          Write-Host "PE subsystem: $subsystem (2 = Windows GUI)"
+          if ($subsystem -ne 2) { throw 'Startup smoke test requires the production Windows GUI subsystem.' }
           $recorder = Start-Process -FilePath $traceExe -ArgumentList '--trace-background' -PassThru
           try {
             Start-Sleep -Seconds 12
             $recorder.Refresh()
             if ($recorder.HasExited) { throw 'Background recorder exited before a window was opened.' }
-            if ($recorder.MainWindowHandle -ne 0) { throw 'Background startup opened a window.' }
+            $windowHandle = $recorder.MainWindowHandle.ToInt64()
+            Write-Host "Background PID: $($recorder.Id); window handle: $windowHandle; title: '$($recorder.MainWindowTitle)'"
+            if ($windowHandle -ne 0) { throw "Background startup opened a window: '$($recorder.MainWindowTitle)' ($windowHandle)." }
           } finally {
             if (-not $recorder.HasExited) { Stop-Process -Id $recorder.Id -Force }
           }
