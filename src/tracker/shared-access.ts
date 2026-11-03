@@ -1,5 +1,5 @@
 export const SHARED_ACCESS_KEY = 'trace/shared-access-open-v1';
-export const TRACE_DISCORD_URL = 'https://discord.gg/bxKJGB9dSY';
+export const TRACE_HOME_URL = '/trace';
 
 export function readSharedAccessOpen(storage: Pick<Storage, 'getItem'>, viewportWidth: number): boolean {
   try {
