@@ -1,5 +1,5 @@
 {
-  "buildCommand": "npm --prefix landing ci && node scripts/build-share-runtime.mjs && npm run tracker:build && npm run leaderboard:build && node landing/build.mjs && node --import tsx scripts/build-leaderboard-pages.ts",
+  "buildCommand": "npm --prefix landing ci && node scripts/build-share-runtime.mjs && node scripts/audit-leaderboard-art.mjs && npm run tracker:build && npm run leaderboard:build && node landing/build.mjs && node --import tsx scripts/build-leaderboard-pages.ts",
   "outputDirectory": "landing/dist",
   "functions": {
     "api/share-card.mjs": {
@@ -12,10 +12,10 @@
       "includeFiles": "landing/assets/leaderboard-pages.json.gz"
     },
     "api/leaderboard-art.mjs": {
-      "includeFiles": "{landing/assets/share-card-catalog.json.gz,landing/assets/share-card-art/**}"
+      "includeFiles": "{landing/assets/share-card-catalog.json.gz,landing/assets/share-card-art/**,landing/assets/leaderboard-card-art/**,landing/assets/leaderboard-art-manifest.json}"
     },
     "api/leaderboard-preview.mjs": {
-      "includeFiles": "{landing/assets/fonts/**,landing/assets/trace-mascot.png,landing/assets/pokemon-card-back.jpg,landing/assets/share-card-catalog.json.gz,landing/assets/share-card-art/**,landing/leaderboard/card-art/**}",
+      "includeFiles": "{landing/assets/fonts/**,landing/assets/trace-mascot.png,landing/assets/pokemon-card-back.jpg,landing/assets/share-card-catalog.json.gz,landing/assets/share-card-art/**,landing/leaderboard/card-art/**,landing/assets/leaderboard-card-art/**,landing/assets/leaderboard-art-manifest.json}",
       "maxDuration": 30
     }
   },

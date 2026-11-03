@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { Resvg } from '@resvg/resvg-js';
 import { getLeaderboardPreviewData, getPlayerPreviewData } from './generated/leaderboard-social-preview.mjs';
 import { EARLY_END_POKEMON_LABEL, historyPokemonLabel } from './generated/history-pokemon.mjs';
-import { originalCardArt, shareCardCatalog } from './share-catalog.mjs';
+import { leaderboardCardArt } from './leaderboard-card-art.mjs';
 import { artDataUri, framedCardArt, measureCardArt } from './share-card-art.mjs';
 
 const ink = '#172b49', muted = '#5c6b7d', cream = '#f4f2ec', surface = '#fffdfa', line = '#d6d5cf';
@@ -11,7 +11,6 @@ const mascot = artDataUri({ bytes: readFileSync(new URL('../assets/trace-mascot.
 const cardBack = { bytes: readFileSync(new URL('../assets/pokemon-card-back.jpg', import.meta.url)), contentType: 'image/jpeg' };
 const fontFiles = [400, 500, 700].map(weight => fileURLToPath(new URL(`../assets/fonts/roboto-${weight}.ttf`, import.meta.url)));
 fontFiles.push(fileURLToPath(new URL('../assets/fonts/nunito-800.ttf', import.meta.url)));
-const catalog = shareCardCatalog();
 const artCache = new Map();
 const number = value => Math.round(value).toLocaleString('en-US');
 const percent = row => row.games ? `${Math.round(row.wins / row.games * 100)}%` : '—';
@@ -47,15 +46,6 @@ function header() {
     ${rule(59, 0, 1200)}`;
 }
 
-function bundledLeaderboardArt(input) {
-  if (typeof input !== 'string' || !/^[a-z0-9-]+_\d+(?:_[a-z0-9]+)?$/i.test(input)) return undefined;
-  const id = input.toLowerCase();
-  if (!catalog.has(id)) return undefined;
-  try {
-    return { bytes: readFileSync(new URL(`../leaderboard/card-art/${id}.png`, import.meta.url)), contentType: 'image/png' };
-  } catch { return undefined; }
-}
-
 // Known catalog / manifest files only. Incoming names cannot become paths or URLs.
 function cardArt(pokemon) {
   const candidates = [pokemon?.artCardId, pokemon?.cardId];
@@ -64,20 +54,9 @@ function cardArt(pokemon) {
   let image;
   for (const id of candidates) {
     try {
-      const bundled = originalCardArt(id) ?? bundledLeaderboardArt(id);
+      const bundled = leaderboardCardArt(id);
       if (bundled) { image = { ...bundled, bounds: measureCardArt(bundled) }; break; }
     } catch { /* Missing or corrupt bundled printing uses a safe fallback. */ }
-  }
-  if (!image) {
-    // A different illustration is safe only after the exact printed card is known.
-    const printed = typeof pokemon?.cardId === 'string' ? catalog.get(pokemon.cardId.toLowerCase()) : undefined;
-    if (printed) for (const candidate of catalog.values()) {
-      if (candidate.name !== printed.name) continue;
-      try {
-        const bundled = originalCardArt(candidate.id) ?? bundledLeaderboardArt(candidate.id);
-        if (bundled) { image = { ...bundled, bounds: measureCardArt(bundled) }; break; }
-      } catch { /* Continue to another known illustration. */ }
-    }
   }
   image ??= { ...cardBack, bounds: measureCardArt(cardBack) };
   if (artCache.size >= 64) artCache.delete(artCache.keys().next().value);

@@ -86,6 +86,15 @@ export function buildLeaderboardPages(root = repository): LeaderboardPages {
     fs.mkdirSync(destination, { recursive: true });
     for (const filename of files) fs.copyFileSync(path.join(input, directory, filename), path.join(destination, filename));
   }
+  // Publish the complete audited history inventory, not just the old snapshot.
+  // Exact and cosmetic-finish URLs serve the same verified portrait as the API.
+  const art = JSON.parse(fs.readFileSync(path.join(root, 'landing/assets/leaderboard-art-manifest.json'), 'utf8'));
+  for (const id of new Set<string>([...Object.keys(art.cards), ...art.requestedIds])) {
+    if (!/^[a-z0-9-]+_\d+(?:_(?:ph|sph|mph)\d*)?$/.test(id)) throw new Error(`Unsafe artwork ID: ${id}`);
+    const base = id.replace(/_(?:ph|sph|mph)\d*$/, '');
+    if (!Object.hasOwn(art.cards, base)) throw new Error(`Missing history artwork: ${id}`);
+    fs.copyFileSync(path.join(root, 'landing/assets/leaderboard-card-art', `${base}.png`), path.join(output, 'card-art', `${id}.png`));
+  }
   for (const filename of ['trace-mascot.png', 'pokemon-card-back.jpg']) {
     fs.copyFileSync(path.join(root, 'public/tracker-assets', filename), path.join(output, filename));
   }

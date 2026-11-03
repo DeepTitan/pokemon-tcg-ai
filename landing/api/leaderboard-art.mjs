@@ -1,20 +1,12 @@
 import { createHash } from 'node:crypto';
 import { Resvg } from '@resvg/resvg-js';
-import { originalCardArt, shareCardCatalog } from '../lib/share-catalog.mjs';
+import { shareCardCatalog } from '../lib/share-catalog.mjs';
+import { knownCardId, leaderboardCardArt, leaderboardPublicArtUrl, printingId } from '../lib/leaderboard-card-art.mjs';
 import { artDataUri, measureCardArt } from '../lib/share-card-art.mjs';
-import { publicCardArtUrl } from '../lib/generated/share-matchup.mjs';
+export { knownCardId } from '../lib/leaderboard-card-art.mjs';
 
 const cardBack = '/trace/leaderboard-static/pokemon-card-back.jpg';
 const imageHosts = new Set(['images.pokemontcg.io', 'limitlesstcg.nyc3.cdn.digitaloceanspaces.com']);
-
-/** Finish aliases are allowed only when their exact printing is in the catalog. */
-export function knownCardId(input, catalog) {
-  if (typeof input !== 'string' || !/^[a-z0-9-]+_\d+(?:_[a-z0-9]+)?$/i.test(input)) return undefined;
-  const id = input.toLowerCase();
-  if (catalog.has(id)) return id;
-  const printing = id.replace(/_ph\d*$/, '');
-  return printing !== id && catalog.has(printing) ? id : undefined;
-}
 
 /** Crop the audited PTCGL frame, rather than shrinking its square texture. */
 export function renderLeaderboardCardArt(image) {
@@ -48,7 +40,7 @@ function redirect(response, location, known) {
   response.end();
 }
 
-export function createLeaderboardArtHandler({ catalog = shareCardCatalog(), originalArt = originalCardArt, publicUrl = publicCardArtUrl } = {}) {
+export function createLeaderboardArtHandler({ catalog = shareCardCatalog(), originalArt = leaderboardCardArt, publicUrl = leaderboardPublicArtUrl } = {}) {
   const cache = new Map();
   return function handler(request, response) {
     const method = request.method || 'GET';
@@ -75,7 +67,7 @@ export function createLeaderboardArtHandler({ catalog = shareCardCatalog(), orig
       } catch { /* A missing or unsupported bundled texture can use its known public printing. */ }
     }
     if (!rendered) {
-      const url = safePublicUrl(publicUrl(id.replace(/_ph\d*$/, '')));
+      const url = safePublicUrl(publicUrl(printingId(id)));
       redirect(response, url ?? cardBack, !!url);
       return;
     }

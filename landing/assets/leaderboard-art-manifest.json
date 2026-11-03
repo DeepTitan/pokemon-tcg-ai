@@ -1,0 +1,2340 @@
+{
+  "version": 1,
+  "auditedAt": "2026-11-02",
+  "requestedIds": [
+    "me1_1",
+    "me1_104",
+    "me1_10_ph",
+    "me1_157",
+    "me1_158",
+    "me1_161",
+    "me1_164",
+    "me1_177",
+    "me1_178",
+    "me1_179",
+    "me1_180",
+    "me1_182",
+    "me1_28_ph",
+    "me1_50",
+    "me1_54",
+    "me1_54_ph",
+    "me1_55",
+    "me1_55_ph",
+    "me1_56",
+    "me1_59_ph",
+    "me1_72",
+    "me1_73",
+    "me1_74",
+    "me1_75",
+    "me1_76",
+    "me1_77",
+    "me1_88_ph",
+    "me1_94",
+    "me2-5_109",
+    "me2-5_121",
+    "me2-5_127",
+    "me2-5_127_ph2",
+    "me2-5_142",
+    "me2-5_155",
+    "me2-5_158",
+    "me2-5_16",
+    "me2-5_172",
+    "me2-5_221",
+    "me2-5_237",
+    "me2-5_247",
+    "me2-5_248",
+    "me2-5_253",
+    "me2-5_265",
+    "me2-5_267",
+    "me2-5_275",
+    "me2-5_280",
+    "me2-5_282",
+    "me2-5_284",
+    "me2-5_286",
+    "me2-5_287",
+    "me2-5_288",
+    "me2-5_289",
+    "me2-5_46",
+    "me2-5_47",
+    "me2-5_76",
+    "me2-5_95",
+    "me2-5_96",
+    "me2-5_99",
+    "me2_103",
+    "me2_108",
+    "me2_11",
+    "me2_11_ph",
+    "me2_125",
+    "me2_127",
+    "me2_13",
+    "me2_14_ph",
+    "me2_41",
+    "me2_56",
+    "me2_60",
+    "me2_60_ph",
+    "me2_61",
+    "me2_68",
+    "me2_70",
+    "me2_84",
+    "me3_100",
+    "me3_102",
+    "me3_107",
+    "me3_118",
+    "me3_12",
+    "me3_121",
+    "me3_20",
+    "me3_21",
+    "me3_26_ph",
+    "me3_31",
+    "me3_43",
+    "me3_48_ph",
+    "me3_58",
+    "me3_62",
+    "me3_68",
+    "me3_9_ph",
+    "me4_100",
+    "me4_104",
+    "me4_116",
+    "me4_119",
+    "me4_122",
+    "me4_13",
+    "me4_20",
+    "me4_22",
+    "me4_3",
+    "me4_35",
+    "me4_59",
+    "me4_61",
+    "me4_61_ph",
+    "me4_98",
+    "me5-5_120",
+    "me5-5_150",
+    "me5-5_152",
+    "me5-5_24",
+    "me5-5_28",
+    "me5-5_30",
+    "me5-5_33",
+    "me5-5_34",
+    "me5-5_39",
+    "me5-5_40",
+    "me5-5_43",
+    "me5-5_44",
+    "me5-5_52",
+    "me5-5_54",
+    "me5-5_66",
+    "me5_114",
+    "me5_115",
+    "me5_116",
+    "me5_15_ph",
+    "me5_27",
+    "me5_31",
+    "me5_33",
+    "me5_33_ph",
+    "me5_34",
+    "me5_34_ph",
+    "me5_36",
+    "me5_36_ph",
+    "me5_38",
+    "me5_39",
+    "me5_39_ph",
+    "me5_5",
+    "me5_5_ph",
+    "me5_6",
+    "me5_65",
+    "me5_66",
+    "me5_67",
+    "me5_67_ph",
+    "me5_68",
+    "me5_6_ph",
+    "me5_91",
+    "me5_93",
+    "me5_97",
+    "mebsp_25",
+    "mebsp_3",
+    "mebsp_65",
+    "mebsp_66",
+    "mebsp_9",
+    "rsv10-5_126",
+    "rsv10-5_13",
+    "rsv10-5_45",
+    "sm11-5_69",
+    "sm11_57_ph",
+    "sm8_136",
+    "sv10_11_ph",
+    "sv10_12",
+    "sv10_127",
+    "sv10_134",
+    "sv10_135",
+    "sv10_136",
+    "sv10_154",
+    "sv10_184",
+    "sv10_185",
+    "sv10_186",
+    "sv10_187",
+    "sv10_190",
+    "sv10_2",
+    "sv10_20",
+    "sv10_200",
+    "sv10_206",
+    "sv10_207",
+    "sv10_231",
+    "sv10_232",
+    "sv10_234",
+    "sv10_32",
+    "sv10_32_ph",
+    "sv10_51",
+    "sv10_56",
+    "sv10_78",
+    "sv1_244",
+    "sv1_253",
+    "sv1_81",
+    "sv2_97",
+    "sv3_125",
+    "sv3_82",
+    "sv4-5_215",
+    "sv4-5_233",
+    "sv4-5_8",
+    "sv4_248",
+    "sv4_58",
+    "sv4_70",
+    "sv5_104",
+    "sv5_113",
+    "sv5_114",
+    "sv5_123",
+    "sv5_128",
+    "sv5_129",
+    "sv5_204",
+    "sv5_23",
+    "sv5_23_ph",
+    "sv5_24",
+    "sv5_25",
+    "sv5_34",
+    "sv5_69",
+    "sv5_81",
+    "sv6-5_38",
+    "sv6-5_39",
+    "sv6-5_40",
+    "sv6-5_42",
+    "sv6-5_68",
+    "sv6-5_69",
+    "sv6-5_70",
+    "sv6-5_72",
+    "sv6-5_74",
+    "sv6-5_85",
+    "sv6-5_92",
+    "sv6-5_95",
+    "sv6_106",
+    "sv6_112",
+    "sv6_126_ph",
+    "sv6_128",
+    "sv6_129",
+    "sv6_129_ph",
+    "sv6_130",
+    "sv6_131",
+    "sv6_141",
+    "sv6_14_ph",
+    "sv6_15",
+    "sv6_170",
+    "sv6_174",
+    "sv6_194",
+    "sv6_198",
+    "sv6_200",
+    "sv6_211",
+    "sv6_214",
+    "sv6_216",
+    "sv6_25",
+    "sv6_38",
+    "sv6_38_ph",
+    "sv6_39",
+    "sv6_61",
+    "sv6_64",
+    "sv6_77",
+    "sv6_80",
+    "sv6_95",
+    "sv7_115",
+    "sv7_119",
+    "sv7_14",
+    "sv7_156",
+    "sv7_167",
+    "sv7_168",
+    "sv7_51",
+    "sv7_57",
+    "sv7_58",
+    "sv7_58_ph",
+    "sv7_63_ph",
+    "sv8-5_10_ph",
+    "sv8-5_11",
+    "sv8-5_145",
+    "sv8-5_147",
+    "sv8-5_160",
+    "sv8-5_163",
+    "sv8-5_165",
+    "sv8-5_167",
+    "sv8-5_21",
+    "sv8-5_21_mph",
+    "sv8-5_21_ph",
+    "sv8-5_35",
+    "sv8-5_36",
+    "sv8-5_37",
+    "sv8-5_40",
+    "sv8-5_4_mph",
+    "sv8-5_4_ph",
+    "sv8-5_50",
+    "sv8-5_71_mph",
+    "sv8-5_72",
+    "sv8-5_72_mph",
+    "sv8-5_72_ph",
+    "sv8-5_73",
+    "sv8-5_78",
+    "sv8-5_80_mph",
+    "sv8-5_80_sph",
+    "sv8-5_82",
+    "sv8-5_9_mph",
+    "sv8_1",
+    "sv8_117",
+    "sv8_119",
+    "sv8_130",
+    "sv8_157",
+    "sv8_158",
+    "sv8_220",
+    "sv8_224",
+    "sv8_239",
+    "sv8_240",
+    "sv8_241",
+    "sv8_36",
+    "sv8_57",
+    "sv8_76",
+    "sv8_86",
+    "sv9_116",
+    "sv9_120",
+    "sv9_120_ph",
+    "sv9_121",
+    "sv9_163",
+    "sv9_175",
+    "sv9_178",
+    "sv9_184",
+    "sv9_24",
+    "sv9_3_ph",
+    "sv9_56",
+    "sv9_95",
+    "sv9_97",
+    "sv9_98",
+    "svalt_142",
+    "svbsp_141",
+    "svbsp_166",
+    "svbsp_90",
+    "swsh10-5_55",
+    "swsh11_177",
+    "swsh12_135",
+    "swsh12_136",
+    "swsh12_139",
+    "swsh12_64",
+    "swsh3_83",
+    "swsh5_170",
+    "swsh7_60",
+    "zsv10-5_161",
+    "zsv10-5_169",
+    "zsv10-5_31",
+    "zsv10-5_40",
+    "zsv10-5_67"
+  ],
+  "cards": {
+    "me1_1": {
+      "name": "Bulbasaur",
+      "printing": "me1_1",
+      "source": "PTCGL cached artwork",
+      "sha256": "b58615724108d3183cd24528e203db935adf25d35daec6ea00ea823978e49cb7"
+    },
+    "me1_10": {
+      "name": "Meganium",
+      "printing": "me1_10",
+      "source": "PTCGL cached artwork",
+      "sha256": "e9509e939c7372d0e1c9d7af5fe1c6421735c86a42d36fcf876d12ad6f94f8d8"
+    },
+    "me1_104": {
+      "name": "Mega Kangaskhan ex",
+      "printing": "me1_104",
+      "source": "PTCGL cached artwork",
+      "sha256": "b2603cd81f439aac4ade6abcededbddf293cd58b2e2991a70622d555383e5381"
+    },
+    "me1_157": {
+      "name": "Mega Abomasnow ex",
+      "printing": "me1_157",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/MEG/MEG_157_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/MEG/157",
+      "sha256": "c2a2008503bd77b3e439185338ef11d082dc8f3647d150bb9028adbc6ed9dc2b"
+    },
+    "me1_158": {
+      "name": "Mega Manectric ex",
+      "printing": "me1_158",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/MEG/MEG_158_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/MEG/158",
+      "sha256": "a38f5a0edb0683fda35d08ae2fc8666bc3f7a39842a9a9fce7259747b60f2e6e"
+    },
+    "me1_161": {
+      "name": "Mega Absol ex",
+      "printing": "me1_161",
+      "source": "PTCGL cached artwork",
+      "sha256": "a72c8547965603c36127e84518e8f259178c6f7226f06b738e0179a13e79e38a"
+    },
+    "me1_164": {
+      "name": "Mega Kangaskhan ex",
+      "printing": "me1_164",
+      "source": "PTCGL cached artwork",
+      "sha256": "6c4aa1071bb0dd3609714a6abf7b95683da4201dc664de98a12f642f876a5226"
+    },
+    "me1_177": {
+      "name": "Mega Venusaur ex",
+      "printing": "me1_177",
+      "source": "PTCGL cached artwork",
+      "sha256": "9455a8957966c197e96b656fa1ee498347033f4fb2a336a7a0cc84154df7e52c"
+    },
+    "me1_178": {
+      "name": "Mega Gardevoir ex",
+      "printing": "me1_178",
+      "source": "PTCGL cached artwork",
+      "sha256": "4dadef5a2a0109b301ab737ba3fee48dedc5771dd4fb01f52869c5ca3f420635"
+    },
+    "me1_179": {
+      "name": "Mega Lucario ex",
+      "printing": "me1_179",
+      "source": "PTCGL cached artwork",
+      "sha256": "26b74a20e706709c73fff8a055282281b9426e7c1ac82c38c35390c186b998d1"
+    },
+    "me1_180": {
+      "name": "Mega Absol ex",
+      "printing": "me1_180",
+      "source": "PTCGL cached artwork",
+      "sha256": "2033fdb09bc1c8a37310d8aa27db91abc0eefa9f0a1eaf35333761a412cc309d"
+    },
+    "me1_182": {
+      "name": "Mega Kangaskhan ex",
+      "printing": "me1_182",
+      "source": "PTCGL cached artwork",
+      "sha256": "a3d3f38c16d4701d4587d98ffd91e52eb575c279f3f5169eba8bb555bbf14b2e"
+    },
+    "me1_28": {
+      "name": "Cinderace",
+      "printing": "me1_28",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/MEG/MEG_028_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/MEG/28",
+      "sha256": "47db6f1dc926159b23c799ad98d066152de38c8f18b9960c5cacff5062b341e1"
+    },
+    "me1_50": {
+      "name": "Mega Manectric ex",
+      "printing": "me1_50",
+      "source": "PTCGL cached artwork",
+      "sha256": "b8b467bb991269d05606d36ab7de1fbdc42588663a7331b4a6ecd4196b7458f1"
+    },
+    "me1_54": {
+      "name": "Abra",
+      "printing": "me1_54",
+      "source": "PTCGL cached artwork",
+      "sha256": "90eb073b7a69199a450f03e94aa6f6af9dc04bd9143cc93d2a1c87ea49b3c4ab"
+    },
+    "me1_55": {
+      "name": "Kadabra",
+      "printing": "me1_55",
+      "source": "PTCGL cached artwork",
+      "sha256": "4175115439f0aa9e5b95f671133a61f5896a796d909847f1141caa5c7fd7567a"
+    },
+    "me1_56": {
+      "name": "Alakazam",
+      "printing": "me1_56",
+      "source": "PTCGL cached artwork",
+      "sha256": "47afe392fdc90c2d904126b8185707ffbd1295aabacefaa741f33a58b56a9728"
+    },
+    "me1_59": {
+      "name": "Kirlia",
+      "printing": "me1_59",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/MEG/MEG_059_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/MEG/59",
+      "sha256": "5b0f0e253f5873497138375eee032c2dd62cb45167fcbedd69819005fcdc0f4f"
+    },
+    "me1_72": {
+      "name": "Makuhita",
+      "printing": "me1_72",
+      "source": "PTCGL cached artwork",
+      "sha256": "a8c016100f2322319b0a3a1bb87a546b14c5886ed53717ee28d9d9302a88ba6a"
+    },
+    "me1_73": {
+      "name": "Hariyama",
+      "printing": "me1_73",
+      "source": "PTCGL cached artwork",
+      "sha256": "a31343336f1319bb60fdcf9cb81483ed4c482464d9f821e0f28e7b593d2fdf4e"
+    },
+    "me1_74": {
+      "name": "Lunatone",
+      "printing": "me1_74",
+      "source": "PTCGL cached artwork",
+      "sha256": "30bf0bd36fa03674eb434c4b300bf8e0cf1a71eb381d1201c79acfdec9c76afa"
+    },
+    "me1_75": {
+      "name": "Solrock",
+      "printing": "me1_75",
+      "source": "PTCGL cached artwork",
+      "sha256": "1ade747d606a9977267bc0d50cf70a3eded6b99250de2c2195193b3f0874ee9c"
+    },
+    "me1_76": {
+      "name": "Riolu",
+      "printing": "me1_76",
+      "source": "PTCGL cached artwork",
+      "sha256": "6c855bbe38585d4af13d1c018897be08893fc6ef16bc801cc2830a1da396a157"
+    },
+    "me1_77": {
+      "name": "Mega Lucario ex",
+      "printing": "me1_77",
+      "source": "PTCGL cached artwork",
+      "sha256": "1b28e16c4c72dc9b788fafe22ec63f0d7c9079d2f9a14f0d817f0a79c5e89af7"
+    },
+    "me1_88": {
+      "name": "Yveltal",
+      "printing": "me1_88",
+      "source": "PTCGL cached artwork",
+      "sha256": "fffc9200720cd45ec00f9a1c4b3fabbcd764e8bfb419e5583f943240c8c14462"
+    },
+    "me1_94": {
+      "name": "Mega Mawile ex",
+      "printing": "me1_94",
+      "source": "PTCGL cached artwork",
+      "sha256": "f1a82398a237e126834f155c190f2cb0a19f558db62dda87f966b95b604cc275"
+    },
+    "me2_103": {
+      "name": "Toxtricity",
+      "printing": "me2_103",
+      "source": "PTCGL cached artwork",
+      "sha256": "33b516b10ffa204dd683e9d2b93e6adda40047eeda63a7594d9891491d936ee9"
+    },
+    "me2_108": {
+      "name": "Mega Heracross ex",
+      "printing": "me2_108",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/PFL/PFL_108_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/PFL/108",
+      "sha256": "f8e60901f01dcb0566aa1149088f24814a317c3798186289c1ff1a6340986502"
+    },
+    "me2_11": {
+      "name": "Charmander",
+      "printing": "me2_11",
+      "source": "PTCGL cached artwork",
+      "sha256": "d901e4f5c0e01adb7bbe15c0510ce43c1dc513ebb8795facd4b9f455bb86c6f3"
+    },
+    "me2_125": {
+      "name": "Mega Charizard X ex",
+      "printing": "me2_125",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/PFL/PFL_125_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/PFL/125",
+      "sha256": "d3091996fd66539c32884f67bfa903b6151c455c732b65f24d11e9fd2b68a17e"
+    },
+    "me2_127": {
+      "name": "Mega Sharpedo ex",
+      "printing": "me2_127",
+      "source": "PTCGL cached artwork",
+      "sha256": "13a0ce99165d0d1b5a3ee01ff84f394035b88c4633ed613782bbb1fd6fbdacf0"
+    },
+    "me2_13": {
+      "name": "Mega Charizard X ex",
+      "printing": "me2_13",
+      "source": "PTCGL cached artwork",
+      "sha256": "fbdf1465c7d29a8bd86397714b495e0d09691810bd38ffd4cc35856511aab7c0"
+    },
+    "me2_14": {
+      "name": "Moltres",
+      "printing": "me2_14",
+      "source": "PTCGL cached artwork",
+      "sha256": "2662a5674108818773e151d79b70c435b4906585bebb62dd877bff3d62d6e37b"
+    },
+    "me2_41": {
+      "name": "Mega Diancie ex",
+      "printing": "me2_41",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/PFL/PFL_041_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/PFL/41",
+      "sha256": "03d5485defb5b46cffd52bba25d06e3297189e07cc7581a8590fb6fd987858f2"
+    },
+    "me2_56": {
+      "name": "Mega Gengar ex",
+      "printing": "me2_56",
+      "source": "PTCGL cached artwork",
+      "sha256": "8b397d1c5c1b979aeaa494e3cfa0b8d4750d5285ac74b79432d5ea7f95c3225f"
+    },
+    "me2_60": {
+      "name": "Carvanha",
+      "printing": "me2_60",
+      "source": "PTCGL cached artwork",
+      "sha256": "927ef257f102d1901cda9dd40e80a9b25de0376ceffad71ab57e6caa8da44986"
+    },
+    "me2_61": {
+      "name": "Mega Sharpedo ex",
+      "printing": "me2_61",
+      "source": "PTCGL cached artwork",
+      "sha256": "a4aa4897943bfccc08f253d2ab5a46e36e7d5d38b35e6bd9e089799c4660a258"
+    },
+    "me2_68": {
+      "name": "Toxtricity",
+      "printing": "me2_68",
+      "source": "PTCGL cached artwork",
+      "sha256": "09f0710705387a2ade50133478e197dd9c91c6fb0672cd05b6245440b0b41846"
+    },
+    "me2_70": {
+      "name": "Empoleon ex",
+      "printing": "me2_70",
+      "source": "PTCGL cached artwork",
+      "sha256": "7fbb297d45721e71e31df5cf3d5d3dc951b84db02e8437f60e6c76d437c3be3d"
+    },
+    "me2_84": {
+      "name": "Mega Lopunny ex",
+      "printing": "me2_84",
+      "source": "PTCGL cached artwork",
+      "sha256": "da6f652af46562947e8c325080d89f074bfafdba9a940beeb93306ccfe9be988"
+    },
+    "me2-5_109": {
+      "name": "Cynthia's Gible",
+      "printing": "me2-5_109",
+      "source": "PTCGL cached artwork",
+      "sha256": "2efd302908d223198926db26a783580390b8e53c0a6c2dc1ac29750e3da610b1"
+    },
+    "me2-5_121": {
+      "name": "Koraidon ex",
+      "printing": "me2-5_121",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/ASC/ASC_121_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/ASC/121",
+      "sha256": "4fc4f124210be52e0d60eddc44af936328c58a9772e2dfabca5e034f548388e9"
+    },
+    "me2-5_127": {
+      "name": "Team Rocket's Honchkrow",
+      "printing": "me2-5_127",
+      "source": "PTCGL cached artwork",
+      "sha256": "f8b1153c3bee820040d7a3e10bfc7d7e5cf34b0f52d0a24acb1d1d2e6b9f3110"
+    },
+    "me2-5_142": {
+      "name": "Fezandipiti ex",
+      "printing": "me2-5_142",
+      "source": "PTCGL cached artwork",
+      "sha256": "6d553719ed26c011b4ba346352e83b1f6093f18fbdc663dfc9eaf9e4a40cea61"
+    },
+    "me2-5_155": {
+      "name": "N's Zekrom",
+      "printing": "me2-5_155",
+      "source": "PTCGL cached artwork",
+      "sha256": "40f856603ebbf0491980368fecede67bc84ce2fcc36c84e03ce3dfadc0aa816d"
+    },
+    "me2-5_158": {
+      "name": "Dreepy",
+      "printing": "me2-5_158",
+      "source": "PTCGL cached artwork",
+      "sha256": "16ae4b809377f33ef0e7971b2d3b7bca5575176d4044d9c00c7fade5a72ebb77"
+    },
+    "me2-5_16": {
+      "name": "Budew",
+      "printing": "me2-5_16",
+      "source": "PTCGL cached artwork",
+      "sha256": "018b3db7e7d7b3397f6b1bfc09c26fb5c257341c2b170100d33e2dd6e9d94a9d"
+    },
+    "me2-5_172": {
+      "name": "Mega Audino ex",
+      "printing": "me2-5_172",
+      "source": "PTCGL cached artwork",
+      "sha256": "869d1287135bcca7dd878c1a176ec4d407b54559cf076d4e6833c9424140ce2e"
+    },
+    "me2-5_221": {
+      "name": "Budew",
+      "printing": "me2-5_221",
+      "source": "PTCGL cached artwork",
+      "sha256": "f24cf56398b7273e5d8397c9e7140b87afcf3c267e1fece3ada22ced6352f1da"
+    },
+    "me2-5_237": {
+      "name": "Hop's Trevenant",
+      "printing": "me2-5_237",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/ASC/ASC_237_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/ASC/237",
+      "sha256": "0e63cd6fddf4ca5dd9f72add6d655c279ac7115b070fd646bddfb4bf74452361"
+    },
+    "me2-5_247": {
+      "name": "Dreepy",
+      "printing": "me2-5_247",
+      "source": "PTCGL cached artwork",
+      "sha256": "99a4fb1de317945788946ba11f53f5774c06d8601da6ec44afbe62476227957b"
+    },
+    "me2-5_248": {
+      "name": "Drakloak",
+      "printing": "me2-5_248",
+      "source": "PTCGL cached artwork",
+      "sha256": "35f1fccaa5b749c3eebf8219536cbd31fea331bb7ae124b10f5caffac2b32d22"
+    },
+    "me2-5_253": {
+      "name": "Mega Audino ex",
+      "printing": "me2-5_253",
+      "source": "PTCGL cached artwork",
+      "sha256": "c65990674fb89cc0e870b5594fa9243cbf827e64af04f78418faa2fa870e59b7"
+    },
+    "me2-5_265": {
+      "name": "Mega Froslass ex",
+      "printing": "me2-5_265",
+      "source": "PTCGL cached artwork",
+      "sha256": "768e9f881bbda5e0baff0af190fc66bc098d906c97183ddb5df4428a96c3f2f4"
+    },
+    "me2-5_267": {
+      "name": "Mega Diancie ex",
+      "printing": "me2-5_267",
+      "source": "PTCGL cached artwork",
+      "sha256": "77af9f2ba2b8c989a8e29ea0e36ce004c6eb2d6a2a14aaf40ac87a6708756411"
+    },
+    "me2-5_275": {
+      "name": "Mega Froslass ex",
+      "printing": "me2-5_275",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/ASC/ASC_275_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/ASC/275",
+      "sha256": "28628c09aaa9dfe1377e7411b1f1e61f776b85930e38d3777318be19e34a1603"
+    },
+    "me2-5_280": {
+      "name": "Lillie's Clefairy ex",
+      "printing": "me2-5_280",
+      "source": "PTCGL cached artwork",
+      "sha256": "f57e4e3a9ee3eedf4bf753f178787656eb948dd67fbe98fc0be9467682b0fdbe"
+    },
+    "me2-5_282": {
+      "name": "Mega Diancie ex",
+      "printing": "me2-5_282",
+      "source": "PTCGL cached artwork",
+      "sha256": "dd8e5781e804c16fd934b46178529bd039649f8a190307aef0c7fc2a83c2419a"
+    },
+    "me2-5_284": {
+      "name": "Mega Gengar ex",
+      "printing": "me2-5_284",
+      "source": "PTCGL cached artwork",
+      "sha256": "6d324e0afc38eedf29eaaee8f6007021e868b612ee60330533045c79d4aaaff1"
+    },
+    "me2-5_286": {
+      "name": "N's Zoroark ex",
+      "printing": "me2-5_286",
+      "source": "PTCGL cached artwork",
+      "sha256": "0af24c227c99171c8d3b22c85c85e89dac56ed1e4ec856779de4b38aee324b5c"
+    },
+    "me2-5_287": {
+      "name": "Marnie's Grimmsnarl ex",
+      "printing": "me2-5_287",
+      "source": "PTCGL cached artwork",
+      "sha256": "c009e26ad7f582bce3320b9cef1d80ae1a15fb1d2456c35d36909a0515e6aab8"
+    },
+    "me2-5_288": {
+      "name": "Fezandipiti ex",
+      "printing": "me2-5_288",
+      "source": "PTCGL cached artwork",
+      "sha256": "994089d62c6cd47abf701b3050b9114d1787b38d83647a30322d8e50280b9814"
+    },
+    "me2-5_289": {
+      "name": "Steven's Metagross ex",
+      "printing": "me2-5_289",
+      "source": "PTCGL cached artwork",
+      "sha256": "561c9135a68bfcdcf13064089df1eb0344ac46554c3a432f3800c7e37130ee99"
+    },
+    "me2-5_46": {
+      "name": "Snorunt",
+      "printing": "me2-5_46",
+      "source": "PTCGL cached artwork",
+      "sha256": "b6af1cc73f34c119e221fc48d13d208aecbc0a4f5f6edc7153202d155405b2b5"
+    },
+    "me2-5_47": {
+      "name": "Mega Froslass ex",
+      "printing": "me2-5_47",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/ASC/ASC_047_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/ASC/47",
+      "sha256": "4e8e053dbdcb2f8938f23529f472ffcd9fe2807772d62376cb05993466513798"
+    },
+    "me2-5_76": {
+      "name": "Lillie's Clefairy ex",
+      "printing": "me2-5_76",
+      "source": "PTCGL cached artwork",
+      "sha256": "91f004199e200700b94c6730d92f7986cb9157798e04c0df6b4e60de6a657f34"
+    },
+    "me2-5_95": {
+      "name": "Hop's Phantump",
+      "printing": "me2-5_95",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/ASC/ASC_095_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/ASC/95",
+      "sha256": "4061034cad0b94c12b014bf916c1171fd561687bbe32031d416107e7504bb0ff"
+    },
+    "me2-5_96": {
+      "name": "Hop's Trevenant",
+      "printing": "me2-5_96",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/ASC/ASC_096_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/ASC/96",
+      "sha256": "49a27306ecbbe636230f1e84168015f1bf26bc1bfe9862afb791020b03b8aa88"
+    },
+    "me2-5_99": {
+      "name": "Munkidori",
+      "printing": "me2-5_99",
+      "source": "PTCGL cached artwork",
+      "sha256": "94a0cf31c7e0c3bb38c1038d771a98a6f22fb20b411987fc3dbdfa1c5034709a"
+    },
+    "me3_100": {
+      "name": "Decidueye ex",
+      "printing": "me3_100",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/POR/POR_100_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/POR/100",
+      "sha256": "d394a2462b7ec875f3989e1b9053cd638eeaf5592aafcf2cfe23f0fee89bdcc4"
+    },
+    "me3_102": {
+      "name": "Mega Starmie ex",
+      "printing": "me3_102",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/POR/POR_102_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/POR/102",
+      "sha256": "b4a0dbc5e37046638400389fadfd1c8f85d1efbc9854f11b8636ce39f9036f62"
+    },
+    "me3_107": {
+      "name": "Meowth ex",
+      "printing": "me3_107",
+      "source": "PTCGL cached artwork",
+      "sha256": "a96e7b50c0806a8fbb31261efa4c61558b8f9bdec7e6489882b2caab642a4db0"
+    },
+    "me3_118": {
+      "name": "Mega Starmie ex",
+      "printing": "me3_118",
+      "source": "PTCGL cached artwork",
+      "sha256": "0d83eb9ff8058efea406612976ad8b108dd9fae6e637cd2d2a7ee2f0b6c88647"
+    },
+    "me3_12": {
+      "name": "Decidueye ex",
+      "printing": "me3_12",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/POR/POR_012_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/POR/12",
+      "sha256": "15c996ad7555c766db6001369879581782a06c99afe23c3c2a6674132a034075"
+    },
+    "me3_121": {
+      "name": "Meowth ex",
+      "printing": "me3_121",
+      "source": "PTCGL cached artwork",
+      "sha256": "79dd497f63a8e159fcfa243a11856c689593e9a5ab7973a7797630d35225f60a"
+    },
+    "me3_20": {
+      "name": "Staryu",
+      "printing": "me3_20",
+      "source": "PTCGL cached artwork",
+      "sha256": "4f064ed72cfdb8b71377306c1da11895104beb0fbfc710a0832d6ffa59886216"
+    },
+    "me3_21": {
+      "name": "Mega Starmie ex",
+      "printing": "me3_21",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/POR/POR_021_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/POR/21",
+      "sha256": "bdc466add95c42b24b207e7ca2df24bdb31a3fb45872af06bc093c8d45570666"
+    },
+    "me3_26": {
+      "name": "Shinx",
+      "printing": "me3_26",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/POR/POR_026_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/POR/26",
+      "sha256": "ab496d442d9353ea35a0e96815c875770346fb7460efa0e3dc0504fa76034610"
+    },
+    "me3_31": {
+      "name": "Mega Clefable ex",
+      "printing": "me3_31",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/POR/POR_031_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/POR/31",
+      "sha256": "06d4fbf8ab04a336f5a0e4753cc3c5ea8a370691a28bab9931217635657ce30b"
+    },
+    "me3_43": {
+      "name": "Barbaracle",
+      "printing": "me3_43",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/POR/POR_043_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/POR/43",
+      "sha256": "0dcd782b538843c515b317c28e4582037b486f799928cb0db49c3e0c0662a9d0"
+    },
+    "me3_48": {
+      "name": "Gastly",
+      "printing": "me3_48",
+      "source": "PTCGL cached artwork",
+      "sha256": "bbcb89a472c5ba7d12b546f7c23de080c5ba2ec9dc92c842699ddc7121b5354f"
+    },
+    "me3_58": {
+      "name": "Aegislash",
+      "printing": "me3_58",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/POR/POR_058_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/POR/58",
+      "sha256": "2ac55609e75d8c45d93ac61f076ad605bcd42631f75d9d3464d01d8d0a051bf2"
+    },
+    "me3_62": {
+      "name": "Meowth ex",
+      "printing": "me3_62",
+      "source": "PTCGL cached artwork",
+      "sha256": "e299bd9d64d1430e2c285dadceda7e10406f1d49256e97597df753a700bd32fc"
+    },
+    "me3_68": {
+      "name": "Antique Jaw Fossil",
+      "printing": "me3_68",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/POR/POR_068_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/POR/68",
+      "sha256": "f2adaa36a4a15478f8fd7e8a9a7308a1cd95e3902e5d5829a180d9b7a1e491ea"
+    },
+    "me3_9": {
+      "name": "Vivillon",
+      "printing": "me3_9",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/POR/POR_009_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/POR/9",
+      "sha256": "fa60ef98860748d2803aee11325fcd7d3f622170d872fb8ab10d4508f14e0d02"
+    },
+    "me4_100": {
+      "name": "Mega Greninja ex",
+      "printing": "me4_100",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/CRI/CRI_100_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/CRI/100",
+      "sha256": "74bb3f708888b2d644ac5c7324676f61d29c47f85d32734ff6376ef161dcf0b5"
+    },
+    "me4_104": {
+      "name": "Mega Dragalge ex",
+      "printing": "me4_104",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/CRI/CRI_104_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/CRI/104",
+      "sha256": "340cf83546695cad7629c424f2f723c6ca5426813bf905a01ecc470bffbb4444"
+    },
+    "me4_116": {
+      "name": "Mega Greninja ex",
+      "printing": "me4_116",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/CRI/CRI_116_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/CRI/116",
+      "sha256": "090913d7ac8fa699e581c942a441bf9646e5b9ebaa8f01b9f099436352ab69ba"
+    },
+    "me4_119": {
+      "name": "Cinccino ex",
+      "printing": "me4_119",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/CRI/CRI_119_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/CRI/119",
+      "sha256": "c314c052b288e73f864f77d15ac50124aa8827d4f4237baf34757819fbbc1cde"
+    },
+    "me4_122": {
+      "name": "Mega Greninja ex",
+      "printing": "me4_122",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/CRI/CRI_122_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/CRI/122",
+      "sha256": "46a0efa2d59c58100cba292cb191bd336313262909fb90f493c43e2db0807168"
+    },
+    "me4_13": {
+      "name": "Delphox",
+      "printing": "me4_13",
+      "source": "PTCGL cached artwork",
+      "sha256": "079a19f6e8cf33b31130670980cad3d28cd00ff1ef88a429d23f6ab88177ea62"
+    },
+    "me4_20": {
+      "name": "Froakie",
+      "printing": "me4_20",
+      "source": "PTCGL cached artwork",
+      "sha256": "a7ccf18e74e7e99cb6499c51870f8c8f41272573d6ea11e852bc038badf7edca"
+    },
+    "me4_22": {
+      "name": "Mega Greninja ex",
+      "printing": "me4_22",
+      "source": "PTCGL cached artwork",
+      "sha256": "5490aed3b10c56c8f7a4a15a6f5a8448d01bf52ef7b956646a7ea6993d48c997"
+    },
+    "me4_3": {
+      "name": "Beedrill ex",
+      "printing": "me4_3",
+      "source": "PTCGL cached artwork",
+      "sha256": "37665baee5eea17cde8f7efa1c59245388e8bd22bdd8f3b0f2668dadf71fa041"
+    },
+    "me4_35": {
+      "name": "Mega Floette ex",
+      "printing": "me4_35",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/CRI/CRI_035_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/CRI/35",
+      "sha256": "da2d4fe05cf6b914c37e95b70290bc87d90ba8890cc66de92233834697bec2bc"
+    },
+    "me4_59": {
+      "name": "Beldum",
+      "printing": "me4_59",
+      "source": "PTCGL cached artwork",
+      "sha256": "8d94f7a6097f59adaf0ed490837c4e461f7464bc9251167414134a2236cdd44f"
+    },
+    "me4_61": {
+      "name": "Metagross",
+      "printing": "me4_61",
+      "source": "PTCGL cached artwork",
+      "sha256": "f8ef8546222c907098fba55e68e6cd382b3cd1ba6701537a9038eb4d6322212c"
+    },
+    "me4_98": {
+      "name": "Beedrill ex",
+      "printing": "me4_98",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/CRI/CRI_098_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/CRI/98",
+      "sha256": "db014dc58d198174f4225419174c87f09a734a4a53647c1d6d09ed07003b4e45"
+    },
+    "me5_114": {
+      "name": "Mega Zeraora ex",
+      "printing": "me5_114",
+      "source": "PTCGL cached artwork",
+      "sha256": "731c1665517f915e92efbc288a000d1d8e9f718028d417b5dc4155d6e2d3ec46"
+    },
+    "me5_115": {
+      "name": "Mega Chandelure ex",
+      "printing": "me5_115",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/PBL/PBL_115_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/PBL/115",
+      "sha256": "1ce7e3e562bf505a8a4017c07a0e71d1b8beea061dab1a79bd74782036d3eb5d"
+    },
+    "me5_116": {
+      "name": "Mega Darkrai ex",
+      "printing": "me5_116",
+      "source": "PTCGL cached artwork",
+      "sha256": "241e8bf0ac8e39dae6b054be38772bfa39aceb54719e8c2b49c55e1c43f8ed58"
+    },
+    "me5_15": {
+      "name": "Wailmer",
+      "printing": "me5_15",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/PBL/PBL_015_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/PBL/15",
+      "sha256": "6f2077c06036db87075b541b5b7abdec5fbcca4e8656f31e15069496f1451a1e"
+    },
+    "me5_27": {
+      "name": "Mega Zeraora ex",
+      "printing": "me5_27",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/PBL/PBL_027_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/PBL/27",
+      "sha256": "9664d4bc6a336b450256a28e675c8399403191acb9ab62d5df4a73a935f8a032"
+    },
+    "me5_31": {
+      "name": "Mega Slowbro ex",
+      "printing": "me5_31",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/PBL/PBL_031_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/PBL/31",
+      "sha256": "6143cd9d08ce2ee277ed9759a3c102f9ecdcf623d5df6b55e3636dfad7fb6b5d"
+    },
+    "me5_33": {
+      "name": "Shuppet",
+      "printing": "me5_33",
+      "source": "PTCGL cached artwork",
+      "sha256": "0cabe08daf6e70940c4984002a4add53a7e43919df71009f268e1e08d8725e9b"
+    },
+    "me5_34": {
+      "name": "Banette",
+      "printing": "me5_34",
+      "source": "PTCGL cached artwork",
+      "sha256": "43da665dd2436242661e9a45f54bf74f3b244fccd8d761f34d82a365c7c063f0"
+    },
+    "me5_36": {
+      "name": "Litwick",
+      "printing": "me5_36",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/PBL/PBL_036_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/PBL/36",
+      "sha256": "6ec42a414791b738c98061abab30617d752c6c0bd7165e97292e33e0762590c2"
+    },
+    "me5_38": {
+      "name": "Mega Chandelure ex",
+      "printing": "me5_38",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/PBL/PBL_038_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/PBL/38",
+      "sha256": "248342d2ae5d77e5f358307926ca0a5de8a35006c16b78a329e557fa71d822d7"
+    },
+    "me5_39": {
+      "name": "Dhelmise",
+      "printing": "me5_39",
+      "source": "PTCGL cached artwork",
+      "sha256": "bb2ba4ea78c02d784beb8bcf56887b970e3618d5da02f871b487905797c2e7ff"
+    },
+    "me5_5": {
+      "name": "Poltchageist",
+      "printing": "me5_5",
+      "source": "PTCGL cached artwork",
+      "sha256": "ea0adb6e990152eb765ac88fe4182e4e2ef76f1700fe31afbe5eff9dd0582086"
+    },
+    "me5_6": {
+      "name": "Sinistcha",
+      "printing": "me5_6",
+      "source": "PTCGL cached artwork",
+      "sha256": "03772c3caa902161af719563997fea6fd8fb80f2c6b27ee43a6aeba6467e8f98"
+    },
+    "me5_65": {
+      "name": "Mega Excadrill ex",
+      "printing": "me5_65",
+      "source": "PTCGL cached artwork",
+      "sha256": "ede918cc74825ae0dedcd53695bc8f0d284f9d5289b882d48ed692bcc760e793"
+    },
+    "me5_66": {
+      "name": "Pikipek",
+      "printing": "me5_66",
+      "source": "PTCGL cached artwork",
+      "sha256": "3afd89aa520687a41724b2a9b931fed1b5ee38a4f64e7b0f24115af7ad120e09"
+    },
+    "me5_67": {
+      "name": "Trumbeak",
+      "printing": "me5_67",
+      "source": "PTCGL cached artwork",
+      "sha256": "b421306f5a4e59f01abe2c128042eca1797c44287367e28a5e4eeae31b7abd99"
+    },
+    "me5_68": {
+      "name": "Toucannon",
+      "printing": "me5_68",
+      "source": "PTCGL cached artwork",
+      "sha256": "0da460c1cac7332944880ab0dcf017969933529c6c8023788df11e4ca7bb4ab8"
+    },
+    "me5_91": {
+      "name": "Dhelmise",
+      "printing": "me5_91",
+      "source": "PTCGL cached artwork",
+      "sha256": "34b1b3192f485f0237ac955716d5e5d9b8b8a405fc796d4cbb60fde1ff7112d3"
+    },
+    "me5_93": {
+      "name": "Bastiodon",
+      "printing": "me5_93",
+      "source": "PTCGL cached artwork",
+      "sha256": "d1343f897f11846b55b17951a7185966b709c4c023594795a45f97e997547a38"
+    },
+    "me5_97": {
+      "name": "Wailord ex",
+      "printing": "me5_97",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/PBL/PBL_097_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/PBL/97",
+      "sha256": "18835501b9afdac2cd10d28cff28641332a8c2f0018055c8f2c29778a361662d"
+    },
+    "me5-5_120": {
+      "name": "Igglybuff",
+      "printing": "me5-5_120",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/30C/30C_120_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/30C/120",
+      "sha256": "b9d01ddfc6690723e07e13273e1006bcb36b69537890d1e4d0b4730e7af2b92c"
+    },
+    "me5-5_150": {
+      "name": "Pikachu ex",
+      "printing": "me5-5_150",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/30C/30C_150_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/30C/150",
+      "sha256": "01bde208385b4c0efd33ff981d61ecbba39975ffcb7db959e788a5032bbbf384"
+    },
+    "me5-5_152": {
+      "name": "Mew ex",
+      "printing": "me5-5_152",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/30C/30C_152_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/30C/152",
+      "sha256": "d7e11e2e6d805346b6df8b595f26e16f628cbfeaba948c25af60d589ed4d018b"
+    },
+    "me5-5_24": {
+      "name": "Pikachu",
+      "printing": "me5-5_24",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/30C/30C_024_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/30C/24",
+      "sha256": "860bf3dbc6338530af4d60cd5c029d02b1d6aa5077405af2bf337cb02e735989"
+    },
+    "me5-5_28": {
+      "name": "Pikachu",
+      "printing": "me5-5_28",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/30C/30C_028_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/30C/28",
+      "sha256": "0f71fc948b059db4ef3a8979ceb72b8aa908ea93e36edc8d9c683efa9e56565b"
+    },
+    "me5-5_30": {
+      "name": "Pikachu",
+      "printing": "me5-5_30",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/30C/30C_030_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/30C/30",
+      "sha256": "e3f62d20a4a9de4b32d04a5e717003bb125aecbab9ddf252393bdbf379c91541"
+    },
+    "me5-5_33": {
+      "name": "Pikachu",
+      "printing": "me5-5_33",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/30C/30C_033_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/30C/33",
+      "sha256": "f5c00fac972d2aef5fdf4bb3a841d5de3804ad70e3b96a60515fedfda9b81618"
+    },
+    "me5-5_34": {
+      "name": "Pikachu",
+      "printing": "me5-5_34",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/30C/30C_034_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/30C/34",
+      "sha256": "e89946fedc9749be8d521e0f9ea37e5a5a86730029f8b61402a2b6a4482c5c4e"
+    },
+    "me5-5_39": {
+      "name": "Pikachu",
+      "printing": "me5-5_39",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/30C/30C_039_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/30C/39",
+      "sha256": "138fd2fc1b62521a330c437b9050309b4e2a440f6819b43d965debc003c6c7ee"
+    },
+    "me5-5_40": {
+      "name": "Pikachu",
+      "printing": "me5-5_40",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/30C/30C_040_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/30C/40",
+      "sha256": "29ac693dcbaaebf15e09d883e0f7041579c1f6ea6c95a449d391c7d0db70a60b"
+    },
+    "me5-5_43": {
+      "name": "Pikachu",
+      "printing": "me5-5_43",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/30C/30C_043_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/30C/43",
+      "sha256": "c420e6110d5149453ce929022166b1fdfc1a04ecce842f43a8f6b10c8ee987c2"
+    },
+    "me5-5_44": {
+      "name": "Pikachu",
+      "printing": "me5-5_44",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/30C/30C_044_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/30C/44",
+      "sha256": "7fd9220d7d918afc38755213163faa95426d8dc37d69cae186e865ae71746494"
+    },
+    "me5-5_52": {
+      "name": "Pikachu",
+      "printing": "me5-5_52",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/30C/30C_052_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/30C/52",
+      "sha256": "d366278b1c66a2cefa0c1ce25c325dda629ae05bf6d287ed85e865d8d20fefa0"
+    },
+    "me5-5_54": {
+      "name": "Pikachu ex",
+      "printing": "me5-5_54",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/30C/30C_054_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/30C/54",
+      "sha256": "1681bf2bc0d90aabd4f3626d9fe6cc60dd07ee919e868f1a52390200c0ba88e1"
+    },
+    "me5-5_66": {
+      "name": "Mew ex",
+      "printing": "me5-5_66",
+      "source": "PTCGL cached artwork",
+      "sha256": "43ab614b3adfe587880a7f9a329ec9c7ae3179255367bf473f5a8a81d00007fa"
+    },
+    "mebsp_25": {
+      "name": "Mega Kangaskhan ex",
+      "printing": "mebsp_25",
+      "source": "PTCGL cached artwork",
+      "sha256": "f984c13fa81148b7d6d90cf4f770c667d6a6e471fd2c57f19d46ea8a2c356093"
+    },
+    "mebsp_3": {
+      "name": "Alakazam",
+      "printing": "mebsp_3",
+      "source": "PTCGL cached artwork",
+      "sha256": "554a33a81294f2dd480bad20a919c11417c08ff2152c30d652afc1ca6946212a"
+    },
+    "mebsp_65": {
+      "name": "Barbaracle",
+      "printing": "mebsp_65",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/MEP/MEP_065_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/MEP/65",
+      "sha256": "a0dd8e871e867d0952cd1c57b70e0841e8b8f0cb4b2c7e741a05a9f8bb0d4b89"
+    },
+    "mebsp_66": {
+      "name": "Tyrantrum",
+      "printing": "mebsp_66",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/MEP/MEP_066_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/MEP/66",
+      "sha256": "4d26e2c40e7b98fd108c26abff5009b8d100f2603f64dc82a01855f78c4711ab"
+    },
+    "mebsp_9": {
+      "name": "Alakazam",
+      "printing": "mebsp_9",
+      "source": "PTCGL cached artwork",
+      "sha256": "f20f692157b1be926e6d39e15421e1f84c4fe8090615cbe9d9e2ae9b2c9eb016"
+    },
+    "rsv10-5_126": {
+      "name": "Frillish",
+      "printing": "rsv10-5_126",
+      "source": "PTCGL cached artwork",
+      "sha256": "0f78b51cd4a16197d787ccfdb4c2d56bfff26a6233d191320a353a845fbaccd3"
+    },
+    "rsv10-5_13": {
+      "name": "Emboar",
+      "printing": "rsv10-5_13",
+      "source": "PTCGL cached artwork",
+      "sha256": "e11d4c198fc46bc14d1ec22c43453112a2819ae0c96df49245037f1ad9c3f054"
+    },
+    "rsv10-5_45": {
+      "name": "Jellicent ex",
+      "printing": "rsv10-5_45",
+      "source": "PTCGL cached artwork",
+      "sha256": "aa87c0ceb6326d132c2d897a275a2ce8f57f22d448f4afcc267b9bc065413a8e"
+    },
+    "sm11_57": {
+      "name": "Alolan Raichu",
+      "printing": "sm11_57",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/UNM/UNM_057_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/UNM/57",
+      "sha256": "6fb91d9a030844ca64993f277f571988084eaf62ec721d10db431d42f856cc5f"
+    },
+    "sm11-5_69": {
+      "name": "Moltres & Zapdos & Articuno-GX",
+      "printing": "sm11-5_69",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/HIF/HIF_069_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/HIF/69",
+      "sha256": "3f6bb95e4e605cac970bdc7dbca8597018cb92c30fc9474c233cb83312f53bb2"
+    },
+    "sm8_136": {
+      "name": "Azumarill",
+      "printing": "sm8_136",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/LOT/LOT_136_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/LOT/136",
+      "sha256": "e183dee957e8680013097a59a932abaa1691e09948a27e212e589d44f73bf0f8"
+    },
+    "sv1_244": {
+      "name": "Miraidon ex",
+      "printing": "sv1_244",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/SVI/SVI_244_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/SVI/244",
+      "sha256": "af04ec3eaf8d2e4c9f00884fa84fa481179e283543f46b857bb731d5065b661d"
+    },
+    "sv1_253": {
+      "name": "Miraidon ex",
+      "printing": "sv1_253",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/SVI/SVI_253_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/SVI/253",
+      "sha256": "9be0772b21d95a76bdaee4f7dac914f6edfa41ae33def054a5314a3f07aa0f36"
+    },
+    "sv1_81": {
+      "name": "Miraidon ex",
+      "printing": "sv1_81",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/SVI/SVI_081_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/SVI/81",
+      "sha256": "e34088a8af8147b0c2c4f3c9c21713989a5f465d75351dab525377f0125db28a"
+    },
+    "sv10_11": {
+      "name": "Dwebble",
+      "printing": "sv10_11",
+      "source": "PTCGL cached artwork",
+      "sha256": "83c845495d4cef9dcc52c3f746ccae1ee517d9497fa0119882c6ac71400a7347"
+    },
+    "sv10_12": {
+      "name": "Crustle",
+      "printing": "sv10_12",
+      "source": "PTCGL cached artwork",
+      "sha256": "ad8760fde6e74537abf3ea037b71028b7127e0d5a62271e065987ba67ca118f7"
+    },
+    "sv10_127": {
+      "name": "Team Rocket's Murkrow",
+      "printing": "sv10_127",
+      "source": "PTCGL cached artwork",
+      "sha256": "995b99fd72d73e91585957bf809ffdb49005f1b336260a5b38e7b40596db5f20"
+    },
+    "sv10_128": {
+      "name": "Team Rocket's Sneasel",
+      "printing": "sv10_128",
+      "source": "existing leaderboard artwork",
+      "sha256": "4feca5b5d325ce7f3da16e8eda28cbd95f45595fd92be051a25e62ed95134d54"
+    },
+    "sv10_134": {
+      "name": "Marnie's Impidimp",
+      "printing": "sv10_134",
+      "source": "PTCGL cached artwork",
+      "sha256": "ae8a982dc0dbf8cd721de97c7611ff13b43959962875aca016f488f30af75c02"
+    },
+    "sv10_135": {
+      "name": "Marnie's Morgrem",
+      "printing": "sv10_135",
+      "source": "PTCGL cached artwork",
+      "sha256": "c7cf8a5f873a51d78550b14fc61cf052e2d8fe54132d732c27f2dacd5800a5fc"
+    },
+    "sv10_136": {
+      "name": "Marnie's Grimmsnarl ex",
+      "printing": "sv10_136",
+      "source": "PTCGL cached artwork",
+      "sha256": "c91238e38d2eebf6ba679efb87d2011767c2a4f130612090dbec1ac0d51dd093"
+    },
+    "sv10_154": {
+      "name": "Team Rocket's Porygon2",
+      "printing": "sv10_154",
+      "source": "PTCGL cached artwork",
+      "sha256": "e0c3e51d139d77e542b91652cf598854a826219d0d51b9de333cb651986af862"
+    },
+    "sv10_184": {
+      "name": "Cynthia's Roserade",
+      "printing": "sv10_184",
+      "source": "PTCGL cached artwork",
+      "sha256": "be4eb93fa8c8589e6518fcf43643ba12186066376bb5d4176073550fb2eab155"
+    },
+    "sv10_185": {
+      "name": "Shaymin",
+      "printing": "sv10_185",
+      "source": "PTCGL cached artwork",
+      "sha256": "ed84d7611674450037dddce1617e0e8d7497332d71a8cbdd230b03eb263b31e6"
+    },
+    "sv10_186": {
+      "name": "Crustle",
+      "printing": "sv10_186",
+      "source": "PTCGL cached artwork",
+      "sha256": "ede0e1a8b9e14738ffc1bce3787a5016b6a1a32e1a2f32a56724164bdc3fe4bf"
+    },
+    "sv10_187": {
+      "name": "Team Rocket's Spidops",
+      "printing": "sv10_187",
+      "source": "PTCGL cached artwork",
+      "sha256": "bca2425c2b353af8298c2941e0571a0a9cad81987052d30f44a46dfbd12342ab"
+    },
+    "sv10_190": {
+      "name": "Ethan's Typhlosion",
+      "printing": "sv10_190",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/DRI/DRI_190_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/DRI/190",
+      "sha256": "23dd2134ba07b7a37af39c88bf3ddb9a080a6867e8e539d0d4f5a21685b6dde5"
+    },
+    "sv10_2": {
+      "name": "Yanma",
+      "printing": "sv10_2",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/DRI/DRI_002_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/DRI/2",
+      "sha256": "4a5d585082874d8f1abf35f8a0b46b3b82ce6894b367fe7576e680eea0dbd36e"
+    },
+    "sv10_20": {
+      "name": "Team Rocket's Spidops",
+      "printing": "sv10_20",
+      "source": "PTCGL cached artwork",
+      "sha256": "7342f06c575471ab496ed78cf21d001c7f310aee680fd50969ce1503bef551ed"
+    },
+    "sv10_200": {
+      "name": "Team Rocket's Murkrow",
+      "printing": "sv10_200",
+      "source": "PTCGL cached artwork",
+      "sha256": "73c420cfcc8d6a2cbb24c929e030a6967219629ff66b2060b0a360332ecea877"
+    },
+    "sv10_206": {
+      "name": "Yanmega ex",
+      "printing": "sv10_206",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/DRI/DRI_206_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/DRI/206",
+      "sha256": "2e9a2ea3edebccf618d617ea9d83451149b1479bb6bdb99e2c5586d813b86224"
+    },
+    "sv10_207": {
+      "name": "Arboliva ex",
+      "printing": "sv10_207",
+      "source": "PTCGL cached artwork",
+      "sha256": "4f6b3a2c6eaa32ad1ca97dcc33ed80c3d13d19b4bb85602e5e03b8e4994e4d49"
+    },
+    "sv10_231": {
+      "name": "Team Rocket's Mewtwo ex",
+      "printing": "sv10_231",
+      "source": "PTCGL cached artwork",
+      "sha256": "216f8293a784fd195e43d2d4ca7d0e21c84f1a47b95ba5b9175b1e439fb4bb50"
+    },
+    "sv10_232": {
+      "name": "Cynthia's Garchomp ex",
+      "printing": "sv10_232",
+      "source": "PTCGL cached artwork",
+      "sha256": "5136184bb21aa00b9ef12cbc9fe42c954019d52c4970efaf05da4db09def6188"
+    },
+    "sv10_234": {
+      "name": "Team Rocket's Crobat ex",
+      "printing": "sv10_234",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/DRI/DRI_234_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/DRI/234",
+      "sha256": "a913f261bdce8a3154e5ab7c38f7715b1a758de30b23d8d88c03ddd2b7b918ac"
+    },
+    "sv10_32": {
+      "name": "Ethan's Cyndaquil",
+      "printing": "sv10_32",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/DRI/DRI_032_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/DRI/32",
+      "sha256": "e624a6ae5cb5ec81a4f2aec0742aeca4018d315c1a4fcd830cbc83300ad3daad"
+    },
+    "sv10_51": {
+      "name": "Team Rocket's Articuno",
+      "printing": "sv10_51",
+      "source": "PTCGL cached artwork",
+      "sha256": "2acf1861f9ecc7e4197e4b624b3af638266a9c091b477b8fe54bcd9ce8bc35e4"
+    },
+    "sv10_56": {
+      "name": "Gorebyss",
+      "printing": "sv10_56",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/DRI/DRI_056_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/DRI/56",
+      "sha256": "529d31f2f85e918e76ce6f4c0eae1d2b581e4e6967d45b99ac2b47cf9366223e"
+    },
+    "sv10_78": {
+      "name": "Zeraora",
+      "printing": "sv10_78",
+      "source": "PTCGL cached artwork",
+      "sha256": "20bd0b8014705d6cc3eb5bf6b30c15953ee02c232a566ca8dc59eddae3cbc1c5"
+    },
+    "sv2_97": {
+      "name": "Mimikyu",
+      "printing": "sv2_97",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/PAL/PAL_097_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/PAL/97",
+      "sha256": "5991b9f0e0ed0ab68eb5070ec41b2127db7ff3541dc9d2ad7c6e798b7955c197"
+    },
+    "sv3_125": {
+      "name": "Charizard ex",
+      "printing": "sv3_125",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/OBF/OBF_125_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/OBF/125",
+      "sha256": "6a2714ec6f2ac4d872763fffa8c91d3fddfea5056fd8df4d8ee89337b18cba00"
+    },
+    "sv3_82": {
+      "name": "Clefable ex",
+      "printing": "sv3_82",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/OBF/OBF_082_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/OBF/82",
+      "sha256": "6dd5da0f3dfda4a683f0c71b3b6f5d3a04bc835aadda27eec1555fda4983be2f"
+    },
+    "sv4_248": {
+      "name": "Iron Hands ex",
+      "printing": "sv4_248",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/PAR/PAR_248_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/PAR/248",
+      "sha256": "ef391d06e33e48e5b626b246e2e35e29dd9dc84bbc2d8932079b0b86353a9142"
+    },
+    "sv4_58": {
+      "name": "Mewtwo ex",
+      "printing": "sv4_58",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/PAR/PAR_058_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/PAR/58",
+      "sha256": "4a901c7acd22d821a1090ce3f490e59b2ae4d96dd2140ccb7cc101a6654c71c2"
+    },
+    "sv4_70": {
+      "name": "Iron Hands ex",
+      "printing": "sv4_70",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/PAR/PAR_070_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/PAR/70",
+      "sha256": "0d1abb25c311033e8d0092bb519b6bb3ee411ad5c266e36d4eb99d0c2eecb6da"
+    },
+    "sv4-5_215": {
+      "name": "Alakazam ex",
+      "printing": "sv4-5_215",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/PAF/PAF_215_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/PAF/215",
+      "sha256": "23604d54e142b79a8e425df221f95b0e34769e305c2163d8bcbc67cca0932f1c"
+    },
+    "sv4-5_233": {
+      "name": "Gardevoir ex",
+      "printing": "sv4-5_233",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/PAF/PAF_233_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/PAF/233",
+      "sha256": "e800734d1d21479cabcc9886f014d53f535a4bc19f273c4ba478e7ff248e57c9"
+    },
+    "sv4-5_8": {
+      "name": "Charmeleon",
+      "printing": "sv4-5_8",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/PAF/PAF_008_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/PAF/8",
+      "sha256": "ad24ca58ed7a5f9da6a48bbd5ac573574f267201f6421e39a41f529637cc286c"
+    },
+    "sv5_104": {
+      "name": "Gengar ex",
+      "printing": "sv5_104",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/TEF/TEF_104_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/TEF/104",
+      "sha256": "8250f60e1d1ebf8edfe2b3bbb79d50fefbb887bee8aef778e36ac78c1225f3fd"
+    },
+    "sv5_113": {
+      "name": "Beldum",
+      "printing": "sv5_113",
+      "source": "PTCGL cached artwork",
+      "sha256": "6eb3a0639a69d764c8390975c7ca9994b0170bca8ab83ab8650149b805a09b94"
+    },
+    "sv5_114": {
+      "name": "Metang",
+      "printing": "sv5_114",
+      "source": "PTCGL cached artwork",
+      "sha256": "48272522c164403e79b8fb06624b3561055656a67b0115b4b2a866cd80708f90"
+    },
+    "sv5_123": {
+      "name": "Raging Bolt ex",
+      "printing": "sv5_123",
+      "source": "PTCGL cached artwork",
+      "sha256": "ff3e42e529ebf28bdb2d9e8cd6228fedc8ef47126aebcb812c6fce9dc6194942"
+    },
+    "sv5_128": {
+      "name": "Dunsparce",
+      "printing": "sv5_128",
+      "source": "PTCGL cached artwork",
+      "sha256": "a0e573c2e5e7c4eaf92464c8574cf000d69765c63640289c56c2836ef3f9d17e"
+    },
+    "sv5_129": {
+      "name": "Dudunsparce",
+      "printing": "sv5_129",
+      "source": "PTCGL cached artwork",
+      "sha256": "df93d37d654eaf03d7235ca13d966a5532f769f27017ea74c545a2b9ed60608f"
+    },
+    "sv5_204": {
+      "name": "Gouging Fire ex",
+      "printing": "sv5_204",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/TEF/TEF_204_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/TEF/204",
+      "sha256": "0dace285f6339b922cec9d628052eec59355ca7e01e9d7692d9afda6e01bac38"
+    },
+    "sv5_23": {
+      "name": "Rellor",
+      "printing": "sv5_23",
+      "source": "PTCGL cached artwork",
+      "sha256": "ed122768728db4d00ee61f25136d7b69ac4b0ff68564266940e662a2b0f09868"
+    },
+    "sv5_24": {
+      "name": "Rabsca",
+      "printing": "sv5_24",
+      "source": "PTCGL cached artwork",
+      "sha256": "5dc7a05a869c77643cc01ad88472a818a3422d6dbd9cf23adca79fa98f16995c"
+    },
+    "sv5_25": {
+      "name": "Iron Leaves ex",
+      "printing": "sv5_25",
+      "source": "PTCGL cached artwork",
+      "sha256": "42dcac354f8259e7a7a83b6ff57e7ed99289dd9155ce96a7a2a39343b04ae75e"
+    },
+    "sv5_34": {
+      "name": "Incineroar ex",
+      "printing": "sv5_34",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/TEF/TEF_034_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/TEF/34",
+      "sha256": "0ddcde91ce8fcdc3331d87e39ca3765a914e53c801eb233e2e7266720b692758"
+    },
+    "sv5_63": {
+      "name": "Mr. Mime",
+      "printing": "sv5_63",
+      "source": "existing leaderboard artwork",
+      "sha256": "2715d38fa7e931bfa3e20fe337cd2851f074f423e6068d775c1d7fba746f57c3"
+    },
+    "sv5_69": {
+      "name": "Bronzong",
+      "printing": "sv5_69",
+      "source": "PTCGL cached artwork",
+      "sha256": "dc1428efc359c50e7d5edfc2da8ccf89e5fe898930519a69948b50c93223afba"
+    },
+    "sv5_81": {
+      "name": "Iron Crown ex",
+      "printing": "sv5_81",
+      "source": "PTCGL cached artwork",
+      "sha256": "b6a9920f9e537f957c9fdc2dd25cba1e7d3c6d0938ca5b1f95a70c60e22eb03a"
+    },
+    "sv6_106": {
+      "name": "Greninja ex",
+      "printing": "sv6_106",
+      "source": "PTCGL cached artwork",
+      "sha256": "c398ba5956a448736215dd61a269963211ede3e19784df15abe442a1d0a57977"
+    },
+    "sv6_112": {
+      "name": "Cornerstone Mask Ogerpon ex",
+      "printing": "sv6_112",
+      "source": "PTCGL cached artwork",
+      "sha256": "61dafb9378fe71000aa1aa34bbebadbb5ace4f27969a369b9463f0c426546a45"
+    },
+    "sv6_126": {
+      "name": "Applin",
+      "printing": "sv6_126",
+      "source": "PTCGL cached artwork",
+      "sha256": "337c480d2c3a3643a4b4237da99ee549e1d6de7e0799727b932b2540a94fa9bf"
+    },
+    "sv6_128": {
+      "name": "Dreepy",
+      "printing": "sv6_128",
+      "source": "PTCGL cached artwork",
+      "sha256": "dbb0bc3e28a01f117a2dd0083335f4cc351deb1135583bc50b7272577cecf114"
+    },
+    "sv6_129": {
+      "name": "Drakloak",
+      "printing": "sv6_129",
+      "source": "PTCGL cached artwork",
+      "sha256": "b43bc74ce836b19e49e3b116c93e040352f83594c78f83013c35b0bf5a3fec5b"
+    },
+    "sv6_130": {
+      "name": "Dragapult ex",
+      "printing": "sv6_130",
+      "source": "PTCGL cached artwork",
+      "sha256": "360a9b4dbf56a1c9f7c0a43c56d25165253c0db420ae1b636f3b8032de97c0bd"
+    },
+    "sv6_131": {
+      "name": "Tatsugiri",
+      "printing": "sv6_131",
+      "source": "PTCGL cached artwork",
+      "sha256": "e4a592760a7ba749abed7df1afe4baffb46587299f541640044cf9fc2676b7fe"
+    },
+    "sv6_14": {
+      "name": "Grookey",
+      "printing": "sv6_14",
+      "source": "PTCGL cached artwork",
+      "sha256": "11fc4bdfa3adb717a96d99155877aafe9283b893b499cc75e2039d799d5f2236"
+    },
+    "sv6_141": {
+      "name": "Bloodmoon Ursaluna ex",
+      "printing": "sv6_141",
+      "source": "PTCGL cached artwork",
+      "sha256": "976b476302761a34da2759301a82e3f5e400e6b4e677882ec2e5423b6616e54b"
+    },
+    "sv6_15": {
+      "name": "Thwackey",
+      "printing": "sv6_15",
+      "source": "PTCGL cached artwork",
+      "sha256": "d5a14811c704568c6f677df8530f0a9f43350f72e513bfde2c3cbb77b839fc2e"
+    },
+    "sv6_170": {
+      "name": "Dipplin",
+      "printing": "sv6_170",
+      "source": "PTCGL cached artwork",
+      "sha256": "e64d8354e89964386b84552463f0d0118592a68f710683cff2c588464e924949"
+    },
+    "sv6_174": {
+      "name": "Froslass",
+      "printing": "sv6_174",
+      "source": "PTCGL cached artwork",
+      "sha256": "9225a6d3189ddeb5c30bd3eab187da7f0deb805de89a2cd6c407db81d20561c9"
+    },
+    "sv6_194": {
+      "name": "Wellspring Mask Ogerpon ex",
+      "printing": "sv6_194",
+      "source": "PTCGL cached artwork",
+      "sha256": "cf359345d683855db4c945c378cc2879987ed49e4d2fa82f3c6409d1b905a22b"
+    },
+    "sv6_198": {
+      "name": "Greninja ex",
+      "printing": "sv6_198",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/TWM/TWM_198_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/TWM/198",
+      "sha256": "d270c1b285c79f606d4898a54d1c762f3325b1a2beb887c086def6a5192f158b"
+    },
+    "sv6_200": {
+      "name": "Dragapult ex",
+      "printing": "sv6_200",
+      "source": "PTCGL cached artwork",
+      "sha256": "ec92d4d5c2ec7055d3cac9b222123e587a9a816be8238f24e9eaafa7bca51440"
+    },
+    "sv6_211": {
+      "name": "Teal Mask Ogerpon ex",
+      "printing": "sv6_211",
+      "source": "PTCGL cached artwork",
+      "sha256": "0f4a85e5d63c63dbfa3fa4dcd9bb7f87c46a6c11e5b355724ebaf11783551e91"
+    },
+    "sv6_214": {
+      "name": "Greninja ex",
+      "printing": "sv6_214",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/TWM/TWM_214_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/TWM/214",
+      "sha256": "4c19c1de7e60cce4f99d510483e80ba9ad82a8e04cedbdc31dfb3aade67cc23a"
+    },
+    "sv6_216": {
+      "name": "Bloodmoon Ursaluna ex",
+      "printing": "sv6_216",
+      "source": "PTCGL cached artwork",
+      "sha256": "adc7d1debdb80304943ac2fb2c99045d6627e6651ff51480604a61c474217b96"
+    },
+    "sv6_25": {
+      "name": "Teal Mask Ogerpon ex",
+      "printing": "sv6_25",
+      "source": "PTCGL cached artwork",
+      "sha256": "9fca69c2d2562dc6c8963e6be4054383e6c41aa0a0fc7c768d10f618ef22b599"
+    },
+    "sv6_38": {
+      "name": "Chandelure",
+      "printing": "sv6_38",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/TWM/TWM_038_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/TWM/38",
+      "sha256": "ced850e31d69456a0885c91551fbdfe4f80a0b166685bb9be26bbeb4238c9109"
+    },
+    "sv6_39": {
+      "name": "Chi-Yu",
+      "printing": "sv6_39",
+      "source": "PTCGL cached artwork",
+      "sha256": "2d08505b38943819c390cc89879e144240fc3eeb4ad37d8471b6be6eabadd4d2"
+    },
+    "sv6_61": {
+      "name": "Palafin ex",
+      "printing": "sv6_61",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/TWM/TWM_061_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/TWM/61",
+      "sha256": "4aa010052205f85c976b668af118ccba288c976b648060b1f3e61f4ba392424b"
+    },
+    "sv6_64": {
+      "name": "Wellspring Mask Ogerpon ex",
+      "printing": "sv6_64",
+      "source": "PTCGL cached artwork",
+      "sha256": "964715169ece361124e9dedee33f9f28d7b0abffe6126270af09672135296623"
+    },
+    "sv6_77": {
+      "name": "Iron Thorns ex",
+      "printing": "sv6_77",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/TWM/TWM_077_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/TWM/77",
+      "sha256": "c7e114c96491803b078da98bd83f40b31a61c2696667c668e45574d57dc79ae7"
+    },
+    "sv6_80": {
+      "name": "Abra",
+      "printing": "sv6_80",
+      "source": "PTCGL cached artwork",
+      "sha256": "d6e2a3a39b7aa172db054e119646a46199b0d85a79ace94ea18d7e2feb420e68"
+    },
+    "sv6_95": {
+      "name": "Munkidori",
+      "printing": "sv6_95",
+      "source": "PTCGL cached artwork",
+      "sha256": "dab44d6e39d82769eaf395a997486447c071d75fc347f1dfa118859d1f471638"
+    },
+    "sv6-5_38": {
+      "name": "Fezandipiti ex",
+      "printing": "sv6-5_38",
+      "source": "PTCGL cached artwork",
+      "sha256": "a598ab60e8a569608993484aec5aea95faea2133156453232705656157e8d4a9"
+    },
+    "sv6-5_39": {
+      "name": "Pecharunt ex",
+      "printing": "sv6-5_39",
+      "source": "PTCGL cached artwork",
+      "sha256": "dacdc8ac4e819f4ec7d86f627f4e45462891abc6c8fecdf82299d265c21e99d0"
+    },
+    "sv6-5_40": {
+      "name": "Genesect",
+      "printing": "sv6-5_40",
+      "source": "PTCGL cached artwork",
+      "sha256": "d886675cb471752e916c88a866b5963d480398c53e3e1070a24be672d1a7fbdc"
+    },
+    "sv6-5_42": {
+      "name": "Copperajah",
+      "printing": "sv6-5_42",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/SFA/SFA_042_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/SFA/42",
+      "sha256": "1e0932f3d1967fbca4353d1bf3007dc800b4bb0fc27cd64f9703c9e03f19f449"
+    },
+    "sv6-5_68": {
+      "name": "Duskull",
+      "printing": "sv6-5_68",
+      "source": "PTCGL cached artwork",
+      "sha256": "f14cde412d0c979ae0ee262c7ec199cc29c90e639e43f4531ed6771d700d90fa"
+    },
+    "sv6-5_69": {
+      "name": "Dusclops",
+      "printing": "sv6-5_69",
+      "source": "PTCGL cached artwork",
+      "sha256": "545d5fe7b1928ab957c366eecf042497cadbbd28694bc30dc750d87b8778c1ed"
+    },
+    "sv6-5_70": {
+      "name": "Dusknoir",
+      "printing": "sv6-5_70",
+      "source": "PTCGL cached artwork",
+      "sha256": "74f9875fe034239a2b4e53c00ac26aada1f8afa817ccb6cba1ea39357e79f7d0"
+    },
+    "sv6-5_72": {
+      "name": "Munkidori",
+      "printing": "sv6-5_72",
+      "source": "PTCGL cached artwork",
+      "sha256": "9efc8da1313384f1ba4f56352989c7330733d981d80f4feeb2fca49a6826ce47"
+    },
+    "sv6-5_74": {
+      "name": "Okidogi",
+      "printing": "sv6-5_74",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/SFA/SFA_074_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/SFA/74",
+      "sha256": "1bc29971f38b33416984394cbe7baf07a58f9526b3147f573b9e9665a7026e50"
+    },
+    "sv6-5_85": {
+      "name": "Pecharunt ex",
+      "printing": "sv6-5_85",
+      "source": "PTCGL cached artwork",
+      "sha256": "b0688777acecb91b32e709c269622336023e4681ff00d23128d6603dc38b7a20"
+    },
+    "sv6-5_92": {
+      "name": "Fezandipiti ex",
+      "printing": "sv6-5_92",
+      "source": "PTCGL cached artwork",
+      "sha256": "a21709e8440e932689da7390100463853bdd3a09422c16d1b3bf7af0fe7f5968"
+    },
+    "sv6-5_95": {
+      "name": "Pecharunt ex",
+      "printing": "sv6-5_95",
+      "source": "PTCGL cached artwork",
+      "sha256": "f0ebac1b694230109d946b054199df2e9b902ac8b42e09f0018acaab211fcb78"
+    },
+    "sv7_115": {
+      "name": "Noctowl",
+      "printing": "sv7_115",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/SCR/SCR_115_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/SCR/115",
+      "sha256": "741ed11c7b73ea24f801d4af6dd807c3393c5f42292455688117de8d627469b0"
+    },
+    "sv7_119": {
+      "name": "Bouffalant",
+      "printing": "sv7_119",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/SCR/SCR_119_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/SCR/119",
+      "sha256": "ce601364b18c13b063777160a414b9955ba9e82baf55f144f4f3da0514578fda"
+    },
+    "sv7_14": {
+      "name": "Hydrapple ex",
+      "printing": "sv7_14",
+      "source": "PTCGL cached artwork",
+      "sha256": "45e2643cf53030cbb2a8754e5708aaea49c9526f9ab68027a4a340f86bc3ff6e"
+    },
+    "sv7_156": {
+      "name": "Hydrapple ex",
+      "printing": "sv7_156",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/SCR/SCR_156_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/SCR/156",
+      "sha256": "f964f5699d8dd6c8454b88137afec2493a9ddcc24abc4fe40c4bb40457733826"
+    },
+    "sv7_167": {
+      "name": "Hydrapple ex",
+      "printing": "sv7_167",
+      "source": "PTCGL cached artwork",
+      "sha256": "ab736c1959bfed774e10a893875b75a1af8507eec5ea88ad0eb57b7521ac885c"
+    },
+    "sv7_168": {
+      "name": "Galvantula ex",
+      "printing": "sv7_168",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/SCR/SCR_168_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/SCR/168",
+      "sha256": "018bf1c336ced639ab612f8932865e2947886f77e97308df77c76a20159e0aa0"
+    },
+    "sv7_51": {
+      "name": "Galvantula ex",
+      "printing": "sv7_51",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/SCR/SCR_051_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/SCR/51",
+      "sha256": "9e2e160c75b45f18fd212a8598289c9729c32b94af591909ce440a3e050b15ca"
+    },
+    "sv7_57": {
+      "name": "Slowpoke",
+      "printing": "sv7_57",
+      "source": "PTCGL cached artwork",
+      "sha256": "eb6d4262c47564e28ac6fa4c48f3e824e69a50c6b769982e5a673f88641c5f26"
+    },
+    "sv7_58": {
+      "name": "Slowking",
+      "printing": "sv7_58",
+      "source": "PTCGL cached artwork",
+      "sha256": "6a43086f036cd8525d015b7d56b424f6f1a3e8309358b4a481be8ad24d96d78d"
+    },
+    "sv7_63": {
+      "name": "Comfey",
+      "printing": "sv7_63",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/SCR/SCR_063_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/SCR/63",
+      "sha256": "cfe1408f9c46c81418730ff297a97e0932b5513a16ffa583bd6e1fe9bec5eba8"
+    },
+    "sv8_1": {
+      "name": "Exeggcute",
+      "printing": "sv8_1",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/SSP/SSP_001_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/SSP/1",
+      "sha256": "e63c8760a78480e9df66fde739ff0e20ff22751cace914d46edc63b9a235d082"
+    },
+    "sv8_117": {
+      "name": "Deino",
+      "printing": "sv8_117",
+      "source": "PTCGL cached artwork",
+      "sha256": "8eeb308fde188eb73543bb3353a480d2a78de947458edf137d37a2a2a5702716"
+    },
+    "sv8_119": {
+      "name": "Hydreigon ex",
+      "printing": "sv8_119",
+      "source": "PTCGL cached artwork",
+      "sha256": "1850c6da3e31621ac3de380ac09affeefec13dacf8fc00d3cb681b9cc12afd48"
+    },
+    "sv8_130": {
+      "name": "Archaludon ex",
+      "printing": "sv8_130",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/SSP/SSP_130_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/SSP/130",
+      "sha256": "0ad9f5ea964d88e191dce05ea683f4f757ed579a6757d02fd24abf95d31d517f"
+    },
+    "sv8_157": {
+      "name": "Tandemaus",
+      "printing": "sv8_157",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/SSP/SSP_157_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/SSP/157",
+      "sha256": "35adba35c24877380b2fe073c1d28b8cfb5d52bdaee3f2d2d68b9f8974730993"
+    },
+    "sv8_158": {
+      "name": "Maushold",
+      "printing": "sv8_158",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/SSP/SSP_158_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/SSP/158",
+      "sha256": "fc8dcc72e5a319eecdf18ae3e6fca33a1bc2312a0bc69bd4deba3662310a4397"
+    },
+    "sv8_220": {
+      "name": "Latias ex",
+      "printing": "sv8_220",
+      "source": "PTCGL cached artwork",
+      "sha256": "cbc2c3f7253527f365c3305bf72cae0106f51cfa4a6b0d6c82dec1ff25977eb0"
+    },
+    "sv8_224": {
+      "name": "Archaludon ex",
+      "printing": "sv8_224",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/SSP/SSP_224_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/SSP/224",
+      "sha256": "9802dfaea4e7b7652a2f00a0de3980c89f6d8c2444a8ac9d6a6abfbcbada1b4b"
+    },
+    "sv8_239": {
+      "name": "Latias ex",
+      "printing": "sv8_239",
+      "source": "PTCGL cached artwork",
+      "sha256": "d551e5ef6ed812f0e3cfa3cd9cf41d7a2aec2825523da3cc75c3960389271090"
+    },
+    "sv8_240": {
+      "name": "Hydreigon ex",
+      "printing": "sv8_240",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/SSP/SSP_240_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/SSP/240",
+      "sha256": "a45031ee421e59694546aaf592e8c72f5f8771b8d662f58a2ff630e300f2bfd7"
+    },
+    "sv8_241": {
+      "name": "Archaludon ex",
+      "printing": "sv8_241",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/SSP/SSP_241_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/SSP/241",
+      "sha256": "db8defdac567e5fc4ce5f86de7f4f6faa0d1466a125d322957a6d7f0eb85f804"
+    },
+    "sv8_36": {
+      "name": "Ceruledge ex",
+      "printing": "sv8_36",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/SSP/SSP_036_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/SSP/36",
+      "sha256": "aef144baf1c82741448d934d837550c69c7d2fdaae26e68de3b357a9f6d22139"
+    },
+    "sv8_57": {
+      "name": "Pikachu ex",
+      "printing": "sv8_57",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/SSP/SSP_057_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/SSP/57",
+      "sha256": "5cd44f7ef814781e2f1d3bf5aaa61f1b485b0f75ab4d1e6f6f65583909f5050c"
+    },
+    "sv8_76": {
+      "name": "Latias ex",
+      "printing": "sv8_76",
+      "source": "PTCGL cached artwork",
+      "sha256": "b942f548e187f0e79851ddf745d004ff515f5d762e50f5f04e9f778cf6899f37"
+    },
+    "sv8_86": {
+      "name": "Sylveon ex",
+      "printing": "sv8_86",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/SSP/SSP_086_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/SSP/86",
+      "sha256": "2da6fb1b700588eda212f59e9f24b802ee34ee9e38a56cd8e5c2c152fdc3017e"
+    },
+    "sv8-5_10": {
+      "name": "Dipplin",
+      "printing": "sv8-5_10",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/PRE/PRE_010_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/PRE/10",
+      "sha256": "045758c2fefea971bf25a55babecccc621c87a4be67e67e6826d841bae3fd2a5"
+    },
+    "sv8-5_11": {
+      "name": "Hydrapple ex",
+      "printing": "sv8-5_11",
+      "source": "PTCGL cached artwork",
+      "sha256": "020417bff4105234366c0489b90a61216f1038048963ca4f4503d593bd11557c"
+    },
+    "sv8-5_145": {
+      "name": "Teal Mask Ogerpon ex",
+      "printing": "sv8-5_145",
+      "source": "PTCGL cached artwork",
+      "sha256": "f4d2fabb6cd4fc3f49b592bd40a879c0eb6add5f8af22191dc8e1f517e596fa1"
+    },
+    "sv8-5_147": {
+      "name": "Ceruledge ex",
+      "printing": "sv8-5_147",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/PRE/PRE_147_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/PRE/147",
+      "sha256": "a89072f55aedd1052f0eb09b9e6647c9ded7d3bf938c23f6af22b97026710dca"
+    },
+    "sv8-5_160": {
+      "name": "Cornerstone Mask Ogerpon ex",
+      "printing": "sv8-5_160",
+      "source": "PTCGL cached artwork",
+      "sha256": "379c44f51a0497bbd50676a7fa3c13717136711e7c0f8243807e9689aafd75d2"
+    },
+    "sv8-5_163": {
+      "name": "Pecharunt ex",
+      "printing": "sv8-5_163",
+      "source": "PTCGL cached artwork",
+      "sha256": "44dec48b5b3e3fe2dace37a1b02c1701f5c72c8ed5858026188356f59e5858bc"
+    },
+    "sv8-5_165": {
+      "name": "Dragapult ex",
+      "printing": "sv8-5_165",
+      "source": "PTCGL cached artwork",
+      "sha256": "16b7d4baefc736ba42a906da6cf14a8f57fc922d12466a4fab51b61a36bcd003"
+    },
+    "sv8-5_167": {
+      "name": "Eevee ex",
+      "printing": "sv8-5_167",
+      "source": "PTCGL cached artwork",
+      "sha256": "bdd38c5be2698cc3fe37461bf09c1667c6adff7169f5038db394109139b5294c"
+    },
+    "sv8-5_21": {
+      "name": "Seaking",
+      "printing": "sv8-5_21",
+      "source": "PTCGL cached artwork",
+      "sha256": "2b45bb6f6083c77bd8a89d443cd46d874b981a47e3a1c65070f71b270b9a9731"
+    },
+    "sv8-5_35": {
+      "name": "Duskull",
+      "printing": "sv8-5_35",
+      "source": "PTCGL cached artwork",
+      "sha256": "6ee12b9b25428b504e944cda88d9ecc3b369863c8ae416457c5b6f6d5e05867f"
+    },
+    "sv8-5_36": {
+      "name": "Dusclops",
+      "printing": "sv8-5_36",
+      "source": "PTCGL cached artwork",
+      "sha256": "e28dc30b27553d5d568d77ede432d3a921d07a17372343b488ba64df4a753d8b"
+    },
+    "sv8-5_37": {
+      "name": "Dusknoir",
+      "printing": "sv8-5_37",
+      "source": "PTCGL cached artwork",
+      "sha256": "d211ea0074345dd0ea0c4748acd2ca567ef5493b651bd0af79c2865df439d142"
+    },
+    "sv8-5_4": {
+      "name": "Budew",
+      "printing": "sv8-5_4",
+      "source": "PTCGL cached artwork",
+      "sha256": "fe351cc614715f16e572197aa9c678fce2468c38a9f3b8ec77b08aa2078efcb3"
+    },
+    "sv8-5_40": {
+      "name": "Sylveon",
+      "printing": "sv8-5_40",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/PRE/PRE_040_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/PRE/40",
+      "sha256": "92511f0ea7a65f4387f147b7881907b4aeeeec74b5816624a5ff8220f7a941ee"
+    },
+    "sv8-5_50": {
+      "name": "Riolu",
+      "printing": "sv8-5_50",
+      "source": "PTCGL cached artwork",
+      "sha256": "89982060c9129d199058c2c32d5ca3d4925d64fba5a36b0743235de139451049"
+    },
+    "sv8-5_71": {
+      "name": "Dreepy",
+      "printing": "sv8-5_71",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/PRE/PRE_071_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/PRE/71",
+      "sha256": "65c20568196d33bf751eeb9dcd9aa73aa235785d02cf7483362f0c5822fcf179"
+    },
+    "sv8-5_72": {
+      "name": "Drakloak",
+      "printing": "sv8-5_72",
+      "source": "PTCGL cached artwork",
+      "sha256": "c221e8bc5030d4472d81c9aa5a5d5d15aaa56f081a8000095a57aed87e14753d"
+    },
+    "sv8-5_73": {
+      "name": "Dragapult ex",
+      "printing": "sv8-5_73",
+      "source": "PTCGL cached artwork",
+      "sha256": "df719a4fe950cf57a9cf7062d67c05777000d2a8953b1939bb53205b98d183a0"
+    },
+    "sv8-5_78": {
+      "name": "Noctowl",
+      "printing": "sv8-5_78",
+      "source": "PTCGL cached artwork",
+      "sha256": "b39207d0ac5a30bcb3c4618519d43ac062678f4425bfba503e87db7b7c88e374"
+    },
+    "sv8-5_80": {
+      "name": "Dudunsparce",
+      "printing": "sv8-5_80",
+      "source": "PTCGL cached artwork",
+      "sha256": "b67914f21d779a67b39c4da6a672d4748bbdef8f8ad145c8d841c9d241a1e14b"
+    },
+    "sv8-5_82": {
+      "name": "Lugia ex",
+      "printing": "sv8-5_82",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/PRE/PRE_082_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/PRE/82",
+      "sha256": "a7e805b2c6d880cb7bbe2c70da8127790a7eae741318d699daceaf659b3e4ef3"
+    },
+    "sv8-5_9": {
+      "name": "Applin",
+      "printing": "sv8-5_9",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/PRE/PRE_009_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/PRE/9",
+      "sha256": "a4039ed6db523999197323f4fb1419b23bb372c2df243a299ab6c3b32a348db7"
+    },
+    "sv9_116": {
+      "name": "N's Reshiram",
+      "printing": "sv9_116",
+      "source": "PTCGL cached artwork",
+      "sha256": "6c1994562da43570c779f026387a659aa6102918abf188c9f93ddf55861ddfaa"
+    },
+    "sv9_120": {
+      "name": "Dunsparce",
+      "printing": "sv9_120",
+      "source": "PTCGL cached artwork",
+      "sha256": "dd80cd391217b83d6791de6916597af225712b00034ba52bf4ac396715e80282"
+    },
+    "sv9_121": {
+      "name": "Dudunsparce ex",
+      "printing": "sv9_121",
+      "source": "PTCGL cached artwork",
+      "sha256": "49bfe6f55a55cdffd8772cf6e1c88f1264032cac7c8fe68d710ad3633a99c0e1"
+    },
+    "sv9_160": {
+      "name": "Maractus",
+      "printing": "sv9_160",
+      "source": "existing leaderboard artwork",
+      "sha256": "2d150b365e3e87684eb926b0c877347371d20ba039271255a09582ede382ac95"
+    },
+    "sv9_163": {
+      "name": "Iono's Kilowattrel",
+      "printing": "sv9_163",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/JTG/JTG_163_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/JTG/163",
+      "sha256": "52da1b3d4d8f500ec3a4e988e6892b7b1643278eaea0e56da8eae7e397c63cb4"
+    },
+    "sv9_175": {
+      "name": "N's Zoroark ex",
+      "printing": "sv9_175",
+      "source": "PTCGL cached artwork",
+      "sha256": "5aeb49591e0d97ece4525a7e2deb374f98b9aa5a78ff3a658e893c41fb67ad28"
+    },
+    "sv9_178": {
+      "name": "Dudunsparce ex",
+      "printing": "sv9_178",
+      "source": "PTCGL cached artwork",
+      "sha256": "9553d4ccf5dba3c31617001854e5dc050664e9bd0e2d4b2f4a3b671a03d3ff38"
+    },
+    "sv9_184": {
+      "name": "Lillie's Clefairy ex",
+      "printing": "sv9_184",
+      "source": "PTCGL cached artwork",
+      "sha256": "124a31bc29ab9e993cf71d6c926f4764900970babdd97ee2b9078bf5af65b5a0"
+    },
+    "sv9_24": {
+      "name": "Blaziken ex",
+      "printing": "sv9_24",
+      "source": "PTCGL cached artwork",
+      "sha256": "1e7adc287bf427ac7836773f2963b7ff183fddb137578be92325feca8504e35e"
+    },
+    "sv9_27": {
+      "name": "N's Darmanitan",
+      "printing": "sv9_27",
+      "source": "existing leaderboard artwork",
+      "sha256": "74325243262e536a6c4d313fb3ad0105ce4dd1ad7b36753e546168470c3b09bb"
+    },
+    "sv9_3": {
+      "name": "Butterfree",
+      "printing": "sv9_3",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/JTG/JTG_003_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/JTG/3",
+      "sha256": "b4141c7078c006b5c3137a7439803373b09599648a2a525c28c15579ecd7f0eb"
+    },
+    "sv9_56": {
+      "name": "Lillie's Clefairy ex",
+      "printing": "sv9_56",
+      "source": "PTCGL cached artwork",
+      "sha256": "cae271c4fe4a4ddc7eff251c88a8977c64b20a6e46680fa6feaead29e7669fa8"
+    },
+    "sv9_95": {
+      "name": "Tyranitar",
+      "printing": "sv9_95",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/JTG/JTG_095_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/JTG/95",
+      "sha256": "73a1e71762e5e77b6af088ed8a9ba22a82429ceafbaf45ee2cf80adfcda15c5e"
+    },
+    "sv9_97": {
+      "name": "N's Zorua",
+      "printing": "sv9_97",
+      "source": "PTCGL cached artwork",
+      "sha256": "c95e8ca122dd4d9ea4571ee1f1848b4b5609aa5f2b78e5fd0486aa14441219de"
+    },
+    "sv9_98": {
+      "name": "N's Zoroark ex",
+      "printing": "sv9_98",
+      "source": "PTCGL cached artwork",
+      "sha256": "b821c447c866c9eadfb7530554b9bb17bb6035c3ea30028b12586458781ad542"
+    },
+    "svalt_142": {
+      "name": "Chandelure",
+      "printing": "sv6_38",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/TWM/TWM_038_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/TWM/38",
+      "sha256": "ced850e31d69456a0885c91551fbdfe4f80a0b166685bb9be26bbeb4238c9109"
+    },
+    "svbsp_141": {
+      "name": "Noctowl",
+      "printing": "svbsp_141",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/SVP/SVP_141_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/SVP/141",
+      "sha256": "5540265181e048ea7cd3a87ee1a7750d8b138d5ea256febb03528745d662b2d5"
+    },
+    "svbsp_166": {
+      "name": "Teal Mask Ogerpon ex",
+      "printing": "svbsp_166",
+      "source": "PTCGL cached artwork",
+      "sha256": "b87d29053d580cb296e0a710290941ef7f17cd0a3f801c14ae7e611a6c383eb0"
+    },
+    "svbsp_90": {
+      "name": "Metang",
+      "printing": "svbsp_90",
+      "source": "PTCGL cached artwork",
+      "sha256": "933556a35fd7ea3168d796269883e41d1908531f139d7ca37eafa0089a8f33c0"
+    },
+    "swsh10-5_55": {
+      "name": "Snorlax",
+      "printing": "swsh10-5_55",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/PGO/PGO_055_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/PGO/55",
+      "sha256": "dd5a339426117ddaf85d616db488f20df99edfe3c587dccb191e07ff6db6ae2a"
+    },
+    "swsh11_177": {
+      "name": "Rotom V",
+      "printing": "swsh11_177",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/LOR/LOR_177_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/LOR/177",
+      "sha256": "59144774a82d4b59bea5a3e7060107c31b9a98b824360344d1c186454ba70a9e"
+    },
+    "swsh12_135": {
+      "name": "Regidrago V",
+      "printing": "swsh12_135",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/SIT/SIT_135_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/SIT/135",
+      "sha256": "146b89eaceff93d09354cf923ad46647425e0d8fdfc2aee45c8f21ef26817037"
+    },
+    "swsh12_136": {
+      "name": "Regidrago VSTAR",
+      "printing": "swsh12_136",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/SIT/SIT_136_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/SIT/136",
+      "sha256": "e71fa84cae7902ff3811e48b4f42a1da9af74218c133d27a8dbbf43178fe0634"
+    },
+    "swsh12_139": {
+      "name": "Lugia VSTAR",
+      "printing": "swsh12_139",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/SIT/SIT_139_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/SIT/139",
+      "sha256": "427a28f02e4f6ed3daada2a07ecc421ad7331ca29815d342e5504c1e8aadba0c"
+    },
+    "swsh12_64": {
+      "name": "Mismagius",
+      "printing": "swsh12_64",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/SIT/SIT_064_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/SIT/64",
+      "sha256": "00b543eec4ca594167d4507b0dd4ff7d8aeef5e18894dffc66d66a1d00c0fa09"
+    },
+    "swsh3_83": {
+      "name": "Polteageist",
+      "printing": "swsh3_83",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/DAA/DAA_083_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/DAA/83",
+      "sha256": "2f293032c9c6b5fd0cc6d87d0bdc916339857ba37c6e62eb339b9a5739193bc9"
+    },
+    "swsh5_170": {
+      "name": "Rapid Strike Urshifu VMAX",
+      "printing": "swsh5_170",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/BST/BST_170_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/BST/170",
+      "sha256": "ef764c5d6c8280408e0cdf07078335096d5dbdf057c1e9b98f1171e209c444c5"
+    },
+    "swsh7_60": {
+      "name": "Regieleki",
+      "printing": "swsh7_60",
+      "source": "https://limitlesstcg.nyc3.cdn.digitaloceanspaces.com/tpci/EVS/EVS_060_R_EN_LG.png",
+      "verifiedPage": "https://limitlesstcg.com/cards/EVS/60",
+      "sha256": "004ee114f0ba5e1a19d0ccd756554886574a3f489510f30db5b2580acd0b974e"
+    },
+    "zsv10-5_161": {
+      "name": "Genesect ex",
+      "printing": "zsv10-5_161",
+      "source": "PTCGL cached artwork",
+      "sha256": "81251f98cee1bfc77bc3ae77aa90dec02521f583882b6493308f5dc27a1521ac"
+    },
+    "zsv10-5_169": {
+      "name": "Genesect ex",
+      "printing": "zsv10-5_169",
+      "source": "PTCGL cached artwork",
+      "sha256": "9be423f858925cedd1e35eb0a98678702b172c36aac70154ba234a780a6fae04"
+    },
+    "zsv10-5_31": {
+      "name": "Eelektrik",
+      "printing": "zsv10-5_31",
+      "source": "PTCGL cached artwork",
+      "sha256": "36e66cdb2bf91e27c28c2a09ff94086554aa7c0eef613ded6bb13b31e0da2387"
+    },
+    "zsv10-5_40": {
+      "name": "Elgyem",
+      "printing": "zsv10-5_40",
+      "source": "PTCGL cached artwork",
+      "sha256": "ca9dd70036130deb75b8cc87ce3d80a1834a9ff140e5efed048736e19602d018"
+    },
+    "zsv10-5_67": {
+      "name": "Genesect ex",
+      "printing": "zsv10-5_67",
+      "source": "PTCGL cached artwork",
+      "sha256": "47570ff32cd4100b9e447fb66ad46d956902e0afec2ab669d281fe82ef229367"
+    }
+  }
+}

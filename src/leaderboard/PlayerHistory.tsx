@@ -18,7 +18,7 @@ function FeaturedPokemon({ side, matchId, playerId }: { side?: HistorySide; matc
   const label = historyPokemonLabel(matchId, playerId, side);
   if (label === EARLY_END_POKEMON_LABEL) return <span className="history-pokemon-early-end" title={label}>{label}</span>;
   return <span className="history-pokemon" title={label}>
-    <img loading="lazy" decoding="async" src={artId ? `${LEADERBOARD_ART_HREF}/${encodeURIComponent(artId)}.png` : back}
+    <img loading="lazy" decoding="async" src={artId ? `${LEADERBOARD_ART_HREF}/${encodeURIComponent(artId)}.png?v=2` : back}
       alt="" data-card-id={artId} onError={event => {
         if (!LEADERBOARD_BASE) return showCardBackOnError(event);
         const fallback = new URL(back, window.location.origin).href;

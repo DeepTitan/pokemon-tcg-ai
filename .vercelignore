@@ -37,6 +37,7 @@ scripts/*
 !scripts/leaderboard-social-preview.ts
 !scripts/leaderboard-public-snapshot.ts
 !scripts/turnlume-local-card-catalog.ts
+!scripts/audit-leaderboard-art.mjs
 src/engine/*
 !src/engine/types.ts
 src/ai
