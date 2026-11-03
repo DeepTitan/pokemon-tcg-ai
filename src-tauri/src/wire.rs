@@ -198,6 +198,8 @@ fn decode_player_message(
     // Heartbeats and non-operation messages are expected. Once an operation is
     // identified, decoding failure must be reported instead of losing it silently.
     let Some(value) = value_for(&server_message, &["compressedValue", "CompressedValue"]) else { return Ok(None); };
+    // Non-operation responses can include the schema's empty/default field.
+    if value.is_null() || value.as_str() == Some("") { return Ok(None); }
     let compressed = value.as_str().and_then(|encoded| BASE64.decode(encoded).ok())
         .ok_or("The recorded operation has an invalid compressed payload.")?;
     let operation_bytes = decompress(&compressed)
@@ -309,7 +311,8 @@ mod tests {
         for message in [r#"{"compressedValue":"not base64"}"#, r#"{"compressedValue":"eA=="}"#] {
             assert!(decode_websocket_message(&player_frame(message), "test".into(), "now".into()).is_err());
         }
-        for frame in [b"\n".to_vec(), player_frame(r#"{"messageType":"heartbeat"}"#)] {
+        for frame in [b"\n".to_vec(), player_frame(r#"{"messageType":"heartbeat"}"#),
+            player_frame(r#"{"compressedValue":null}"#), player_frame(r#"{"compressedValue":""}"#)] {
             assert!(decode_websocket_message(&frame, "test".into(), "now".into()).unwrap().is_none());
         }
     }
