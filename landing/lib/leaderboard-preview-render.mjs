@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Resvg } from '@resvg/resvg-js';
 import { getLeaderboardPreviewData, getPlayerPreviewData } from './generated/leaderboard-social-preview.mjs';
+import { EARLY_END_POKEMON_LABEL, historyPokemonLabel } from './generated/history-pokemon.mjs';
 import { originalCardArt, shareCardCatalog } from './share-catalog.mjs';
 import { artDataUri, framedCardArt, measureCardArt } from './share-card-art.mjs';
 
@@ -83,18 +84,20 @@ function cardArt(pokemon) {
   artCache.set(key, image);
   return image;
 }
-function pokemonCell(side, x, top) {
+function pokemonCell(side, x, top, matchId, playerId) {
   const pokemon = side?.pokemon;
-  let name = pokemon?.name?.trim();
-  if (!name || name === pokemon?.cardId || name === pokemon?.artCardId || /^[a-z0-9-]+_\d+(?:_[a-z0-9]+)?$/i.test(name)) name = 'Not recorded';
+  const label = historyPokemonLabel(matchId, playerId, side);
+  const name = label === 'Pokémon not recorded' ? 'Not recorded' : label;
+  const earlyEnd = name === EARLY_END_POKEMON_LABEL;
+  const width = earlyEnd ? 175 : 130, size = earlyEnd ? 13 : 15;
   const words = name.split(/\s+/), lines = [''];
   for (const word of words) {
     const previous = lines.at(-1), next = previous ? `${previous} ${word}` : word;
-    if (units(next) * 15 > 130 && previous && lines.length < 2) lines.push(word);
+    if (units(next) * size > width && previous && lines.length < 2) lines.push(word);
     else lines[lines.length - 1] = next;
   }
-  return `${framedCardArt(cardArt(pokemon), x + 17, top + 7, 46)}
-    ${lines.map((label, i) => text(fit(label, 130, 15), x + 44, top + (lines.length > 1 ? 25 : 36) + i * 19, 15, 600)).join('')}`;
+  return `${earlyEnd ? '' : framedCardArt(cardArt(pokemon), x + 17, top + 7, 46)}
+    ${lines.map((label, i) => text(fit(label, width, size), x + (earlyEnd ? 0 : 44), top + (lines.length > 1 ? 25 : 36) + i * 19, size, 600)).join('')}`;
 }
 
 function board(snapshot, ranking) {
@@ -167,7 +170,7 @@ function profile(snapshot, playerId) {
         ${text(fit(opponent, 182, 18), 287, top + 26, 18, 800)}
         ${text(played, 287, top + 46, 12, 600, muted)}
         ${text(Number.isFinite(live) ? number(live) : '—', 484, top + 37, 21, 800)}
-        ${pokemonCell(own, 590, top)}${text('vs.', 781, top + 36, 14, 600, muted)}${pokemonCell(other, 820, top)}
+        ${pokemonCell(own, 590, top, match.id, playerId)}${text('vs.', 781, top + 36, 14, 600, muted)}${pokemonCell(other, 820, top, match.id, update.opponentId)}
         ${text(`${own?.prizesTaken ?? '—'} – ${other?.prizesTaken ?? '—'}`, 1115, top + 37, 23, 800, ink, 'text-anchor="middle"')}${rule(top + 59)}`;
     }).join('')}
     ${!history.length ? text('No matches counted toward this rating yet.', 58, 292, 21, 600, muted) : ''}`;

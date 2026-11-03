@@ -1,5 +1,6 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { HistoryMatch, HistorySide } from './history.js';
+import { EARLY_END_POKEMON_LABEL, historyPokemonLabel } from './history-pokemon.js';
 import { competitiveRatingResult } from '../tracker/rating-model.js';
 import type { EloRatingUpdate } from './elo.js';
 import { showCardBackOnError } from '../tracker/card-art.js';
@@ -12,18 +13,18 @@ const back = LEADERBOARD_CARD_BACK_HREF;
 const rating = (value: number) => value.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const ratingChange = (value: number) => `${value > 0 ? '+' : value < 0 ? '−' : ''}${rating(Math.abs(value))}`;
 
-function FeaturedPokemon({ side }: { side?: HistorySide }) {
+function FeaturedPokemon({ side, matchId, playerId }: { side?: HistorySide; matchId: string; playerId: string }) {
   const artId = side?.pokemon?.artCardId ?? side?.pokemon?.cardId;
-  const name = side?.pokemon?.name?.trim();
-  const isAssetId = name === side?.pokemon?.cardId || name === side?.pokemon?.artCardId || /^[a-z0-9]+_\d+(?:_[a-z0-9]+)?$/i.test(name ?? '');
-  return <span className="history-pokemon" title={name && !isAssetId ? name : 'Pokémon not recorded'}>
+  const label = historyPokemonLabel(matchId, playerId, side);
+  if (label === EARLY_END_POKEMON_LABEL) return <span className="history-pokemon-early-end" title={label}>{label}</span>;
+  return <span className="history-pokemon" title={label}>
     <img loading="lazy" decoding="async" src={artId ? `${LEADERBOARD_ART_HREF}/${encodeURIComponent(artId)}.png` : back}
       alt="" data-card-id={artId} onError={event => {
         if (!LEADERBOARD_BASE) return showCardBackOnError(event);
         const fallback = new URL(back, window.location.origin).href;
         if (event.currentTarget.src !== fallback) event.currentTarget.src = fallback;
       }}/>
-    <span>{name && !isAssetId ? name : 'Pokémon not recorded'}</span>
+    <span>{label}</span>
   </span>;
 }
 
@@ -62,6 +63,8 @@ export default function PlayerHistory({ player, matches, updates, names, onClose
         const liveElo = match.liveRatings?.[opponentId];
         const hasLiveElo = typeof liveElo === 'number' && Number.isFinite(liveElo);
         const own = match.history?.players[player.playerId], other = match.history?.players[opponentId];
+        const ownEndedEarly = historyPokemonLabel(match.id, player.playerId, own) === EARLY_END_POKEMON_LABEL;
+        const otherEndedEarly = historyPokemonLabel(match.id, opponentId, other) === EARLY_END_POKEMON_LABEL;
         const result = match.outcome.type === 'draw' ? 'Draw' : match.outcome.winnerId === player.playerId ? 'Win' : 'Loss';
         const clientClosed = match.resultReason === 'local-client-closed';
         const update = updatesByMatch.get(match.id);
@@ -79,7 +82,10 @@ export default function PlayerHistory({ player, matches, updates, names, onClose
           </td>
           <td className="history-opponent">{opponentId ? <a href={playerProfileHref(names.get(opponentId) ?? opponentId)}>{opponent}</a> : opponent}<small className="history-mobile-meta">Live {hasLiveElo ? Math.round(liveElo).toLocaleString() : '—'}<time dateTime={match.playedAt} title={date(match.playedAt)}>{compactDate(match.playedAt)}</time></small></td>
           <td className="history-elo" title={!hasLiveElo ? 'Live rating not recorded' : match.liveRatingEligibility?.timing === 'pre-match' ? 'Opponent’s Live rating before this match' : 'Opponent’s recorded Live rating; exact timing unknown'}>{hasLiveElo ? Math.round(liveElo).toLocaleString() : '—'}</td>
-          <td><div className="history-matchup"><FeaturedPokemon side={own}/><span className="history-versus">vs.</span><FeaturedPokemon side={other}/></div></td>
+          <td><div className={`history-matchup${ownEndedEarly || otherEndedEarly ? ' history-matchup-early-end' : ''}`}>
+            <FeaturedPokemon side={own} matchId={match.id} playerId={player.playerId}/>
+            {!(ownEndedEarly && otherEndedEarly) && <><span className="history-versus">vs.</span><FeaturedPokemon side={other} matchId={match.id} playerId={opponentId}/></>}
+          </div></td>
           <td className="history-prizes"><b>{own?.prizesTaken ?? '—'} <i>–</i> {other?.prizesTaken ?? '—'}</b></td>
           <td className="history-date"><time dateTime={match.playedAt}>{date(match.playedAt)}</time>{match.history?.durationSeconds !== undefined && <small>{formatMatchDuration(match.history.durationSeconds)}</small>}</td>
         </tr>;

@@ -20,7 +20,10 @@ export interface LeaderboardPages {
 /** The browser and server use the same rating and public-data implementations. */
 export function buildLeaderboardRuntime(root = repository) {
   buildSync({
-    entryPoints: ['leaderboard-social-preview.ts', 'leaderboard-public-snapshot.ts'].map(filename => path.join(root, 'scripts', filename)),
+    entryPoints: Object.fromEntries([
+      ...['leaderboard-social-preview.ts', 'leaderboard-public-snapshot.ts'].map(filename => path.join(root, 'scripts', filename)),
+      path.join(root, 'src/leaderboard/history-pokemon.ts'),
+    ].map(filename => [path.basename(filename, '.ts'), filename])),
     outdir: path.join(root, 'landing/lib/generated'), outExtension: { '.js': '.mjs' },
     bundle: true, platform: 'node', format: 'esm', target: 'node24',
   });
