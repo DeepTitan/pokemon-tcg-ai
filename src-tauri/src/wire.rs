@@ -128,24 +128,30 @@ fn integer_for(object: &Value, names: &[&str]) -> Option<i64> {
     value_for(object, names)?.as_i64()
 }
 
-fn decompress(bytes: &[u8]) -> Option<Vec<u8>> {
-    fn read_all(reader: impl Read) -> Option<Vec<u8>> {
+const MAX_OPERATION_BYTES: usize = 64 * 1024 * 1024;
+
+fn decompress_with_limit(bytes: &[u8], limit: usize) -> Option<Vec<u8>> {
+    fn read_bounded(reader: impl Read, limit: usize) -> Option<Vec<u8>> {
         let mut output = Vec::new();
-        let mut reader = reader;
+        let mut reader = reader.take(limit as u64 + 1);
         reader.read_to_end(&mut output).ok()?;
-        Some(output)
+        (output.len() <= limit).then_some(output)
     }
 
-    read_all(GzDecoder::new(bytes))
-        .or_else(|| read_all(ZlibDecoder::new(bytes)))
-        .or_else(|| read_all(DeflateDecoder::new(bytes)))
+    read_bounded(GzDecoder::new(bytes), limit)
+        .or_else(|| read_bounded(ZlibDecoder::new(bytes), limit))
+        .or_else(|| read_bounded(DeflateDecoder::new(bytes), limit))
+}
+
+fn decompress(bytes: &[u8]) -> Option<Vec<u8>> {
+    decompress_with_limit(bytes, MAX_OPERATION_BYTES)
 }
 
 pub fn decode_websocket_message(
     websocket_data: &[u8],
     socket_host: String,
     received_at: String,
-) -> Option<CapturedOperation> {
+) -> Result<Option<CapturedOperation>, String> {
     let stomp = stomp_message(websocket_data);
     let global_bytes = stomp
         .as_ref()
@@ -166,9 +172,11 @@ pub fn decode_websocket_message(
     }
 
     // Retain compatibility with captures made using the older wrapped format.
-    let global_table = root_table(global_bytes)?;
-    let global_message_type = table_string(global_bytes, global_table, 0)?;
-    let player_bytes = table_vector(global_bytes, global_table, 1)?;
+    let wrapped = (|| {
+        let global_table = root_table(global_bytes)?;
+        Some((table_string(global_bytes, global_table, 0)?, table_vector(global_bytes, global_table, 1)?))
+    })();
+    let Some((global_message_type, player_bytes)) = wrapped else { return Ok(None); };
 
     decode_player_message(&player_bytes, global_message_type, socket_host, received_at)
 }
@@ -178,19 +186,26 @@ fn decode_player_message(
     global_message_type: String,
     socket_host: String,
     received_at: String,
-) -> Option<CapturedOperation> {
-    let player_table = root_table(&player_bytes)?;
-    let game_id = table_string(&player_bytes, player_table, 0)?;
-    let server_message_bytes = table_vector(&player_bytes, player_table, 1)?;
-    let server_message: Value = serde_json::from_slice(&server_message_bytes).ok()?;
+) -> Result<Option<CapturedOperation>, String> {
+    let envelope = (|| {
+        let player_table = root_table(player_bytes)?;
+        let game_id = table_string(player_bytes, player_table, 0)?;
+        let server_message_bytes = table_vector(player_bytes, player_table, 1)?;
+        let server_message: Value = serde_json::from_slice(&server_message_bytes).ok()?;
+        Some((game_id, server_message))
+    })();
+    let Some((game_id, server_message)) = envelope else { return Ok(None); };
+    // Heartbeats and non-operation messages are expected. Once an operation is
+    // identified, decoding failure must be reported instead of losing it silently.
+    let Some(value) = value_for(&server_message, &["compressedValue", "CompressedValue"]) else { return Ok(None); };
+    let compressed = value.as_str().and_then(|encoded| BASE64.decode(encoded).ok())
+        .ok_or("The recorded operation has an invalid compressed payload.")?;
+    let operation_bytes = decompress(&compressed)
+        .ok_or("The recorded operation could not be decompressed within the recording size limit.")?;
+    let operation: Value = serde_json::from_slice(&operation_bytes)
+        .map_err(|_| "The recorded operation contains invalid JSON.")?;
 
-    let compressed = value_for(&server_message, &["compressedValue", "CompressedValue"])?
-        .as_str()
-        .and_then(|encoded| BASE64.decode(encoded).ok())?;
-    let operation_bytes = decompress(&compressed)?;
-    let operation: Value = serde_json::from_slice(&operation_bytes).ok()?;
-
-    Some(CapturedOperation {
+    Ok(Some(CapturedOperation {
         received_at,
         socket_host,
         global_message_type,
@@ -206,12 +221,12 @@ fn decode_player_message(
         ),
         message_index: integer_for(&server_message, &["messageIndex", "MessageIndex"]),
         operation,
-    })
+    }))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{decode_websocket_message, decompress};
+    use super::{decode_websocket_message, decompress, decompress_with_limit};
     use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
     use flate2::{write::GzEncoder, Compression};
     use std::io::Write;
@@ -226,14 +241,16 @@ mod tests {
     }
 
     #[test]
-    fn decodes_current_direct_player_message_frames() {
-        let operation = br#"{"operationStatus":0,"type":"test"}"#;
-        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
-        encoder.write_all(operation).unwrap();
-        let compressed = BASE64.encode(encoder.finish().unwrap());
-        let server_message = format!(
-            r#"{{"compressedValue":"{compressed}","messageIndex":33,"matchID":"match-1"}}"#
-        );
+    fn compressed_operation_expansion_is_bounded() {
+        let source = vec![b'x'; 4096];
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::fast());
+        encoder.write_all(&source).unwrap();
+        let compressed = encoder.finish().unwrap();
+        assert!(decompress_with_limit(&compressed, 4095).is_none());
+        assert_eq!(decompress_with_limit(&compressed, 4096).unwrap(), source);
+    }
+
+    fn player_frame(server_message: &str) -> Vec<u8> {
         let game_id = "game-1";
 
         // Minimal PlayerMessage FlatBuffer matching the production table:
@@ -264,15 +281,36 @@ mod tests {
         )
         .into_bytes();
         frame.extend_from_slice(&body);
+        frame
+    }
 
+    #[test]
+    fn decodes_current_direct_player_message_frames() {
+        let operation = br#"{"operationStatus":0,"type":"test"}"#;
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(operation).unwrap();
+        let compressed = BASE64.encode(encoder.finish().unwrap());
+        let frame = player_frame(&format!(
+            r#"{{"compressedValue":"{compressed}","messageIndex":33,"matchID":"match-1"}}"#
+        ));
         let decoded = decode_websocket_message(&frame, "example.test".into(), "now".into())
-            .expect("direct PlayerMessage should decode");
+            .expect("valid operation").expect("direct PlayerMessage should decode");
         assert_eq!(decoded.global_message_type, "PlayerMessage");
-        assert_eq!(decoded.game_id, game_id);
+        assert_eq!(decoded.game_id, "game-1");
         assert_eq!(decoded.message_index, Some(33));
         assert_eq!(
             decoded.operation,
             serde_json::from_slice::<serde_json::Value>(operation).unwrap()
         );
+    }
+
+    #[test]
+    fn malformed_operations_report_failure_but_heartbeats_do_not() {
+        for message in [r#"{"compressedValue":"not base64"}"#, r#"{"compressedValue":"eA=="}"#] {
+            assert!(decode_websocket_message(&player_frame(message), "test".into(), "now".into()).is_err());
+        }
+        for frame in [b"\n".to_vec(), player_frame(r#"{"messageType":"heartbeat"}"#)] {
+            assert!(decode_websocket_message(&frame, "test".into(), "now".into()).unwrap().is_none());
+        }
     }
 }

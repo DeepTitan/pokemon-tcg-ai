@@ -28,7 +28,7 @@ export function BackgroundSettings({ environment }: { environment: TrackerEnviro
     <p>After setup, Trace starts quietly and gets ready before you open Pokémon. A paused recorder stays paused after restarting.</p>
     <p role="status">{!status ? 'Checking recording settings…' : status.recordingEnabled ? `Recording is on. Connection: ${captureIndicator(environment).label}.` : 'Recording is paused.'}</p>
     {visibleCaptureError(environment) && <div role="alert">
-      <p>Trace is not receiving your game. If you’re in a match, finish playing first. Then quit TCG Live, quit and reopen Trace, wait for Ready, and reopen TCG Live.</p>
+      <p>Trace cannot confirm a complete recording. If you’re in a match, finish playing first. Then quit TCG Live, quit and reopen Trace, wait for Ready, and reopen TCG Live.</p>
       <details><summary>Connection details</summary><p>{visibleCaptureError(environment)}</p></details>
     </div>}
     <div className="membership-actions"><button type="button" disabled={busy || !status} onClick={() => void run(status?.recordingEnabled ? stopTracking : startTracking)}>

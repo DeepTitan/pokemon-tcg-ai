@@ -7,6 +7,8 @@ mod capture;
 mod capture_hosts;
 #[cfg(any(target_os = "macos", target_os = "windows", test))]
 mod capture_health;
+#[cfg(any(target_os = "macos", target_os = "windows", test))]
+mod capture_pipeline;
 mod cards;
 mod background;
 mod cloud_sync;

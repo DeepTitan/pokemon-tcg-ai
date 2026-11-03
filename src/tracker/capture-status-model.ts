@@ -31,6 +31,9 @@ export function visibleCaptureError(environment: TrackerEnvironment): string | n
 }
 
 export function recordingProblemMessage(error: string): string {
+  if (/Part of this game may be missing/i.test(error)) {
+    return 'Recording ran into a problem. Part of this game may be missing. Finish your game before restarting Trace.';
+  }
   if (/startup|sign-in|login|launchagent|schtasks/i.test(error)) {
     return 'Trace couldn’t turn on automatic startup. Open Settings to try again.';
   }
