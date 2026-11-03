@@ -2800,11 +2800,9 @@ button.stadium-marker:focus-visible {
 .shared-access-invitation { margin-block: auto; padding-block: 42px 52px; }
 .shared-access-invitation h2 { margin: 0; max-width: 250px; font: 900 clamp(27px, 2vw, 32px)/1.17 Nunito, sans-serif; letter-spacing: -.045em; text-wrap: balance; }
 .shared-access-invitation > p { margin: 20px 0 28px; color: #637286; font-size: 14px; line-height: 1.7; }
-.shared-access-discord { display: flex; justify-content: center; align-items: center; gap: 9px; min-height: 46px; padding: 11px 12px; border: 1px solid #dfa716; border-radius: 10px; background: #ffd659; color: #3c321a; font-size: 13px; font-weight: 900; text-decoration: none; box-shadow: 0 2px 0 #d49b182b; }
-.shared-access-discord > svg { flex-shrink: 0; }
-.shared-access-discord:hover { background: #ffcf3d; border-color: #c18a09; }
-.shared-access-invitation > .shared-access-note { margin: 13px auto 0; max-width: 210px; text-align: center; font-size: 12px; line-height: 1.6; color: #6d746f; }
-.shared-access-note strong { color: #344c61; font-weight: 800; }
+.shared-access-download { display: flex; justify-content: center; align-items: center; gap: 9px; min-height: 46px; padding: 11px 12px; border: 1px solid #dfa716; border-radius: 10px; background: #ffd659; color: #3c321a; font-size: 13px; font-weight: 900; text-decoration: none; box-shadow: 0 2px 0 #d49b182b; }
+.shared-access-download > svg { flex-shrink: 0; }
+.shared-access-download:hover { background: #ffcf3d; border-color: #c18a09; }
 .shared-access-footer { flex: 0 0 auto; padding-top: 20px; border-top: 1px solid #e7e1d6; }
 .shared-access-shortcuts { display: grid; gap: 9px; color: #737c84; font-size: 10px; }
 .shared-access-shortcuts > span { display: flex; align-items: center; gap: 10px; }
