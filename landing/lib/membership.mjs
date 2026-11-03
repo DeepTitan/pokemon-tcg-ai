@@ -169,10 +169,11 @@ function failure(response, status, action, body) {
     410: 'This code has expired. Request a new code and try again.',
     429: 'Too many attempts. Wait a moment, then try again.',
   };
-  const codes = new Set(['invalid_request', 'invalid_email', 'invalid_password', 'invalid_code', 'unauthorized', 'invalid_credentials', 'email_not_verified', 'account_exists', 'device_already_linked', 'billing_busy', 'subscription_exists', 'rate_limited', 'billing_unavailable', 'service_unavailable', 'checkout_expired', 'payment_processing', 'payment_already_completed', 'purchase_already_claimed', 'checkout_email_mismatch', 'checkout_not_found', 'purchase_not_active']);
+  const codes = new Set(['invalid_request', 'invalid_email', 'invalid_password', 'invalid_code', 'unauthorized', 'invalid_credentials', 'email_not_verified', 'account_exists', 'device_already_linked', 'billing_busy', 'subscription_exists', 'rate_limited', 'billing_unavailable', 'service_unavailable', 'checkout_expired', 'payment_processing', 'payment_already_completed', 'purchase_already_claimed', 'checkout_email_mismatch', 'checkout_not_found', 'purchase_not_active', 'multiple_purchases']);
   const code = codes.has(body?.error) ? body.error : undefined;
   const explanation = code === 'invalid_password' ? 'Use 8–128 characters. No uppercase letters, numbers or symbols required.' : code === 'invalid_code' ? 'That code is invalid or expired. Check the code and try again.' : code === 'subscription_exists' ? 'You already have a subscription. Use Manage billing to change your plan.' : code === 'account_exists' ? 'This email already has a Trace account. Sign in, or confirm your email to finish signup.' : null;
   const purchaseExplanation = ({
+    multiple_purchases: 'We found more than one purchase for this email. Contact support so we can connect the right membership. Please do not pay again.',
     purchase_not_active: 'This purchase no longer has an active membership. Check Manage billing or contact support before paying again.',
     checkout_not_found: 'We could not find this purchase. Open the browser you used at checkout, or sign in if you already linked it.',
     checkout_expired: 'This checkout link has expired. If you already paid, sign in or contact support before paying again.',

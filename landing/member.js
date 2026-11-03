@@ -361,8 +361,22 @@ function needsPurchaseSetup(account, purchase, returned) {
   if (purchase.state === 'claimed' || (returned && ['none', 'expired'].includes(purchase.state))) return true;
   return !account?.capabilities?.recordMatches && ['open', 'expired'].includes(purchase.state);
 }
+function renderDesktopReturn(outcome) {
+  const canceled = outcome === 'cancel';
+  // This URL is navigation, never proof of payment. The authenticated desktop
+  // checks provider-backed entitlements even if this page is never opened.
+  mount(`<section class="auth-card unified-auth"><img class="auth-mascot" src="/trace-assets/trace-mascot.png" alt="" />
+    <h1>${canceled ? 'Your checkout was canceled.' : 'Return to Trace.'}</h1>
+    <p class="intro">${canceled ? 'You can keep using Trace Free. Open the upgrade in Trace whenever you’re ready.' : 'Trace will confirm your payment and unlock Pro automatically. No code to copy. No account setup to finish.'}</p>
+    ${canceled ? '' : '<p>Your account is created with the email you entered at checkout. You only need to verify it when signing in elsewhere.</p>'}
+    <p class="auth-reassurance">You can close this tab.</p>
+    <div class="form-links"><a href="/trace/login">Sign in to your account</a><a href="/discord">Need help?</a></div>
+  </section>`, canceled ? 'Checkout canceled' : 'Return to Trace');
+}
 async function render() {
   const version = ++renderVersion;
+  const desktopReturn = new URLSearchParams(location.search).get('desktopCheckout');
+  if (location.pathname === '/trace/account' && ['success', 'cancel'].includes(desktopReturn)) { renderDesktopReturn(desktopReturn); return; }
   let name = viewName();
   root.setAttribute('aria-busy', 'true');
   root.innerHTML = '<p class="loading">Loading your account…</p>';

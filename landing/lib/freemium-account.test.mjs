@@ -236,3 +236,19 @@ test('resuming an annual upgrade preserves annual billing after sign-in', async 
   assert.match(view.html(), /30 days of replays/);
   assert.doesNotMatch(view.html(), /\$14\.99/);
 });
+
+
+test('desktop checkout return has no account, code, or payment prerequisite', () => {
+  const view = browser('?desktopCheckout=success');
+  assert.match(view.html(), /Return to Trace/);
+  assert.match(view.html(), /unlock Pro automatically/);
+  assert.match(view.html(), /email you entered at checkout/);
+  assert.doesNotMatch(view.html(), /<form|data-checkout|data-route|Link account|Enter code/);
+});
+
+test('canceled desktop checkout explains Free access without claiming payment', () => {
+  const view = browser('?desktopCheckout=cancel');
+  assert.match(view.html(), /checkout was canceled/);
+  assert.match(view.html(), /keep using Trace Free/);
+  assert.doesNotMatch(view.html(), /unlock Pro automatically|Your account is created/);
+});
