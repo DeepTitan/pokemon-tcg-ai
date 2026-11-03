@@ -1012,12 +1012,13 @@ function buildOperationFacts(
     label: string,
     factValue: string | undefined,
     tone: ReviewEventFact['tone'] = 'neutral',
+    targetEntityId?: string,
   ): void => {
     if (!factValue) return;
-    const key = `${kind}|${label}|${factValue}`;
+    const key = `${kind}|${label}|${factValue}|${targetEntityId || ''}`;
     if (factKeys.has(key)) return;
     factKeys.add(key);
-    facts.push({ id: `${operation.id}:fact:${factIndex++}`, kind, label, value: factValue, tone });
+    facts.push({ id: `${operation.id}:fact:${factIndex++}`, kind, label, value: factValue, tone, ...(targetEntityId ? { targetEntityId } : {}) });
   };
 
   if (operation.gameOperationNumber != null) addFact('system', 'Operation', `#${operation.gameOperationNumber}`);
@@ -1130,7 +1131,7 @@ function buildOperationFacts(
         const copy = previous == null
           ? `${target}: ${next * 10} damage marked`
           : `${target}: ${previous * 10} → ${next * 10} damage`;
-        addFact('damage', 'Damage counters', copy, next > (previous ?? 0) ? 'negative' : 'positive');
+        addFact('damage', 'Damage counters', copy, next > (previous ?? 0) ? 'negative' : 'positive', address ? entityId(address) : undefined);
         found = true;
       }
       if (found) representedModifications.add(modificationId);
@@ -1738,6 +1739,7 @@ export class LiveReviewAssembler {
     const modifications = list(operation, 'actionModifications', 'ActionModifications').map(record).filter(Boolean) as Entity[];
     const operationEndsTurn = modifications.some((modification) => modificationType(modification) === 'EndTurnModification');
     const cardMovements = new Map<string, CardMovement>();
+    const recordedCounterUpdates = new Map<string, number>();
     modifications.forEach((modification, index) => {
       const modificationId = text(modification, 'actionModificationID', 'actionModificationId') || `${messageId}:${index}`;
       if (assembledOperation!.modificationIds.has(modificationId)) return;
@@ -1745,6 +1747,26 @@ export class LiveReviewAssembler {
       assembledOperation!.modifications.set(modificationId, modification);
       const type = modificationType(modification);
       updateZoneCountsFromCardTransitions(modification, assembly!.zoneCounts, assembly!.entities, cardMovements);
+
+      if (type === 'HealModification' && bool(modification, 'isFinal', 'IsFinal') === true) {
+        for (const candidate of list(modification, 'appliedHealDeltas', 'AppliedHealDeltas')) {
+          const delta = record(candidate);
+          const address = record(value(delta, 'cardAddress', 'CardAddress'));
+          const id = address && entityId(address);
+          const amount = number(delta, 'healAmount', 'HealAmount');
+          const previous = id ? assembly!.entities.get(id) : undefined;
+          if (!id || !previous || amount === undefined || amount < 0 || amount % 10 !== 0) continue;
+          const counters = recordedCounterUpdates.get(id) ?? number(previous, 'damageCounters', 'DamageCounters') ?? 0;
+          recordedCounterUpdates.set(id, Math.max(0, counters - amount / 10));
+        }
+      }
+      // Preserve packet order: later explicit entity counters can supersede an
+      // earlier transfer/heal. Missing counters in a sparse update cannot.
+      for (const update of updatedEntities(modification)) {
+        const id = entityId(update);
+        const counters = number(update, 'damageCounters', 'DamageCounters');
+        if (id && counters !== undefined) recordedCounterUpdates.set(id, counters);
+      }
 
       if (type === 'MoveCardsModification') {
         const sourceEntityId = text(modification, 'actionOriginEntityID', 'actionOriginEntityId');
@@ -1796,6 +1818,10 @@ export class LiveReviewAssembler {
           const currentCounters = number(assembly!.entities.get(targetId) || null, 'damageCounters', 'DamageCounters') || 0;
           const previous = number(delta, 'previousDC', 'PreviousDC') ?? currentCounters;
           const next = number(delta, 'newDC', 'NewDC') ?? 0;
+          // Live omits zero-valued numbers. A final previousDC without newDC
+          // clears damage (e.g. Munkidori moving Torchic's last counter).
+          // The sparse entity merge alone would keep that damage forever.
+          recordedCounterUpdates.set(targetId, next);
           const amount = (next - previous) * 10;
           if (amount <= 0) continue;
           let condition = specialConditionFromText(checkupAction || '');
@@ -1862,6 +1888,14 @@ export class LiveReviewAssembler {
       }
     }
     const operationEntityUpdates = [...boardSnapshotEntities, ...updatedEntities(operation)];
+    const finalCounterUpdates = new Map<string, number>();
+    for (const candidate of list(operation, 'updatedEntities', 'UpdatedEntities')) {
+      for (const update of cardEntitiesFrom(candidate)) {
+        const id = entityId(update);
+        const counters = number(update, 'damageCounters', 'DamageCounters');
+        if (id && counters !== undefined) finalCounterUpdates.set(id, counters);
+      }
+    }
     const updatedEntityIds = new Set<string>();
     const currentEntityPositionChanges = new Set<string>();
     for (const entityUpdate of operationEntityUpdates) {
@@ -1912,6 +1946,13 @@ export class LiveReviewAssembler {
       if (side && previous && nextPrizes > previousPrizes) {
         assembledOperation.prizesBySide.set(side, (assembledOperation.prizesBySide.get(side) || 0) + nextPrizes - previousPrizes);
       }
+    }
+
+    for (const [id, counters] of recordedCounterUpdates) {
+      const entity = assembly.entities.get(id);
+      if (!entity) continue;
+      const authoritative = finalCounterUpdates.get(id) ?? counters;
+      assembly.entities.set(id, { ...entity, damageCounters: authoritative, DamageCounters: authoritative });
     }
 
     for (const [id, movement] of cardMovements) {

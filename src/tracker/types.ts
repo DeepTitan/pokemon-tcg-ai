@@ -38,6 +38,8 @@ export interface ReviewEventFact {
   label: string;
   value: string;
   tone?: 'neutral' | 'positive' | 'negative' | 'info';
+  /** Exact captured target; names alone cannot distinguish identical Pokémon. */
+  targetEntityId?: string;
 }
 
 export interface ReviewProtocolGroup {

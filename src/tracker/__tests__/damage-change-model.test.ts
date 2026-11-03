@@ -77,3 +77,24 @@ const afterTotal = turn(2, board('you', pokemon('only', 'Munkidori', 50), []), b
 }]);
 assert.equal(damageChangesForTurn(beforeTotal, afterTotal)[0].after, 70, 'newDC is a total, not additional damage');
 console.log('damage-change-model: board deltas, same-name Risky Ruins, absolute counter totals, and staged promotions stay accurate');
+
+for (const marked of [false, true]) {
+  const previous = turn(1, board('you', null, [pokemon('survivor', 'Dreepy', 20), pokemon('ko', 'Dreepy', 20)]), board('them', null, []));
+  const current = turn(2, board('you', null, [pokemon('survivor', 'Dreepy', 20), pokemon('ko', 'Dreepy', 20)]), board('them', null, []), [{
+    id: 'hit', kind: 'attack', text: 'Placed counters', turnIndex: 2, detail: false,
+    facts: [{ id: 'exact-ko', kind: 'damage', label: 'Damage counters', targetEntityId: 'ko',
+      value: marked ? 'Dreepy: 70 damage marked' : 'Dreepy: 20 → 70 damage' }],
+  }]);
+  assert.deepEqual(damageChangesForTurn(previous, current).map(c => [c.pokemonId, c.after]), [['ko', 70]], 'Only the captured copy receives the knockout counters');
+  current.snapshot.players.you.bench.pop();
+  assert.deepEqual(damageChangesForTurn(previous, current), [], 'A departed target must not redirect its counters to a same-name survivor');
+}
+
+{
+  const previous = turn(1, board('you', null, [pokemon('a', 'Dreepy', 0), pokemon('b', 'Dreepy', 0)]), board('them', null, []));
+  const current = turn(2, board('you', null, [pokemon('a', 'Dreepy', 70), pokemon('b', 'Dreepy', 0)]), board('them', null, []), [{
+    id: 'both', kind: 'attack', text: 'Placed counters on both copies', turnIndex: 2, detail: false,
+    facts: ['a', 'b'].map(id => ({id, kind: 'damage' as const, label: 'Damage counters', targetEntityId: id, value: 'Dreepy: 70 damage marked'})),
+  }]);
+  assert.deepEqual(damageChangesForTurn(previous, current).map(c => [c.pokemonId, c.after]), [['a', 70], ['b', 70]], 'Identical amounts on different targets are not deduplicated or treated as already represented');
+}

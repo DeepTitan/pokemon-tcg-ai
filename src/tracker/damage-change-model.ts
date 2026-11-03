@@ -18,8 +18,8 @@ function pokemonOnBoard(turn: TrackedTurn | undefined): TrackedPokemon[] {
 }
 
 type CapturedCounterChange =
-  | { kind: 'transition'; name: string; before: number; after: number }
-  | { kind: 'marked'; name: string; amount: number };
+  | { kind: 'transition'; name: string; before: number; after: number; targetEntityId?: string }
+  | { kind: 'marked'; name: string; amount: number; targetEntityId?: string };
 
 function capturedCounterChanges(turn: TrackedTurn, priorFactIds: ReadonlySet<string>): CapturedCounterChange[] {
   const seen = new Set<string>();
@@ -36,9 +36,10 @@ function capturedCounterChanges(turn: TrackedTurn, priorFactIds: ReadonlySet<str
         ? { kind: 'marked', name: marked[1].trim(), amount: Number(marked[2]) }
         : undefined;
     if (!change) return [];
-    const key = change.kind === 'transition'
+    change.targetEntityId = fact.targetEntityId;
+    const key = `${change.targetEntityId || ''}|` + (change.kind === 'transition'
       ? `${change.kind}|${change.name}|${change.before}|${change.after}`
-      : `${change.kind}|${change.name}|${change.amount}`;
+      : `${change.kind}|${change.name}|${change.amount}`);
     if (seen.has(key)) return [];
     seen.add(key);
     return [change];
@@ -90,6 +91,24 @@ export function damageChangesForTurn(previous: TrackedTurn | undefined, current:
   capturedCounterChanges(current, priorFactIds).forEach((counterChange) => {
     if (counterChange.kind === 'transition' && counterChange.before === counterChange.after) return;
     if (counterChange.kind === 'marked' && counterChange.amount <= 0) return;
+    if (counterChange.targetEntityId) {
+      // A KO frame retains the pre-KO cards for animation. Their names (and
+      // previous damage) may be identical, but Live identifies the exact copy.
+      // Never fall back to a different copy when that captured target is gone.
+      const target = currentById.get(counterChange.targetEntityId);
+      if (!target || changes.get(target.id)?.source === 'board') return;
+      const before = previousById.get(target.id)?.damage ?? target.damage;
+      const after = counterChange.kind === 'transition' ? counterChange.after : counterChange.amount;
+      if (before === after) {
+        changes.delete(target.id);
+        return;
+      }
+      changes.set(target.id, {
+        pokemonId: target.id, pokemonName: target.name, before, after,
+        delta: after - before, source: 'captured-counter',
+      });
+      return;
+    }
     // A captured total may already be represented by a board update, including
     // a newly benched copy (Risky Ruins). Never transfer it to another same-name
     // Pokémon simply because that copy has no board delta of its own.
