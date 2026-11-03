@@ -1544,11 +1544,9 @@ fn release_route(state: &Arc<CaptureState>) {
     }
 }
 
-// TCG Live holds two HTTPS connections open in its home/lobby screen and opens
-// another connection for a live match. Never install or refresh capture routing
-// while that match connection exists: both the macOS PF handoff and the legacy
-// Windows reconnect path can interrupt the game. A short stable-lobby window
-// also protects startup during matchmaking and the transition out of a game.
+// Retained for Windows' legacy lobby guard and match-status reporting.
+// macOS never treats socket counts as permission to change a running client's
+// route: reconnecting matches can have fewer sockets than an idle lobby.
 const ACTIVE_MATCH_CONNECTION_FLOOR: usize = 3;
 const SAFE_ATTACH_STABLE_POLLS: u8 = 5;
 
@@ -1648,7 +1646,45 @@ trait CaptureManagerIo {
     fn activate(&mut self, state: &Arc<CaptureState>, pid: u32) -> Result<(), String>;
 }
 
-struct SystemCaptureManagerIo;
+struct SystemCaptureManagerIo {
+    event_path: PathBuf,
+}
+
+impl SystemCaptureManagerIo {
+    fn record_event(&self, event: &str, client_pid: Option<u32>, error: Option<&str>) {
+        // Keep a bounded local timeline without packet contents, player names,
+        // credentials, or match data. Logging must never gate capture/cleanup.
+        if let Some(parent) = self.event_path.parent() {
+            if fs::create_dir_all(parent).is_err() {
+                return;
+            }
+        }
+        if fs::metadata(&self.event_path).is_ok_and(|meta| meta.len() >= 1_048_576) {
+            let previous = self.event_path.with_extension("previous.jsonl");
+            if previous.exists() && fs::remove_file(&previous).is_err() {
+                return;
+            }
+            if fs::rename(&self.event_path, previous).is_err() {
+                return;
+            }
+        }
+        let mut options = OpenOptions::new();
+        options.create(true).append(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        if let Ok(mut file) = options.open(&self.event_path) {
+            let line = serde_json::json!({
+                "at": unix_timestamp(), "event": event,
+                "appPid": std::process::id(), "clientPid": client_pid,
+                "error": error,
+            });
+            let _ = writeln!(file, "{line}");
+        }
+    }
+}
 
 impl CaptureManagerIo for SystemCaptureManagerIo {
     fn client_pid(&mut self) -> Option<u32> {
@@ -1666,10 +1702,23 @@ impl CaptureManagerIo for SystemCaptureManagerIo {
         route_addresses_current(state)
     }
     fn release(&mut self, state: &Arc<CaptureState>) {
+        let active = state.route_active.load(Ordering::Relaxed);
+        if active {
+            self.record_event("route_release_started", None, None);
+        }
         release_route(state);
+        if active {
+            self.record_event("route_release_finished", None, None);
+        }
     }
     fn activate(&mut self, state: &Arc<CaptureState>, pid: u32) -> Result<(), String> {
-        activate_route(state, pid)
+        self.record_event("route_activation_started", Some(pid), None);
+        let result = activate_route(state, pid);
+        self.record_event(
+            if result.is_ok() { "route_activation_finished" } else { "route_activation_failed" },
+            Some(pid), result.as_ref().err().map(String::as_str),
+        );
+        result
     }
 }
 
@@ -1777,8 +1826,8 @@ impl CaptureManager {
                 self.refresh_pending = false;
                 self.attach_guard.reset();
             }
-            // With a running client, keep the old route until the existing
-            // stable-lobby safety guard permits the normal handoff below.
+            // Keep the existing route while the client is running. macOS
+            // waits for a clean launch; Windows retains its lobby guard.
         }
 
         let Some(pokemon_pid) = pokemon_pid else {
@@ -1800,6 +1849,16 @@ impl CaptureManager {
             }
             return std::time::Duration::from_millis(500);
         };
+
+        if cfg!(target_os = "macos") {
+            // Socket counts cannot prove that the client is in the lobby:
+            // a live match can lose sockets while reconnecting. Never use
+            // that low count as permission to replace its network route.
+            self.attach_guard.reset();
+            state.match_in_progress.store(true, Ordering::Relaxed);
+            state.waiting_for_match_end.store(true, Ordering::Relaxed);
+            return std::time::Duration::from_millis(750);
+        }
 
         let connections = match io.connections(state, pokemon_pid) {
             Ok(count) => count,
@@ -1845,7 +1904,7 @@ impl CaptureManager {
     }
 }
 
-fn ensure_manager(state: &Arc<CaptureState>) {
+fn ensure_manager(state: &Arc<CaptureState>, event_path: PathBuf) {
     if state.manager_running.swap(true, Ordering::Relaxed) {
         return;
     }
@@ -1854,11 +1913,23 @@ fn ensure_manager(state: &Arc<CaptureState>) {
     // async workers that forward the game's traffic.
     tauri::async_runtime::spawn_blocking(move || {
         let mut manager = CaptureManager::default();
-        let mut io = SystemCaptureManagerIo;
+        let mut io = SystemCaptureManagerIo { event_path };
+        io.record_event("manager_started", None, None);
+        let mut was_waiting = false;
         while !state.terminate.load(Ordering::Relaxed) {
-            std::thread::sleep(manager.tick(&state, &mut io, now_millis()));
+            let delay = manager.tick(&state, &mut io, now_millis());
+            let waiting = state.waiting_for_match_end.load(Ordering::Relaxed);
+            if waiting != was_waiting {
+                io.record_event(
+                    if waiting { "waiting_for_client_close" } else { "wait_finished" },
+                    manager.last_observed_pid, None,
+                );
+                was_waiting = waiting;
+            }
+            std::thread::sleep(delay);
         }
-        release_route(&state);
+        io.release(&state);
+        io.record_event("manager_stopped", None, None);
         state.waiting_for_match_end.store(false, Ordering::Relaxed);
         state.match_in_progress.store(false, Ordering::Relaxed);
         state.manager_running.store(false, Ordering::Relaxed);
@@ -1877,7 +1948,7 @@ pub async fn start(app: AppHandle) -> Result<CaptureStatus, String> {
     if let Ok(mut last_error) = state.last_error.lock() {
         *last_error = None;
     }
-    ensure_manager(&state);
+    ensure_manager(&state, capture_dir(&app)?.join("capture-route-events.jsonl"));
     Ok(status(&app))
 }
 

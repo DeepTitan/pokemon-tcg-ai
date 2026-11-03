@@ -120,7 +120,7 @@ fn manager_idle_four_days_refreshes_dns_then_adopts_launch_without_another_reset
 }
 
 #[test]
-fn manager_stale_route_found_at_launch_waits_through_match_then_refreshes_in_lobby() {
+fn manager_stale_route_waits_for_safe_refresh() {
     let (mut manager, state, mut io) = (
         CaptureManager::default(),
         enabled_state(),
@@ -141,8 +141,44 @@ fn manager_stale_route_found_at_launch_waits_through_match_then_refreshes_in_lob
     }
     assert!(io.events.is_empty());
     manager.tick(&state, &mut io, 44_000);
-    assert_eq!(io.events, ["release", "activate:42"]);
+    if cfg!(target_os = "macos") {
+        assert!(io.events.is_empty(), "a low socket count is not proof of a safe lobby");
+        io.pid = None;
+        for now in [45_000, 46_000, 47_000] {
+            manager.tick(&state, &mut io, now);
+        }
+        assert_eq!(io.events, ["release", "activate:0"]);
+    } else {
+        assert_eq!(io.events, ["release", "activate:42"]);
+    }
     assert!(!state.waiting_for_match_end.load(Ordering::Relaxed));
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn manager_never_attaches_to_a_running_client_even_when_its_sockets_disappear() {
+    for count in [0, 1, 2, 3, 6] {
+        let (mut manager, state, mut io) = (
+            CaptureManager::default(),
+            enabled_state(),
+            FakeIo { pid: Some(42), count: Ok(count), ..FakeIo::default() },
+        );
+        for now in 0..120 {
+            manager.tick(&state, &mut io, now * 1000);
+        }
+        assert!(io.events.is_empty(), "must not interrupt client with {count} sockets");
+        assert!(state.waiting_for_match_end.load(Ordering::Relaxed));
+        io.pid = None;
+        for now in [120_000, 121_000, 122_000] {
+            manager.tick(&state, &mut io, now);
+        }
+        assert_eq!(io.events, ["activate:0"]);
+        io.events.clear();
+        io.pid = Some(43);
+        manager.tick(&state, &mut io, 123_000);
+        assert_eq!(state.routed_pid.load(Ordering::Relaxed), 43);
+        assert!(io.events.is_empty(), "clean launch adopts the armed route without reset");
+    }
 }
 
 #[test]
@@ -527,6 +563,7 @@ async fn manager_recovered_route_forwards_tls_and_persists_fragmented_match_with
     }
 }
 
+#[cfg(not(target_os = "macos"))]
 #[test]
 fn manager_failed_final_socket_check_defers_even_after_a_stable_lobby() {
     let (mut manager, state, mut io) = (
@@ -566,4 +603,22 @@ fn manager_shutdown_cannot_rearm_an_idle_route() {
     manager.tick(&state, &mut io, 60_000);
     assert_eq!(io.events, ["release"]);
     assert!(!state.route_active.load(Ordering::Relaxed));
+}
+
+#[test]
+fn route_event_log_rotates_repeatedly_and_stays_bounded() {
+    let directory = std::env::temp_dir().join(format!("trace-route-log-{}", uuid::Uuid::new_v4()));
+    let path = directory.join("capture-route-events.jsonl");
+    let io = SystemCaptureManagerIo { event_path: path.clone() };
+    io.record_event("manager_started", None, None);
+    for pid in [41, 42] {
+        fs::write(&path, vec![b'x'; 1_048_576]).unwrap();
+        io.record_event("waiting_for_client_close", Some(pid), None);
+        let row: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(row["event"], "waiting_for_client_close");
+        assert_eq!(row["clientPid"], pid);
+        assert_eq!(fs::metadata(path.with_extension("previous.jsonl")).unwrap().len(), 1_048_576);
+        assert!(fs::metadata(&path).unwrap().len() < 1024);
+    }
+    fs::remove_dir_all(directory).unwrap();
 }
