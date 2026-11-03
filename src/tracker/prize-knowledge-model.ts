@@ -3,25 +3,63 @@ import { cardInfoToEngineCard, cardSourceIdFromReviewCard } from './card-adapter
 import type { CapturedDecklist, CardInfo, ReviewCardVisibility, TrackedPlayerBoard } from './types.js';
 
 export interface PrizeKnowledge {
-  kind: 'unavailable' | 'revealed' | 'inferred';
+  kind: 'unavailable' | 'revealed' | 'inferred' | 'remembered';
   cards: Card[];
   visibility: Record<string, ReviewCardVisibility>;
   note: string;
+}
+
+export interface PrizeKnowledgeInput {
+  deck?: CapturedDecklist; player: PlayerState; board: TrackedPlayerBoard;
+  visibility: Record<string, ReviewCardVisibility>; catalog: ReadonlyMap<string, CardInfo>;
+  local: boolean; stadium: Card | null; stadiumOwner?: string;
+  pendingCards?: Card[];
+}
+
+/** Physical, same-frame accounting evidence, independent of card metadata. */
+export function collectPrizeOutsideCards({ player, board, catalog, stadium, stadiumOwner, pendingCards = [] }: PrizeKnowledgeInput): {
+  cards: Card[]; publicAttachmentIds: Set<string>; error?: string;
+} {
+  const outside = [...player.deck, ...player.hand, ...player.discard, ...player.lostZone, ...pendingCards];
+  const seenPokemon = new Set<PokemonInPlay>();
+  const addPokemon = (pokemon: PokemonInPlay | null | undefined): void => {
+    if (!pokemon || seenPokemon.has(pokemon)) return;
+    seenPokemon.add(pokemon);
+    outside.push(pokemon.card, ...pokemon.attachedEnergy, ...pokemon.attachedTools);
+    addPokemon(pokemon.previousStage);
+  };
+  addPokemon(player.active);
+  player.bench.forEach(addPokemon);
+  // Canonical conversion can omit an attachment when its metadata is not yet
+  // available, or lose an older flat evolution stack. The public board retains
+  // physical IDs and printing IDs independently of metadata. Count those exact
+  // same-frame cards too; never infer identities from names or attachment type.
+  const publicAttachmentIds = new Set<string>();
+  for (const pokemon of [player.active, ...player.bench]) {
+    if (!pokemon) continue;
+    const tracked = [board.active, ...(board.bench || [])].find(p => p?.id === pokemon.card.id);
+    if (!tracked) continue;
+    if (tracked.cardId && tracked.cardId.toLowerCase() !== cardSourceIdFromReviewCard(pokemon.card)?.toLowerCase()) {
+      return { cards: [], publicAttachmentIds, error: 'Card identities conflict in this frame; Prize inference is unavailable.' };
+    }
+    for (const card of [...(tracked.evolutionCards || []), ...(tracked.energyCards || []), ...(tracked.toolCards || [])]) {
+      outside.push(cardInfoToEngineCard(card.cardId ? catalog.get(card.cardId) : undefined, card.id, card.name, card.cardId));
+      if (card.id && card.cardId) publicAttachmentIds.add(card.id);
+    }
+  }
+  if (stadium && stadiumOwner === board.name) outside.push(stadium);
+  return { cards: outside, publicAttachmentIds };
 }
 
 /** A current-frame multiset, never a mapping onto face-down prize positions.
  * Reads no later frames and never writes inferred identities into game state.
  */
 export function derivePrizeKnowledge({ deck, player, board, visibility, catalog, local,
-  stadium, stadiumOwner, pendingCards = [] }: {
-  deck?: CapturedDecklist; player: PlayerState; board: TrackedPlayerBoard;
-  visibility: Record<string, ReviewCardVisibility>; catalog: ReadonlyMap<string, CardInfo>;
-  local: boolean; stadium: Card | null; stadiumOwner?: string;
-  pendingCards?: Card[];
-}): PrizeKnowledge {
-  const unavailable = (note: string): PrizeKnowledge => ({ kind: 'unavailable', cards: player.prizes, visibility, note });
+  stadium, stadiumOwner, pendingCards = [] }: PrizeKnowledgeInput): PrizeKnowledge {
   const identified = (card: Card) => (visibility[card.id] === 'known' || visibility[card.id] === 'temporarily-revealed')
     && Boolean(cardSourceIdFromReviewCard(card));
+  const unavailable = (note: string): PrizeKnowledge => ({ kind: 'unavailable', cards: player.prizes,
+    visibility: Object.fromEntries(player.prizes.map(card => [card.id, identified(card) ? 'known' : 'hidden'])), note });
   if (!local) return unavailable('Only directly revealed opponent Prize cards are shown.');
   if (player.prizes.length && player.prizes.every(identified)) {
     return { kind: 'revealed', cards: player.prizes, visibility, note: 'Revealed Prize cards, grouped by card. Display order is not prize position.' };
@@ -39,47 +77,30 @@ export function derivePrizeKnowledge({ deck, player, board, visibility, catalog,
     return unavailable('Waiting for complete zone counts before inferring Prize cards.');
   }
   if (stadium && !stadiumOwner) return unavailable('Waiting for the Stadium’s owner before inferring Prize cards.');
-  const outside = [...player.deck, ...player.hand, ...player.discard, ...player.lostZone, ...pendingCards];
-  const seenPokemon = new Set<PokemonInPlay>();
-  const addPokemon = (pokemon: PokemonInPlay | null | undefined): void => {
-    if (!pokemon || seenPokemon.has(pokemon)) return;
-    seenPokemon.add(pokemon);
-    outside.push(pokemon.card, ...pokemon.attachedEnergy, ...pokemon.attachedTools);
-    addPokemon(pokemon.previousStage);
-  };
-  addPokemon(player.active);
-  player.bench.forEach(addPokemon);
-  // Older archived canonical states kept only the first entry of Live's flat
-  // evolution stack. The same-frame public board still retains every physical
-  // card underneath that Pokémon. Reconcile those cards too, without guessing
-  // identities from names or carrying knowledge from a different replay frame.
-  const publicEvolutionIds = new Set<string>();
-  for (const pokemon of [player.active, ...player.bench]) {
-    if (!pokemon) continue;
-    const tracked = [board.active, ...(board.bench || [])].find(p => p?.id === pokemon.card.id);
-    if (!tracked) continue;
-    if (tracked.cardId && tracked.cardId.toLowerCase() !== cardSourceIdFromReviewCard(pokemon.card)?.toLowerCase()) {
-      return unavailable('Card identities conflict in this frame; Prize inference is unavailable.');
-    }
-    for (const card of tracked.evolutionCards || []) {
-      if (!card.id || !card.cardId) return unavailable('The full 60-card accounting is incomplete at this action.');
-      outside.push(cardInfoToEngineCard(catalog.get(card.cardId), card.id, card.name, card.cardId));
-      publicEvolutionIds.add(card.id);
-    }
-  }
-  if (stadium && stadiumOwner === board.name) outside.push(stadium);
+  const { cards: outside, publicAttachmentIds, error } = collectPrizeOutsideCards({
+    player, board, visibility, catalog, local, stadium, stadiumOwner, pendingCards,
+  });
+  if (error) return unavailable(error);
   // Evolution snapshots can reference the same attachment from multiple stages.
   // Count an entity once, but reject conflicting identities for that entity.
   const unique = new Map<string, Card>();
+  const unidentified = new Set<string>();
   for (const card of outside) {
-    if (!card.id || !(identified(card) || (publicEvolutionIds.has(card.id) && cardSourceIdFromReviewCard(card)))) {
+    if (!card.id) {
       return unavailable('Search the full deck first. Every card outside your prizes must be accounted for.');
+    }
+    if (!(identified(card) || (publicAttachmentIds.has(card.id) && cardSourceIdFromReviewCard(card)))) {
+      unidentified.add(card.id);
+      continue;
     }
     const previous = unique.get(card.id);
     if (previous && cardSourceIdFromReviewCard(previous) !== cardSourceIdFromReviewCard(card)) {
       return unavailable('Card identities conflict in this frame; Prize inference is unavailable.');
     }
     unique.set(card.id, card);
+  }
+  if ([...unidentified].some(id => !unique.has(id))) {
+    return unavailable('Search the full deck first. Every card outside your prizes must be accounted for.');
   }
   const prizeIds = new Set(player.prizes.map(c => c.id));
   if (unique.size !== 60 - remaining || prizeIds.size !== remaining
