@@ -37,3 +37,10 @@ the installed hover screenshot are retained in `output/opponent-card-pool/` and
 are not committed. The prior installed app is retained there as
 `Trace-install-previous.app`. Revoke the account flag to disable inference without
 changing Free complete-deck access.
+
+## Hover copy cleanup
+
+Local build `0.1.102+cardpool.2` simplifies the inferred hover to “Possible cards”
+and the card grid. Removed the quantities label, explanatory paragraph, and
+per-card unknown-quantity tooltip prefix. Production frontend/native build and
+installed-app accessibility inspection passed. Account access rules are unchanged.
