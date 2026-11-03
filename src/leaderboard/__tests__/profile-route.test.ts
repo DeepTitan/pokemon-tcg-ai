@@ -5,6 +5,12 @@ import { LEADERBOARD_HREF, leaderboardShareHref, playerProfileHref, playerProfil
 const generatedAt = '2026-09-16T12:00:00.000Z';
 const newer = '2026-09-16T12:00:00.001Z';
 
+test('leaderboard share links preserve the selected ranking', () => {
+  assert.equal(new URL(leaderboardShareHref(generatedAt, 'trace'), 'https://victoryroad.app').searchParams.get('ranking'), 'trace');
+  assert.equal(leaderboardShareHref(undefined, 'trace'), `${LEADERBOARD_HREF}?ranking=trace`);
+  assert.equal(leaderboardShareHref(generatedAt, 'live'), leaderboardShareHref(generatedAt));
+});
+
 test('share versions stay stable for a snapshot and change when new matches arrive', () => {
   const token = snapshotShareToken(generatedAt)!;
   assert.match(token, /^[A-Za-z0-9_-]{1,64}$/);

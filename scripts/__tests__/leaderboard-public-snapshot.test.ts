@@ -102,3 +102,22 @@ if (existsSync(fixtureUrl)) {
   console.log(`Public archive projection: exact ratings and updates preserved for ${publishedReplay.ratedMatchCount} rated matches`);
 }
 console.log('Public snapshot: recursive allowlist, no private provenance/deck/log fields, calibration integrity, and immutability verified');
+
+const liveInput = { schema: 'trace-leaderboard/v1', generatedAt: match.playedAt,
+  players: ['alice', 'bob'].map(id => ({ id, name: id, traceStatus: 'trace-user',
+    latestLiveRating: 1700, liveRatingObservedAt: match.playedAt, liveRatingTiming: 'pre-match' })),
+  matches: [{ ...match, liveRatings: { alice: 1700, bob: 1700 } }] };
+const calculated = projectPublicLeaderboardSnapshot(liveInput);
+assert.deepEqual(calculated.players.map(p => p.latestLiveRating), [1712, 1687]);
+assert.ok(calculated.players.every(p => p.liveRatingCalculated && p.liveRatingTiming === 'post-match'));
+assert.deepEqual(projectPublicLeaderboardSnapshot(calculated), calculated);
+for (const alteration of [
+  { confirmed: false }, { liveRatings: { alice: 1700 } },
+  { outcome: { type: 'draw' } }, { outcome: { type: 'win', winnerId: 'outsider' } },
+  { liveRatingEligibility: { timing: 'post-match', valueType: 'elo' } },
+  { playedAt: '2026-08-01T00:00:00Z' },
+]) {
+  const unchanged = projectPublicLeaderboardSnapshot({ ...liveInput, matches: [{ ...liveInput.matches[0], ...alteration }] });
+  assert.deepEqual(unchanged.players.map(p => p.latestLiveRating), [1700, 1700]);
+}
+assert.deepEqual(projectPublicLeaderboardSnapshot({ ...liveInput, matches: [...liveInput.matches, ...liveInput.matches] }).players.map(p => p.latestLiveRating), [1700, 1700]);

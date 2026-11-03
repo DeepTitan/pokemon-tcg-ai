@@ -153,3 +153,17 @@ test('initial 304 and malformed display fields cannot replace a valid snapshot',
     assert.equal(app.latest().failed, false); assert.equal(app.snapshots.length, 1);
   } finally { app.stop(); }
 });
+
+test('client-close history changes refresh even when ranked matches and ratings stay the same', async () => {
+  const app = harness();
+  try {
+    await app.respond(0, json(snapshot(), '"before"'));
+    const next = snapshot();
+    next.clientExitMatches = [{ ...next.matches[0], id: 'client-close', confirmed: false, resultReason: 'local-client-closed' }];
+    assert.equal(isLeaderboardSnapshot(next), true);
+    app.activity(); await app.respond(1, json(next, '"after"'));
+    assert.equal(app.snapshots.length, 2);
+    assert.equal(app.snapshots[1].clientExitMatches?.length, 1);
+    assert.equal(isLeaderboardSnapshot({ ...next, clientExitMatches: [{ ...next.clientExitMatches[0], confirmed: true }] }), false);
+  } finally { app.stop(); }
+});

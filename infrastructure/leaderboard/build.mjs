@@ -1,5 +1,21 @@
 import { build } from 'esbuild';
+import { execFileSync } from 'node:child_process';
 import { cp, mkdir, rm } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+
+// Every supported publisher build must pass the history and publication
+// contracts. Run before replacing the previous bundle; a failing check aborts.
+const root = fileURLToPath(new URL('../../', import.meta.url));
+for (const test of [
+  'scripts/__tests__/leaderboard-history-preview.test.ts',
+  'infrastructure/leaderboard/catalog.test.ts',
+  'infrastructure/leaderboard/worker.test.ts',
+  'infrastructure/leaderboard/publisher-lease.test.ts',
+  'scripts/__tests__/leaderboard-public-snapshot.test.ts',
+  'scripts/__tests__/leaderboard-client-exit-rating.test.ts',
+]) {
+  execFileSync(process.execPath, ['--import', 'tsx', test], { cwd: root, stdio: 'inherit' });
+}
 
 const output = new URL('./worker-dist/', import.meta.url);
 await rm(output, { recursive: true, force: true });

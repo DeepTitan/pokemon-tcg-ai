@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { Resvg } from '@resvg/resvg-js';
 import { getLeaderboardPreviewData, getPlayerPreviewData } from './generated/leaderboard-social-preview.mjs';
-import { originalCardArt, shareCardCatalog } from './share-catalog.mjs';
+import { EARLY_END_POKEMON_LABEL, historyPokemonLabel } from './generated/history-pokemon.mjs';
+import { leaderboardCardArt } from './leaderboard-card-art.mjs';
 import { artDataUri, framedCardArt, measureCardArt } from './share-card-art.mjs';
 
 const ink = '#172b49', muted = '#5c6b7d', cream = '#f4f2ec', surface = '#fffdfa', line = '#d6d5cf';
@@ -10,7 +11,6 @@ const mascot = artDataUri({ bytes: readFileSync(new URL('../assets/trace-mascot.
 const cardBack = { bytes: readFileSync(new URL('../assets/pokemon-card-back.jpg', import.meta.url)), contentType: 'image/jpeg' };
 const fontFiles = [400, 500, 700].map(weight => fileURLToPath(new URL(`../assets/fonts/roboto-${weight}.ttf`, import.meta.url)));
 fontFiles.push(fileURLToPath(new URL('../assets/fonts/nunito-800.ttf', import.meta.url)));
-const catalog = shareCardCatalog();
 const artCache = new Map();
 const number = value => Math.round(value).toLocaleString('en-US');
 const percent = row => row.games ? `${Math.round(row.wins / row.games * 100)}%` : '—';
@@ -46,15 +46,6 @@ function header() {
     ${rule(59, 0, 1200)}`;
 }
 
-function bundledLeaderboardArt(input) {
-  if (typeof input !== 'string' || !/^[a-z0-9-]+_\d+(?:_[a-z0-9]+)?$/i.test(input)) return undefined;
-  const id = input.toLowerCase();
-  if (!catalog.has(id)) return undefined;
-  try {
-    return { bytes: readFileSync(new URL(`../leaderboard/card-art/${id}.png`, import.meta.url)), contentType: 'image/png' };
-  } catch { return undefined; }
-}
-
 // Known catalog / manifest files only. Incoming names cannot become paths or URLs.
 function cardArt(pokemon) {
   const candidates = [pokemon?.artCardId, pokemon?.cardId];
@@ -63,60 +54,51 @@ function cardArt(pokemon) {
   let image;
   for (const id of candidates) {
     try {
-      const bundled = originalCardArt(id) ?? bundledLeaderboardArt(id);
+      const bundled = leaderboardCardArt(id);
       if (bundled) { image = { ...bundled, bounds: measureCardArt(bundled) }; break; }
     } catch { /* Missing or corrupt bundled printing uses a safe fallback. */ }
-  }
-  if (!image) {
-    // A different illustration is safe only after the exact printed card is known.
-    const printed = typeof pokemon?.cardId === 'string' ? catalog.get(pokemon.cardId.toLowerCase()) : undefined;
-    if (printed) for (const candidate of catalog.values()) {
-      if (candidate.name !== printed.name) continue;
-      try {
-        const bundled = originalCardArt(candidate.id) ?? bundledLeaderboardArt(candidate.id);
-        if (bundled) { image = { ...bundled, bounds: measureCardArt(bundled) }; break; }
-      } catch { /* Continue to another known illustration. */ }
-    }
   }
   image ??= { ...cardBack, bounds: measureCardArt(cardBack) };
   if (artCache.size >= 64) artCache.delete(artCache.keys().next().value);
   artCache.set(key, image);
   return image;
 }
-function pokemonCell(side, x, top) {
+function pokemonCell(side, x, top, matchId, playerId) {
   const pokemon = side?.pokemon;
-  let name = pokemon?.name?.trim();
-  if (!name || name === pokemon?.cardId || name === pokemon?.artCardId || /^[a-z0-9-]+_\d+(?:_[a-z0-9]+)?$/i.test(name)) name = 'Not recorded';
+  const label = historyPokemonLabel(matchId, playerId, side);
+  const name = label === 'Pokémon not recorded' ? 'Not recorded' : label;
+  const earlyEnd = name === EARLY_END_POKEMON_LABEL;
+  const width = earlyEnd ? 175 : 130, size = earlyEnd ? 13 : 15;
   const words = name.split(/\s+/), lines = [''];
   for (const word of words) {
     const previous = lines.at(-1), next = previous ? `${previous} ${word}` : word;
-    if (units(next) * 15 > 130 && previous && lines.length < 2) lines.push(word);
+    if (units(next) * size > width && previous && lines.length < 2) lines.push(word);
     else lines[lines.length - 1] = next;
   }
-  return `${framedCardArt(cardArt(pokemon), x + 17, top + 7, 46)}
-    ${lines.map((label, i) => text(fit(label, 130, 15), x + 44, top + (lines.length > 1 ? 25 : 36) + i * 19, 15, 600)).join('')}`;
+  return `${earlyEnd ? '' : framedCardArt(cardArt(pokemon), x + 17, top + 7, 46)}
+    ${lines.map((label, i) => text(fit(label, width, size), x + (earlyEnd ? 0 : 44), top + (lines.length > 1 ? 25 : 36) + i * 19, size, 600)).join('')}`;
 }
 
-function board(snapshot) {
-  const { registeredRows } = getLeaderboardPreviewData(snapshot);
+function board(snapshot, ranking) {
+  const { registeredRows } = getLeaderboardPreviewData(snapshot, ranking);
   const rows = registeredRows.slice(0, 10);
   const start = 195, rowHeight = 36;
   return `${header()}
     ${text('Leaderboard', 38, 115, 40, 700)}
-    ${text('Pokémon TCG Live · All-time', 39, 145, 19, 600, muted)}
+    ${text(ranking === 'trace' ? 'Trace rankings' : 'Pokémon TCG Live', 39, 145, 19, 600, muted)}
     <rect x="38" y="161" width="1124" height="${34 + Math.max(rows.length, 1) * rowHeight}" fill="${surface}" stroke="${line}"/>
     <rect x="39" y="162" width="1122" height="33" fill="${ink}"/>
     ${text('Rank', 55, 184, 14, 500, '#ffffff')}${text('Player', 169, 184, 14, 500, '#ffffff')}
-    ${text('Trace rating', 643, 184, 14, 500, '#ffffff')}${text('Record', 838, 184, 14, 500, '#ffffff')}${text('Win rate', 1053, 184, 14, 500, '#ffffff')}
+    ${text(ranking === 'trace' ? 'Trace rating' : 'Live rating', 643, 184, 14, 500, '#ffffff')}${text('Record', 838, 184, 14, 500, '#ffffff')}${text('Win rate', 1053, 184, 14, 500, '#ffffff')}
     ${rows.map((row, i) => {
-      const top = start + i * rowHeight, medal = row.games ? ['#c79b36', '#bac4d0', '#b98759'][i] : undefined;
+      const top = start + i * rowHeight, medal = row.displayRating !== undefined ? ['#c79b36', '#bac4d0', '#b98759'][i] : undefined;
       const barWidth = 140, winsWidth = row.games ? row.wins / row.games * barWidth : 0, lossesWidth = row.games ? row.losses / row.games * barWidth : 0;
       const fill = i % 2 ? '#f6f5f1' : surface;
       return `<rect x="39" y="${top}" width="1122" height="${rowHeight}" fill="${fill}"/>
         ${medal ? `<rect x="39" y="${top}" width="3" height="${rowHeight}" fill="${medal}"/><rect x="55" y="${top + 5}" width="26" height="26" fill="${medal}"/>` : ''}
-        ${text(row.games ? i + 1 : '—', 68, top + 24, 18, medal ? 700 : 400, ink, 'text-anchor="middle"')}
+        ${text(row.displayRating !== undefined ? i + 1 : '—', 68, top + 24, 18, medal ? 700 : 400, ink, 'text-anchor="middle"')}
         ${text(fit(row.name, 430, 19), 169, top + 25, 19, 700)}
-        ${text(row.games ? number(row.rating) : '—', 644, top + 26, 22, 700)}
+        ${text(row.displayRating !== undefined ? number(row.displayRating) : '—', 644, top + 26, 22, 700)}
         ${text(record(row), 839, top + (row.games ? 20 : 25), row.games ? 17 : 15, 400)}
         ${row.games ? `<rect x="839" y="${top + 27}" width="140" height="4" fill="#9aa5b2"/><rect x="839" y="${top + 27}" width="${winsWidth.toFixed(2)}" height="4" fill="#287247"/><rect x="${(839 + winsWidth).toFixed(2)}" y="${top + 27}" width="${lossesWidth.toFixed(2)}" height="4" fill="#a8443b"/>` : ''}
         ${text(percent(row), 1054, top + 25, 19, 700)}${rule(top + rowHeight)}`;
@@ -129,10 +111,9 @@ function profile(snapshot, playerId) {
   const { row, rank, rankLabel, isRegistered, updates } = getPlayerPreviewData(snapshot, playerId);
   const names = new Map(snapshot.players.map(player => [player.id, player.name]));
   const playerUpdates = new Map(updates.filter(update => update.playerId === playerId).map(update => [update.matchId, update]));
-  // Only replay-accepted matches can appear; missing ranked Elo, duplicates and
-  // unconfirmed matches never acquire a fictitious rating change in this image.
+  // Only replay-accepted matches appear, including recorded client-close forfeits.
   const seen = new Set();
-  const history = snapshot.matches.filter(match => {
+  const history = [...snapshot.matches, ...(snapshot.clientExitMatches ?? [])].filter(match => {
     if (!playerUpdates.has(match.id) || seen.has(match.id)) return false;
     seen.add(match.id); return true;
   }).sort((a, b) => b.playedAt.localeCompare(a.playedAt) || a.id.localeCompare(b.id)).slice(0, 6);
@@ -163,23 +144,24 @@ function profile(snapshot, playerId) {
         <rect x="39" y="${top}" width="4" height="59" fill="${color}"/>
         <rect x="54" y="${top + 13}" width="78" height="34" rx="2" fill="${color}"/>
         ${text(result, 93, top + 37, 20, 900, '#ffffff', 'text-anchor="middle"')}
+        ${match.resultReason === 'local-client-closed' ? text('Client closed', 93, top + 57, 9, 500, muted, 'text-anchor="middle"') : ''}
         ${text(delta(update.adjustment), 156, top + 37, 23, 800, update.adjustment > 0 ? '#287247' : update.adjustment < 0 ? '#a8443b' : ink)}
         ${text(fit(opponent, 182, 18), 287, top + 26, 18, 800)}
         ${text(played, 287, top + 46, 12, 600, muted)}
         ${text(Number.isFinite(live) ? number(live) : '—', 484, top + 37, 21, 800)}
-        ${pokemonCell(own, 590, top)}${text('vs.', 781, top + 36, 14, 600, muted)}${pokemonCell(other, 820, top)}
+        ${pokemonCell(own, 590, top, match.id, playerId)}${text('vs.', 781, top + 36, 14, 600, muted)}${pokemonCell(other, 820, top, match.id, update.opponentId)}
         ${text(`${own?.prizesTaken ?? '—'} – ${other?.prizesTaken ?? '—'}`, 1115, top + 37, 23, 800, ink, 'text-anchor="middle"')}${rule(top + 59)}`;
     }).join('')}
     ${!history.length ? text('No matches counted toward this rating yet.', 58, 292, 21, 600, muted) : ''}`;
 }
 
 /** A screenshot-like view built only from the current public feed and shared Elo replay. */
-export function leaderboardPreviewSvg(snapshot, playerId) {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" font-family="Roboto, sans-serif">${playerId ? profile(snapshot, playerId) : board(snapshot)}</svg>`;
+export function leaderboardPreviewSvg(snapshot, playerId, ranking = 'live') {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" font-family="Roboto, sans-serif">${playerId ? profile(snapshot, playerId) : board(snapshot, ranking)}</svg>`;
 }
 
-export async function renderLeaderboardPreview(snapshot, playerId) {
-  return new Resvg(leaderboardPreviewSvg(snapshot, playerId), {
+export async function renderLeaderboardPreview(snapshot, playerId, ranking = 'live') {
+  return new Resvg(leaderboardPreviewSvg(snapshot, playerId, ranking), {
     font: { fontFiles, loadSystemFonts: false, defaultFontFamily: 'Roboto', sansSerifFamily: 'Roboto' },
     imageRendering: 0, textRendering: 1,
   }).render().asPng();

@@ -29,14 +29,19 @@ export function findLeaderboardPlayer(snapshot, player) {
 }
 
 /** Both metadata and the preview image follow the current public feed. */
-export function renderCurrentLeaderboardPage(pages, snapshot, player, social, shareVersion) {
+export function renderCurrentLeaderboardPage(pages, snapshot, player, social, shareVersion, ranking = 'live') {
   const origin = 'https://victoryroad.app';
-  const metadata = player ? social.getPlayerSocialMetadata(snapshot, player.id, origin) : social.getLeaderboardSocialMetadata(snapshot, origin);
+  const metadata = player ? social.getPlayerSocialMetadata(snapshot, player.id, origin) : social.getLeaderboardSocialMetadata(snapshot, origin, ranking);
   metadata.canonicalUrl = player ? `${origin}/trace/players/${encodeURIComponent(player.name)}` : `${origin}/trace/leaderboard`;
-  metadata.imageUrl = leaderboardPreviewUrl(snapshot, player?.id);
+  metadata.imageUrl = leaderboardPreviewUrl(snapshot, player?.id, ranking);
   metadata.imageType = 'image/png';
   if (typeof shareVersion === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(shareVersion)) {
     metadata.shareUrl = `${metadata.canonicalUrl}?v=${shareVersion}`;
+  }
+  if (!player && ranking === 'trace') {
+    const shareUrl = new URL(metadata.shareUrl ?? metadata.canonicalUrl);
+    shareUrl.searchParams.set('ranking', 'trace');
+    metadata.shareUrl = shareUrl.href;
   }
   // The callback preserves literal replacement characters in player names.
   return pages.shell.replace(/<title>[^<]*<\/title>/i, () => social.renderSocialMetadata(metadata));
@@ -98,7 +103,9 @@ export function createLeaderboardPageHandler({
       }
       const player = findLeaderboardPlayer(feed.snapshot, requestedPlayer(request));
       const shareVersion = request.query?.v ?? new URL(request.url || '/', 'https://victoryroad.app').searchParams.get('v');
-      const html = player === null ? null : renderCurrentLeaderboardPage(pages, feed.snapshot, player, social, shareVersion);
+      const selectedRanking = request.query?.ranking ?? new URL(request.url || '/', 'https://victoryroad.app').searchParams.get('ranking');
+      const ranking = selectedRanking === 'trace' ? 'trace' : 'live';
+      const html = player === null ? null : renderCurrentLeaderboardPage(pages, feed.snapshot, player, social, shareVersion, ranking);
       sendHtml(response, method, html === null ? 404 : 200, html ?? errorPage(404));
     } catch {
       sendHtml(response, method, 500, errorPage(500));

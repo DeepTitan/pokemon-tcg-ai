@@ -1,5 +1,7 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { HistoryMatch, HistorySide } from './history.js';
+import { EARLY_END_POKEMON_LABEL, historyPokemonLabel } from './history-pokemon.js';
+import { competitiveRatingResult } from '../tracker/rating-model.js';
 import type { EloRatingUpdate } from './elo.js';
 import { showCardBackOnError } from '../tracker/card-art.js';
 import { formatMatchDuration } from '../tracker/archive-summary-model.js';
@@ -11,18 +13,18 @@ const back = LEADERBOARD_CARD_BACK_HREF;
 const rating = (value: number) => value.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const ratingChange = (value: number) => `${value > 0 ? '+' : value < 0 ? '−' : ''}${rating(Math.abs(value))}`;
 
-function FeaturedPokemon({ side }: { side?: HistorySide }) {
+function FeaturedPokemon({ side, matchId, playerId }: { side?: HistorySide; matchId: string; playerId: string }) {
   const artId = side?.pokemon?.artCardId ?? side?.pokemon?.cardId;
-  const name = side?.pokemon?.name?.trim();
-  const isAssetId = name === side?.pokemon?.cardId || name === side?.pokemon?.artCardId || /^[a-z0-9]+_\d+(?:_[a-z0-9]+)?$/i.test(name ?? '');
-  return <span className="history-pokemon" title={name && !isAssetId ? name : 'Pokémon not recorded'}>
-    <img loading="lazy" decoding="async" src={artId ? `${LEADERBOARD_ART_HREF}/${encodeURIComponent(artId)}.png` : back}
+  const label = historyPokemonLabel(matchId, playerId, side);
+  if (label === EARLY_END_POKEMON_LABEL) return <span className="history-pokemon-early-end" title={label}>{label}</span>;
+  return <span className="history-pokemon" title={label}>
+    <img loading="lazy" decoding="async" src={artId ? `${LEADERBOARD_ART_HREF}/${encodeURIComponent(artId)}.png?v=2` : back}
       alt="" data-card-id={artId} onError={event => {
         if (!LEADERBOARD_BASE) return showCardBackOnError(event);
         const fallback = new URL(back, window.location.origin).href;
         if (event.currentTarget.src !== fallback) event.currentTarget.src = fallback;
       }}/>
-    <span>{name && !isAssetId ? name : 'Pokémon not recorded'}</span>
+    <span>{label}</span>
   </span>;
 }
 
@@ -39,7 +41,7 @@ export default function PlayerHistory({ player, matches, updates, names, onClose
   const [shown, setShown] = useState(new URLSearchParams(window.location.search).get('preview') === 'share' ? 3 : 12);
   const updatesByMatch = useMemo(() => new Map(updates.filter(update => update.playerId === player.playerId)
     .map(update => [update.matchId, update])), [updates, player.playerId]);
-  const history = matches.filter(match => match.confirmed && match.playerIds.includes(player.playerId))
+  const history = matches.filter(match => (match.confirmed || match.resultReason === 'local-client-closed') && match.playerIds.includes(player.playerId))
     .sort((a, b) => b.playedAt.localeCompare(a.playedAt) || a.id.localeCompare(b.id));
   const wins = history.filter(match => match.outcome.type !== 'draw' && match.outcome.winnerId === player.playerId).length;
   const draws = history.filter(match => match.outcome.type === 'draw').length;
@@ -61,17 +63,29 @@ export default function PlayerHistory({ player, matches, updates, names, onClose
         const liveElo = match.liveRatings?.[opponentId];
         const hasLiveElo = typeof liveElo === 'number' && Number.isFinite(liveElo);
         const own = match.history?.players[player.playerId], other = match.history?.players[opponentId];
+        const ownEndedEarly = historyPokemonLabel(match.id, player.playerId, own) === EARLY_END_POKEMON_LABEL;
+        const otherEndedEarly = historyPokemonLabel(match.id, opponentId, other) === EARLY_END_POKEMON_LABEL;
         const result = match.outcome.type === 'draw' ? 'Draw' : match.outcome.winnerId === player.playerId ? 'Win' : 'Loss';
+        const clientClosed = match.resultReason === 'local-client-closed';
         const update = updatesByMatch.get(match.id);
-        return <tr key={match.id} className={`history-row-${result.toLowerCase()}`} aria-label={`${result} against ${opponent}`}>
-          <td><span className={`history-result ${result.toLowerCase()}`}>{result}</span></td>
+        const ownLive = match.liveRatings?.[player.playerId];
+        const liveChange = clientClosed && ownLive !== undefined && liveElo !== undefined && match.outcome.type === 'win'
+          ? competitiveRatingResult(ownLive, liveElo, match.outcome.winnerId === player.playerId) : undefined;
+        return <tr key={match.id} className={`history-row-${result.toLowerCase()}`} aria-label={`${result} against ${opponent}${clientClosed ? ' · Client closed' : ''}`}>
+          <td><span className={`history-result ${result.toLowerCase()}`}>{result}</span>{clientClosed && <small className="history-client-closed" title="Result inferred when the recorder closed TCG Live.">Client closed</small>}</td>
           <td className={`history-trace-change${update ? update.adjustment > 0 ? ' is-positive' : update.adjustment < 0 ? ' is-negative' : '' : ''}`}
-            title={update ? `${player.name}’s Trace rating: ${rating(update.before.rating)} → ${rating(update.after.rating)}` : 'Trace rating change unavailable'}>
+            title={update ? `${player.name}’s Trace rating: ${rating(update.before.rating)} → ${rating(update.after.rating)}` : clientClosed ? 'Trace points unavailable for this client-close result.' : 'Trace rating change unavailable'}>
             {update ? ratingChange(update.adjustment) : '—'}
+            {liveChange && <small className="history-live-change" title={`Calculated Live rating: ${ownLive?.toLocaleString()} → ${liveChange.ratingAfter.toLocaleString()}`}>
+              {liveChange.change > 0 ? '+' : liveChange.change < 0 ? '−' : ''}{Math.abs(liveChange.change)} Live Elo
+            </small>}
           </td>
           <td className="history-opponent">{opponentId ? <a href={playerProfileHref(names.get(opponentId) ?? opponentId)}>{opponent}</a> : opponent}<small className="history-mobile-meta">Live {hasLiveElo ? Math.round(liveElo).toLocaleString() : '—'}<time dateTime={match.playedAt} title={date(match.playedAt)}>{compactDate(match.playedAt)}</time></small></td>
           <td className="history-elo" title={!hasLiveElo ? 'Live rating not recorded' : match.liveRatingEligibility?.timing === 'pre-match' ? 'Opponent’s Live rating before this match' : 'Opponent’s recorded Live rating; exact timing unknown'}>{hasLiveElo ? Math.round(liveElo).toLocaleString() : '—'}</td>
-          <td><div className="history-matchup"><FeaturedPokemon side={own}/><span className="history-versus">vs.</span><FeaturedPokemon side={other}/></div></td>
+          <td><div className={`history-matchup${ownEndedEarly || otherEndedEarly ? ' history-matchup-early-end' : ''}`}>
+            <FeaturedPokemon side={own} matchId={match.id} playerId={player.playerId}/>
+            {!(ownEndedEarly && otherEndedEarly) && <><span className="history-versus">vs.</span><FeaturedPokemon side={other} matchId={match.id} playerId={opponentId}/></>}
+          </div></td>
           <td className="history-prizes"><b>{own?.prizesTaken ?? '—'} <i>–</i> {other?.prizesTaken ?? '—'}</b></td>
           <td className="history-date"><time dateTime={match.playedAt}>{date(match.playedAt)}</time>{match.history?.durationSeconds !== undefined && <small>{formatMatchDuration(match.history.durationSeconds)}</small>}</td>
         </tr>;
@@ -80,7 +94,7 @@ export default function PlayerHistory({ player, matches, updates, names, onClose
     {shown < history.length && <button type="button" className="secondary history-more" onClick={() => setShown(value => value + 12)}>Show more matches · {history.length - shown} left</button>}
     <details className="history-details"><summary>About this history</summary>
       <p>Points are from {player.name}’s side. Their Pokémon and prizes appear first, followed by the opponent’s.</p>
-      <p>This history shows matches that count toward the Trace rating. Each needs a result and both players’ Live ratings. Points are rounded to one decimal.</p>
+      <p>Trace points and the profile totals include recorded client-close defeats as losses when both players’ Live ratings are available. Their result is inferred from the client closing. The separate Live Elo change is calculated using the in-game ratings. Trace points are rounded to one decimal.</p>
       <p>Pokémon are the main ones seen in the recorded deck or match. A dash means that detail wasn’t recorded.</p>
       <p>The Live rating is the opponent’s in-game rating recorded with that match. For some older matches, we do not know exactly when the rating was captured. Some dates show when a match was imported.</p>
     </details></div>

@@ -1,11 +1,13 @@
-import { ACTIVE_ELO_OPTIONS, replayEloRatings, type EloLeaderboardRow, type LiveEloEvent } from '../src/leaderboard/elo.js';
+import { ACTIVE_ELO_OPTIONS, replayEloRatings, traceRatingEvents, type EloLeaderboardRow, type LiveEloEvent } from '../src/leaderboard/elo.js';
 import type { LiveScaleCalibration } from '../src/leaderboard/live-scale.js';
+import { leaderboardRating, sortLeaderboardRows, type RankingView } from '../src/leaderboard/ranking-view.js';
 
 /** Only the public-facing local leaderboard projection is needed. Never pass raw capture logs. */
 export interface SocialPreviewSnapshot {
   generatedAt: string;
-  players: readonly { id: string; name: string; traceStatus?: 'trace-user' | 'opponent-only' }[];
+  players: readonly { id: string; name: string; traceStatus?: 'trace-user' | 'opponent-only'; latestLiveRating?: number }[];
   matches: readonly LiveEloEvent[];
+  clientExitMatches?: readonly LiveEloEvent[];
   liveScaleCalibrations?: readonly LiveScaleCalibration[];
 }
 
@@ -30,11 +32,13 @@ const record = (row: EloLeaderboardRow) => `${row.wins}W · ${row.losses}L${row.
 /** Safe in HTML text and quoted attributes; all names and descriptions use this boundary. */
 export const escapePreviewHtml = (value: string) => value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!);
 
-export function getLeaderboardPreviewData(snapshot: SocialPreviewSnapshot) {
-  const replay = replayEloRatings(snapshot.matches, snapshot.players, {
+export function getLeaderboardPreviewData(snapshot: SocialPreviewSnapshot, ranking: RankingView = 'trace') {
+  const replay = replayEloRatings(traceRatingEvents(snapshot), snapshot.players, {
     ...ACTIVE_ELO_OPTIONS, liveScaleCalibrations: snapshot.liveScaleCalibrations,
   });
-  const rows = [...replay.rows].sort((a, b) => Number(b.games > 0) - Number(a.games > 0) || b.rating - a.rating || a.name.localeCompare(b.name));
+  const profiles = new Map(snapshot.players.map(player => [player.id, player]));
+  const rows = sortLeaderboardRows(replay.rows, snapshot.players, ranking)
+    .map(row => ({ ...row, displayRating: leaderboardRating(row, ranking, profiles.get(row.playerId)) }));
   const registered = new Set(snapshot.players.filter(player => player.traceStatus === 'trace-user').map(player => player.id));
   return { ...replay, rows, registered, registeredRows: rows.filter(row => registered.has(row.playerId)) };
 }
@@ -56,13 +60,13 @@ function originUrl(origin: string) {
 }
 
 /** Host comes from the caller. No production origin is assumed for this local prototype. */
-export function getLeaderboardSocialMetadata(snapshot: SocialPreviewSnapshot, origin: string): SocialPreviewMetadata {
+export function getLeaderboardSocialMetadata(snapshot: SocialPreviewSnapshot, origin: string, ranking: RankingView = 'live'): SocialPreviewMetadata {
   const base = originUrl(origin);
   return {
     title: 'Trace leaderboard',
-    description: 'See who’s climbing. Check the Trace leaderboard and explore each player’s match history.',
+    description: ranking === 'trace' ? 'See who’s climbing. Check the Trace rankings and explore each player’s match history.' : 'See Pokémon TCG Live rankings, Trace ratings, and each player’s recorded match history.',
     canonicalUrl: `${base}/leaderboard.html`, imageUrl: `${base}/api/leaderboard/preview.jpg`,
-    imageAlt: 'Trace leaderboard with the leading registered players and their Trace ratings.', imageWidth: 1200, imageHeight: 630,
+    imageAlt: `Trace leaderboard with the leading registered players and their ${ranking === 'trace' ? 'Trace' : 'Pokémon TCG Live'} ratings.`, imageWidth: 1200, imageHeight: 630,
   };
 }
 

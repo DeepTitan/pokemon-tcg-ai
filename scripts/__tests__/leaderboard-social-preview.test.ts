@@ -41,7 +41,7 @@ const sortedRegistered = replay.rows.filter(row => snapshot.players.some(player 
 const aliceRank = sortedRegistered.findIndex(player => player.playerId === 'alice') + 1;
 assert.ok(metadata.description.includes(`Trace rank #${aliceRank}`), 'Registered rank matches the production leaderboard');
 const board = getLeaderboardSocialMetadata(snapshot, 'http://127.0.0.1:5178');
-assert.equal(board.description, 'See who’s climbing. Check the Trace leaderboard and explore each player’s match history.');
+assert.equal(board.description, 'See Pokémon TCG Live rankings, Trace ratings, and each player’s recorded match history.');
 assert.equal(board.canonicalUrl, 'http://127.0.0.1:5178/leaderboard.html');
 assert.equal(board.imageUrl, 'http://127.0.0.1:5178/api/leaderboard/preview.jpg');
 const opponent = getPlayerSocialMetadata(snapshot, 'opponent/<&', 'http://127.0.0.1:5178');

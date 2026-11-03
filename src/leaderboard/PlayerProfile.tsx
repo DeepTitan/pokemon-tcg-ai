@@ -56,9 +56,9 @@ export default function PlayerProfile({ row, registered, rank, rankScope = 'regi
         {registered === false && <p className="profile-registration" title="Appears in other players’ Trace matches."><span>Not registered</span></p>}
       </div>
       <dl className="profile-stats">
-        <div><dt>Record</dt><dd className="profile-record" aria-label={`${row.wins} wins, ${row.losses} losses${row.draws ? `, ${row.draws} draws` : ''}`}><span>{row.wins}W</span><i>–</i><span>{row.losses}L</span>{row.draws > 0 && <><i>–</i><span>{row.draws}D</span></>}</dd></div>
+        <div><dt>Trace record</dt><dd className="profile-record" aria-label={`${row.wins} wins, ${row.losses} losses${row.draws ? `, ${row.draws} draws` : ''}`}><span>{row.wins}W</span><i>–</i><span>{row.losses}L</span>{row.draws > 0 && <><i>–</i><span>{row.draws}D</span></>}</dd></div>
         <div><dt>Win rate</dt><dd>{winRate === undefined ? '—' : `${winRate}%`}</dd></div>
-        <div><dt>Matches</dt><dd>{row.games.toLocaleString()}</dd></div>
+        <div><dt>Trace matches</dt><dd>{row.games.toLocaleString()}</dd></div>
       </dl>
       <div className="profile-rating">
         <span className="profile-label">Trace rating</span>

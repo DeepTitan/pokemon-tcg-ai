@@ -14,7 +14,7 @@ const trackerBuildDirectory = path.join(repositoryDirectory, 'dist', 'ui');
 execFileSync(process.execPath, ['--test', path.join(landingDirectory, 'lib/training-selector.test.mjs')], { stdio: 'inherit' });
 
 // A new texture format must pass framing checks before it reaches production.
-execFileSync(process.execPath, ['--test', path.join(landingDirectory, 'lib/share-card-art.test.mjs'), path.join(landingDirectory, 'lib/replay-card-catalog.test.mjs')], { stdio: 'inherit' });
+execFileSync(process.execPath, ['--test', path.join(landingDirectory, 'lib/share-card-art.test.mjs'), path.join(landingDirectory, 'lib/replay-card-catalog.test.mjs'), path.join(landingDirectory, 'lib/leaderboard-art.test.mjs'), path.join(landingDirectory, 'lib/leaderboard-card-art.test.mjs')], { stdio: 'inherit' });
 
 fs.rmSync(outputDirectory, { recursive: true, force: true });
 fs.mkdirSync(outputDirectory, { recursive: true });
@@ -36,7 +36,7 @@ for (const [source, destination] of Object.entries(landingFiles)) {
 fs.appendFileSync(path.join(outputDirectory, 'trace-styles.css'), '\n' + fs.readFileSync(path.join(landingDirectory, 'trace-shell.css'), 'utf8') + '\n' + fs.readFileSync(path.join(landingDirectory, 'training/header.css'), 'utf8'));
 fs.cpSync(path.join(landingDirectory, 'assets'), path.join(outputDirectory, 'trace-assets'), {
   recursive: true,
-  filter: (source) => !['share-card-catalog.json.gz', 'leaderboard-pages.json.gz', 'share-card-art', 'replay-card-art', 'replay-art-manifest.json'].includes(path.basename(source)),
+  filter: (source) => !['share-card-catalog.json.gz', 'leaderboard-pages.json.gz', 'share-card-art', 'replay-card-art', 'replay-art-manifest.json', 'leaderboard-card-art', 'leaderboard-art-manifest.json'].includes(path.basename(source)),
 });
 
 fs.copyFileSync(path.join(trackerBuildDirectory, 'tracker.html'), path.join(outputDirectory, 'shared-replay.html'));

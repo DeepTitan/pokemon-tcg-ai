@@ -8,6 +8,16 @@ const initial = { schema:'trace-leaderboard/v1', generatedAt:'2026-09-16T12:00:0
 function response() { return {statusCode:0,headers:{},setHeader(name,value){this.headers[name.toLowerCase()]=value;},end(body){this.body=body;}}; }
 async function call(handler, input={}) { const res=response(); await handler({method:'GET',url:'/',...input},res); return res; }
 
+test('Live and Trace previews have separate cache entries and matching share URLs', async () => {
+  const handler = createLeaderboardPreviewHandler({ readFeed: async () => ({ snapshot: initial }),
+    render: async (snapshot, player, ranking) => Buffer.from(ranking) });
+  assert.equal((await call(handler)).body.toString(), 'live');
+  assert.equal((await call(handler, { url: '/?ranking=trace' })).body.toString(), 'trace');
+  assert.equal((await call(handler)).body.toString(), 'live');
+  assert.equal(new URL(leaderboardPreviewUrl(initial, undefined, 'trace')).searchParams.get('ranking'), 'trace');
+  assert.equal(new URL(leaderboardPreviewUrl(initial, 'alice', 'trace')).searchParams.has('ranking'), false);
+});
+
 test('a warm preview follows changed feed data even with an old image revision in the URL', async () => {
   const snapshot=structuredClone(initial); let renders=0;
   const handler=createLeaderboardPreviewHandler({readFeed:async()=>({snapshot}),render:async(s,id)=>{
