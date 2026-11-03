@@ -99,12 +99,12 @@ def iso_timestamp(value):
     return dt.datetime.fromtimestamp(int(value), dt.timezone.utc).isoformat().replace('+00:00', 'Z')
 
 
-def capabilities(paid=False):
+def capabilities(paid=False, opponent_card_pool=False):
     """Free features never depend on billing, linking, or subscription status."""
     return {'recordMatches': True, 'leaderboard': True, 'recentReplayDays': 30,
             'freeSharesPerWindow': 1, 'shareWindowDays': 7,
             'fullHistory': bool(paid), 'expandedSharing': bool(paid),
-            'opponentDecklists': True}
+            'opponentDecklists': True, 'opponentCardPool': bool(opponent_card_pool)}
 
 
 def headers(event):
@@ -377,13 +377,15 @@ class MembershipService:
         now = self.now()
         account = self.store.account(subject) if subject else None
         snapshot = (account or {}).get('snapshot') or {}
+        card_pool = bool(subject and (account or {}).get('emailVerified') is True
+                         and self.store.feature_enabled(subject, 'opponent-card-pool'))
         is_owner = bool(subject and self.config.owner_subject and subject == self.config.owner_subject)
         admin = bool(is_owner and (account or {}).get('emailVerified') is True and self.store.owner_enabled(subject))
         if admin:
             return {'email': email or account.get('email'), 'plan': 'supporter', 'traceAccess': True,
                     'opponentDecklists': True, 'admin': True, 'status': 'admin',
                     'expiresAt': None, 'cancelAtPeriodEnd': False,
-                    'capabilities': capabilities(True)}
+                    'capabilities': capabilities(True, card_pool)}
         # Webhooks normally keep this fresh. Reads repair missed events; stale/failed
         # reconciliation never continues granting paid access from an old snapshot.
         if account and account.get('customerId') and self.config.billing_enabled and (
@@ -402,7 +404,7 @@ class MembershipService:
                 'traceAccess': allowed, 'opponentDecklists': True, 'admin': False,
                 'status': status if current else 'none', 'expiresAt': iso_timestamp(expires) if expires else None,
                 'cancelAtPeriodEnd': snapshot.get('cancelAtPeriodEnd') is True,
-                'capabilities': capabilities(allowed)}
+                'capabilities': capabilities(allowed, card_pool)}
 
     def reconcile(self, subject, account, lease):
         self.require_billing()

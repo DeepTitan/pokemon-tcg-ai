@@ -101,6 +101,11 @@ class Store:
         item = self.owners.get_item(Key={'ownerSubject': subject}, ConsistentRead=True).get('Item')
         return bool(item and item.get('enabled') is True)
 
+    def feature_enabled(self, subject, feature):
+        # Operator-managed records. No account/device route can write this namespace.
+        item = self.get('FEATURE#' + feature + '#' + subject)
+        return bool(item and item.get('enabled') is True)
+
     def capture_device(self, device):
         return self.devices.get_item(Key={'deviceId': device}, ConsistentRead=True).get('Item')
 

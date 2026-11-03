@@ -82,7 +82,7 @@ class FakeStore:
         self.customers = {'cus_fixture': USER}
         self.devices = {DEVICE: {'tokenHash': digest('capture-secret')}}
         self.links, self.codes, self.events, self.counts = {}, {}, set(), {}
-        self.owners, self.locks = {}, {}
+        self.owners, self.locks, self.features = {}, {}, {}
         self.device_purchases = {}
         self.purchase_emails = {}
         self.fail_save = False
@@ -96,6 +96,9 @@ class FakeStore:
 
     def owner_enabled(self, subject):
         return self.owners.get(subject) is True
+
+    def feature_enabled(self, subject, feature):
+        return self.features.get((subject, feature)) is True
 
     def capture_device(self, device):
         return deepcopy(self.devices.get(device))
@@ -265,7 +268,7 @@ class MembershipTests(unittest.TestCase):
     def test_free_capabilities_for_unlinked_and_inactive_accounts(self):
         expected = {'recordMatches': True, 'leaderboard': True, 'recentReplayDays': 30,
                     'freeSharesPerWindow': 1, 'shareWindowDays': 7,
-                    'fullHistory': False, 'expandedSharing': False, 'opponentDecklists': True}
+                    'fullHistory': False, 'expandedSharing': False, 'opponentDecklists': True, 'opponentCardPool': False}
         unlinked = self.service.handle(request('devices/status', device=True))
         self.assertFalse(unlinked['linked'])
         self.assertFalse(unlinked['traceAccess'])
@@ -314,6 +317,29 @@ class MembershipTests(unittest.TestCase):
         revoked = self.service.entitlement(OWNER)
         self.assertTrue(revoked['capabilities']['recordMatches'])
         self.assertFalse(revoked['capabilities']['fullHistory'])
+
+    def test_card_pool_is_an_explicit_verified_subject_flag_not_a_paid_or_owner_perk(self):
+        self.store.owners[OWNER] = True
+        for subject in (None, OWNER, USER):
+            self.assertFalse(self.service.entitlement(subject)['capabilities']['opponentCardPool'])
+        self.store.features[(OWNER, 'opponent-card-pool')] = True
+        self.assertTrue(self.service.entitlement(OWNER)['capabilities']['opponentCardPool'])
+        self.assertFalse(self.service.entitlement(USER)['capabilities']['opponentCardPool'])
+        self.assertFalse(self.service.device_status(DEVICE, digest('capture-secret'))['capabilities']['opponentCardPool'])
+        self.store.links[DEVICE] = {'subject': OWNER, 'credentialHash': digest('capture-secret')}
+        self.assertTrue(self.service.device_status(DEVICE, digest('capture-secret'))['capabilities']['opponentCardPool'])
+        self.assertFalse(self.service.device_status(DEVICE, digest('wrong'))['capabilities']['opponentCardPool'])
+        self.store.accounts[OWNER]['emailVerified'] = False
+        self.assertFalse(self.service.entitlement(OWNER)['capabilities']['opponentCardPool'])
+        self.store.accounts[OWNER]['emailVerified'] = True
+        self.store.features[(OWNER, 'opponent-card-pool')] = False
+        self.assertFalse(self.service.device_status(DEVICE, digest('capture-secret'))['capabilities']['opponentCardPool'])
+        # A deliberately granted Free account can use the flag without buying a plan.
+        self.service.config = replace(CFG, billing_enabled=False)
+        self.store.features[(USER, 'opponent-card-pool')] = True
+        status = self.service.entitlement(USER)
+        self.assertTrue(status['capabilities']['opponentCardPool'])
+        self.assertFalse(status['capabilities']['fullHistory'])
 
     def test_paid_supporter_and_trace_permissions(self):
         account = self.service.handle(request('account'))
