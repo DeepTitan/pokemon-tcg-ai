@@ -15,7 +15,7 @@
       "includeFiles": "{landing/assets/share-card-catalog.json.gz,landing/assets/share-card-art/**,landing/assets/leaderboard-card-art/**,landing/assets/leaderboard-art-manifest.json}"
     },
     "api/leaderboard-preview.mjs": {
-      "includeFiles": "{landing/assets/fonts/**,landing/assets/trace-mascot.png,landing/assets/pokemon-card-back.jpg,landing/assets/share-card-catalog.json.gz,landing/assets/share-card-art/**,landing/leaderboard/card-art/**,landing/assets/leaderboard-card-art/**,landing/assets/leaderboard-art-manifest.json}",
+      "includeFiles": "landing/assets/{fonts/**,trace-mascot.png,pokemon-card-back.jpg,share-card-catalog.json.gz,share-card-art/**,leaderboard-card-art/**,leaderboard-art-manifest.json}",
       "maxDuration": 30
     }
   },
