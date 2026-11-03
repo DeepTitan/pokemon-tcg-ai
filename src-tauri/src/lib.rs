@@ -620,7 +620,10 @@ pub fn run() {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" {
                     api.prevent_close();
-                    let _ = window.hide();
+                    // Drop the webview, not the recorder. Reopening creates a
+                    // fresh archive from SQLite, including games captured while
+                    // no UI existed (or its event loop was suspended).
+                    let _ = window.destroy();
                     #[cfg(target_os = "macos")]
                     let _ = window.app_handle().set_activation_policy(tauri::ActivationPolicy::Accessory);
                 }
@@ -657,6 +660,12 @@ pub fn run() {
         .run(|app, event| {
             match event {
                 tauri::RunEvent::ExitRequested { code, api, .. } => {
+                    if code.is_none() && app.webview_windows().is_empty() {
+                        // Windows normally exits when its last window closes.
+                        // The tray and native recorder still own this process.
+                        api.prevent_exit();
+                        return;
+                    }
                     // Restart is protected by the updater's client-closed guard.
                     // Explicit quit must not pull the recorder out of a live game.
                     if code != Some(tauri::RESTART_EXIT_CODE) && pokemon_client_pid().is_some() {
