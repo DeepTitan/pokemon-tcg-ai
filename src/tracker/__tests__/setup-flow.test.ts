@@ -3,7 +3,7 @@ import { createSetupFlow, setupLabel, type SetupState } from '../setup-flow.js';
 import type { TrackerEnvironment } from '../types.js';
 
 function fixture() {
-  const environment = { clientRunning: false, capture: { permissionReady: false, enabled: true, observerRunning: true, waitingForMatchEnd: false, lastError: null } } as TrackerEnvironment;
+  const environment = { clientRunning: false, capture: { permissionReady: false, enabled: true, observerRunning: true, routeActive: true, waitingForMatchEnd: false, lastError: null } } as TrackerEnvironment;
   const states: SetupState[] = [];
   const calls: string[] = [];
   const deps = {
@@ -14,13 +14,14 @@ function fixture() {
     background: async () => { calls.push('background'); },
     restart: async () => { calls.push('restart'); },
     capture: () => { calls.push('capture'); },
+    waitForRetry: async () => {},
   };
   return { environment, states, calls, deps, create: () => createSetupFlow(deps, s => states.push(s)) };
 }
 
 {
   const f = fixture(); await f.create().run();
-  assert.deepEqual(f.states.map(s => s.phase), ['checking', 'approval', 'checking', 'connecting', 'ready']);
+  assert.deepEqual(f.states.map(s => s.phase), ['checking', 'approval', 'checking', 'connecting', 'startup', 'ready']);
   assert.deepEqual(f.calls, ['check', 'permission', 'start', 'capture', 'background']);
 }
 {
@@ -43,7 +44,7 @@ function fixture() {
 }
 {
   const f = fixture(); f.deps.check = async () => { throw new Error('Offline. Check your internet connection and try again.'); };
-  await f.create().run(); assert.match(f.states.at(-1)!.message, /Offline/);
+  await f.create().run(); assert.match(f.states.at(-1)!.message, /internet connection/);
   assert.ok(!f.calls.includes('permission'));
 }
 {
@@ -95,6 +96,47 @@ assert.equal(setupLabel('ready'), 'Done');
   f.deps.background = async () => { throw new Error('Sign-in registration failed'); };
   await f.create().run();
   assert.equal(f.states.at(-1)?.phase, 'failed');
-  assert.match(f.states.at(-1)!.message, /Sign-in registration failed/);
+  assert.match(f.states.at(-1)!.message, /automatic startup couldn’t be turned on/);
 }
-console.log('setup-flow: 11 scenarios passed (fresh setup, reconnect, Live blockers, permission failure/retry, offline, double click, update safety, capture failures).');
+{
+  const f = fixture(); f.environment.capture.routeActive = false;
+  let release!: () => void;
+  f.deps.waitForRetry = () => new Promise<void>(resolve => { release = resolve; });
+  const pending = f.create().run();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.states.at(-1)?.phase, 'connecting');
+  assert.ok(!f.calls.includes('background'), 'do not announce success before routing is ready');
+  f.environment.capture.routeActive = true; release(); await pending;
+  assert.equal(f.states.at(-1)?.phase, 'ready');
+}
+{
+  const f = fixture(); f.environment.capture.routeActive = false;
+  const flow = f.create(); await flow.run();
+  assert.equal(f.states.at(-1)?.phase, 'failed');
+  assert.match(f.states.at(-1)!.message, /Keep Pokémon closed/);
+  assert.ok(!f.calls.includes('background'));
+  f.environment.capture.routeActive = true; await flow.run();
+  assert.equal(f.states.at(-1)?.phase, 'ready');
+}
+{
+  const f = fixture(); f.environment.capture.routeActive = false;
+  f.deps.waitForRetry = async () => { f.environment.clientRunning = true; };
+  await f.create().run();
+  assert.equal(f.states.at(-1)?.phase, 'close-live');
+  assert.ok(!f.calls.includes('background'));
+}
+{
+  const f = fixture(); f.environment.capture.routeActive = false;
+  const flow = f.create();
+  f.deps.waitForRetry = async () => { flow.dispose(); };
+  await flow.run(); assert.ok(!f.calls.includes('background'));
+}
+{
+  const f = fixture(); f.deps.permission = async () => { throw new Error('User canceled. (-128)'); };
+  const flow = f.create(); await flow.run();
+  assert.match(f.states.at(-1)!.message, /Setup wasn’t approved/);
+  assert.doesNotMatch(f.states.at(-1)!.message, /-128/);
+  f.environment.capture.permissionReady = true; await flow.run();
+  assert.equal(f.states.at(-1)?.phase, 'ready');
+}
+console.log('setup-flow: first install, approval, connection readiness, retries, and update safety passed.');

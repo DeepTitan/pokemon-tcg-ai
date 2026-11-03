@@ -240,7 +240,13 @@ pub fn setup(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         // to start recording. Never trigger an approval prompt at sign-in.
         let state = app.state::<BackgroundState>();
         let _operation = state.operation.lock().await;
-        if state.should_record() {
+        // A fresh installation has not granted capture permission yet. That is
+        // normal onboarding, not a failed recording attempt or an error toast.
+        let permission_app = app.clone();
+        let permission_ready = tauri::async_runtime::spawn_blocking(move || {
+            crate::capture::permission_ready(&permission_app)
+        }).await.unwrap_or(false);
+        if state.should_record() && permission_ready {
             if let Err(e) = crate::capture::start(app.clone()).await {
                 report_error(&app, Some(e));
             }
@@ -256,9 +262,9 @@ pub fn setup(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
             };
             let _ = pause.set_enabled(status.enabled);
             let _ = resume.set_enabled(!status.enabled);
-            let message = if state.should_record()
-                && (status.last_error.is_some() || !status.permission_ready)
-            {
+            let message = if !status.permission_ready {
+                "Trace — finish setup to record"
+            } else if state.should_record() && status.last_error.is_some() {
                 "Trace — recording needs attention"
             } else if !status.enabled {
                 "Trace — recording paused"
