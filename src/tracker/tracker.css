@@ -2973,6 +2973,8 @@ button.stadium-marker:focus-visible {
 
 .membership-settings { border-bottom: 1px solid #ded5c5; padding-bottom: 18px; margin-bottom: 18px; }
 .membership-settings h3 { margin: 0; color: #263b59; font-size: 16px; }
+.background-startup-toggle { display: flex; align-items: center; gap: 10px; margin: 14px 0; color: #263b59; font-size: 13px; cursor: pointer; }
+.background-startup-toggle input { width: 17px; height: 17px; accent-color: #263b59; }
 .membership-settings p { color: var(--muted); font-size: 13px; line-height: 1.5; }
 .membership-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .membership-actions button, .membership-actions a { padding: 9px 12px; border: 1px solid #c9bc9e; border-radius: 8px; background: #fff9e9; color: #263b59; font: inherit; font-size: 12px; text-decoration: none; cursor: pointer; }

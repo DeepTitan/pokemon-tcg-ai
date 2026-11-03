@@ -57,14 +57,16 @@ console.log('capture-status-model: healthy recordings, modal waiting state, and 
 
 // Capture startup and operation storage must stay independent of paid account checks.
 assert.doesNotMatch(trackerAppSource, /membershipSessionReady|membershipBlocked/);
-const automaticCapture = trackerAppSource.match(/useEffect\(\(\) => \{\s*if \(sharedMode \|\| !isTauri\(\) \|\| !environment\.capture\.permissionReady[\s\S]*?\}, \[[^\]]+\]\);/)?.[0];
+const backgroundSource = readFileSync(new URL('../../../src-tauri/src/background.rs', import.meta.url), 'utf8');
+const automaticCapture = backgroundSource.match(/if state\.should_record\(\) \{[\s\S]*?drop\(_operation\);/)?.[0];
 const manualCapture = trackerAppSource.match(/const changeTracking = useCallback\([\s\S]*?\}, \[[^\]]+\]\);/)?.[0];
 assert.ok(automaticCapture, 'automatic capture startup remains covered');
 assert.ok(manualCapture, 'manual capture toggle remains covered');
 for (const capturePath of [automaticCapture, manualCapture]) {
   assert.doesNotMatch(capturePath, /membership|traceAccess|fullHistory|showStudyUpgrade/);
-  assert.match(capturePath, /startTracking\(\)/);
 }
+assert.match(automaticCapture, /crate::capture::start\(app.clone\(\)\)/);
+assert.match(manualCapture, /startTracking\(\)/);
 const recorderSource = readFileSync(new URL('../../../src-tauri/src/capture.rs', import.meta.url), 'utf8');
 assert.doesNotMatch(recorderSource, /admit_match|require_trace/);
 // Opponent privacy redaction must never gate native recording or own inventory.

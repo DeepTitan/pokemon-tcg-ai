@@ -16,6 +16,7 @@ interface Dependencies {
   check(): Promise<SetupUpdate | null>;
   permission(): Promise<CaptureStatus>;
   start(): Promise<CaptureStatus>;
+  background(): Promise<unknown>;
   restart(): Promise<void>;
   capture(status: CaptureStatus): void;
 }
@@ -69,9 +70,9 @@ export function createSetupFlow(deps: Dependencies, notify: (state: SetupState) 
         if (await blocked()) return;
         const environment = await deps.environment();
         if (!environment.capture.permissionReady) {
-          set('approval', 'Approve any macOS setup prompt to continue.');
+          set('approval', 'Approve the system setup prompt to continue.');
           const permission = await deps.permission();
-          if (!permission.permissionReady) throw new Error('Capture permission was not approved. Try again and approve the macOS prompt.');
+          if (!permission.permissionReady) throw new Error('Capture permission was not approved. Try again and approve the system prompt.');
         }
         if (await blocked()) return;
         set('connecting', 'Connecting capture…');
@@ -82,7 +83,8 @@ export function createSetupFlow(deps: Dependencies, notify: (state: SetupState) 
         } else if (capture.lastError || !capture.enabled || !capture.observerRunning) {
           throw new Error(capture.lastError || 'Capture did not start. Try again.');
         } else {
-          set('ready', 'Trace is ready. Open Pokémon TCG Live to start recording.');
+          await deps.background();
+          set('ready', 'Trace is ready. It will start in the background when you sign in. Open Pokémon TCG Live to start recording; you can close this window.');
         }
       } catch (error) {
         set('failed', error instanceof Error ? error.message : String(error));

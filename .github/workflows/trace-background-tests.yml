@@ -1,0 +1,56 @@
+name: Trace background recording
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [codex/trace-recording-socket-check]
+  pull_request:
+    paths:
+      - 'src-tauri/**'
+      - 'src/tracker/**'
+      - '.github/workflows/trace-background-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci --ignore-scripts
+      - run: npm run tracker:test-setup
+      - run: npm run tracker:build
+      - run: cargo test --manifest-path src-tauri/Cargo.toml --lib --locked
+      - name: Validate real Windows sign-in registration
+        if: runner.os == 'Windows'
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib --locked windows_sign_in_task_registers_with_scheduler -- --ignored
+      - name: Build native executable
+        run: cargo build --manifest-path src-tauri/Cargo.toml --locked
+      - name: Verify Windows starts without a window
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $traceExe = (Resolve-Path 'src-tauri/target/debug/match-lens.exe').Path
+          $recorder = Start-Process -FilePath $traceExe -ArgumentList '--trace-background' -PassThru
+          try {
+            Start-Sleep -Seconds 12
+            $recorder.Refresh()
+            if ($recorder.HasExited) { throw 'Background recorder exited before a window was opened.' }
+            if ($recorder.MainWindowHandle -ne 0) { throw 'Background startup opened a window.' }
+          } finally {
+            if (-not $recorder.HasExited) { Stop-Process -Id $recorder.Id -Force }
+          }

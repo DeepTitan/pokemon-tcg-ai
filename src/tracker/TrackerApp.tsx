@@ -67,6 +67,8 @@ import {
 import { UpdateNotice } from './UpdateNotice.js';
 import { UpdateSettingsModal } from './UpdateSettingsModal.js';
 import { MembershipSettings } from './MembershipSettings.js';
+import { BackgroundSettings } from './BackgroundSettings.js';
+import { getBackgroundStatus, onBackgroundStatus } from './tauri.js';
 import { loadSharedReplay, readStoredShareLinks, sharedReplayIdFromPath, storeShareLink } from './share-replay.js';
 import { CARD_BACK_ART, cardCatalogEntryNeedsRefresh, findCatalogCard, publicCardArtUrl, resolvedCardArt, showCardBackOnError } from './card-art.js';
 import type {
@@ -784,7 +786,6 @@ export default function TrackerApp() {
   const browserReviewsRef = useRef(initial);
   const knownSummaryIdsRef = useRef(new Set(initial.map((review) => review.id)));
   const setupPrompted = useRef(false);
-  const autoStartAttempted = useRef(false);
   const selectedTimelineEventRef = useRef<HTMLButtonElement | null>(null);
   const turnIndexRef = useRef(turnIndex);
   const requestedTurnIndexRef = useRef(turnIndex);
@@ -1107,11 +1108,14 @@ export default function TrackerApp() {
   }, [environment.clientRunning, environment.capture.enabled, environment.capture.observerRunning, environment.capture.routeActive, environment.capture.clientAttached, environment.capture.waitingForMatchEnd, environment.capture.lastError, sharedMode]);
 
   useEffect(() => {
-    if (sharedMode || !isTauri() || !environment.capture.permissionReady || autoStartAttempted.current || busy || showSetup) return;
-    autoStartAttempted.current = true;
-    if (environment.capture.enabled) return;
-    void startTracking().then((capture) => { setEnvironment((current) => ({ ...current, capture })); setError(null); }).catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)));
-  }, [environment.capture.permissionReady, environment.capture.enabled, busy, sharedMode, showSetup]);
+    if (sharedMode || !isTauri()) return;
+    let active = true;
+    let unlisten = () => {};
+    const receive = (status: { lastError: string | null }) => { if (active && status.lastError) setError(status.lastError); };
+    void getBackgroundStatus().then(receive).catch(() => {});
+    void onBackgroundStatus(receive).then(stop => { if (active) unlisten = stop; else stop(); });
+    return () => { active = false; unlisten(); };
+  }, [sharedMode]);
 
   useEffect(() => {
     let unlisten: () => void = () => undefined;
@@ -1745,7 +1749,7 @@ export default function TrackerApp() {
       {!sharedMode && environment.capture.waitingForMatchEnd && !safetyDismissed && !showSetup && !showSettings && <div className="capture-safety-backdrop"><section className="capture-safety-dialog" role="alertdialog" aria-modal="true" aria-labelledby="capture-safety-title" aria-describedby="capture-safety-description"><div className="capture-safety-icon" aria-hidden="true"><ShieldCheck size={33} weight="fill" /><i /></div><span>Safe connection</span><h2 id="capture-safety-title">TCG Live is already connected</h2><p id="capture-safety-description">Trace can’t safely tell whether a match is active. It won’t interrupt your connection or install an update.</p><div className="capture-safety-waiting"><i aria-hidden="true" /><span><strong>In a match? Finish playing first.</strong><small>Already on Home? Quit TCG Live, leave Trace open until it says Ready, then reopen TCG Live.</small></span></div><div className="modal-actions"><button type="button" onClick={() => setSafetyDismissed(true)}>Continue reviewing</button><button type="button" onClick={openSettings}>Open Settings</button></div></section></div>}
       {!sharedMode && showSetup && <CaptureSetupModal onClose={closeSetup} onCapture={capture => setEnvironment(current => ({ ...current, capture }))} />}
       {!sharedMode && upgrade && <ArchiveUpgradeModal feature={upgrade.feature} preview={upgradePreview} onClose={() => setUpgrade(null)} onLink={() => { upgradeAfterLink.current = upgrade.summary || null; setUpgrade(null); openSettings(); }} />}
-      {!sharedMode && showSettings && <UpdateSettingsModal onClose={() => setShowSettings(false)} version={appVersion}>{isTauri() && accountSettings}</UpdateSettingsModal>}
+      {!sharedMode && showSettings && <UpdateSettingsModal onClose={() => setShowSettings(false)} version={appVersion}>{isTauri() && <><BackgroundSettings />{accountSettings}</>}</UpdateSettingsModal>}
       {shareUrl && <div className="modal-backdrop share-modal-backdrop"><div className="share-modal" role="dialog" aria-modal="true" aria-labelledby="share-match-title"><div className="modal-title"><div><span>Ready to send</span><h2 id="share-match-title">Share this match</h2></div><button type="button" onClick={() => setShareUrl(null)} aria-label="Close share dialog"><X size={21} weight="bold" /></button></div><p>Anyone with this link can click through the replay in their browser.</p><div className="share-link-row"><input value={shareUrl} readOnly aria-label="Share link" onFocus={(event) => event.currentTarget.select()} /><button className="primary" type="button" onClick={() => void copyShareUrl(shareUrl)}><Copy size={16} weight="bold" />Copy link</button></div></div></div>}
       <ReviewOverlay inspector={inspector} catalog={cardCatalog} onClose={() => setInspector(null)} onInspectCard={openCard} />
       {!sharedMode && !showSetup && updateNotice}

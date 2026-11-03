@@ -75,6 +75,25 @@ export async function stopTracking(): Promise<CaptureStatus> {
   return invoke<CaptureStatus>('stop_tracking');
 }
 
+export interface BackgroundStatus {
+  launchAtLogin: boolean;
+  recordingEnabled: boolean;
+  supported: boolean;
+  lastError: string | null;
+}
+
+export async function getBackgroundStatus(): Promise<BackgroundStatus> {
+  return invoke<BackgroundStatus>('background_status');
+}
+
+export async function setLaunchAtLogin(enabled: boolean): Promise<BackgroundStatus> {
+  return invoke<BackgroundStatus>('set_launch_at_login', { enabled });
+}
+
+export async function onBackgroundStatus(handler: (status: BackgroundStatus) => void): Promise<() => void> {
+  return listen<BackgroundStatus>('background-status', event => handler(event.payload));
+}
+
 export async function onMatchOperation(
   handler: (operation: CapturedOperation) => void,
 ): Promise<() => void> {

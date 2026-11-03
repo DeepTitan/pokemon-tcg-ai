@@ -11,6 +11,7 @@ function fixture() {
     check: async (): Promise<any> => { calls.push('check'); return null; },
     permission: async () => { calls.push('permission'); return { ...environment.capture, permissionReady: true }; },
     start: async () => { calls.push('start'); return environment.capture; },
+    background: async () => { calls.push('background'); },
     restart: async () => { calls.push('restart'); },
     capture: () => { calls.push('capture'); },
   };
@@ -20,7 +21,7 @@ function fixture() {
 {
   const f = fixture(); await f.create().run();
   assert.deepEqual(f.states.map(s => s.phase), ['checking', 'approval', 'connecting', 'ready']);
-  assert.deepEqual(f.calls, ['check', 'permission', 'start', 'capture']);
+  assert.deepEqual(f.calls, ['check', 'permission', 'start', 'capture', 'background']);
 }
 {
   const f = fixture(); f.environment.capture.permissionReady = true;
@@ -71,4 +72,11 @@ for (const status of [{ waitingForMatchEnd: true }, { enabled: false }, { observ
 assert.equal(setupLabel('initial'), 'Set up Trace');
 assert.equal(setupLabel('failed'), 'Try again');
 assert.equal(setupLabel('ready'), 'Done');
+{
+  const f = fixture();
+  f.deps.background = async () => { throw new Error('Sign-in registration failed'); };
+  await f.create().run();
+  assert.equal(f.states.at(-1)?.phase, 'failed');
+  assert.match(f.states.at(-1)!.message, /Sign-in registration failed/);
+}
 console.log('setup-flow: 11 scenarios passed (fresh setup, reconnect, Live blockers, permission failure/retry, offline, double click, update safety, capture failures).');

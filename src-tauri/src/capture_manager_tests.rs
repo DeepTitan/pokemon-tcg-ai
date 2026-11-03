@@ -84,6 +84,26 @@ fn arm(manager: &mut CaptureManager, state: &Arc<CaptureState>, io: &mut FakeIo)
     assert_eq!(io.events, ["activate:0"]);
     io.events.clear();
 }
+
+#[test]
+fn recording_pause_keeps_game_connected_then_releases_after_close() {
+    let (mut manager, state, mut io) = (CaptureManager::default(), enabled_state(), FakeIo::default());
+    arm(&mut manager, &state, &mut io);
+    io.pid = Some(42);
+    manager.tick(&state, &mut io, 2500);
+    state.recording_paused.store(true, Ordering::Relaxed);
+    for now in 3..120 { manager.tick(&state, &mut io, now * 1000); }
+    assert!(io.events.is_empty(), "pause must preserve the running game's transport");
+    assert!(state.route_active.load(Ordering::Relaxed));
+    state.recording_paused.store(false, Ordering::Relaxed);
+    manager.tick(&state, &mut io, 120_000);
+    assert!(io.events.is_empty(), "resume must reuse the same connection");
+    state.recording_paused.store(true, Ordering::Relaxed);
+    io.pid = None;
+    for now in 121..130 { manager.tick(&state, &mut io, now * 1000); }
+    assert_eq!(io.events, ["release"]);
+    assert!(!state.route_active.load(Ordering::Relaxed));
+}
 fn rotate(io: &mut FakeIo) {
     io.addresses = vec![
         "192.0.2.11".parse().unwrap(),
@@ -141,20 +161,17 @@ fn manager_stale_route_waits_for_safe_refresh() {
     }
     assert!(io.events.is_empty());
     manager.tick(&state, &mut io, 44_000);
-    if cfg!(target_os = "macos") {
+    {
         assert!(io.events.is_empty(), "a low socket count is not proof of a safe lobby");
         io.pid = None;
         for now in [45_000, 46_000, 47_000] {
             manager.tick(&state, &mut io, now);
         }
         assert_eq!(io.events, ["release", "activate:0"]);
-    } else {
-        assert_eq!(io.events, ["release", "activate:42"]);
     }
     assert!(!state.waiting_for_match_end.load(Ordering::Relaxed));
 }
 
-#[cfg(target_os = "macos")]
 #[test]
 fn manager_never_attaches_to_a_running_client_even_when_its_sockets_disappear() {
     for count in [0, 1, 2, 3, 6] {
