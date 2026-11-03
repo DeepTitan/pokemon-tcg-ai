@@ -47,7 +47,8 @@ const firstInstall = environment({ permissionReady: false, enabled: false, lastE
 assert.equal(visibleCaptureError(firstInstall), null);
 assert.equal(recordingNotice(firstInstall, false, firstInstall.capture.lastError, null), null);
 assert.equal(recordingNotice(environment(), true, 'Resource temporarily unavailable (os error 35)', null), null);
-assert.equal(recordingNotice(environment(), false, 'Resource temporarily unavailable (os error 35)', null), 'Recording needs attention. Open Settings to reconnect Trace.');
+assert.equal(recordingNotice(environment(), false, 'Resource temporarily unavailable (os error 35)', null), 'Recording needs attention. Open Settings for recovery steps.');
+assert.match(recordingNotice(environment(), false, null, 'TCG Live rejected the local capture certificate: CertificateUnknown')!, /TCG Live couldn’t connect to the recorder/);
 assert.equal(recordingNotice(environment(), false, null, null), null, 'recovery removes the recording notice');
 assert.match(recordingNotice(environment(), false, 'Sign-in registration failed', null)!, /automatic startup/);
 

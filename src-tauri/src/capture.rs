@@ -94,6 +94,8 @@ pub struct CaptureState {
     pub operation_count: AtomicU64,
     pub last_error: Mutex<Option<String>>,
     pub upstream_ips: Mutex<Vec<IpAddr>>,
+    #[cfg(target_os = "macos")]
+    route_interface: Mutex<Option<String>>,
     pub observer_shutdown: Mutex<Option<oneshot::Sender<()>>>,
     pub route_stream: Mutex<Option<privileged::RouteHandle>>,
 }
@@ -1545,6 +1547,10 @@ fn release_route(state: &Arc<CaptureState>) {
     }
     state.route_active.store(false, Ordering::Relaxed);
     state.routed_pid.store(0, Ordering::Relaxed);
+    #[cfg(target_os = "macos")]
+    if let Ok(mut interface) = state.route_interface.lock() {
+        *interface = None;
+    }
     if let Ok(mut upstream_ips) = state.upstream_ips.lock() {
         upstream_ips.clear();
     }
@@ -1558,6 +1564,10 @@ fn activate_route(state: &Arc<CaptureState>, pokemon_pid: u32) -> Result<(), Str
     if !CaptureManager::may_activate(state) {
         return Err("Capture was paused.".into());
     }
+    // The helper's PF rules are bound to this interface. Retain it alongside
+    // DNS so a dock/Wi-Fi change cannot leave an apparently current route.
+    #[cfg(target_os = "macos")]
+    let interface = privileged::default_interface()?;
     let (reply, mut stream) = privileged::enable_route(std::process::id(), pokemon_pid)?;
     let mut route = state
         .route_stream
@@ -1573,6 +1583,10 @@ fn activate_route(state: &Arc<CaptureState>, pokemon_pid: u32) -> Result<(), Str
             .iter()
             .filter_map(|ip| ip.parse::<IpAddr>().ok())
             .collect();
+    }
+    #[cfg(target_os = "macos")]
+    if let Ok(mut pinned) = state.route_interface.lock() {
+        *pinned = Some(interface);
     }
     *route = Some(stream);
     state.route_active.store(true, Ordering::Relaxed);
@@ -1595,7 +1609,11 @@ fn route_addresses_current(state: &CaptureState) -> Result<bool, String> {
             .lock()
             .map_err(|_| "Capture state lock failed")?
             .clone();
-        privileged::route_addresses_current(&pinned)
+        let interface = privileged::default_interface()?;
+        let same_interface = state.route_interface.lock()
+            .map_err(|_| "Capture interface lock failed")?
+            .as_deref() == Some(interface.as_str());
+        privileged::route_addresses_current(&pinned).map(|addresses| addresses && same_interface)
     }
     #[cfg(target_os = "windows")]
     {
@@ -1697,6 +1715,8 @@ struct CaptureManager {
     idle_watch: crate::capture_health::IdleRouteWatch,
     refresh_pending: bool,
     last_observed_pid: Option<u32>,
+    last_tick_ms: Option<u64>,
+    refresh_after_resume: bool,
 }
 
 impl CaptureManager {
@@ -1711,9 +1731,17 @@ impl CaptureManager {
         io: &mut impl CaptureManagerIo,
         now_ms: u64,
     ) -> std::time::Duration {
+        // SystemTime includes sleep. A long suspension can invalidate PF
+        // state even when DNS and the interface name have not changed.
+        if self.last_tick_ms.replace(now_ms).is_some_and(|last| {
+            now_ms.checked_sub(last).is_none_or(|elapsed| elapsed > 60_000)
+        }) {
+            self.refresh_after_resume = true;
+        }
         if !state.enabled.load(Ordering::Relaxed) || state.terminate.load(Ordering::Relaxed) {
             io.release(state);
             self.refresh_pending = false;
+            self.refresh_after_resume = false;
             self.idle_watch = crate::capture_health::IdleRouteWatch::default();
             state.waiting_for_match_end.store(false, Ordering::Relaxed);
             state.match_in_progress.store(false, Ordering::Relaxed);
@@ -1755,6 +1783,12 @@ impl CaptureManager {
                 }
             }
             self.refresh_pending |= client_replaced;
+            // A failed recording session can leave the helper lease alive even
+            // though traffic no longer reaches the observer. Matching DNS alone
+            // is not recovery. Re-arm after confirmed client exit, never while
+            // playing or during a transient process/DNS lookup failure.
+            self.refresh_pending |= check_idle && addresses_verified
+                && (self.refresh_after_resume || state.last_error.lock().is_ok_and(|error| error.is_some()));
             if check_idle && !self.refresh_pending {
                 state.routed_pid.store(0, Ordering::Relaxed);
             }
@@ -1809,6 +1843,8 @@ impl CaptureManager {
                         *last_error = Some(error);
                     }
                 }
+            } else {
+                self.refresh_after_resume = false;
             }
             return std::time::Duration::from_millis(500);
         }

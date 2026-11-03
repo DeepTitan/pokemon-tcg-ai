@@ -37,7 +37,10 @@ export function recordingProblemMessage(error: string): string {
   if (/before quitting Trace/i.test(error)) {
     return 'Finish your game before quitting Trace. You can close this window and keep recording.';
   }
-  return 'Recording needs attention. Open Settings to reconnect Trace.';
+  if (/CertificateUnknown|rejected the local capture certificate/i.test(error)) {
+    return 'TCG Live couldn’t connect to the recorder. Open Settings for recovery steps.';
+  }
+  return 'Recording needs attention. Open Settings for recovery steps.';
 }
 
 export function recordingNotice(environment: TrackerEnvironment, setupOpen: boolean, backgroundError: string | null, captureError: string | null): string | null {
