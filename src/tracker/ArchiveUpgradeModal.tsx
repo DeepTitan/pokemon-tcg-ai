@@ -5,8 +5,8 @@ import { openMembershipAccount } from './tauri.js';
 
 export interface UpgradePreview { board: ReactNode; title: string; caption: string; }
 
-export function ArchiveUpgradeModal({ onClose, onLink, feature = 'archive', preview }: {
-  onClose: () => void; onLink: () => void;
+export function ArchiveUpgradeModal({ onClose, onLink, onRefresh, feature = 'archive', preview }: {
+  onClose: () => void; onLink: () => void; onRefresh: () => Promise<void>;
   feature?: 'archive' | 'pro' | 'share'; preview?: UpgradePreview;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -26,6 +26,21 @@ export function ArchiveUpgradeModal({ onClose, onLink, feature = 'archive', prev
       if (previous instanceof HTMLElement && previous.isConnected) previous.focus({ preventScroll: true });
     };
   }, []);
+  useEffect(() => {
+    if (!opened) return;
+    let active = true;
+    let checking = false;
+    const refresh = async () => {
+      if (!active || checking) return;
+      checking = true;
+      try { await onRefresh(); } catch { /* Retry without interrupting checkout. */ }
+      finally { checking = false; }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 4000);
+    window.addEventListener('focus', refresh);
+    return () => { active = false; window.clearInterval(timer); window.removeEventListener('focus', refresh); };
+  }, [opened, onRefresh]);
   const hasPreview = Boolean(preview);
   useEffect(() => {
     const slot = boardSlot.current;
@@ -45,8 +60,8 @@ export function ArchiveUpgradeModal({ onClose, onLink, feature = 'archive', prev
     try {
       await openMembershipAccount(plan === 'year' ? 'checkout-year' : 'checkout-month');
       setOpened(true);
-    } catch {
-      setError('Couldn’t open checkout. Try again, or visit victoryroad.app/trace.');
+    } catch (caught) {
+      setError(typeof caught === 'string' ? caught : caught instanceof Error ? caught.message : 'Couldn’t open checkout. Check your connection and try again.');
     } finally { opening.current = false; setBusy(false); }
   };
 
@@ -71,15 +86,15 @@ export function ArchiveUpgradeModal({ onClose, onLink, feature = 'archive', prev
         <div className="archive-upgrade-wordmark">Trace <span>PRO</span></div>
         <h2 id="archive-upgrade-title">{headline}</h2>
         <div id="archive-upgrade-description" className="archive-upgrade-benefits"><p>Revisit any saved match, even after 30 days.</p><p>Share unlimited replays with teammates or your coach.</p></div>
-        <fieldset className="archive-upgrade-plans" disabled={busy}><legend className="sr-only">Subscription plan</legend>
+        <fieldset className="archive-upgrade-plans" disabled={busy || opened}><legend className="sr-only">Subscription plan</legend>
           {(['month', 'year'] as const).map(interval => <label key={interval} className={plan === interval ? 'selected' : ''}>
             <input type="radio" name="trace-upgrade-plan" value={interval} checked={plan === interval} onChange={() => { setPlan(interval); setOpened(false); }} />
             <span><strong>{interval === 'month' ? '$4.99' : '$49.99'}</strong> / {interval}</span>
           </label>)}
         </fieldset>
-        <button className="archive-upgrade-primary" disabled={busy} onClick={() => void checkout()}>{busy ? 'Opening checkout…' : opened ? 'Continue checkout' : cta}<ArrowRight size={21} aria-hidden="true" /></button>
-        <p className="archive-upgrade-renewal" aria-live="polite">Renews {plan === 'year' ? 'annually' : 'monthly'}. Cancel anytime.</p>
-        {opened && <p className="archive-upgrade-status" role="status">Finish in your browser, then return to Trace. <button className="archive-upgrade-link" onClick={onLink}>Already upgraded? Link your account.</button></p>}
+        <button className="archive-upgrade-primary" disabled={busy || opened} onClick={() => void checkout()}>{busy ? 'Opening checkout…' : opened ? 'Waiting for payment…' : cta}<ArrowRight size={21} aria-hidden="true" /></button>
+        <p className="archive-upgrade-renewal" aria-live="polite">Renews {plan === 'year' ? 'annually' : 'monthly'}. Cancel anytime. Your email at checkout creates your account.</p>
+        {opened && <p className="archive-upgrade-status" role="status">Finish payment in your browser. Pro will unlock here automatically—you can close the browser when you’re done. <button className="archive-upgrade-link" disabled={busy} onClick={() => void checkout()}>Reopen checkout</button></p>}
         {error && <p className="archive-upgrade-error" role="alert">{error}</p>}
         <div className="archive-upgrade-footer"><button className="archive-upgrade-dismiss" onClick={onClose}>{feature === 'archive' ? 'Back to replays' : 'Keep using Free'}</button><p>Recording, recent replays, deck and prize study stay free.</p><button className="archive-upgrade-link" onClick={onLink}>Already a member?</button></div>
       </section>

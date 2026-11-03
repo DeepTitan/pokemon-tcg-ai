@@ -35,6 +35,8 @@ impl Default for Capabilities {
 #[serde(rename_all = "camelCase")]
 pub struct MembershipStatus {
     pub linked: bool,
+    #[serde(default)]
+    pub purchase_account: bool,
     pub email: Option<String>,
     pub plan: String,
     pub trace_access: bool,
@@ -50,6 +52,7 @@ impl MembershipStatus {
     pub fn denied(status: &str) -> Self {
         Self {
             linked: false,
+            purchase_account: false,
             email: None,
             plan: "none".into(),
             trace_access: false,
@@ -145,6 +148,9 @@ impl Membership {
         method: Method,
         path: &str,
     ) -> Result<Value, String> {
+        self.request_body(cloud, method, path, None).await
+    }
+    async fn request_body(&self, cloud: &CloudSync, method: Method, path: &str, body: Option<Value>) -> Result<Value, String> {
         let mut url = self
             .endpoint
             .clone()
@@ -154,16 +160,18 @@ impl Membership {
             .extend(["v1", "devices"]).extend(path.split('/'));
         for attempt in 0..2 {
             let (device, token) = cloud.membership_credentials().await?;
-            let result = self.client.request(method.clone(), url.clone())
-                .header("x-trace-device", &device).bearer_auth(&token)
-                .send().await.map_err(|_| "Couldn’t reach your Trace account. Check your connection and try again.")?;
+            let mut request = self.client.request(method.clone(), url.clone())
+                .header("x-trace-device", &device).bearer_auth(&token);
+            if let Some(ref value) = body { request = request.json(value); }
+            let result = request.send().await.map_err(|_| "Couldn’t reach your Trace account. Check your connection and try again.")?;
             if result.status() == reqwest::StatusCode::UNAUTHORIZED && attempt == 0 {
                 cloud.reject_membership_credentials(&device, &token).await;
                 continue;
             }
             if !result.status().is_success() {
                 return Err(if result.status().as_u16() == 409 {
-                    "This installation is already linked. Unlink it before linking another account."
+                    if path == "link/start" { "This installation is already linked. Unlink it before linking another account." }
+                    else { "Your existing purchase needs attention. Refresh your account or sign in with your checkout email before paying again." }
                 } else {
                     "Couldn’t verify your Trace account. Try again from Settings."
                 }.into());
@@ -189,6 +197,18 @@ impl Membership {
             state.lease = Some((status.clone(), deadline));
         }
         status
+    }
+    pub async fn billing_url(&self, cloud: &CloudSync, view: Option<&str>) -> Result<String, String> {
+        let (path, body) = match view {
+            Some("checkout-month") => ("checkout", Some(serde_json::json!({"billingInterval": "month"}))),
+            Some("checkout-year") => ("checkout", Some(serde_json::json!({"billingInterval": "year"}))),
+            Some("billing") => ("portal", None),
+            _ => return Ok(account_url(view)?.to_owned()),
+        };
+        let response = self.request_body(cloud, Method::POST, path, body).await?;
+        let url = response.get("url").and_then(Value::as_str).ok_or("Could not open secure checkout.")?;
+        validate_billing_url(url)?;
+        Ok(url.to_owned())
     }
     pub async fn link(&self, cloud: &CloudSync) -> Result<MembershipLink, String> {
         let link: MembershipLink = serde_json::from_value(self.request(cloud, Method::POST, "link/start").await?)
@@ -230,6 +250,19 @@ pub fn account_url(view: Option<&str>) -> Result<&'static str, String> {
     }
 }
 
+pub fn validate_billing_url(value: &str) -> Result<(), String> {
+    let url = Url::parse(value).map_err(|_| "Invalid billing link.")?;
+    let checkout = url.host_str() == Some("checkout.stripe.com")
+        && (url.path().starts_with("/c/pay/") || url.path().starts_with("/pay/"));
+    let portal = url.host_str() == Some("billing.stripe.com")
+        && (url.path().starts_with("/p/session/") || url.path() == "/p/session");
+    if value.len() > 8192 || url.scheme() != "https" || url.port().is_some()
+        || !url.username().is_empty() || url.password().is_some() || !(checkout || portal) {
+        return Err("The billing link could not be verified.".into());
+    }
+    Ok(())
+}
+
 pub fn validate_link(link: &MembershipLink) -> Result<(), String> {
     let url = Url::parse(&link.verification_url).map_err(|_| "Invalid account link.")?;
     let valid_code = link.user_code.len() == 11
@@ -261,9 +294,29 @@ pub fn validate_link(link: &MembershipLink) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn checkout_urls_only_open_the_expected_stripe_surfaces() {
+        for value in ["https://checkout.stripe.com/c/pay/cs_test_123#client", "https://billing.stripe.com/p/session/test_123", "https://billing.stripe.com/p/session?secret=live_123"] {
+            assert!(validate_billing_url(value).is_ok());
+        }
+        for value in ["https://checkout.stripe.com.evil.test/c/pay/x", "http://checkout.stripe.com/c/pay/x", "https://user@checkout.stripe.com/c/pay/x", "https://checkout.stripe.com:444/c/pay/x", "https://checkout.stripe.com/", "javascript:alert(1)"] {
+            assert!(validate_billing_url(value).is_err());
+        }
+    }
+
+    #[test]
+    fn purchase_account_uses_the_same_verified_paid_expiry() {
+        let mut status = active();
+        status.purchase_account = true;
+        assert!(status.clone().validated().trace_access);
+        status.expires_at = Some("2020-01-01T00:00:00Z".into());
+        assert!(!status.validated().trace_access);
+    }
+
     fn active() -> MembershipStatus {
         MembershipStatus {
             linked: true,
+            purchase_account: false,
             email: Some("test@example.invalid".into()),
             plan: "trace".into(),
             trace_access: true,
@@ -378,6 +431,7 @@ mod tests {
         for (path, method, final_status) in [
             ("status", Method::GET, 200), ("link/start", Method::POST, 200),
             ("unlink", Method::POST, 200), ("status", Method::GET, 401),
+            ("checkout", Method::POST, 200), ("portal", Method::POST, 200),
         ] {
             let directory = std::env::temp_dir().join(format!("trace-membership-http-{}", uuid::Uuid::new_v4()));
             fs::create_dir_all(&directory).unwrap();
@@ -417,6 +471,9 @@ mod tests {
                     };
                     if index == 0 || index == 3 {
                         assert!(headers.starts_with(&format!("{} /v1/devices/{path} http/1.1", expected_method.to_lowercase())));
+                        if path == "checkout" {
+                            assert_eq!(serde_json::from_slice::<Value>(&body).unwrap(), json!({"billingInterval":"year"}));
+                        }
                         if index == 0 {
                             assert!(headers.contains("x-trace-device: stale-device"));
                             assert!(headers.contains("authorization: bearer stale-token"));
@@ -442,7 +499,9 @@ mod tests {
             let cloud = CloudSync::with_test_endpoint(config_path, endpoint.clone());
             let mut member = Membership::new();
             member.endpoint = Some(endpoint);
-            let result = member.request(&cloud, method, path).await;
+            let result = if path == "checkout" {
+                member.request_body(&cloud, method, path, Some(json!({"billingInterval":"year"}))).await
+            } else { member.request(&cloud, method, path).await };
             assert_eq!(result.is_ok(), final_status == 200);
             let renewed_device = server.join().unwrap();
             assert_eq!(cloud.membership_credentials().await.unwrap(), (renewed_device, "renewed-token".into()));
