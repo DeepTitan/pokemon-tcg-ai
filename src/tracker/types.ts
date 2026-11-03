@@ -38,6 +38,8 @@ export interface ReviewEventFact {
   label: string;
   value: string;
   tone?: 'neutral' | 'positive' | 'negative' | 'info';
+  /** Exact captured target; names alone cannot distinguish identical Pokémon. */
+  targetEntityId?: string;
 }
 
 export interface ReviewProtocolGroup {
@@ -211,6 +213,15 @@ export interface CapturedDecklist {
   total: number;
 }
 
+export interface InferredOpponentCardPool {
+  playerName: string;
+  playerId: string;
+  source: 'startup-card-pool';
+  cards: { cardId: string; name: string; count?: never }[];
+}
+
+export type DeckPreview = CapturedDecklist | InferredOpponentCardPool;
+
 export interface MatchReview {
   id: string;
   importedAt: string;
@@ -305,6 +316,7 @@ export interface MembershipCapabilities {
   fullHistory: boolean;
   expandedSharing: boolean;
   opponentDecklists: boolean;
+  opponentCardPool?: boolean;
   freeSharesPerWindow: number;
   shareWindowDays: number;
 }

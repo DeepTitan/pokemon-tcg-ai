@@ -13,6 +13,36 @@ Account and device responses include `capabilities: {recordMatches, leaderboard,
 
 The capture service enforces archive ages and the free share quota independently; see `../aws/README.md`. Ratings retain all accepted games, irrespective of subscription. Existing public links remain readable. A new link's free quota belongs to the capture installation, not a global account, so this is a product limit rather than strong anti-abuse protection.
 
+### Private opponent card-pool preview
+
+`capabilities.opponentCardPool` is a separate, default-off account flag. Neither a
+paid plan nor owner/admin status grants it. The service requires a verified account
+and an operator-managed `FEATURE#opponent-card-pool#<Cognito subject>` record with
+`enabled: true` in the accounts table. No account or device API writes these records.
+Device access follows the authenticated installation's current account link.
+
+Use `set-card-pool-access.py <verified-subject> --enabled true` to preview one grant,
+then add `--execute` to apply it. Use `--enabled false --execute` to revoke. The
+script pins the production AWS account and stack and checks the existing verified
+account before writing. Run with a Python environment containing botocore (the
+AWS CLI Python environment also works). Only grant accounts explicitly requested
+by the owner; never identify an account by a TCG Live player name.
+
+The native `load_opponent_deck_preview` command refreshes membership before every
+read and checks its bounded lease again before returning data. Unlinked, missing,
+offline, expired-lease, and unflagged requests cannot use inference. The existing
+complete captured-deck command remains Free. The desktop refreshes account status
+every 30 seconds; an account/flag change closes the hover and discards pending
+responses. A subsequent preview always checks the server again.
+
+The existing decklist hover beside the opponent's name shows startup message 7
+card definitions minus the verified complete local deck's exact printing IDs.
+Message 9 must identify both players, and all local printings must occur in the
+dictionary. The result is explicitly inferred: quantities and shared printings
+are unknown. It has no count badges, 60-card total, or decklist-copy action. Older
+complete captures retain their counted list and copy action. Inferred pools stay
+out of review summaries and public shares.
+
 Cognito accounts verify their email. The API pins each access token to this pool and app client, then calls Cognito `GetUser` to validate it. Browser tokens stay in the website's HttpOnly cookie proxy. Confirmation emails can be resent through `POST /v1/auth/resend`; unknown or already-confirmed accounts receive generic success. Native devices use their existing capture UUID and bearer; those are checked against the capture device table with a strong read. An installation can receive its own paid purchase directly after native checkout. Access to an existing signed-in account still requires explicit device linking; typing an email at checkout never grants access to that existing identity. Free capture, recent replays and the free sharing allowance do not require linkage.
 
 Paid access requires one recognized subscription, status `active`, a paid invoice establishing the current tier, exact allowlisted price/amount/USD/monthly recurrence, quantity one, and a future paid-period end. `trialing`, `past_due`, `unpaid`, paused, malformed and conflicting subscriptions deny access. No trial is offered. Cancellation at period end preserves access until that date. Customers manage or switch existing plans through an isolated Stripe portal configuration; checkout returns `409 subscription_exists` for an existing membership.

@@ -5,7 +5,7 @@ import { compactStoredReview } from './review-memory.js';
 import { sharedReplayIdFromPath } from './share-replay.js';
 import { resolveSharedCardSources } from './shared-card-sources.js';
 import type {
-  CapturedDecklist, CapturedOperation, CaptureStatus, CardInfo, MatchReview, MatchSummary, MembershipStatus, MembershipLink, StorageStatus, TrackerEnvironment,
+  CapturedDecklist, DeckPreview, CapturedOperation, CaptureStatus, CardInfo, MatchReview, MatchSummary, MembershipStatus, MembershipLink, StorageStatus, TrackerEnvironment,
 } from './types.js';
 
 declare global {
@@ -190,6 +190,10 @@ export async function linkMembership(): Promise<MembershipLink> {
 export async function unlinkMembership(): Promise<MembershipStatus> {
   return invoke<MembershipStatus>('membership_unlink');
 }
+export async function loadOpponentDeckPreview(matchId: string): Promise<DeckPreview> {
+  return invoke<DeckPreview>('load_opponent_deck_preview', { matchId });
+}
+
 export async function loadOpponentDecklist(matchId: string): Promise<CapturedDecklist> {
   return invoke<CapturedDecklist>('load_opponent_decklist', { matchId });
 }
