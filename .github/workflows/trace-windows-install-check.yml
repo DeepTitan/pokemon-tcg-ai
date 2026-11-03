@@ -1,0 +1,47 @@
+name: Trace signed Windows install check
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing signed candidate tag to verify
+        required: true
+        type: string
+      source_sha:
+        description: Exact source SHA recorded on the candidate
+        required: true
+        type: string
+
+permissions:
+  contents: write # GitHub requires this to read private draft assets.
+
+jobs:
+  install:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      RELEASE_SHA: ${{ inputs.source_sha }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Download the pinned signed candidate
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ($env:RELEASE_SHA -notmatch '^[a-f0-9]{40}$' -or $env:RELEASE_TAG -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+$') { throw 'Invalid candidate inputs.' }
+          $release = gh release view $env:RELEASE_TAG --json targetCommitish,isDraft | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $release.targetCommitish -ne $env:RELEASE_SHA) { throw 'Candidate source does not match.' }
+          gh release download $env:RELEASE_TAG --pattern 'Trace_x64-setup.exe' --dir artifacts/installer
+          if ($LASTEXITCODE -ne 0) { throw 'Could not download the candidate.' }
+      - name: Verify signed installation and real setup
+        shell: pwsh
+        run: ./scripts/release/test-windows-install.ps1 -Installer artifacts/installer/Trace_x64-setup.exe -Version $env:RELEASE_TAG.Substring(1)
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-first-install-${{ inputs.release_tag }}
+          path: artifacts/windows-first-install
+          if-no-files-found: error
