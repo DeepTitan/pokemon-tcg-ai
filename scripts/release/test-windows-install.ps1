@@ -95,7 +95,9 @@ function Assert-RouteReady([int]$OwnerId) {
     $null = Wait-Until {
         $listener = Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort 443 -State Listen -ErrorAction SilentlyContinue |
             Where-Object OwningProcess -eq $OwnerId
-        $listener -and ([IO.File]::ReadAllText($hostsPath) -match '(?m)^# Trace local capture begin ')
+        $hostsText = [IO.File]::ReadAllText($hostsPath)
+        $listener -and ($hostsText -match '(?m)^# (Trace|Match Lens) local capture begin ') -and
+            ($hostsText -match '(?m)^127\.0\.0\.1\s+api\.us-east-1\.studio-prod\.pokemon\.com\s*$')
     } 'the recorder listener and managed game route'
 }
 function Assert-RouteClean {
