@@ -20,7 +20,7 @@ function fixture() {
 
 {
   const f = fixture(); await f.create().run();
-  assert.deepEqual(f.states.map(s => s.phase), ['checking', 'approval', 'connecting', 'ready']);
+  assert.deepEqual(f.states.map(s => s.phase), ['checking', 'approval', 'checking', 'connecting', 'ready']);
   assert.deepEqual(f.calls, ['check', 'permission', 'start', 'capture', 'background']);
 }
 {
@@ -68,6 +68,24 @@ function fixture() {
 for (const status of [{ waitingForMatchEnd: true }, { enabled: false }, { observerRunning: false }, { lastError: 'Helper unavailable' }]) {
   const f = fixture(); Object.assign(f.environment.capture, status);
   await f.create().run(); assert.equal(f.states.at(-1)?.phase, 'waitingForMatchEnd' in status ? 'close-live' : 'failed');
+}
+{
+  // A slow environment check after successful approval must not keep telling
+  // the user to approve a prompt that has already disappeared.
+  const f = fixture(); let approved = false; let release!: () => void;
+  f.deps.permission = async () => { approved = true; return { ...f.environment.capture, permissionReady: true }; };
+  f.deps.environment = async () => {
+    if (approved) await new Promise<void>(resolve => { release = resolve; });
+    return f.environment;
+  };
+  const running = f.create().run();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.states.at(-1)?.phase, 'checking');
+  assert.match(f.states.at(-1)!.message, /Approval received/);
+  f.environment.clientRunning = true;
+  release(); await running;
+  assert.equal(f.states.at(-1)?.phase, 'close-live');
+  assert.ok(!f.calls.includes('start'));
 }
 assert.equal(setupLabel('initial'), 'Set up Trace');
 assert.equal(setupLabel('failed'), 'Try again');

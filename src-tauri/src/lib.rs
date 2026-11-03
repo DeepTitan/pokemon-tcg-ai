@@ -195,20 +195,28 @@ async fn open_leaderboard() -> Result<(), String> {
 }
 
 #[tauri::command]
-fn tracker_environment(app: tauri::AppHandle) -> TrackerEnvironment {
-    let pid = pokemon_client_pid();
-    TrackerEnvironment {
-        client_installed: pokemon_client_installed(),
-        client_running: pid.is_some(),
-        pid,
-        capture_mode: capture_mode(),
-        capture: capture::status(&app),
-    }
+async fn tracker_environment(app: tauri::AppHandle) -> Result<TrackerEnvironment, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let pid = pokemon_client_pid();
+        TrackerEnvironment {
+            client_installed: pokemon_client_installed(),
+            client_running: pid.is_some(),
+            pid,
+            capture_mode: capture_mode(),
+            capture: capture::status(&app),
+        }
+    })
+    .await
+    .map_err(|error| format!("Could not check the capture setup: {error}"))
 }
 
 #[tauri::command]
-fn capture_status(app: tauri::AppHandle) -> CaptureStatus {
-    capture::status(&app)
+async fn capture_status(app: tauri::AppHandle) -> Result<CaptureStatus, String> {
+    // Certificate and helper checks invoke system commands. Keep them off the
+    // UI thread so a slow OS response cannot freeze setup or the recorder UI.
+    tauri::async_runtime::spawn_blocking(move || capture::status(&app))
+        .await
+        .map_err(|error| format!("Could not check recording status: {error}"))
 }
 
 #[tauri::command]

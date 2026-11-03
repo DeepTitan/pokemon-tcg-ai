@@ -73,6 +73,7 @@ export function createSetupFlow(deps: Dependencies, notify: (state: SetupState) 
           set('approval', 'Approve the system setup prompt to continue.');
           const permission = await deps.permission();
           if (!permission.permissionReady) throw new Error('Capture permission was not approved. Try again and approve the system prompt.');
+          set('checking', 'Approval received. Checking the game before connecting…');
         }
         if (await blocked()) return;
         set('connecting', 'Connecting capture…');
