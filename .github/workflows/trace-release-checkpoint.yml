@@ -598,9 +598,46 @@ jobs:
           security delete-keychain "$RUNNER_TEMP/trace-signing.keychain-db" || true
           rm -f "$RUNNER_TEMP/trace-signing-certificate.p12"
 
+  windows-install:
+    name: Verify signed Windows first install
+    needs: [checkpoint, build]
+    if: needs.checkpoint.outputs.shouldRelease == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      RELEASE_SHA: ${{ needs.checkpoint.outputs.commitSha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.checkpoint.outputs.commitSha }}
+
+      - name: Download the exact signed candidate
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.checkpoint.outputs.tag }}
+        run: |
+          if ((git rev-parse HEAD) -ne $env:RELEASE_SHA) { throw 'Wrong verification source.' }
+          gh release download $env:RELEASE_TAG --pattern 'Trace_x64-setup.exe' --dir artifacts/installer
+          if ($LASTEXITCODE -ne 0) { throw 'Could not download the signed candidate.' }
+
+      - name: Install and exercise real first-run setup
+        shell: pwsh
+        run: ./scripts/release/test-windows-install.ps1 -Installer artifacts/installer/Trace_x64-setup.exe -Version '${{ needs.checkpoint.outputs.version }}'
+
+      - name: Save first-install evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-first-install-${{ needs.checkpoint.outputs.tag }}
+          path: artifacts/windows-first-install
+          if-no-files-found: error
+
   publish:
     name: Prepare signed updater and optionally publish
-    needs: [checkpoint, build]
+    needs: [checkpoint, build, windows-install]
     if: needs.checkpoint.outputs.shouldRelease == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -732,7 +769,8 @@ jobs:
             echo "- Draft: $RELEASE_TAG"
             echo "- Source: $RELEASE_SHA"
             echo '- Signed installers, updater signatures and latest.json are attached to the draft.'
-            echo '- Publication and app/helper launch checks were not performed.'
+            echo '- Signed Windows installation and first-run setup passed on a fresh runner.'
+            echo '- Publication and macOS app/helper launch checks were not performed.'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish verified release

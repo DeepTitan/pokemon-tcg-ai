@@ -9,6 +9,8 @@ on:
       - 'src-tauri/**'
       - 'src/tracker/**'
       - 'scripts/release/test-windows-background.ps1'
+      - 'scripts/release/test-windows-install.ps1'
+      - '.github/workflows/trace-release-checkpoint.yml'
       - '.github/workflows/trace-background-tests.yml'
 
 permissions:
@@ -34,6 +36,15 @@ jobs:
           workspaces: src-tauri
           cache-on-failure: true
       - run: npm ci --ignore-scripts
+      - run: node scripts/release/trace-release-checkpoint.test.mjs
+      - name: Validate Windows install test syntax
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $parseErrors = $null
+          $tokens = $null
+          $null = [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path 'scripts/release/test-windows-install.ps1'), [ref]$tokens, [ref]$parseErrors)
+          if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
       - run: npm run tracker:test-setup
       - run: npm run tracker:build
       - run: cargo test --manifest-path src-tauri/Cargo.toml --lib --locked
