@@ -73,7 +73,9 @@ assert.match(releaseWorkflow, /group:.*github\.event_name == 'workflow_dispatch'
 assert.match(releaseWorkflow, /ref: \$\{\{ github\.sha \}\}/);
 assert.equal((releaseWorkflow.match(/ref: \$\{\{ needs\.checkpoint\.outputs\.commitSha \}\}/g) || []).length, 3, 'build, Windows install, and updater jobs use the checkpoint source');
 assert.match(releaseWorkflow, /  publish:\s+name:[^\n]+\s+needs: \[checkpoint, build, windows-install\]/, 'publication requires the signed Windows install gate');
-assert.match(releaseWorkflow, /  windows-install:[\s\S]*permissions:\s+contents: read[\s\S]*test-windows-install\.ps1/, 'the installed-app check has no signing permissions');
+const windowsInstallJob = releaseWorkflow.split('  windows-install:')[1].split('\n  publish:')[0];
+assert.match(windowsInstallJob, /contents: write/, 'draft installer downloads require repository write access');
+assert.doesNotMatch(windowsInstallJob, /id-token:|secrets\./, 'the installed-app check has no signing permissions or secrets');
 assert.match(releaseWorkflow, /releaseCommitish: \$\{\{ needs\.checkpoint\.outputs\.commitSha \}\}/);
 assert.match(releaseWorkflow, /releaseDraft: \$\{\{ needs\.checkpoint\.outputs\.shouldPublish != 'true' \|\| steps\.upload-state\.outputs\.releaseDraft == 'true' \}\}/);
 for (const step of ['Publish verified release', 'Verify network update manifest']) {

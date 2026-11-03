@@ -605,7 +605,9 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 15
     permissions:
-      contents: read
+      # GitHub hides draft release assets from read-only installation tokens.
+      # The token is passed only to the download step; no signer/OIDC access.
+      contents: write
     env:
       RELEASE_SHA: ${{ needs.checkpoint.outputs.commitSha }}
     steps:
