@@ -54,14 +54,19 @@ const UPSTREAM_PORT_START: u16 = 49_000;
 #[cfg(target_os = "macos")]
 const UPSTREAM_PORT_END: u16 = 49_099;
 const CA_COMMON_NAME: &str = privileged::CA_COMMON_NAME;
+#[cfg(target_os = "macos")]
 const CERTIFICATE_VERSION_MARKER: &str = "unity-rsa-crl-chain-v6";
+#[cfg(target_os = "windows")]
+const CERTIFICATE_VERSION_MARKER: &str = "unity-rsa-crl-chain-v7";
 const ISSUER_COMMON_NAME: &str = "Turnlume Pokémon Capture Issuer";
 #[cfg(target_os = "windows")]
-const CRL_PORT: u16 = 80;
+// HTTP.sys/IIS commonly owns port 80, including on clean Windows CI images.
+// Certificate validation must not require stopping another local web server.
+const CRL_PORT: u16 = 8898;
 #[cfg(target_os = "windows")]
-const ROOT_CRL_PATH: &str = "/turnlume-root-v6.crl";
+const ROOT_CRL_PATH: &str = "/turnlume-root-v7.crl";
 #[cfg(target_os = "windows")]
-const ISSUER_CRL_PATH: &str = "/turnlume-issuer-v6.crl";
+const ISSUER_CRL_PATH: &str = "/turnlume-issuer-v7.crl";
 const MAX_WEBSOCKET_MESSAGE: usize = 64 * 1024 * 1024;
 
 #[cfg(target_os = "windows")]
@@ -312,7 +317,7 @@ fn ensure_ca(app: &AppHandle) -> Result<CaptureAuthorityPaths, String> {
     #[cfg(target_os = "windows")]
     {
         issuer_params.crl_distribution_points = vec![CrlDistributionPoint {
-            uris: vec![format!("http://{}{ROOT_CRL_PATH}", privileged::GAME_HOST)],
+            uris: vec![format!("http://{}:{CRL_PORT}{ROOT_CRL_PATH}", privileged::GAME_HOST)],
         }];
     }
     issuer_params.use_authority_key_identifier_extension = true;
@@ -831,7 +836,7 @@ fn server_config(app: &AppHandle) -> Result<Arc<ServerConfig>, String> {
     #[cfg(target_os = "windows")]
     {
         leaf_params.crl_distribution_points = vec![CrlDistributionPoint {
-            uris: vec![format!("http://{}{ISSUER_CRL_PATH}", privileged::GAME_HOST)],
+            uris: vec![format!("http://{}:{CRL_PORT}{ISSUER_CRL_PATH}", privileged::GAME_HOST)],
         }];
     }
     leaf_params.use_authority_key_identifier_extension = true;

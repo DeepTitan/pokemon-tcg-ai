@@ -158,6 +158,29 @@ try {
     $der = [Convert]::FromBase64String(($pem -replace '-----BEGIN CERTIFICATE-----|-----END CERTIFICATE-----|\s', ''))
     $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new($der)
     if (-not (Test-Path "Cert:/LocalMachine/Root/$($certificate.Thumbprint)")) { throw 'The exact local recording certificate was not installed.' }
+    $crlListener = Get-NetTCPConnection -LocalAddress 127.0.0.1 -LocalPort 8898 -State Listen -ErrorAction Stop
+    if ($crlListener.OwningProcess -ne $recorder.Id) { throw 'Certificate validation listener is not owned by Trace.' }
+    # Schannel must validate the actual recorder's certificate, including both
+    # revocation lists on the dedicated local HTTP port. No game is launched,
+    # no account is used, and no application request is sent to the game server.
+    $tcp = [Net.Sockets.TcpClient]::new()
+    $tls = $null
+    $cancellation = [Threading.CancellationTokenSource]::new(20000)
+    try {
+        if (-not $tcp.ConnectAsync('127.0.0.1', 443).Wait(5000)) { throw 'Could not connect to the installed recorder.' }
+        $tls = [Net.Security.SslStream]::new($tcp.GetStream(), $false)
+        $options = [Net.Security.SslClientAuthenticationOptions]::new()
+        $options.TargetHost = 'api.us-east-1.studio-prod.pokemon.com'
+        $options.CertificateRevocationCheckMode = [Security.Cryptography.X509Certificates.X509RevocationMode]::Online
+        $tls.AuthenticateAsClientAsync($options, $cancellation.Token).GetAwaiter().GetResult()
+        if (-not $tls.IsAuthenticated -or -not $tls.IsEncrypted) { throw 'Installed recorder TLS validation failed.' }
+        $receipt.tlsProtocol = $tls.SslProtocol.ToString()
+    } finally {
+        if ($tls) { $tls.Dispose() }
+        $tcp.Dispose()
+        $cancellation.Dispose()
+    }
+    Check-Passed 'Windows TLS handshake validates the recorder certificate and online revocation checks'
     $task = Get-ScheduledTask -TaskName $taskName
     if ($task.Actions.Execute -ne $tracePath -or $task.Actions.Arguments -ne '--trace-background' -or
         $task.Principal.RunLevel -ne 'Highest' -or $task.Principal.LogonType -ne 'Interactive') {
@@ -197,6 +220,12 @@ try {
     $receipt.passed = $true
 } catch {
     $receipt.error = $_.Exception.Message
+    try {
+        Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue |
+            Where-Object LocalPort -in @(80, 443, 8898) |
+            Select-Object LocalAddress, LocalPort, OwningProcess, @{Name='Process';Expression={(Get-Process -Id $_.OwningProcess).ProcessName}} |
+            ConvertTo-Json | Set-Content (Join-Path $outputRoot 'listener-status.json')
+    } catch { Write-Warning "Could not save native diagnostics: $_" }
     try { Save-UiEvidence 'failure' } catch { Write-Warning "Could not save UI evidence: $_" }
     throw
 } finally {
@@ -204,6 +233,8 @@ try {
     # Copy only diagnostics, never device credentials, private keys, or profile data.
     Get-ChildItem (Join-Path $profileRoot 'capture') -Filter '*errors.log' -ErrorAction SilentlyContinue |
         Copy-Item -Destination $outputRoot
+    $routeEvents = Join-Path $profileRoot 'capture/capture-route-events.jsonl'
+    if (Test-Path $routeEvents) { Copy-Item $routeEvents -Destination $outputRoot }
     if ($recorder) {
         $recorder.Refresh()
         if (-not $recorder.HasExited) { Stop-Process -Id $recorder.Id -Force }
