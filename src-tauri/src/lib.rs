@@ -12,6 +12,7 @@ mod background;
 mod cloud_sync;
 mod deck_access;
 mod membership;
+mod opponent_card_pool;
 #[cfg(target_os = "macos")]
 mod privileged;
 #[cfg(target_os = "windows")]
@@ -510,6 +511,25 @@ async fn load_opponent_decklist(
 }
 
 #[tauri::command]
+async fn load_opponent_deck_preview(
+    membership: tauri::State<'_, membership::Membership>,
+    cloud_sync: tauri::State<'_, cloud_sync::CloudSync>,
+    storage: tauri::State<'_, storage::MatchStorage>,
+    match_id: String,
+) -> Result<Value, String> {
+    // The server's account allowlist is authority; a frontend Boolean is not.
+    membership.refresh(&cloud_sync).await;
+    membership.require_opponent_card_pool()?;
+    verify_replay_access(&storage, &membership, &cloud_sync, &match_id).await?;
+    let storage = storage.inner().clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        opponent_card_pool::preview(&storage.match_access(&match_id)?, &storage.load_operations(&match_id)?)
+    }).await.map_err(|e| e.to_string())??;
+    membership.require_opponent_card_pool()?;
+    Ok(result)
+}
+
+#[tauri::command]
 async fn resolve_card_sources(
     app: tauri::AppHandle,
     storage: tauri::State<'_, storage::MatchStorage>,
@@ -649,6 +669,7 @@ pub fn run() {
             membership_link,
             membership_unlink,
             load_opponent_decklist,
+            load_opponent_deck_preview,
             tracker_environment,
             capture_status,
             recent_match_operations,

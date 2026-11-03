@@ -21,13 +21,14 @@ pub struct Capabilities {
     pub full_history: bool,
     pub expanded_sharing: bool,
     pub opponent_decklists: bool,
+    pub opponent_card_pool: bool,
     pub free_shares_per_window: u32,
     pub share_window_days: u32,
 }
 impl Default for Capabilities {
     fn default() -> Self {
         Self { record_matches: true, leaderboard: true, recent_replay_days: 30,
-            full_history: false, expanded_sharing: false, opponent_decklists: true,
+            full_history: false, expanded_sharing: false, opponent_decklists: true, opponent_card_pool: false,
             free_shares_per_window: 1, share_window_days: 7 }
     }
 }
@@ -76,7 +77,7 @@ impl MembershipStatus {
             && self.paid_expiry().is_some_and(|expiry| expiry > now)
     }
     fn cache_lifetime_at(&self, now: OffsetDateTime) -> Duration {
-        if self.owner_access() { return LEASE; }
+        if self.owner_access() || (self.linked && self.capabilities.opponent_card_pool) { return LEASE; }
         self.paid_expiry().and_then(|expiry| Duration::try_from(expiry - now).ok())
             .map(|remaining| remaining.min(LEASE)).unwrap_or(Duration::ZERO)
     }
@@ -93,6 +94,7 @@ impl MembershipStatus {
             full_history: self.trace_access && self.capabilities.full_history,
             expanded_sharing: self.trace_access && self.capabilities.expanded_sharing,
             opponent_decklists: self.opponent_decklists,
+            opponent_card_pool: self.linked && self.capabilities.opponent_card_pool,
             ..Capabilities::default()
         };
         self
@@ -107,7 +109,7 @@ pub struct MembershipLink {
 }
 #[derive(Default)]
 struct AccessState {
-    // Monotonic expiry is capped by both 60 seconds and the verified subscription expiry.
+    // Monotonic leases last at most 60 seconds; paid reads also check subscription expiry.
     lease: Option<(MembershipStatus, Instant)>,
 }
 #[derive(Clone)]
@@ -234,6 +236,15 @@ impl Membership {
             })
         }).unwrap_or(false)
     }
+    pub fn require_opponent_card_pool(&self) -> Result<(), String> {
+        let allowed = self.state.lock().ok().and_then(|state| {
+            state.lease.as_ref().map(|(status, deadline)| {
+                status.linked && status.capabilities.opponent_card_pool && Instant::now() < *deadline
+            })
+        }).unwrap_or(false);
+        if allowed { Ok(()) }
+        else { Err("Opponent card preview is not enabled for this account.".into()) }
+    }
     pub fn require_full_history(&self) -> Result<(), String> {
         if self.has_full_history() { Ok(()) }
         else { Err("Trace Pro unlocks replays older than 30 days. Your matches are still saved. Link or refresh your membership in Settings.".into()) }
@@ -346,6 +357,27 @@ mod tests {
         assert!(value.clone().validated().opponent_decklists);
         value.linked = false;
         assert!(!value.validated().trace_access);
+    }
+    #[test]
+    fn card_pool_requires_an_explicit_flag_and_a_fresh_linked_lease() {
+        let member = Membership::new();
+        assert!(member.require_opponent_card_pool().is_err());
+        let mut status = MembershipStatus::denied("none");
+        status.capabilities.opponent_card_pool = true;
+        assert!(!status.clone().validated().capabilities.opponent_card_pool);
+        status.linked = true;
+        let status = status.validated();
+        assert!(status.capabilities.opponent_card_pool);
+        assert!(!status.trace_access);
+        assert_eq!(status.cache_lifetime_at(OffsetDateTime::now_utc()), LEASE);
+        member.state.lock().unwrap().lease = Some((status.clone(), Instant::now() + LEASE));
+        assert!(member.require_opponent_card_pool().is_ok());
+        member.state.lock().unwrap().lease = Some((status, Instant::now() - Duration::from_secs(1)));
+        assert!(member.require_opponent_card_pool().is_err());
+        member.state.lock().unwrap().lease = Some((active().validated(), Instant::now() + LEASE));
+        assert!(member.require_opponent_card_pool().is_err());
+        let missing: Capabilities = serde_json::from_value(serde_json::json!({"opponentDecklists":true})).unwrap();
+        assert!(!missing.opponent_card_pool);
     }
     #[test]
     fn free_capture_and_recent_replays_survive_all_account_states() {

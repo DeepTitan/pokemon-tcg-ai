@@ -27,7 +27,7 @@ import { ArchiveUpgradeModal, type UpgradePreview } from './ArchiveUpgradeModal.
 import { InfiniteArchiveList } from './InfiniteArchiveList.js';
 import { CaptureSetupModal } from './CaptureSetupModal.js';
 import {
-  getMembershipStatus, openMembershipAccount, loadOpponentDecklist, getRecentMatchOperations, getTraceVersion, getTrackerEnvironment, initializeTrackerStorage, isTauri, listMatchSummaries,
+  getMembershipStatus, openMembershipAccount, loadOpponentDecklist, loadOpponentDeckPreview, getRecentMatchOperations, getTraceVersion, getTrackerEnvironment, initializeTrackerStorage, isTauri, listMatchSummaries,
   importLegacyReviews, listRawMatchIds, loadMatchOperations, loadMatchReview, onMatchOperation, persistMatchReview,
   resolveCardSources, shareMatch, startTracking, stopTracking, LEADERBOARD_URL, openLeaderboard, writeClipboardText,
 } from './tauri.js';
@@ -72,7 +72,7 @@ import { getBackgroundStatus, onBackgroundStatus } from './tauri.js';
 import { loadSharedReplay, readStoredShareLinks, sharedReplayIdFromPath, storeShareLink } from './share-replay.js';
 import { CARD_BACK_ART, cardCatalogEntryNeedsRefresh, findCatalogCard, publicCardArtUrl, resolvedCardArt, showCardBackOnError } from './card-art.js';
 import type {
-  MembershipStatus, CapturedDecklist, CapturedOperation, CardInfo, CanonicalReviewState, MatchReview, MatchSummary, ReviewCardVisibility, ReviewSelection, TrackedCard, TrackedChoiceCard, TrackedPlayerBoard,
+  MembershipStatus, CapturedDecklist, DeckPreview, CapturedOperation, CardInfo, CanonicalReviewState, MatchReview, MatchSummary, ReviewCardVisibility, ReviewSelection, TrackedCard, TrackedChoiceCard, TrackedPlayerBoard,
   TrackedPokemon, TrackedTurn, TrackerEnvironment, TrackerEventKind,
 } from './types.js';
 import './tracker.css';
@@ -515,7 +515,7 @@ function OpponentHandSummary({ boardName, count, onOpen }: { boardName: string; 
   );
 }
 
-export function PlayerField({ board, decklist, deckAccess, canonical, pendingCards, prizeKnowledge: providedPrizeKnowledge, visibility, catalog, choiceFrames, currentReviewIndex, turnNumber, status, handoff, stadiumCard, stadiumName, stadiumOwner, localPlayerName, opponentName, defeatedIds, defeatedNames, damageChanges, positionChanges, attackerId, opponent = false, avatar, onOpenPokemon, onOpenChoice, onOpenCard, onOpenZone }: { board: TrackedPlayerBoard; decklist?: CapturedDecklist; deckAccess?: { visible?: boolean; loadDeck?: () => Promise<CapturedDecklist>; unavailableReason: string; accessKey: string }; canonical: PlayerState; pendingCards?: Card[]; prizeKnowledge?: PrizeKnowledge; visibility: Record<string, ReviewCardVisibility>; catalog: ReadonlyMap<string, CardInfo>; choiceFrames: TurnChoiceFrame[]; currentReviewIndex: number; turnNumber: number; status: PlayerTurnStatus; handoff?: TurnHandoffRole; stadiumCard: Card | null; stadiumName?: string; stadiumOwner?: string; localPlayerName: string; opponentName: string; defeatedIds: ReadonlySet<string>; defeatedNames: ReadonlySet<string>; damageChanges: ReadonlyMap<string, PokemonDamageChange>; positionChanges: ReadonlyMap<string, PokemonPositionChange>; attackerId?: string; opponent?: boolean; avatar: string; onOpenPokemon: (id: string) => void; onOpenChoice: (card: TrackedCard) => void; onOpenCard: (card: Card) => void; onOpenZone: (title: string, subtitle: string, cards: Card[], visibility: Record<string, ReviewCardVisibility>, layout?: 'prizes') => void }) {
+export function PlayerField({ board, decklist, deckAccess, canonical, pendingCards, prizeKnowledge: providedPrizeKnowledge, visibility, catalog, choiceFrames, currentReviewIndex, turnNumber, status, handoff, stadiumCard, stadiumName, stadiumOwner, localPlayerName, opponentName, defeatedIds, defeatedNames, damageChanges, positionChanges, attackerId, opponent = false, avatar, onOpenPokemon, onOpenChoice, onOpenCard, onOpenZone }: { board: TrackedPlayerBoard; decklist?: CapturedDecklist; deckAccess?: { visible?: boolean; loadDeck?: () => Promise<DeckPreview>; unavailableReason: string; accessKey: string }; canonical: PlayerState; pendingCards?: Card[]; prizeKnowledge?: PrizeKnowledge; visibility: Record<string, ReviewCardVisibility>; catalog: ReadonlyMap<string, CardInfo>; choiceFrames: TurnChoiceFrame[]; currentReviewIndex: number; turnNumber: number; status: PlayerTurnStatus; handoff?: TurnHandoffRole; stadiumCard: Card | null; stadiumName?: string; stadiumOwner?: string; localPlayerName: string; opponentName: string; defeatedIds: ReadonlySet<string>; defeatedNames: ReadonlySet<string>; damageChanges: ReadonlyMap<string, PokemonDamageChange>; positionChanges: ReadonlyMap<string, PokemonPositionChange>; attackerId?: string; opponent?: boolean; avatar: string; onOpenPokemon: (id: string) => void; onOpenChoice: (card: TrackedCard) => void; onOpenCard: (card: Card) => void; onOpenZone: (title: string, subtitle: string, cards: Card[], visibility: Record<string, ReviewCardVisibility>, layout?: 'prizes') => void }) {
   const benches = [...board.bench, ...Array.from({ length: Math.max(0, 5 - board.bench.length) }, () => null)].slice(0, 5);
   const tone = opponent ? 'coral' : 'blue';
   const isDefeated = (pokemon: TrackedPokemon | null) => Boolean(pokemon && (defeatedIds.has(pokemon.id) || defeatedNames.has(pokemon.name)));
@@ -1597,19 +1597,20 @@ export default function TrackerApp() {
     }
   }, [copyShareUrl, selectedReview, shareLinks, sharedMode, sharing]);
 
+  const canInferOpponentCards = Boolean(membership?.linked && membership.capabilities?.opponentCardPool);
   const loadSelectedOpponentDeck = useCallback(async () => {
     if (!selectedReview) throw new Error('Select a match first.');
-    const deck = await loadOpponentDecklist(selectedReview.id);
+    const deck = await (canInferOpponentCards ? loadOpponentDeckPreview : loadOpponentDecklist)(selectedReview.id);
     await resolveCardsForPayload(deck);
     return deck;
-  }, [selectedReview?.id, resolveCardsForPayload]);
-  useEffect(() => { setInspector(null); }, [membership?.traceAccess, membership?.opponentDecklists]);
+  }, [selectedReview?.id, resolveCardsForPayload, canInferOpponentCards]);
+  useEffect(() => { setInspector(null); }, [membership?.traceAccess, membership?.opponentDecklists, canInferOpponentCards]);
   const canViewOpponentDeck = isTauri() && !sharedMode;
   const opponentDeckAccess = {
     visible: canViewOpponentDeck,
     loadDeck: canViewOpponentDeck && selectedReview ? loadSelectedOpponentDeck : undefined,
     unavailableReason: 'Decklist not captured yet.',
-    accessKey: `${selectedReview?.id}:${canViewOpponentDeck}`,
+    accessKey: `${selectedReview?.id}:${canViewOpponentDeck}:${canInferOpponentCards}:${membership?.email || ''}`,
   };
   const updateNotice = <UpdateNotice matchInProgress={environment.clientRunning} settingsOpen={showSettings} />;
   const accountSettings = <MembershipSettings status={membership} onRefresh={refreshMembership} onChange={setMembership} />;

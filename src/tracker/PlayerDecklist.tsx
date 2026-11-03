@@ -4,17 +4,17 @@ import { CardsThree } from '@phosphor-icons/react/CardsThree';
 import { Check } from '@phosphor-icons/react/Check';
 import { CopySimple } from '@phosphor-icons/react/CopySimple';
 import { X } from '@phosphor-icons/react/X';
-import type { CapturedDecklist, CardInfo } from './types.js';
+import type { CapturedDecklist, DeckPreview, CardInfo } from './types.js';
 import { cardArtUsesAlternate, resolvedCardArt, showCardBackOnError } from './card-art.js';
 import { exportDecklist } from './decklist-export.js';
 import { writeClipboardText } from './tauri.js';
 
-function DecklistCard({ cardId, count, card, onInspect }: { onInspect?: () => void; cardId: string; count: number; card?: CardInfo }) {
+function DecklistCard({ cardId, count, card, fallbackName, onInspect }: { onInspect?: () => void; cardId: string; count?: number; fallbackName?: string; card?: CardInfo }) {
   const [unavailable, setUnavailable] = useState(false);
   const [localFailed, setLocalFailed] = useState(false);
-  const label = card?.name || cardId;
+  const label = card?.name || fallbackName || cardId;
   useEffect(() => { setUnavailable(false); setLocalFailed(false); }, [cardId, card?.imageDataUrl]);
-  return <figure title={`${count} × ${label} · ${cardId}`}>
+  return <figure title={`${count === undefined ? 'Quantity unknown · ' : `${count} × `}${label} · ${cardId}`}>
     <button type="button" className="decklist-card-art" onClick={onInspect} aria-label={`View ${label}`} disabled={!onInspect}>
     {unavailable ? <div className="decklist-art-unavailable" role="img" aria-label={`${label}: artwork unavailable`}>
       <strong>{label}</strong><small>{card?.setCode || cardId.split('_')[0]} · {card?.number || cardId.split('_')[1]}</small>
@@ -22,7 +22,7 @@ function DecklistCard({ cardId, count, card, onInspect }: { onInspect?: () => vo
     </div> : <img key={`${cardId}:${card?.imageDataUrl || ''}`} data-card-id={cardId}
       src={resolvedCardArt(cardId, card?.imageDataUrl)} alt={label} loading="eager"
       onError={event => { setLocalFailed(true); showCardBackOnError(event); if (event.currentTarget.src.endsWith('/tracker-assets/pokemon-card-back.jpg')) setUnavailable(true); }} />}
-    <b aria-label={`${count} copies`}>×{count}</b></button><figcaption>{label}</figcaption>
+    {count !== undefined && <b aria-label={`${count} copies`}>×{count}</b>}</button><figcaption>{label}</figcaption>
       {!unavailable && (!card?.imageDataUrl || localFailed) && cardArtUsesAlternate(cardId)
         && <small className="decklist-art-note" title="The captured printing is preserved; artwork shows a version with the same gameplay text.">Alternate artwork</small>}
   </figure>;
@@ -31,9 +31,9 @@ function DecklistCard({ cardId, count, card, onInspect }: { onInspect?: () => vo
 export function PlayerDecklist({ name, deck: suppliedDeck, catalog, loadDeck, unavailableReason, accessKey, onInspectCard }: {
   onInspectCard?: (cardId: string) => void;
   name: string; deck?: CapturedDecklist; catalog: ReadonlyMap<string, CardInfo>;
-  loadDeck?: () => Promise<CapturedDecklist>; unavailableReason?: string; accessKey?: string;
+  loadDeck?: () => Promise<DeckPreview>; unavailableReason?: string; accessKey?: string;
 }) {
-  const [privateDeck, setPrivateDeck] = useState<CapturedDecklist>();
+  const [privateDeck, setPrivateDeck] = useState<DeckPreview>();
   const [loadState, setLoadState] = useState<'idle' | 'loading' | 'failed'>('idle');
   const [loadError, setLoadError] = useState('');
   const fetchGeneration = useRef(0);
@@ -100,7 +100,8 @@ export function PlayerDecklist({ name, deck: suppliedDeck, catalog, loadDeck, un
     return (first?.category || 4) - (second?.category || 4)
       || (first?.name || a.cardId).localeCompare(second?.name || b.cardId);
   });
-  const exported = exportDecklist(deck, catalog);
+  const inferred = deck?.source === 'startup-card-pool';
+  const exported = exportDecklist(deck?.source === 'match-start' ? deck : undefined, catalog);
   const copy = async () => {
     if (!exported.text || copyState === 'copying') return;
     cancelClose();
@@ -124,12 +125,12 @@ export function PlayerDecklist({ name, deck: suppliedDeck, catalog, loadDeck, un
     </button>
     {!available && !open && <span id={`${id}-unavailable`} role="tooltip" className="player-decklist-unavailable">{unavailableReason || 'Decklist not available'}</span>}
     </span>
-    {open && createPortal(<div ref={panel} id={id} role="dialog" aria-label={`${name} captured decklist`}
+    {open && createPortal(<div ref={panel} id={id} role="dialog" aria-label={`${name} ${inferred ? 'inferred card pool' : 'captured decklist'}`}
       tabIndex={-1} className="player-decklist-panel" style={position} onMouseEnter={cancelClose} onMouseLeave={leave}
       onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) leave(); }}>
-      <header><div className="decklist-heading"><strong>{name === 'You' ? 'Your decklist' : `${name}’s decklist`}</strong>
-        {deck && <span className="decklist-total" title="Captured starting deck">{deck.total} cards</span>}</div>
-        <div className="decklist-actions">{deck && <button type="button" className="decklist-copy"
+      <header><div className="decklist-heading"><strong>{inferred ? `${name}’s possible cards` : name === 'You' ? 'Your decklist' : `${name}’s decklist`}</strong>
+        {deck && <span className="decklist-total">{deck.source === 'match-start' ? `${deck.total} cards` : 'Quantities unknown'}</span>}</div>
+        <div className="decklist-actions">{deck?.source === 'match-start' && <button type="button" className="decklist-copy"
           disabled={!exported.text} aria-disabled={copyState === 'copying'} title={exported.error || 'Copy decklist for Pokémon TCG Live'} onClick={copy}>
           {copyState === 'copied' ? <Check size={15} /> : <CopySimple size={15} />}
           {copyState === 'copied' ? 'Copied' : copyState === 'copying' ? 'Copying…' : 'Copy'}
@@ -139,9 +140,9 @@ export function PlayerDecklist({ name, deck: suppliedDeck, catalog, loadDeck, un
       {copyState === 'failed' && <p className="decklist-copy-error" role="alert">Couldn’t access the clipboard. Please try Copy again.</p>}
       {loadState === 'loading' && <p role="status" className="decklist-empty">Loading decklist…</p>}
       {loadState === 'failed' && <p role="alert" className="decklist-empty">{loadError}</p>}
-      {deck ? <>{exported.error && <p className="decklist-copy-error">{exported.error}</p>}
+      {deck ? <>{inferred && <p className="decklist-empty">Inferred from startup card data. Quantities are unknown, and cards sharing a printing with your deck are omitted.</p>}{!inferred && exported.error && <p className="decklist-copy-error">{exported.error}</p>}
         <div className="player-decklist-grid">{entries.map(entry => {
-          return <DecklistCard key={entry.cardId} cardId={entry.cardId} count={entry.count} card={catalog.get(entry.cardId)} onInspect={onInspectCard ? () => { close(); onInspectCard(entry.cardId); } : undefined} />;
+          return <DecklistCard key={entry.cardId} cardId={entry.cardId} count={entry.count} fallbackName={'name' in entry ? entry.name : undefined} card={catalog.get(entry.cardId)} onInspect={onInspectCard ? () => { close(); onInspectCard(entry.cardId); } : undefined} />;
         })}</div></> : available && loadState === 'idle' ? <p className="decklist-empty">This match has no complete starting list saved.</p> : null}
     </div>, document.body)}
   </>;
