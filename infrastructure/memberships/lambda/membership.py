@@ -99,12 +99,12 @@ def iso_timestamp(value):
     return dt.datetime.fromtimestamp(int(value), dt.timezone.utc).isoformat().replace('+00:00', 'Z')
 
 
-def capabilities(paid=False):
+def capabilities(paid=False, opponent_card_pool=False):
     """Free features never depend on billing, linking, or subscription status."""
     return {'recordMatches': True, 'leaderboard': True, 'recentReplayDays': 30,
             'freeSharesPerWindow': 1, 'shareWindowDays': 7,
             'fullHistory': bool(paid), 'expandedSharing': bool(paid),
-            'opponentDecklists': True}
+            'opponentDecklists': True, 'opponentCardPool': bool(opponent_card_pool)}
 
 
 def headers(event):
@@ -377,13 +377,15 @@ class MembershipService:
         now = self.now()
         account = self.store.account(subject) if subject else None
         snapshot = (account or {}).get('snapshot') or {}
+        card_pool = bool(subject and (account or {}).get('emailVerified') is True
+                         and self.store.feature_enabled(subject, 'opponent-card-pool'))
         is_owner = bool(subject and self.config.owner_subject and subject == self.config.owner_subject)
         admin = bool(is_owner and (account or {}).get('emailVerified') is True and self.store.owner_enabled(subject))
         if admin:
             return {'email': email or account.get('email'), 'plan': 'supporter', 'traceAccess': True,
                     'opponentDecklists': True, 'admin': True, 'status': 'admin',
                     'expiresAt': None, 'cancelAtPeriodEnd': False,
-                    'capabilities': capabilities(True)}
+                    'capabilities': capabilities(True, card_pool)}
         # Webhooks normally keep this fresh. Reads repair missed events; stale/failed
         # reconciliation never continues granting paid access from an old snapshot.
         if account and account.get('customerId') and self.config.billing_enabled and (
@@ -402,7 +404,7 @@ class MembershipService:
                 'traceAccess': allowed, 'opponentDecklists': True, 'admin': False,
                 'status': status if current else 'none', 'expiresAt': iso_timestamp(expires) if expires else None,
                 'cancelAtPeriodEnd': snapshot.get('cancelAtPeriodEnd') is True,
-                'capabilities': capabilities(allowed)}
+                'capabilities': capabilities(allowed, card_pool)}
 
     def reconcile(self, subject, account, lease):
         self.require_billing()
@@ -444,7 +446,7 @@ class MembershipService:
         candidate = referral(token, self.stripe.proxy_secret(), self.now()) if token else None
         return {'version': 1, **(candidate or {})}
 
-    def checkout(self, subject, email, plan, referral_token=None, billing_interval='month'):
+    def checkout(self, subject, email, plan, referral_token=None, billing_interval='month', desktop=False):
         self.require_billing()
         price_id = self.config.checkout_price(plan, billing_interval)
         if subject == self.config.owner_subject and self.store.owner_enabled(subject):
@@ -484,7 +486,7 @@ class MembershipService:
                             # still be payable, or mutate its idempotent parameters.
                             raise ApiError(409, 'billing_busy')
                         recovered = self.stripe.checkout(account['customerId'], self.config.reserved_price(pending), subject,
-                                                         pending['key'], pending['expiresAt'], affiliate=pending.get('affiliate'))
+                                                         pending['key'], pending['expiresAt'], affiliate=pending.get('affiliate'), **({'desktop': True} if pending.get('desktop') else {}))
                         identifier = recovered['id']
                     if identifier:
                         pending = {**pending, 'sessionId': identifier}
@@ -510,10 +512,10 @@ class MembershipService:
                     if session.get('status') == 'complete' and not self.completed_checkout_ended(
                             session, subject, account['customerId']):
                         raise ApiError(409, 'payment_processing')
-            pending = {'key': secrets.token_urlsafe(24), 'plan': plan, 'priceId': price_id, 'billingInterval': billing_interval, 'expiresAt': self.now() + 3600, 'affiliate': candidate}
+            pending = {'key': secrets.token_urlsafe(24), 'plan': plan, 'priceId': price_id, 'billingInterval': billing_interval, 'expiresAt': self.now() + 3600, 'affiliate': candidate, **({'desktop': True} if desktop else {})}
             self.store.save_account(subject, {'checkout': pending}, lease, self.now())
             session = self.stripe.checkout(account['customerId'], price_id, subject,
-                                           pending['key'], pending['expiresAt'], affiliate=pending.get('affiliate'))
+                                           pending['key'], pending['expiresAt'], affiliate=pending.get('affiliate'), **({'desktop': True} if pending.get('desktop') else {}))
             self.store.save_account(subject, {'checkout': {**pending, 'sessionId': session['id']}}, lease, self.now())
             return {'url': self.stripe.checkout_url(session)}
 
@@ -554,7 +556,7 @@ class MembershipService:
                     # payable; changing expiry under that key violates idempotency.
                     raise ApiError(409, 'billing_busy')
                 session = self.stripe.guest_checkout(record['customerId'], self.config.reserved_price(record),
-                                                     proof, record['key'], int(record['expiresAt']), affiliate=record.get('affiliate'))
+                                                     proof, record['key'], int(record['expiresAt']), affiliate=record.get('affiliate'), **({'desktop': True} if record.get('desktop') else {}))
                 identifier = session['id']
             else:
                 return None
@@ -590,13 +592,16 @@ class MembershipService:
                 or (subscription.get('metadata') or {}).get('trace_reservation') != record['key']):
             raise ApiError(503, 'billing_unavailable')
         snapshot = self.paid_snapshot([subscription])
-        if snapshot['plan'] != record['plan'] or snapshot['status'] != 'active' or snapshot['expiresAt'] <= self.now():
+        if ((snapshot['plan'] != record['plan'] and not record.get('desktop'))
+                or snapshot['status'] != 'active' or snapshot['expiresAt'] <= self.now()):
             raise ApiError(409, 'purchase_not_active')
         return snapshot
 
     def guest_checkout(self, plan, token, referral_token=None, billing_interval='month'):
+        return self.guest_checkout_proof(plan, checkout_digest(token), referral_token, billing_interval)
+
+    def guest_checkout_proof(self, plan, proof, referral_token=None, billing_interval='month', desktop=False):
         self.require_billing()
-        proof = checkout_digest(token)
         candidate = self.affiliate_candidate(referral_token)
         price_id = self.config.checkout_price(plan, billing_interval)
         if price_plan(self.stripe.price(price_id), self.config, require_active=True) != plan:
@@ -617,7 +622,7 @@ class MembershipService:
                     self.stripe.expire_checkout(previous['id'])
             if not record:
                 record = {'createdAt': self.now(), 'claimExpiresAt': self.now() + GUEST_RETENTION_SECONDS,
-                          'ttl': self.now() + GUEST_RETENTION_SECONDS}
+                          'ttl': self.now() + GUEST_RETENTION_SECONDS, **({'desktop': True} if desktop else {})}
                 self.store.save_guest(proof, record, lease, self.now())
             if not record.get('customerId'):
                 customer = self.stripe.create_guest_customer(proof)
@@ -654,6 +659,8 @@ class MembershipService:
                     return {'state': 'processing', 'plan': record['plan'], 'billingInterval': record.get('billingInterval', 'month'), 'expiresAt': None,
                             **({'reason': 'purchase_not_active'} if error.code == 'purchase_not_active' else {})}
                 raise
+            from device_checkout import provision
+            provision(self, proof, record, session, lease)
             return {'state': 'paid', 'plan': record['plan'], 'billingInterval': record.get('billingInterval', 'month'), 'expiresAt': None}
 
     def retire_unused_customer(self, subject, account, lease):
@@ -671,8 +678,10 @@ class MembershipService:
             raise ApiError(409, 'subscription_exists')
 
     def claim_checkout(self, subject, email, token):
+        return self.claim_checkout_proof(subject, email, checkout_digest(token))
+
+    def claim_checkout_proof(self, subject, email, proof):
         self.require_billing()
-        proof = checkout_digest(token)
         with self.store.guest_lock(proof, self.now()) as guest_lease:
             record = self.guest_record(proof)
             if record.get('claimedBy') and record['claimedBy'] != subject:
@@ -701,7 +710,7 @@ class MembershipService:
                     raise ApiError(503, 'billing_unavailable')
                 current = self.paid_snapshot(subscriptions)
                 if (current.get('subscriptionId') != snapshot.get('subscriptionId') or current['status'] != 'active'
-                        or current['plan'] != record['plan'] or current['expiresAt'] <= self.now()):
+                        or current['plan'] != snapshot['plan'] or current['expiresAt'] <= self.now()):
                     raise ApiError(409, 'purchase_not_active')
                 self.store.claim_guest(proof, subject, record, current, previous, guest_lease, account_lease, self.now())
             return {'claimed': True}
@@ -737,6 +746,11 @@ class MembershipService:
     def device_status(self, device, credential_hash):
         linked = self.store.device_link(device)
         valid = linked and hmac.compare_digest(str(linked.get('credentialHash', '')), credential_hash)
+        if not valid:
+            from device_checkout import status
+            purchased = status(self, device, credential_hash)
+            if purchased:
+                return purchased
         return {**self.entitlement(linked['subject'] if valid else None), 'linked': bool(valid)}
 
     def webhook(self, event):
@@ -767,7 +781,9 @@ class MembershipService:
                 with self.store.guest_lock(proof, self.now()) as lease:
                     record = self.store.guest(proof)
                     if record and not record.get('claimedBy'):
-                        self.guest_session(proof, record, lease)
+                        session = self.guest_session(proof, record, lease)
+                        from device_checkout import provision
+                        provision(self, proof, record, session, lease)
             # Unrelated film customers still do not grant any membership.
             return {'received': True}
         with self.store.account_lock(subject, self.now()) as lease:
@@ -852,8 +868,14 @@ class MembershipService:
                 return self.guest_status(request.get('checkoutToken'))
             subject, email = self.account_identity(event)
             return self.claim_checkout(subject, email, request.get('checkoutToken'))
-        if path in {'/v1/devices/status', '/v1/devices/link/start', '/v1/devices/unlink'}:
+        if path in {'/v1/devices/status', '/v1/devices/link/start', '/v1/devices/unlink', '/v1/devices/checkout', '/v1/devices/portal'}:
             device, credential_hash = self.device_identity(event)
+            if method == 'POST' and path.endswith('/checkout'):
+                from device_checkout import start
+                return start(self, device, credential_hash, body(event).get('billingInterval', 'month'))
+            if method == 'POST' and path.endswith('/portal'):
+                from device_checkout import portal
+                return portal(self, device, credential_hash)
             if method == 'GET' and path.endswith('/status'):
                 return self.device_status(device, credential_hash)
             if method == 'POST' and path.endswith('/start'):
@@ -867,6 +889,8 @@ class MembershipService:
             raise ApiError(404, 'not_found')
         subject, email = self.account_identity(event)
         if path == '/v1/account':
+            from device_checkout import recover
+            recover(self, subject, email)
             return self.entitlement(subject, email)
         if path == '/v1/checkout':
             request = body(event)

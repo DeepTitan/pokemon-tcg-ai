@@ -13,7 +13,7 @@ Account and device responses include `capabilities: {recordMatches, leaderboard,
 
 The capture service enforces archive ages and the free share quota independently; see `../aws/README.md`. Ratings retain all accepted games, irrespective of subscription. Existing public links remain readable. A new link's free quota belongs to the capture installation, not a global account, so this is a product limit rather than strong anti-abuse protection.
 
-Cognito accounts verify their email. The API pins each access token to this pool and app client, then calls Cognito `GetUser` to validate it. Browser tokens stay in the website's HttpOnly cookie proxy. Confirmation emails can be resent through `POST /v1/auth/resend`; unknown or already-confirmed accounts receive generic success. Native devices use their existing capture UUID and bearer; those are checked against the capture device table with a strong read. A device must be explicitly linked by a signed-in member using a one-time code to receive that account's premium entitlements. Free capture, recent replays and the free sharing allowance do not require linkage.
+Cognito accounts verify their email. The API pins each access token to this pool and app client, then calls Cognito `GetUser` to validate it. Browser tokens stay in the website's HttpOnly cookie proxy. Confirmation emails can be resent through `POST /v1/auth/resend`; unknown or already-confirmed accounts receive generic success. Native devices use their existing capture UUID and bearer; those are checked against the capture device table with a strong read. An installation can receive its own paid purchase directly after native checkout. Access to an existing signed-in account still requires explicit device linking; typing an email at checkout never grants access to that existing identity. Free capture, recent replays and the free sharing allowance do not require linkage.
 
 Paid access requires one recognized subscription, status `active`, a paid invoice establishing the current tier, exact allowlisted price/amount/USD/monthly recurrence, quantity one, and a future paid-period end. `trialing`, `past_due`, `unpaid`, paused, malformed and conflicting subscriptions deny access. No trial is offered. Cancellation at period end preserves access until that date. Customers manage or switch existing plans through an isolated Stripe portal configuration; checkout returns `409 subscription_exists` for an existing membership.
 
@@ -29,7 +29,19 @@ Both checkout paths recover an existing session before attempting creation. Exis
 
 ## Checkout before account setup
 
-New visitors choose a plan and go directly to Stripe. They create or sign into a verified Trace account after payment, using the same email they entered at checkout. Returning signed-in members use the existing account checkout/portal flow; owners already have access and are not asked to pay.
+New visitors choose a plan and go directly to Stripe. Confirmed payment creates an email-based purchase account automatically. Email ownership is verified only when the customer later signs in to recover that purchase or connect another installation. Returning signed-in members use the existing account checkout/portal flow; owners already have access and are not asked to pay.
+
+### Native pay-and-activate flow
+
+`POST /v1/devices/checkout` authenticates the existing capture installation and accepts only `billingInterval: month | year`. It persists a random purchase binding before opening the existing idempotent Stripe checkout. Device credentials and purchase proofs never enter the browser. The customer enters their email and payment details once. Existing linked accounts use their current account checkout or billing portal.
+
+The signed webhook and authenticated device status read can independently create the purchase account from the exact paid Checkout Session and a fresh customer-wide subscription read. The account stores the checkout email with `emailVerified=false`; it is separate from every Cognito identity and cannot receive owner access. Existing invoice, price, expiry and subscription-conflict rules still determine Pro access. Closing the browser, missing the return page, and restarting Trace do not require an activation code. The native modal checks every four seconds while open; normal app refresh continues after dismissal/restart.
+
+`POST /v1/devices/portal` opens billing management for this installation's purchase without an email login, including after cancellation. `purchaseAccount: true` in membership status identifies this case. Explicit account linking takes precedence, but a purchase binding never inherits the later verified account's unrelated entitlements. Rotated credentials cannot inherit a prior installation's purchase.
+
+On a later verified Cognito sign-in, the service looks up purchase accounts for that exact normalized email and claims a single eligible purchase using the existing transactional ownership checks. Conflicting existing subscriptions are preserved. Multiple unresolved purchases require support rather than another payment. A paid purchase profile is created automatically; a mailbox-authenticated login session is created only after verification.
+
+Release order: deploy the website return-page change and membership backend, verify the complete journey with an isolated Stripe sandbox, then publish the desktop update. Existing desktop builds keep their current checkout/link behavior. This implementation has offline provider tests and a local UI fixture; it has not itself been deployed or exercised against a paid provider session.
 
 The website first creates a random 32-byte proof in an HttpOnly, Secure, SameSite cookie, then starts checkout with that existing cookie. The browser never receives the proof in JSON or a URL. The service stores only its SHA-256 hash. The three server-only endpoints additionally require `x-trace-proxy-key`, taken from the website's `TRACE_MEMBERSHIP_PROXY_SECRET` and compared against `webProxySecret` in the dedicated Secrets Manager JSON:
 
@@ -47,7 +59,7 @@ Claiming re-fetches the exact Stripe session, checks its customer, proof hash, r
 
 An account with an abandoned or canceled older membership customer may claim a legitimate guest purchase. The service first verifies no live or unfinished subscription remains, expires that old customer's open Trace checkouts, rechecks subscriptions, and atomically replaces the old binding. An existing active/unpaid/unfinished membership returns `subscription_exists`; it is never overwritten and no refund or additional charge is attempted automatically.
 
-Unpaid guest records expire after 90 days. Once a completed paid session is observed, its record loses its TTL and is retained until claimed or resolved. The pre-checkout `GUEST_CUSTOMER` binding also lets paid webhooks retain the record when the browser never returns. Claimed records remain for a further 90 days. The website cookie lasts 30 days; losing it requires support to verify and recover the purchase. There is deliberately no API accepting a user-supplied session ID as a substitute. Missing-proof or duplicate-active-purchase copy must direct the user to recovery/billing help, not tell them to pay again. Guest deduplication is browser-bound and cannot prevent someone intentionally purchasing again from a different browser/proof before an account is linked.
+Unpaid guest records expire after 90 days. Once a completed paid session is observed, its record loses its TTL and is retained until claimed or resolved. The pre-checkout `GUEST_CUSTOMER` binding also lets paid webhooks retain the record when the browser never returns. Claimed website-only records remain for a further 90 days; device-bound records remain available for native billing and access. The website cookie lasts 30 days. Purchases with a provisioned purchase account can be recovered through verified email sign-in; older purchases without that index or ambiguous multiple purchases require support. There is deliberately no API accepting a user-supplied session ID as a substitute. Missing-proof or duplicate-active-purchase copy must direct the user to recovery/billing help, not tell them to pay again. Guest deduplication is browser-bound and cannot prevent someone intentionally purchasing again from a different browser/proof before an account is linked.
 
 ## Database records and owner switch
 
@@ -59,6 +71,9 @@ The membership table has a single string partition key `pk`:
 | `CUSTOMER#<cus_id>` | Reverse customer-to-subject binding written before checkout |
 | `GUEST#<proof hash>` | Guest customer, exact reservation/session, payment retention and claim state |
 | `GUEST_CUSTOMER#<cus_id>` | Guest proof binding, written before checkout, for paid webhook retention |
+| `DEVICE_PURCHASE#<capture UUID>` | Purchase proof hash bound to the authenticated installation credential |
+| `ACCOUNT#purchase_<proof hash>` | Automatically created purchase account, checkout email, unverified-email marker and paid snapshot |
+| `PURCHASE_EMAIL#<email hash>` | Purchase proof hashes, read only after verified email sign-in |
 | `DEVICE#<capture UUID>` | Linked subject and the capture credential hash at approval |
 | `LINK#<SHA-256 code>` | Device/credential binding and ten-minute expiry; atomically consumed |
 | `EVENT#<evt_id>` | Processed webhook receipt, retained 30 days |

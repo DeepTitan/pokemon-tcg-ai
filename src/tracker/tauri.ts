@@ -194,10 +194,11 @@ export async function loadOpponentDecklist(matchId: string): Promise<CapturedDec
   return invoke<CapturedDecklist>('load_opponent_decklist', { matchId });
 }
 
-export async function openMembershipAccount(view: 'account' | 'plans' | 'checkout-month' | 'checkout-year' = 'account'): Promise<void> {
+export async function openMembershipAccount(view: 'account' | 'billing' | 'plans' | 'checkout-month' | 'checkout-year' = 'account'): Promise<void> {
   if (!isTauri()) {
     const urls = {
       account: 'https://victoryroad.app/trace/account',
+      billing: 'https://victoryroad.app/trace/account',
       plans: 'https://victoryroad.app/trace#plans',
       'checkout-month': 'https://victoryroad.app/trace?checkout=trace&billingInterval=month#plans',
       'checkout-year': 'https://victoryroad.app/trace?checkout=trace&billingInterval=year#plans',

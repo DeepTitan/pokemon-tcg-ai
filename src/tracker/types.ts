@@ -311,6 +311,7 @@ export interface MembershipCapabilities {
 
 export interface MembershipStatus {
   linked: boolean;
+  purchaseAccount?: boolean;
   email: string | null;
   plan: 'none' | 'trace' | 'supporter';
   traceAccess: boolean;

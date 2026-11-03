@@ -420,9 +420,13 @@ async fn start_tracking(app: tauri::AppHandle) -> Result<CaptureStatus, String> 
 }
 
 #[tauri::command]
-async fn open_membership_account(view: Option<String>) -> Result<(), String> {
-    let url = membership::account_url(view.as_deref())?;
-    tauri::async_runtime::spawn_blocking(move || open_account_url(url))
+async fn open_membership_account(
+    view: Option<String>,
+    membership: tauri::State<'_, membership::Membership>,
+    cloud_sync: tauri::State<'_, cloud_sync::CloudSync>,
+) -> Result<(), String> {
+    let url = membership.billing_url(&cloud_sync, view.as_deref()).await?;
+    tauri::async_runtime::spawn_blocking(move || open_account_url(&url))
     .await
     .map_err(|_| "Could not open your account.")?
 }
