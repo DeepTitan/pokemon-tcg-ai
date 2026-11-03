@@ -580,9 +580,8 @@ async fn manager_recovered_route_forwards_tls_and_persists_fragmented_match_with
     }
 }
 
-#[cfg(not(target_os = "macos"))]
 #[test]
-fn manager_failed_final_socket_check_defers_even_after_a_stable_lobby() {
+fn manager_socket_probe_recovery_still_waits_for_the_client_to_close() {
     let (mut manager, state, mut io) = (
         CaptureManager::default(),
         enabled_state(),
@@ -601,10 +600,15 @@ fn manager_failed_final_socket_check_defers_even_after_a_stable_lobby() {
     }
     assert!(
         io.events.is_empty(),
-        "failed check must reset the stability window"
+        "socket probes must not authorize a live handoff"
     );
     manager.tick(&state, &mut io, 9000);
-    assert_eq!(io.events, ["activate:42"]);
+    assert!(io.events.is_empty());
+    io.pid = None;
+    for now in [20_000, 21_000, 22_000] {
+        manager.tick(&state, &mut io, now);
+    }
+    assert_eq!(io.events, ["activate:0"]);
 }
 
 #[test]
