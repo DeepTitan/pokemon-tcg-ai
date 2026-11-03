@@ -11,12 +11,20 @@
 
 ## Release locations
 
-- Desktop/capture/membership: GitHub `DeepTitan/pokemon-tcg-ai`, `main`. Current published source: `83a3a9bff91ee6f3e1b96dfecb4c0dff83b617b8`, merged in PR #12; includes the new upgrade modal, earlier pricing changes, and idle capture recovery.
-- Website: the same GitHub repository's separate `codex/trace-pricing-website` branch, deployed runtime source `e59470e99b6e73e82bfa68dfe06b53effbcdc5db`, merged in PR #13. Local checkout: `/Users/theisaiahw/.codex/worktrees/trace-pricing-website/victoryroad`. This preserves the independently deployed Trace website source; do not replace it with the main branch's old landing directory.
+- Desktop/capture/membership: GitHub `DeepTitan/pokemon-tcg-ai`, `main`. Current published desktop and membership source: `dd02d2cd6d1f19ee866fc6256d8a8accb8ce6607`, merged in PR #21 and released as v0.1.103. This release adds automatic purchase activation and preserves the previous native fixes and deployed membership feature allowlist. The capture stack was not redeployed in this release.
+- Website: the same GitHub repository's separate `codex/trace-checkout-website` branch, deployed runtime source `66ccd1844cccd0048846f5d5594572b45f4bc7f5`. Local checkout: `/Users/theisaiahw/.codex/worktrees/trace-pricing-website/victoryroad`. This contains the prior live source `dd61b794dccdd120ad2b45a8225437504109e7d1` plus the checkout return-page change. The older remote `codex/trace-pricing-website` branch is behind this live source; do not deploy it or main's old landing directory over the current website.
 - Trace Vercel project: `victoryroad` (`prj_xu8lQXM29IgPY7fLDvbkT4qah4Ta`), team `deeptitan-6729s-projects`. The `victoryroad-lovat.vercel.app` alias supplies the public `/trace` routes. The apex Victory Road site uses the separate `prize-map` project.
 - Do not deploy the dirty root workspace or unrelated Prize Map source.
 
 ## Readiness and configuration
+
+### Trace 0.1.103 pay-and-use upgrades published — November 3, 2026 UTC
+
+- Upgrades started inside Trace now collect email and payment once, automatically create a purchase account, and unlock Pro without an activation code or account-link step. Email ownership is verified later for sign-in/recovery elsewhere.
+- Real Stripe sandbox monthly/yearly purchases, decline/retry, session reuse, authenticated device activation, billing management, verified-email recovery and cancellation passed. Synthetic accounts and device fixtures were cleaned up; test subscriptions cannot renew.
+- The membership backend and website were deployed before the desktop release. Production parameters and live billing prices are unchanged, and no live payment was submitted. The public return page and runtime script match the tested website.
+- [Trace v0.1.103](https://github.com/DeepTitan/pokemon-tcg-ai/releases/tag/v0.1.103) is published from `dd02d2cd6d1f19ee866fc6256d8a8accb8ce6607`. All signing, platform tests, notarization, clean Mac launch, updater signature and publication checks passed in [workflow 41564427393](https://github.com/DeepTitan/pokemon-tcg-ai/actions/runs/41564427393).
+- See the [release receipt](TRACE_CHECKOUT_RELEASE_20261103.md) for exact deployment IDs, provider evidence, verification limits and rollback references.
 
 ### Trace 0.1.101 upgrade experience published — October 28, 2026
 
