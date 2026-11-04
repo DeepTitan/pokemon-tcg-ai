@@ -1,5 +1,6 @@
 use crate::{
     privileged,
+    capture_pipeline::{InspectionBudget, InspectionQueue, RecordingFault, RecordingHealth, FORWARD_BATCH_BYTES},
     wire::{decode_websocket_message, CapturedOperation},
 };
 use flate2::{Decompress, FlushDecompress, Status};
@@ -89,11 +90,15 @@ pub struct CaptureState {
     pub match_in_progress: AtomicBool,
     pub client_connections: AtomicU64,
     activity: Mutex<crate::capture_health::CaptureActivity>,
+    recording_health: Mutex<Arc<RecordingHealth>>,
+    inspection_budget: Arc<InspectionBudget>,
     pub routed_pid: AtomicU64,
     pub frame_count: AtomicU64,
     pub operation_count: AtomicU64,
     pub last_error: Mutex<Option<String>>,
     pub upstream_ips: Mutex<Vec<IpAddr>>,
+    #[cfg(target_os = "macos")]
+    route_interface: Mutex<Option<String>>,
     pub observer_shutdown: Mutex<Option<oneshot::Sender<()>>>,
     pub route_stream: Mutex<Option<privileged::RouteHandle>>,
 }
@@ -121,30 +126,38 @@ struct Recorder {
     capture_path: PathBuf,
 }
 
-trait StreamRecorder: Sync {
-    fn inspect(&self, data: &[u8], host: &str);
+trait StreamRecorder: Send + Sync + 'static {
+    fn inspect(&self, data: &[u8], host: &str, received_ms: u64) -> Result<(), RecordingFault>;
 }
 
 impl StreamRecorder for Recorder {
-    fn inspect(&self, data: &[u8], host: &str) {
+    fn inspect(&self, data: &[u8], host: &str, received_ms: u64) -> Result<(), RecordingFault> {
         if !self.state.enabled.load(Ordering::Relaxed) || self.state.recording_paused.load(Ordering::Relaxed) {
-            return;
+            return Ok(());
         }
         self.state.frame_count.fetch_add(1, Ordering::Relaxed);
-        if let Some(operation) = decode_websocket_message(data, host.to_owned(), unix_timestamp()) {
-            self.record(operation);
+        let received_at = format!("{}.{:03}Z", received_ms / 1000, received_ms % 1000);
+        let operation = decode_websocket_message(data, host.to_owned(), received_at).map_err(|error| {
+            self.record_error(&error);
+            RecordingFault::Decode
+        })?;
+        if let Some(operation) = operation {
+            if let Err(error) = self.record(operation) {
+                self.record_error(&error);
+                return Err(RecordingFault::Storage);
+            }
         }
+        Ok(())
     }
 }
 
 impl Recorder {
-    fn record(&self, operation: CapturedOperation) {
+    fn record(&self, operation: CapturedOperation) -> Result<(), String> {
         let match_id = format!(
             "live-{}",
             operation.match_id.as_deref().unwrap_or(&operation.game_id)
         );
         // Recording is free and must not depend on account linkage or network leases.
-        self.state.operation_count.fetch_add(1, Ordering::Relaxed);
         let stored = self
             .app
             .try_state::<crate::storage::MatchStorage>()
@@ -154,18 +167,14 @@ impl Recorder {
         // JSONL archives remain untouched and are imported on the next launch.
         if !stored {
             if let Some(parent) = self.capture_path.parent() {
-                let _ = fs::create_dir_all(parent);
+                fs::create_dir_all(parent).map_err(|e| format!("Could not prepare recording fallback: {e}"))?;
             }
-            if let Ok(mut file) = OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&self.capture_path)
-            {
-                if let Ok(line) = serde_json::to_string(&operation) {
-                    let _ = writeln!(file, "{line}");
-                }
-            }
+            let mut file = OpenOptions::new().create(true).append(true).open(&self.capture_path)
+                .map_err(|e| format!("Could not open recording fallback: {e}"))?;
+            let line = serde_json::to_string(&operation).map_err(|e| e.to_string())?;
+            writeln!(file, "{line}").map_err(|e| format!("Could not save recording fallback: {e}"))?;
         }
+        self.state.operation_count.fetch_add(1, Ordering::Relaxed);
         // Full starting inventories stay in native storage. Never send opponent lists to JS.
         let access = self
             .app
@@ -174,6 +183,7 @@ impl Recorder {
             .unwrap_or_default();
         let projected = access.project_operation(operation);
         let _ = self.app.emit("match-operation", &projected);
+        Ok(())
     }
 
     fn record_error(&self, error: &str) {
@@ -765,12 +775,14 @@ pub fn request_permission(app: &AppHandle) -> Result<CaptureStatus, String> {
 pub fn status(app: &AppHandle) -> CaptureStatus {
     let state = app.state::<Arc<CaptureState>>();
     let client_pid = crate::pokemon_client_pid();
+    let recording_error = state.recording_health.lock().ok()
+        .and_then(|health| health.error()).map(str::to_owned);
     CaptureStatus {
         permission_ready: permission_ready(app),
         enabled: state.enabled.load(Ordering::Relaxed) && !state.recording_paused.load(Ordering::Relaxed),
         observer_running: state.observer_running.load(Ordering::Relaxed),
         route_active: state.route_active.load(Ordering::Relaxed),
-        client_attached: state.enabled.load(Ordering::Relaxed)
+        client_attached: recording_error.is_none() && state.enabled.load(Ordering::Relaxed)
             && state.observer_running.load(Ordering::Relaxed)
             && state.route_active.load(Ordering::Relaxed)
             && state
@@ -781,7 +793,7 @@ pub fn status(app: &AppHandle) -> CaptureStatus {
         match_in_progress: state.match_in_progress.load(Ordering::Relaxed),
         frame_count: state.frame_count.load(Ordering::Relaxed),
         operation_count: state.operation_count.load(Ordering::Relaxed),
-        last_error: state.last_error.lock().ok().and_then(|value| value.clone()),
+        last_error: recording_error.or_else(|| state.last_error.lock().ok().and_then(|value| value.clone())),
         observer_port: OBSERVER_PORT,
     }
 }
@@ -991,6 +1003,7 @@ struct WebSocketInspector {
     response_headers: Vec<u8>,
     websocket_bytes: Vec<u8>,
     headers_complete: bool,
+    failed: bool,
     websocket: bool,
     server_no_context_takeover: bool,
     server_inflater: Option<Decompress>,
@@ -1005,6 +1018,7 @@ impl Default for WebSocketInspector {
             response_headers: Vec::new(),
             websocket_bytes: Vec::new(),
             headers_complete: false,
+            failed: false,
             websocket: false,
             server_no_context_takeover: false,
             server_inflater: None,
@@ -1017,6 +1031,7 @@ impl Default for WebSocketInspector {
 
 impl WebSocketInspector {
     fn feed(&mut self, data: &[u8]) -> Vec<Vec<u8>> {
+        if self.failed { return Vec::new(); }
         if !self.headers_complete {
             self.response_headers.extend_from_slice(data);
             let Some(end) = self
@@ -1025,8 +1040,10 @@ impl WebSocketInspector {
                 .position(|window| window == b"\r\n\r\n")
                 .map(|index| index + 4)
             else {
+                if self.response_headers.len() > 64 * 1024 { self.failed = true; }
                 return Vec::new();
             };
+            if end > 64 * 1024 { self.failed = true; return Vec::new(); }
             let headers = String::from_utf8_lossy(&self.response_headers[..end]);
             self.websocket = headers
                 .lines()
@@ -1081,6 +1098,7 @@ impl WebSocketInspector {
                         .expect("WebSocket length slice"),
                 );
                 let Ok(length) = usize::try_from(length) else {
+                    self.failed = true;
                     self.websocket_bytes.clear();
                     break;
                 };
@@ -1088,6 +1106,7 @@ impl WebSocketInspector {
                 header_length = 10;
             }
             if payload_length > MAX_WEBSOCKET_MESSAGE {
+                self.failed = true;
                 self.websocket_bytes.clear();
                 break;
             }
@@ -1096,6 +1115,7 @@ impl WebSocketInspector {
                 .checked_add(mask_length)
                 .and_then(|value| value.checked_add(payload_length))
             else {
+                self.failed = true;
                 self.websocket_bytes.clear();
                 break;
             };
@@ -1121,7 +1141,7 @@ impl WebSocketInspector {
                 0x1 | 0x2 if fin => {
                     if let Some(message) = self.decode_message(payload, compressed) {
                         messages.push(message);
-                    }
+                    } else { self.failed = true; break; }
                 }
                 0x1 | 0x2 => {
                     self.fragmented = payload;
@@ -1132,7 +1152,8 @@ impl WebSocketInspector {
                     if self.fragmented.len().saturating_add(payload.len()) > MAX_WEBSOCKET_MESSAGE {
                         self.fragmented.clear();
                         self.fragmented_opcode = None;
-                        continue;
+                        self.failed = true;
+                        break;
                     }
                     self.fragmented.extend(payload);
                     if fin {
@@ -1142,7 +1163,7 @@ impl WebSocketInspector {
                             self.decode_message(payload, self.fragmented_compressed)
                         {
                             messages.push(message);
-                        }
+                        } else { self.failed = true; break; }
                     }
                 }
                 _ => {}
@@ -1219,14 +1240,6 @@ struct ActiveCaptureConnection {
     id: u64,
 }
 
-impl ActiveCaptureConnection {
-    fn received(&self) {
-        if let Ok(mut activity) = self.state.activity.lock() {
-            activity.received(self.id, now_millis());
-        }
-    }
-}
-
 impl Drop for ActiveCaptureConnection {
     fn drop(&mut self) {
         if let Ok(mut activity) = self.state.activity.lock() {
@@ -1253,7 +1266,7 @@ where
     let (mut client_read, mut client_write) = tokio::io::split(client);
     let (mut server_read, mut server_write) = tokio::io::split(server);
     let client_to_server = async {
-        let mut buffer = vec![0u8; 64 * 1024];
+        let mut buffer = vec![0u8; FORWARD_BATCH_BYTES];
         loop {
             let count = client_read.read(&mut buffer).await.map_err(|error| {
                 format!("Forwarding TCG Live to the Pokémon server failed: {error}")
@@ -1272,9 +1285,28 @@ where
             .await
             .map_err(|error| format!("Closing the upstream Pokémon socket failed: {error}"))
     };
+    let inspection_state = connection.state.clone();
+    let connection_id = connection.id;
+    let health = inspection_state.recording_health.lock()
+        .map(|health| health.clone()).unwrap_or_default();
+    let mut inspector = WebSocketInspector::default();
+    let mut inspection = InspectionQueue::start(health, inspection_state.inspection_budget.clone(), move |data, received_ms| {
+        let messages = inspector.feed(data);
+        if inspector.failed {
+            return Err(RecordingFault::Decode);
+        }
+        for message in messages {
+            recorder.inspect(&message, &host, received_ms)?;
+        }
+        if inspector.websocket {
+            if let Ok(mut activity) = inspection_state.activity.lock() {
+                activity.received(connection_id, received_ms);
+            }
+        }
+        Ok(())
+    });
     let server_to_client = async {
-        let mut inspector = WebSocketInspector::default();
-        let mut buffer = vec![0u8; 64 * 1024];
+        let mut buffer = vec![0u8; FORWARD_BATCH_BYTES];
         loop {
             let count = server_read
                 .read(&mut buffer)
@@ -1283,20 +1315,15 @@ where
             if count == 0 {
                 break;
             }
+            let received_ms = now_millis();
             write_forwarded_batch(&mut client_write, &buffer[..count])
                 .await
                 .map_err(|error| {
                     format!("Forwarding the Pokémon server to TCG Live failed: {error}")
                 })?;
-            let messages = inspector.feed(&buffer[..count]);
-            // A completed Pokémon WebSocket response, including its heartbeat,
-            // is evidence of capture. An idle HTTPS/TLS socket is not.
-            if inspector.websocket {
-                connection.received();
-            }
-            for message in messages {
-                recorder.inspect(&message, &host);
-            }
+            // Forward and flush first. No parsing, disk, UI or blocking queue
+            // operations are allowed on either direction of the game transport.
+            inspection.offer(&buffer[..count], received_ms);
         }
         client_write
             .shutdown()
@@ -1545,6 +1572,10 @@ fn release_route(state: &Arc<CaptureState>) {
     }
     state.route_active.store(false, Ordering::Relaxed);
     state.routed_pid.store(0, Ordering::Relaxed);
+    #[cfg(target_os = "macos")]
+    if let Ok(mut interface) = state.route_interface.lock() {
+        *interface = None;
+    }
     if let Ok(mut upstream_ips) = state.upstream_ips.lock() {
         upstream_ips.clear();
     }
@@ -1558,6 +1589,10 @@ fn activate_route(state: &Arc<CaptureState>, pokemon_pid: u32) -> Result<(), Str
     if !CaptureManager::may_activate(state) {
         return Err("Capture was paused.".into());
     }
+    // The helper's PF rules are bound to this interface. Retain it alongside
+    // DNS so a dock/Wi-Fi change cannot leave an apparently current route.
+    #[cfg(target_os = "macos")]
+    let interface = privileged::default_interface()?;
     let (reply, mut stream) = privileged::enable_route(std::process::id(), pokemon_pid)?;
     let mut route = state
         .route_stream
@@ -1574,7 +1609,14 @@ fn activate_route(state: &Arc<CaptureState>, pokemon_pid: u32) -> Result<(), Str
             .filter_map(|ip| ip.parse::<IpAddr>().ok())
             .collect();
     }
+    #[cfg(target_os = "macos")]
+    if let Ok(mut pinned) = state.route_interface.lock() {
+        *pinned = Some(interface);
+    }
     *route = Some(stream);
+    if let Ok(mut health) = state.recording_health.lock() {
+        *health = Arc::new(RecordingHealth::default());
+    }
     state.route_active.store(true, Ordering::Relaxed);
     state
         .routed_pid
@@ -1595,7 +1637,11 @@ fn route_addresses_current(state: &CaptureState) -> Result<bool, String> {
             .lock()
             .map_err(|_| "Capture state lock failed")?
             .clone();
-        privileged::route_addresses_current(&pinned)
+        let interface = privileged::default_interface()?;
+        let same_interface = state.route_interface.lock()
+            .map_err(|_| "Capture interface lock failed")?
+            .as_deref() == Some(interface.as_str());
+        privileged::route_addresses_current(&pinned).map(|addresses| addresses && same_interface)
     }
     #[cfg(target_os = "windows")]
     {
@@ -1697,6 +1743,8 @@ struct CaptureManager {
     idle_watch: crate::capture_health::IdleRouteWatch,
     refresh_pending: bool,
     last_observed_pid: Option<u32>,
+    last_tick_ms: Option<u64>,
+    refresh_after_resume: bool,
 }
 
 impl CaptureManager {
@@ -1711,9 +1759,17 @@ impl CaptureManager {
         io: &mut impl CaptureManagerIo,
         now_ms: u64,
     ) -> std::time::Duration {
+        // SystemTime includes sleep. A long suspension can invalidate PF
+        // state even when DNS and the interface name have not changed.
+        if self.last_tick_ms.replace(now_ms).is_some_and(|last| {
+            now_ms.checked_sub(last).is_none_or(|elapsed| elapsed > 60_000)
+        }) {
+            self.refresh_after_resume = true;
+        }
         if !state.enabled.load(Ordering::Relaxed) || state.terminate.load(Ordering::Relaxed) {
             io.release(state);
             self.refresh_pending = false;
+            self.refresh_after_resume = false;
             self.idle_watch = crate::capture_health::IdleRouteWatch::default();
             state.waiting_for_match_end.store(false, Ordering::Relaxed);
             state.match_in_progress.store(false, Ordering::Relaxed);
@@ -1755,6 +1811,13 @@ impl CaptureManager {
                 }
             }
             self.refresh_pending |= client_replaced;
+            // A failed recording session can leave the helper lease alive even
+            // though traffic no longer reaches the observer. Matching DNS alone
+            // is not recovery. Re-arm after confirmed client exit, never while
+            // playing or during a transient process/DNS lookup failure.
+            self.refresh_pending |= check_idle && addresses_verified
+                && (self.refresh_after_resume || state.last_error.lock().is_ok_and(|error| error.is_some())
+                    || state.recording_health.lock().is_ok_and(|health| health.error().is_some()));
             if check_idle && !self.refresh_pending {
                 state.routed_pid.store(0, Ordering::Relaxed);
             }
@@ -1809,6 +1872,8 @@ impl CaptureManager {
                         *last_error = Some(error);
                     }
                 }
+            } else {
+                self.refresh_after_resume = false;
             }
             return std::time::Duration::from_millis(500);
         }
@@ -1880,6 +1945,12 @@ pub fn stop(app: &AppHandle) -> CaptureStatus {
 
 pub fn shutdown(app: &AppHandle) {
     let state = app.state::<Arc<CaptureState>>().inner().clone();
+    if !state.inspection_budget.wait_until_drained(std::time::Duration::from_secs(2)) {
+        if let Ok(directory) = capture_dir(app) {
+            Recorder { app: app.clone(), state: state.clone(), capture_path: directory.join("operations.jsonl") }
+                .record_error("Trace quit before the stalled recording worker finished saving. Part of the last game may be missing.");
+        }
+    }
     state.enabled.store(false, Ordering::Relaxed);
     state.terminate.store(true, Ordering::Relaxed);
     state.waiting_for_match_end.store(false, Ordering::Relaxed);
@@ -2011,7 +2082,7 @@ mod tests {
         frame
     }
 
-    fn server_frame(payload: &[u8]) -> Vec<u8> {
+    pub(super) fn server_frame(payload: &[u8]) -> Vec<u8> {
         server_frame_with_flags(payload, 0x82)
     }
 
@@ -2059,3 +2130,7 @@ Sec-WebSocket-Extensions: permessage-deflate\r\n\r\n"
 #[cfg(test)]
 #[path = "capture_manager_tests.rs"]
 mod manager_tests;
+
+#[cfg(test)]
+#[path = "capture_transport_tests.rs"]
+mod transport_tests;

@@ -610,7 +610,7 @@ fn start_relay() -> Result<RelayHandle, String> {
     Ok(RelayHandle { stop, threads })
 }
 
-fn default_interface() -> Result<String, String> {
+pub(crate) fn default_interface() -> Result<String, String> {
     let output = Command::new("/sbin/route")
         .args(["-n", "get", "default"])
         .output()

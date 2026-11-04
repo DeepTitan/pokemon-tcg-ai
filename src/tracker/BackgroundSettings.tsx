@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { getBackgroundStatus, onBackgroundStatus, setLaunchAtLogin, startTracking, stopTracking, type BackgroundStatus } from './tauri.js';
+import { captureIndicator, visibleCaptureError } from './capture-status-model.js';
+import type { TrackerEnvironment } from './types.js';
 
-export function BackgroundSettings() {
+export function BackgroundSettings({ environment }: { environment: TrackerEnvironment }) {
   const [status, setStatus] = useState<BackgroundStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -24,7 +26,11 @@ export function BackgroundSettings() {
     <label className="background-startup-toggle"><input type="checkbox" checked={status?.launchAtLogin ?? false} disabled={busy || !status?.supported}
       onChange={event => { const enabled = event.currentTarget.checked; void run(() => setLaunchAtLogin(enabled)); }} />Start Trace in the background when I sign in</label>
     <p>After setup, Trace starts quietly and gets ready before you open Pokémon. A paused recorder stays paused after restarting.</p>
-    <p role="status">{!status ? 'Checking recording settings…' : status.recordingEnabled ? 'Recording is on.' : 'Recording is paused.'}</p>
+    <p role="status">{!status ? 'Checking recording settings…' : status.recordingEnabled ? `Recording is on. Connection: ${captureIndicator(environment).label}.` : 'Recording is paused.'}</p>
+    {visibleCaptureError(environment) && <div role="alert">
+      <p>Trace cannot confirm a complete recording. If you’re in a match, finish playing first. Then quit TCG Live, quit and reopen Trace, wait for Ready, and reopen TCG Live.</p>
+      <details><summary>Connection details</summary><p>{visibleCaptureError(environment)}</p></details>
+    </div>}
     <div className="membership-actions"><button type="button" disabled={busy || !status} onClick={() => void run(status?.recordingEnabled ? stopTracking : startTracking)}>
       {status?.recordingEnabled ? 'Pause recording' : 'Resume recording'}
     </button></div>

@@ -10,6 +10,7 @@ struct FakeIo {
     count_reads: VecDeque<Result<usize, String>>,
     addresses: Vec<IpAddr>,
     dns_error: bool,
+    interface_current: bool,
     activation_error: bool,
     events: Vec<String>,
     pause_on_dns: bool,
@@ -23,6 +24,7 @@ impl Default for FakeIo {
             count_reads: VecDeque::new(),
             addresses: vec!["192.0.2.10".parse().unwrap()],
             dns_error: false,
+            interface_current: true,
             activation_error: false,
             events: Vec::new(),
             pause_on_dns: false,
@@ -45,7 +47,7 @@ impl CaptureManagerIo for FakeIo {
         if self.dns_error {
             return Err("DNS temporarily unavailable".into());
         }
-        Ok(crate::capture_health::addresses_cover(
+        Ok(self.interface_current && crate::capture_health::addresses_cover(
             &state.upstream_ips.lock().unwrap(),
             &self.addresses,
         ))
@@ -63,11 +65,13 @@ impl CaptureManagerIo for FakeIo {
             return Err("injected helper failure".into());
         }
         *state.upstream_ips.lock().unwrap() = self.addresses.clone();
+        self.interface_current = true;
         state.route_active.store(true, Ordering::Relaxed);
         state.routed_pid.store(u64::from(pid), Ordering::Relaxed);
         state.waiting_for_match_end.store(false, Ordering::Relaxed);
         state.match_in_progress.store(false, Ordering::Relaxed);
         *state.last_error.lock().unwrap() = None;
+        *state.recording_health.lock().unwrap() = Arc::new(RecordingHealth::default());
         Ok(())
     }
 }
@@ -109,6 +113,111 @@ fn rotate(io: &mut FakeIo) {
         "192.0.2.11".parse().unwrap(),
         "2001:db8::1".parse().unwrap(),
     ];
+}
+
+#[test]
+fn failed_session_rearms_after_confirmed_exit_even_when_dns_is_unchanged() {
+    let (mut manager, state, mut io) = (CaptureManager::default(), enabled_state(), FakeIo::default());
+    arm(&mut manager, &state, &mut io);
+    io.pid = Some(42);
+    manager.tick(&state, &mut io, 2000);
+    *state.last_error.lock().unwrap() = Some("TCG Live rejected the local capture certificate: CertificateUnknown".into());
+    for now in 3..30 { manager.tick(&state, &mut io, now * 1000); }
+    assert!(io.events.is_empty(), "a connection error must never reset a running game");
+    io.pid = None;
+    manager.tick(&state, &mut io, 30_000);
+    manager.tick(&state, &mut io, 31_000);
+    assert!(io.events.is_empty(), "a brief process lookup failure is not a safe exit");
+    manager.tick(&state, &mut io, 32_000);
+    assert_eq!(io.events, ["release", "activate:0"]);
+    assert!(state.last_error.lock().unwrap().is_none());
+    io.events.clear();
+    for now in 33..80 { manager.tick(&state, &mut io, now * 1000); }
+    assert!(io.events.is_empty(), "recovery must not become a reconnect loop");
+    io.pid = Some(43);
+    manager.tick(&state, &mut io, 80_000);
+    assert!(io.events.is_empty(), "the next launch adopts the prepared route");
+}
+
+#[test]
+fn failed_session_recovery_keeps_route_when_client_reappears_at_final_check() {
+    let (mut manager, state, mut io) = (CaptureManager::default(), enabled_state(), FakeIo::default());
+    arm(&mut manager, &state, &mut io);
+    *state.last_error.lock().unwrap() = Some("Connection reset by peer".into());
+    io.pid_reads = [None, Some(42)].into();
+    manager.tick(&state, &mut io, 60_000);
+    assert!(io.events.is_empty());
+    assert!(state.route_active.load(Ordering::Relaxed));
+}
+
+#[test]
+fn recording_fault_survives_other_connections_and_recovers_only_after_client_exit() {
+    let (mut manager, state, mut io) = (CaptureManager::default(), enabled_state(), FakeIo::default());
+    arm(&mut manager, &state, &mut io);
+    io.pid = Some(42);
+    manager.tick(&state, &mut io, 2000);
+    let old_health = state.recording_health.lock().unwrap().clone();
+    old_health.fail(RecordingFault::Storage);
+    *state.last_error.lock().unwrap() = None; // A sibling TLS connection succeeds.
+    for now in 3..30 { manager.tick(&state, &mut io, now * 1000); }
+    assert!(io.events.is_empty(), "a recording fault must preserve the running game's route");
+    assert!(state.recording_health.lock().unwrap().error().is_some());
+    io.pid = None;
+    for now in 30..33 { manager.tick(&state, &mut io, now * 1000); }
+    assert_eq!(io.events, ["release", "activate:0"]);
+    assert!(state.recording_health.lock().unwrap().error().is_none());
+    old_health.fail(RecordingFault::Worker); // An old worker finishes late.
+    assert!(state.recording_health.lock().unwrap().error().is_none());
+    io.events.clear();
+    for now in 33..80 { manager.tick(&state, &mut io, now * 1000); }
+    assert!(io.events.is_empty(), "recovery must not loop");
+}
+
+#[test]
+fn sleep_with_unchanged_dns_rearms_once_while_idle() {
+    let (mut manager, state, mut io) = (CaptureManager::default(), enabled_state(), FakeIo::default());
+    arm(&mut manager, &state, &mut io);
+    manager.tick(&state, &mut io, 120_000);
+    assert_eq!(io.events, ["release", "activate:0"]);
+    io.events.clear();
+    for now in 121..180 { manager.tick(&state, &mut io, now * 1000); }
+    assert!(io.events.is_empty());
+}
+
+#[test]
+fn sleep_recovery_never_interrupts_a_running_or_briefly_missing_client() {
+    let (mut manager, state, mut io) = (CaptureManager::default(), enabled_state(), FakeIo::default());
+    arm(&mut manager, &state, &mut io);
+    io.pid = Some(42);
+    manager.tick(&state, &mut io, 2000);
+    manager.tick(&state, &mut io, 120_000);
+    io.pid = None;
+    manager.tick(&state, &mut io, 121_000);
+    manager.tick(&state, &mut io, 122_000);
+    io.pid = Some(42);
+    manager.tick(&state, &mut io, 123_000);
+    assert!(io.events.is_empty());
+    io.pid = None;
+    for now in 124..127 { manager.tick(&state, &mut io, now * 1000); }
+    assert_eq!(io.events, ["release", "activate:0"]);
+}
+
+#[test]
+fn interface_change_with_unchanged_dns_refreshes_only_while_closed() {
+    for running in [false, true] {
+        let (mut manager, state, mut io) = (CaptureManager::default(), enabled_state(), FakeIo::default());
+        arm(&mut manager, &state, &mut io);
+        io.interface_current = false;
+        if running { io.pid = Some(42); }
+        manager.tick(&state, &mut io, 20_000);
+        if running {
+            assert!(io.events.is_empty());
+            assert!(state.waiting_for_match_end.load(Ordering::Relaxed));
+            io.pid = None;
+            for now in 21..24 { manager.tick(&state, &mut io, now * 1000); }
+        }
+        assert_eq!(io.events, ["release", "activate:0"]);
+    }
 }
 
 #[test]
@@ -335,13 +444,15 @@ struct StoredRecorder {
     changed: Arc<tokio::sync::Notify>,
 }
 impl StreamRecorder for StoredRecorder {
-    fn inspect(&self, data: &[u8], host: &str) {
-        if let Some(operation) = decode_websocket_message(data, host.into(), unix_timestamp()) {
+    fn inspect(&self, data: &[u8], host: &str, received_ms: u64) -> Result<(), RecordingFault> {
+        let received_at = format!("{}.{:03}Z", received_ms / 1000, received_ms % 1000);
+        if let Some(operation) = decode_websocket_message(data, host.into(), received_at).expect("valid test operation") {
             self.storage
                 .record_operation(&operation)
                 .expect("persist test operation");
             self.changed.notify_one();
         }
+        Ok(())
     }
 }
 
@@ -530,7 +641,12 @@ async fn replay_over_local_tls(chunk_size: usize) {
         .len()
         < 3
     {
-        changed.notified().await;
+        let fault = state.recording_health.lock().unwrap().error();
+        assert!(fault.is_none(), "TLS replay recording fault: {fault:?}");
+        tokio::select! {
+            _ = changed.notified() => {},
+            _ = tokio::time::sleep(std::time::Duration::from_millis(20)) => {},
+        }
     }
     assert!(state
         .activity

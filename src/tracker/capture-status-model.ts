@@ -31,13 +31,19 @@ export function visibleCaptureError(environment: TrackerEnvironment): string | n
 }
 
 export function recordingProblemMessage(error: string): string {
+  if (/Part of this game may be missing/i.test(error)) {
+    return 'Recording ran into a problem. Part of this game may be missing. Finish your game before restarting Trace.';
+  }
   if (/startup|sign-in|login|launchagent|schtasks/i.test(error)) {
     return 'Trace couldn’t turn on automatic startup. Open Settings to try again.';
   }
   if (/before quitting Trace/i.test(error)) {
     return 'Finish your game before quitting Trace. You can close this window and keep recording.';
   }
-  return 'Recording needs attention. Open Settings to reconnect Trace.';
+  if (/CertificateUnknown|rejected the local capture certificate/i.test(error)) {
+    return 'TCG Live couldn’t connect to the recorder. Open Settings for recovery steps.';
+  }
+  return 'Recording needs attention. Open Settings for recovery steps.';
 }
 
 export function recordingNotice(environment: TrackerEnvironment, setupOpen: boolean, backgroundError: string | null, captureError: string | null): string | null {
