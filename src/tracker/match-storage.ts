@@ -2,8 +2,8 @@ import type { CapturedOperation, MatchReview, MatchSummary } from './types.js';
 import { GamePhase } from '../engine/types.js';
 import { ratingFieldsForReview } from './rating-model.js';
 
-// Rebuild saved replays with authoritative counter transfers, healing, and exact damage targets.
-export const REDUCER_VERSION = 22;
+// Recover recorded ladder points when an older replay is opened.
+export const REDUCER_VERSION = 23;
 
 export function matchSummaryFromReview(review: MatchReview, operationCount = 0): MatchSummary {
   return {
@@ -15,6 +15,8 @@ export function matchSummaryFromReview(review: MatchReview, operationCount = 0):
     winner: review.winner,
     decklists: review.decklists,
     ...ratingFieldsForReview(review),
+    localRankPoints: review.localRankPoints,
+    opponentRankPoints: review.opponentRankPoints,
     turnCount: review.turns.length,
     operationCount,
     reducerVersion: REDUCER_VERSION,

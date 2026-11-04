@@ -234,6 +234,9 @@ export interface MatchReview {
   /** Competitive Elo values captured from TCG Live's match-start payload. */
   localRating?: number;
   opponentRating?: number;
+  /** Ladder points (playerExp), kept separate from Arceus competitive Elo. */
+  localRankPoints?: number;
+  opponentRankPoints?: number;
   resultReason?: 'local-client-closed';
   /** Native captured EndGameModification; winner alone may be inferred. */
   matchCompleted?: boolean;
@@ -252,6 +255,8 @@ export interface MatchSummary {
   winner?: string;
   localRating?: number;
   opponentRating?: number;
+  localRankPoints?: number;
+  opponentRankPoints?: number;
   ratingChange?: number;
   ratingAfter?: number;
   turnCount: number;

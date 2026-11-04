@@ -2,6 +2,15 @@ import type { MatchReview, MatchSummary } from './types.js';
 
 const COMPETITIVE_ELO_K_FACTOR = 25;
 
+/** Prefer Elo once available; ladder points are a distinct progression scale. */
+export function liveRankDisplay(elo?: number, rankPoints?: number): { label: string; title: string } | undefined {
+  if (elo != null && Number.isFinite(elo) && elo >= 0) return { label: String(elo), title: `${elo} Elo` };
+  if (rankPoints != null && Number.isSafeInteger(rankPoints) && rankPoints >= 0) {
+    return { label: String(rankPoints), title: `${rankPoints} Live score` };
+  }
+  return undefined;
+}
+
 export interface CompetitiveRatingResult {
   change: number;
   ratingAfter: number;

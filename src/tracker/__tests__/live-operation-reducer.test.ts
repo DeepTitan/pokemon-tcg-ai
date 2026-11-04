@@ -69,6 +69,31 @@ assert.equal(review.localPlayer, 'Isaiah');
 assert.equal(review.opponent, 'Opponent');
 assert.equal(review.localRating, 1753);
 assert.equal(review.opponentRating, 1755);
+// Ladder points survive ready-up -> gameplay and never become Elo inputs.
+const pointsAssembler = new LiveReviewAssembler(catalog);
+pointsAssembler.ingest({ ...operation, messageType: 9, operationId: 'rank-start', operation: {
+  readyUpTimeout: 30, players: [
+    { playerId: 'player-1', playerName: 'Isaiah', playerExp: 523 },
+    { playerId: 'player-2', playerName: 'Opponent', playerExp: 447 },
+  ],
+} });
+const pointsReview = pointsAssembler.ingest({ ...operation, operation: { ...operation.operation, players: [] } });
+assert.equal(pointsReview?.localRankPoints, 523);
+assert.equal(pointsReview?.opponentRankPoints, 447);
+assert.equal(pointsReview?.localRating, undefined);
+assert.equal(pointsReview?.opponentRating, undefined);
+for (const value of [0, -1, NaN, Infinity, 2.5]) {
+  const candidate = new LiveReviewAssembler(catalog).ingest({ ...operation, operation: {
+    ...operation.operation, players: [{ playerName: 'Isaiah', playerExp: value }],
+  } });
+  assert.equal(candidate?.localRankPoints, value === 0 ? 0 : undefined);
+}
+const bothRatings = new LiveReviewAssembler(catalog).ingest({ ...operation, operation: {
+  ...operation.operation, players: [{ playerName: 'Isaiah', competitiveElo: 1639, playerExp: 560 }],
+} });
+assert.equal(bothRatings?.localRankPoints, 560);
+assert.equal(bothRatings?.localRating, 1639);
+
 assert.equal(review.turns.length, 2);
 assert.equal(review.turns[1].snapshot.players.Isaiah.active?.name, 'Dragapult ex');
 assert.equal(review.turns[1].snapshot.players.Isaiah.active?.damage, 30);

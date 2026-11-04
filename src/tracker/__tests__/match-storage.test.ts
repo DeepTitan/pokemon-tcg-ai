@@ -70,3 +70,10 @@ observation = observeClientLifecycle({ observedRunning: true, pid: 42, missingPo
 assert.equal(observation.clientExited, true, 'a replaced process is also a client exit');
 
 console.log('match-storage: summaries, operation keys, card batching, and client-exit finalization verified');
+
+const pointsSummary = matchSummaryFromReview({ ...review, localRating: undefined, opponentRating: undefined,
+  localRankPoints: 523, opponentRankPoints: 447 });
+assert.equal(pointsSummary.localRankPoints, 523);
+assert.equal(pointsSummary.opponentRankPoints, 447);
+assert.equal(pointsSummary.ratingAfter, undefined);
+assert.equal(pointsSummary.ratingChange, undefined);

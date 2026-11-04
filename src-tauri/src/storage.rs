@@ -2,7 +2,7 @@ use crate::{cards::CardInfo, deck_access::MatchAccess, wire::CapturedOperation};
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{
     fs::{self, File},
@@ -53,6 +53,10 @@ pub struct MatchSummary {
     pub local_rating: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub opponent_rating: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_rank_points: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub opponent_rank_points: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rating_change: Option<i64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -122,6 +126,24 @@ fn operation_match_id(operation: &CapturedOperation) -> String {
 
 fn operation_fingerprint(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
+}
+
+fn pregame_rank_points(packet: &Value, local: &str, opponent: &str) -> (Option<i64>, Option<i64>) {
+    let operation = &packet["operation"];
+    if packet["messageType"] != 9 || operation.get("readyUpTimeout").is_none() || local == opponent {
+        return (None, None);
+    }
+    let Some(players) = operation["players"].as_array() else { return (None, None) };
+    if players.len() != 2 { return (None, None); }
+    let points = |name: &str| {
+        let named: Vec<_> = players.iter().filter(|p| p["playerName"].as_str() == Some(name)).collect();
+        if named.len() != 1 { return None; }
+        named[0]["playerExp"].as_i64().filter(|value| *value >= 0 && *value <= 9_007_199_254_740_991)
+    };
+    if ![local, opponent].iter().all(|name| players.iter().any(|p| p["playerName"].as_str() == Some(name))) {
+        return (None, None);
+    }
+    (points(local), points(opponent))
 }
 
 impl MatchStorage {
@@ -647,6 +669,8 @@ impl MatchStorage {
             winner,
             local_rating,
             opponent_rating,
+            local_rank_points: review.get("localRankPoints").and_then(Value::as_i64).filter(|v| *v >= 0),
+            opponent_rank_points: review.get("opponentRankPoints").and_then(Value::as_i64).filter(|v| *v >= 0),
             rating_change: rating_result.map(|result| result.0),
             rating_after: rating_result.map(|result| result.1),
             turn_count,
@@ -895,6 +919,8 @@ impl MatchStorage {
                 winner: None,
                 local_rating: None,
                 opponent_rating: None,
+                local_rank_points: None,
+                opponent_rank_points: None,
                 rating_change: None,
                 rating_after: None,
                 turn_count: 0,
@@ -908,8 +934,10 @@ impl MatchStorage {
             });
             // Upgrade only the compact summary, once per old row. Keep unrelated
             // summary fields and the original review/operations byte-for-byte.
+            let mut upgraded: Option<Value> = json.as_deref().and_then(|json| serde_json::from_str(json).ok());
+            let mut summary_changed = false;
             if summary.decklists.is_none() {
-                if let Some(json) = json.as_deref() {
+                if let Some(stored) = upgraded.as_mut() {
                     let compressed = connection
                         .query_row(
                             "SELECT review_gzip FROM matches WHERE id=?1",
@@ -928,18 +956,36 @@ impl MatchStorage {
                             std::io::BufReader::new(GzDecoder::new(&compressed[..])),
                         ) {
                             let decklists = fields.decklists.unwrap_or_default();
-                            let mut stored: Value =
-                                serde_json::from_str(&json).map_err(|e| e.to_string())?;
                             stored["decklists"] = Value::Array(decklists.clone());
-                            summary_upgrades.push((
-                                summary.id.clone(),
-                                json.to_owned(),
-                                stored.to_string(),
-                            ));
+                            summary_changed = true;
                             summary.decklists = Some(decklists);
                         }
                         // A corrupt old review must not hide otherwise readable archive rows.
                     }
+                }
+            }
+            if let Some(stored) = upgraded.as_mut() {
+                if summary.source == "live-network" && stored["rankPointsCaptureChecked"] != true {
+                    // Decode only the opening packet, never every frame in a replay.
+                    let opening: Option<Vec<u8>> = connection.query_row(
+                        "SELECT payload_gzip FROM operations WHERE match_id=?1 ORDER BY id LIMIT 1",
+                        [&summary.id], |row| row.get(0),
+                    ).optional().map_err(|error| error.to_string())?;
+                    if let Some(packet) = opening.and_then(|bytes| gunzip(&bytes).ok())
+                        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok()) {
+                        let (local, opponent) = pregame_rank_points(&packet, &summary.local_player, &summary.opponent);
+                        summary.local_rank_points = summary.local_rank_points.or(local);
+                        summary.opponent_rank_points = summary.opponent_rank_points.or(opponent);
+                        if let Some(value) = summary.local_rank_points { stored["localRankPoints"] = json!(value); }
+                        if let Some(value) = summary.opponent_rank_points { stored["opponentRankPoints"] = json!(value); }
+                    }
+                    stored["rankPointsCaptureChecked"] = json!(true);
+                    summary_changed = true;
+                }
+                let original = json.as_ref().unwrap();
+                let serialized = stored.to_string();
+                if summary_changed && &serialized != original {
+                    summary_upgrades.push((summary.id.clone(), original.clone(), serialized));
                 }
             }
             summary.operation_count = operation_count;
@@ -1283,6 +1329,48 @@ mod tests {
         );
         drop(connection);
         fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn recovers_rank_points_without_changing_elo_or_raw_reviews() {
+        let (directory, storage) = temporary_storage();
+        let mut captured = operation();
+        captured.message_type = json!(9);
+        captured.operation = json!({"readyUpTimeout":30,"players":[
+            {"playerName":"You","playerExp":523}, {"playerName":"Them","playerExp":0}
+        ]});
+        storage.record_operation(&captured).unwrap();
+        let review = json!({"id":"live-match-1", "source":"live-network", "localPlayer":"You",
+            "opponent":"Them", "winner":"You", "turns":[]});
+        storage.persist_review(&review, 22).unwrap();
+        let summary = storage.list_summaries(0, 20).unwrap().remove(0);
+        assert_eq!(summary.local_rank_points, Some(523));
+        assert_eq!(summary.opponent_rank_points, Some(0));
+        assert_eq!(summary.local_rating, None);
+        assert_eq!(summary.rating_change, None);
+        assert_eq!(storage.load_review("live-match-1").unwrap(), Some(review.clone()));
+        assert_eq!(storage.load_operations("live-match-1").unwrap().len(), 1);
+        // Persisted summary enrichment no longer depends on decoding raw packets.
+        storage.connection().unwrap().execute("UPDATE operations SET payload_gzip=X'00'", []).unwrap();
+        assert_eq!(storage.list_summaries(0, 20).unwrap()[0].local_rank_points, Some(523));
+        let mut updated = review;
+        updated["localRankPoints"] = json!(523);
+        updated["opponentRankPoints"] = json!(0);
+        assert_eq!(storage.persist_review(&updated, 23).unwrap().local_rank_points, Some(523));
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn rank_point_recovery_requires_named_pregame_evidence() {
+        let packet = json!({"messageType":9,"operation":{"readyUpTimeout":30,"players":[
+            {"playerName":"You","playerExp":523}, {"playerName":"Them","playerExp":447}
+        ]}});
+        assert_eq!(pregame_rank_points(&packet, "You", "Other"), (None, None));
+        assert_eq!(pregame_rank_points(&packet, "You", "You"), (None, None));
+        let mut gameplay = packet.clone(); gameplay["messageType"] = json!(1);
+        assert_eq!(pregame_rank_points(&gameplay, "You", "Them"), (None, None));
+        let mut invalid = packet; invalid["operation"]["players"][0]["playerExp"] = json!(-1);
+        assert_eq!(pregame_rank_points(&invalid, "You", "Them"), (None, Some(447)));
     }
 
     #[test]

@@ -51,7 +51,7 @@ import { capturedAtIso, collectCardSourceIds, finalizeReviewForClientExit, match
 import { initialClientLifecycleState, observeClientLifecycle } from './client-lifecycle-model.js';
 import { captureIndicator, visibleCaptureError, recordingNotice } from './capture-status-model.js';
 import { archiveMatchup, formatMatchDuration, formatPrizeScore } from './archive-summary-model.js';
-import { formatSignedRatingChange } from './rating-model.js';
+import { formatSignedRatingChange, liveRankDisplay } from './rating-model.js';
 import { handFanCardCount, opponentHandFanSlots } from './hand-layout-model.js';
 import { prizeSlotStates } from './prize-layout-model.js';
 import { derivePrizeKnowledge, type PrizeKnowledge } from './prize-knowledge-model.js';
@@ -619,11 +619,12 @@ function findPokemonById(canonical: CanonicalReviewState, id: string): PokemonIn
   return undefined;
 }
 
-function ArchiveFeaturedCard({ card, label, rating, tone, catalog }: { card: TrackedCard | undefined; label: string; rating?: number; tone: 'local' | 'opponent'; catalog: ReadonlyMap<string, CardInfo> }) {
+function ArchiveFeaturedCard({ card, label, rating, rankPoints, tone, catalog }: { card: TrackedCard | undefined; label: string; rating?: number; rankPoints?: number; tone: 'local' | 'opponent'; catalog: ReadonlyMap<string, CardInfo> }) {
   const name = card ? (resolvedCardInfo(card, catalog)?.name || card.name) : 'Unknown deck';
-  return <span className={`session-featured-card ${tone}`} title={`${label}: ${name}${rating != null ? ` · ${rating} Elo` : ''}`}>
+  const rank = liveRankDisplay(rating, rankPoints);
+  return <span className={`session-featured-card ${tone}`} title={`${label}: ${name}${rank ? ` · ${rank.title}` : ''}`}>
     <img loading="lazy" decoding="async" src={card ? resolvedCardImage(card, catalog) : fallbackCardArt(name)} alt={`${label} deck: ${name}`} onError={showCardBackOnError} />
-    <small>{label}{rating != null && <> · {rating}</>}</small>
+    <small>{label}{rank && <> · {rank.label}</>}</small>
   </span>;
 }
 
@@ -636,17 +637,19 @@ export function ArchiveRow({ summary, selected, catalog, onSelect, locked = fals
   const durationLabel = formatMatchDuration(summary.durationSeconds);
   const prizeLabel = formatPrizeScore(matchup.localPrizesTaken, matchup.opponentPrizesTaken);
   const ratingChangeLabel = summary.ratingChange != null ? formatSignedRatingChange(summary.ratingChange) : null;
+  const localRank = liveRankDisplay(summary.localRating, summary.localRankPoints);
+  const opponentRank = liveRankDisplay(summary.opponentRating, summary.opponentRankPoints);
   return (
     <button
       type="button"
       className={`session-card ${selected ? 'selected' : ''} ${summary.recording ? 'recording' : ''} ${locked ? 'replay-locked' : ''}`}
       onClick={onSelect}
-      aria-label={`${result} against ${summary.opponent}. ${localCardName} versus ${opponentCardName}.${summary.localRating != null ? ` Your Elo ${summary.localRating}.` : ''}${summary.opponentRating != null ? ` Opponent Elo ${summary.opponentRating}.` : ''}${ratingChangeLabel ? ` ${ratingChangeLabel} Elo. New rating ${summary.ratingAfter}.` : ''} ${dateLabel}. ${durationLabel}. ${prizeLabel}.${locked ? ' Trace Pro replay.' : ''}`}
+      aria-label={`${result} against ${summary.opponent}. ${localCardName} versus ${opponentCardName}.${localRank ? ` Your ${localRank.title}.` : ''}${opponentRank ? ` Opponent ${opponentRank.title}.` : ''}${ratingChangeLabel ? ` ${ratingChangeLabel} Elo. New rating ${summary.ratingAfter}.` : ''} ${dateLabel}. ${durationLabel}. ${prizeLabel}.${locked ? ' Trace Pro replay.' : ''}`}
     >
       <span className="session-matchup" aria-hidden="true">
-        <ArchiveFeaturedCard card={matchup.localCard} label="You" rating={summary.localRating} tone="local" catalog={catalog} />
+        <ArchiveFeaturedCard card={matchup.localCard} label="You" rating={summary.localRating} rankPoints={summary.localRankPoints} tone="local" catalog={catalog} />
         <span className="session-matchup-versus">VS</span>
-        <ArchiveFeaturedCard card={matchup.opponentCard} label="Them" rating={summary.opponentRating} tone="opponent" catalog={catalog} />
+        <ArchiveFeaturedCard card={matchup.opponentCard} label="Them" rating={summary.opponentRating} rankPoints={summary.opponentRankPoints} tone="opponent" catalog={catalog} />
       </span>
       <span className="session-copy">
         <span className="session-heading"><strong>vs. {summary.opponent}</strong><em className={result.toLowerCase()}>{result}</em></span>

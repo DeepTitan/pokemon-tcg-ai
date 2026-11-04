@@ -1350,6 +1350,7 @@ interface MatchAssembly {
   messageIds: Set<string>;
   operations: Map<string, OperationAssembly>;
   matchRatings: Map<string, number>;
+  matchRankPoints: Map<string, number>;
   localAccountId?: string;
 }
 
@@ -1616,6 +1617,7 @@ export class LiveReviewAssembler {
         messageIds: new Set(),
         operations: new Map(),
         matchRatings: new Map(),
+        matchRankPoints: new Map(),
         localAccountId: captured.accountId || undefined,
       };
       this.matches.set(matchKey, assembly);
@@ -1643,6 +1645,11 @@ export class LiveReviewAssembler {
       const competitiveElo = number(player, 'competitiveElo', 'CompetitiveElo');
       if (playerName && competitiveElo != null) {
         assembly.matchRatings.set(playerName.toLocaleLowerCase(), Math.round(competitiveElo));
+      }
+      const rankPoints = number(player, 'playerExp', 'PlayerExp');
+      if (playerName && rankPoints != null && Number.isSafeInteger(rankPoints) && rankPoints >= 0
+        && !assembly.matchRankPoints.has(playerName.toLocaleLowerCase())) {
+        assembly.matchRankPoints.set(playerName.toLocaleLowerCase(), rankPoints);
       }
     }
     for (const candidate of list(operation, 'gameActions', 'GameActions')) {
@@ -2133,6 +2140,8 @@ export class LiveReviewAssembler {
     assembly.review.opponent = names[localSide === 1 ? 2 : 1];
     assembly.review.localRating = assembly.matchRatings.get(assembly.review.localPlayer.toLocaleLowerCase());
     assembly.review.opponentRating = assembly.matchRatings.get(assembly.review.opponent.toLocaleLowerCase());
+    assembly.review.localRankPoints = assembly.matchRankPoints.get(assembly.review.localPlayer.toLocaleLowerCase());
+    assembly.review.opponentRankPoints = assembly.matchRankPoints.get(assembly.review.opponent.toLocaleLowerCase());
     if (boardSnapshotEntities.length) {
       const baseline = assembly.review.turns[0];
       baseline.label = 'Capture baseline';
