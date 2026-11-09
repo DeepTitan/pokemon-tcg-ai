@@ -759,3 +759,19 @@ fn route_event_log_rotates_repeatedly_and_stays_bounded() {
     }
     fs::remove_dir_all(directory).unwrap();
 }
+
+#[test]
+fn explicit_repair_preserves_running_game_then_refreshes_once_after_exit() {
+    let (mut manager, state, mut io) = (CaptureManager::default(), enabled_state(), FakeIo::default());
+    arm(&mut manager, &state, &mut io);
+    io.pid = Some(42);
+    manager.tick(&state, &mut io, 2500);
+    state.repair_requested.store(true, Ordering::Relaxed);
+    for now in 3..10 { manager.tick(&state, &mut io, now * 1000); }
+    assert!(io.events.is_empty());
+    assert!(state.repair_requested.load(Ordering::Relaxed));
+    io.pid = None;
+    for now in 10..30 { manager.tick(&state, &mut io, now * 1000); }
+    assert_eq!(io.events, ["release", "activate:0"]);
+    assert!(!state.repair_requested.load(Ordering::Relaxed));
+}

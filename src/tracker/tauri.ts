@@ -212,3 +212,14 @@ export async function openMembershipAccount(view: 'account' | 'billing' | 'plans
   }
   return invoke<void>('open_membership_account', { view });
 }
+
+export interface RepairResult {
+  captureReady: boolean;
+  pendingUploads: number;
+  messages: string[];
+}
+
+export async function repairTrace(): Promise<RepairResult> {
+  if (!isTauri()) throw new Error('Repair is available in the installed Trace app.');
+  return invoke<RepairResult>('repair_trace');
+}

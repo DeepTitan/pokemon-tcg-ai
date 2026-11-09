@@ -115,6 +115,46 @@ impl CloudSync {
         sync
     }
 
+    /// Best-effort support heartbeat, independent of match uploads and membership.
+    pub async fn report_diagnostics(&self, capture: crate::capture::CaptureStatus, storage: &MatchStorage) {
+        let Some(mut url) = self.endpoint.clone() else { return; };
+        let Ok(mut segments) = url.path_segments_mut() else { return; };
+        segments.extend(["v1", "diagnostics"]);
+        drop(segments);
+        let counts = storage.cloud_sync_counts().ok();
+        let payload = json!({
+            "schema": 1,
+            "appVersion": env!("CARGO_PKG_VERSION"),
+            "platform": std::env::consts::OS,
+            "architecture": std::env::consts::ARCH,
+            "capture": {
+                "permissionReady": capture.permission_ready,
+                "enabled": capture.enabled,
+                "observerRunning": capture.observer_running,
+                "routeActive": capture.route_active,
+                "clientAttached": capture.client_attached,
+                "waitingForMatchEnd": capture.waiting_for_match_end,
+                "matchInProgress": capture.match_in_progress,
+                "frameCount": capture.frame_count,
+                "operationCount": capture.operation_count,
+                "hasError": capture.last_error.is_some(),
+            },
+            "pendingUploads": counts.map(|value| value.0),
+            "uploadedMatches": counts.map(|value| value.1),
+        });
+        for attempt in 0..2 {
+            let Ok((device, token)) = self.membership_credentials().await else { return; };
+            let Ok(response) = self.client.post(url.clone())
+                .header("x-trace-device", &device).bearer_auth(&token)
+                .timeout(Duration::from_secs(10)).json(&payload).send().await else { return; };
+            if response.status() == StatusCode::UNAUTHORIZED && attempt == 0 {
+                self.reject_membership_credentials(&device, &token).await;
+                continue;
+            }
+            return;
+        }
+    }
+
     pub async fn sync_pending(&self, storage: MatchStorage) {
         if self.endpoint.is_none() {
             return;
@@ -569,4 +609,57 @@ mod tests {
         assert_eq!(restored.ensure_registration().await.unwrap(), first);
         fs::remove_dir_all(directory).unwrap();
     }
+    #[tokio::test]
+    async fn diagnostics_send_without_pending_matches_and_omit_error_details() {
+        use std::io::{Read, Write};
+        let directory = std::env::temp_dir().join(format!("trace-heartbeat-{}", Uuid::new_v4()));
+        fs::create_dir_all(&directory).unwrap();
+        let storage = MatchStorage::new(directory.join("trace.sqlite3")).unwrap();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = Url::parse(&format!("http://{}", listener.local_addr().unwrap())).unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+            let mut data = Vec::new();
+            loop {
+                let mut chunk = [0u8; 2048];
+                let n = stream.read(&mut chunk).unwrap();
+                assert!(n > 0);
+                data.extend_from_slice(&chunk[..n]);
+                if let Some(offset) = data.windows(4).position(|v| v == b"\r\n\r\n") {
+                    let headers = String::from_utf8_lossy(&data[..offset]).to_lowercase();
+                    let size = headers.lines().find_map(|line| line.strip_prefix("content-length:")
+                        .and_then(|v| v.trim().parse::<usize>().ok())).unwrap();
+                    if data.len() >= offset + 4 + size {
+                        assert!(headers.starts_with("post /v1/diagnostics "));
+                        assert!(headers.contains("x-trace-device: test-device"));
+                        assert!(headers.contains("authorization: bearer test-token"));
+                        let body: Value = serde_json::from_slice(&data[offset + 4..offset + 4 + size]).unwrap();
+                        write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{{}}").unwrap();
+                        return body;
+                    }
+                }
+            }
+        });
+        let cloud = CloudSync::with_test_endpoint(directory.join("cloud-sync.json"), endpoint);
+        {
+            let mut config = cloud.config.lock().await;
+            config.device_id = "test-device".into();
+            config.token = Some("test-token".into());
+        }
+        cloud.report_diagnostics(crate::capture::CaptureStatus {
+            permission_ready: false, enabled: true, observer_running: false,
+            route_active: false, client_attached: false, waiting_for_match_end: false,
+            match_in_progress: false, frame_count: 42, operation_count: 3,
+            last_error: Some("private filesystem path and network details".into()), observer_port: 8899,
+        }, &storage).await;
+        let body = server.join().unwrap();
+        assert_eq!(body["appVersion"], env!("CARGO_PKG_VERSION"));
+        assert_eq!(body["pendingUploads"], 0);
+        assert_eq!(body["capture"]["hasError"], true);
+        assert_eq!(body["capture"]["frameCount"], 42);
+        assert!(!body.to_string().contains("private"));
+        fs::remove_dir_all(directory).unwrap();
+    }
+
 }

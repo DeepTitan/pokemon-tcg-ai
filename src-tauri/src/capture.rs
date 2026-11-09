@@ -81,6 +81,7 @@ fn hidden_windows_command(program: &str) -> Command {
 #[derive(Default)]
 pub struct CaptureState {
     pub enabled: AtomicBool,
+    repair_requested: AtomicBool,
     pub recording_paused: AtomicBool,
     pub observer_running: AtomicBool,
     pub route_active: AtomicBool,
@@ -1789,6 +1790,7 @@ impl CaptureManager {
             state.waiting_for_match_end.store(false, Ordering::Relaxed);
             return std::time::Duration::from_millis(750);
         }
+        self.refresh_pending |= state.repair_requested.load(Ordering::Relaxed);
         if state.route_active.load(Ordering::Relaxed) {
             let routed_pid = state.routed_pid.load(Ordering::Relaxed);
             let client_started = pokemon_pid.is_some() && routed_pid == 0;
@@ -1874,6 +1876,7 @@ impl CaptureManager {
                 }
             } else {
                 self.refresh_after_resume = false;
+                state.repair_requested.store(false, Ordering::Relaxed);
             }
             return std::time::Duration::from_millis(500);
         }
@@ -1933,6 +1936,14 @@ pub async fn start(app: AppHandle) -> Result<CaptureStatus, String> {
     }
     ensure_manager(&state, capture_dir(&app)?.join("capture-route-events.jsonl"));
     Ok(status(&app))
+}
+
+pub fn request_repair(app: &AppHandle) {
+    app.state::<Arc<CaptureState>>().repair_requested.store(true, Ordering::Relaxed);
+}
+
+pub fn repair_pending(app: &AppHandle) -> bool {
+    app.state::<Arc<CaptureState>>().repair_requested.load(Ordering::Relaxed)
 }
 
 pub fn stop(app: &AppHandle) -> CaptureStatus {

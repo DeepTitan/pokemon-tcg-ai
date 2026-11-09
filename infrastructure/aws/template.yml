@@ -184,6 +184,12 @@ Resources:
             ApiId: !Ref TraceApi
             Path: /v1/matches
             Method: GET
+        ReportDiagnostics:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref TraceApi
+            Path: /v1/diagnostics
+            Method: POST
         PutMatch:
           Type: HttpApi
           Properties:

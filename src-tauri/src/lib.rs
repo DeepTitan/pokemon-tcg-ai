@@ -430,6 +430,76 @@ async fn start_tracking(app: tauri::AppHandle) -> Result<CaptureStatus, String> 
     Ok(status)
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RepairResult {
+    capture_ready: bool,
+    pending_uploads: i64,
+    messages: Vec<String>,
+}
+
+#[tauri::command]
+async fn repair_trace(
+    app: tauri::AppHandle,
+    storage: tauri::State<'_, storage::MatchStorage>,
+    cloud: tauri::State<'_, cloud_sync::CloudSync>,
+) -> Result<RepairResult, String> {
+    let background = app.state::<background::BackgroundState>();
+    let _operation = background.operation.lock().await;
+    // Never tear down a connection while the game is running, even if capture
+    // cannot currently tell whether it is in a match.
+    if pokemon_client_pid().is_some() {
+        return Err("Finish your game and quit TCG Live, then click Fix Trace again. Your saved matches are safe.".into());
+    }
+    let mut messages = Vec::new();
+    if !capture::status(&app).permission_ready {
+        let permission_app = app.clone();
+        let permission = tauri::async_runtime::spawn_blocking(move || capture::request_permission(&permission_app))
+            .await.map_err(|error| error.to_string())?;
+        if let Err(error) = permission {
+            messages.push(format!("Capture permission still needs attention: {error}"));
+        }
+    }
+    // Permission dialogs can take time; recheck before changing any route.
+    if pokemon_client_pid().is_some() {
+        return Err("TCG Live opened during repair. Quit it and click Fix Trace again.".into());
+    }
+    let started = match capture::start(app.clone()).await {
+        Ok(_) => {
+            background.remember_recording(true)?;
+            capture::request_repair(&app);
+            true
+        }
+        Err(error) => {
+            messages.push(format!("Capture could not restart: {error}"));
+            false
+        }
+    };
+    // The existing manager performs the safe route refresh after confirmed exit.
+    for _ in 0..if started { 20 } else { 0 } {
+        let status = capture::status(&app);
+        if status.route_active && status.last_error.is_none() && !capture::repair_pending(&app) { break; }
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    }
+    storage.retry_cloud_uploads()?;
+    let sync = tokio::time::timeout(std::time::Duration::from_secs(45), cloud.sync_pending(storage.inner().clone())).await;
+    let (pending_uploads, _) = storage.cloud_sync_counts()?;
+    if sync.is_err() || pending_uploads > 0 {
+        messages.push(format!("{pending_uploads} uploads still pending. Trace will keep retrying while open."));
+    } else {
+        messages.push("Saved matches are synced.".into());
+    }
+    let status = capture::status(&app);
+    let capture_ready = status.permission_ready && status.enabled && status.observer_running
+        && status.route_active && !capture::repair_pending(&app) && !status.waiting_for_match_end && status.last_error.is_none();
+    if capture_ready {
+        messages.insert(0, "Capture is ready. Open TCG Live to record your next game.".into());
+    } else if messages.len() == 1 {
+        messages.insert(0, "Capture still needs attention. Check its status and try again.".into());
+    }
+    Ok(RepairResult { capture_ready, pending_uploads, messages })
+}
+
 #[tauri::command]
 async fn open_membership_account(
     view: Option<String>,
@@ -633,6 +703,16 @@ pub fn run() {
             app.manage(background::BackgroundState::load(app.path().app_data_dir()?.join("background-recording.json")));
             let membership = membership::Membership::new();
             app.manage(membership.clone());
+            let diagnostics_cloud = cloud_sync.clone();
+            let diagnostics_storage = storage.clone();
+            let diagnostics_app = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    let status = capture::status(&diagnostics_app);
+                    diagnostics_cloud.report_diagnostics(status, &diagnostics_storage).await;
+                    tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                }
+            });
             let membership_cloud = cloud_sync.clone();
             tauri::async_runtime::spawn(async move {
                 loop {
@@ -686,6 +766,7 @@ pub fn run() {
             resolve_card_sources,
             request_capture_permission,
             start_tracking,
+            repair_trace,
             stop_tracking,
             background::background_status,
             background::set_launch_at_login,

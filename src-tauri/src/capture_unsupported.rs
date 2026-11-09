@@ -80,3 +80,6 @@ pub fn shutdown(app: &AppHandle) {
         .enabled
         .store(false, Ordering::Relaxed);
 }
+
+pub fn request_repair(_app: &AppHandle) {}
+pub fn repair_pending(_app: &AppHandle) -> bool { false }

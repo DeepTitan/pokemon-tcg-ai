@@ -1,6 +1,7 @@
 import base64
 import copy
 import datetime as dt
+from decimal import Decimal
 import gzip
 import hashlib
 import hmac
@@ -58,6 +59,8 @@ def handler(event, _context):
         identity = authorize(event)
         if not identity:
             return response(401, {"error": "unauthorized"})
+        if method == "POST" and path == "/v1/diagnostics":
+            return put_diagnostics(identity, event)
         if method == "GET" and path == "/v1/matches":
             return list_matches(identity)
 
@@ -76,6 +79,48 @@ def handler(event, _context):
     except Exception as error:  # Lambda logs retain the real error; clients get no internals.
         print(json.dumps({"level": "error", "type": type(error).__name__, "message": str(error)}))
         return response(500, {"error": "internal_error"})
+
+
+def put_diagnostics(device_id, event):
+    # Strict schema: never persist arbitrary logs, tokens, paths, or game content.
+    body = read_json(event)
+    if not isinstance(body, dict) or type(body.get("schema")) is not int or body["schema"] != 1:
+        raise ValueError("invalid_diagnostics")
+    report = {"schema": 1}
+    for key in ("appVersion", "platform", "architecture"):
+        value = body.get(key)
+        if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9._+-]{1,64}", value):
+            raise ValueError("invalid_diagnostics")
+        report[key] = value
+    capture = body.get("capture")
+    if not isinstance(capture, dict):
+        raise ValueError("invalid_diagnostics")
+    report["capture"] = {}
+    for key in ("permissionReady", "enabled", "observerRunning", "routeActive",
+                "clientAttached", "waitingForMatchEnd", "matchInProgress", "hasError"):
+        if type(capture.get(key)) is not bool:
+            raise ValueError("invalid_diagnostics")
+        report["capture"][key] = capture[key]
+    for source, destination, keys in (
+        (capture, report["capture"], ("frameCount", "operationCount")),
+        (body, report, ("pendingUploads", "uploadedMatches")),
+    ):
+        for key in keys:
+            value = source.get(key)
+            if value is None and source is body:
+                destination[key] = None
+            elif type(value) is int and 0 <= value <= 18446744073709551615:
+                destination[key] = value
+            else:
+                raise ValueError("invalid_diagnostics")
+    devices.update_item(
+        Key={"deviceId": device_id},
+        UpdateExpression="SET #diagnostics = :report, diagnosticsReceivedAt = :now",
+        ExpressionAttributeNames={"#diagnostics": "diagnostics"},
+        ExpressionAttributeValues={":report": report, ":now": timestamp()},
+        ConditionExpression="attribute_exists(deviceId)",
+    )
+    return response(200, {"ok": True})
 
 
 def register(event):
@@ -204,6 +249,29 @@ def is_recent_match(item):
     return started is not None and now - dt.timedelta(seconds=FREE_HISTORY_SECONDS) < started <= now
 
 
+def preserve_starting_ratings(review, supplied_summary, existing):
+    """Omission is a partial upload, not a correction to an observed starting Elo.
+
+    Explicit null, a replacement value, or a conflict flag prevents inheritance.
+    Results and derived after-match ratings are never inherited.
+    """
+    review = dict(review)
+    supplied = supplied_summary if isinstance(supplied_summary, dict) else {}
+    if review.get("source") != "live-network" or existing.get("source") != "live-network":
+        return review
+    if any(not isinstance(review.get(key), str) or review[key] != existing.get(key)
+           for key in ("localPlayer", "opponent")):
+        return review
+    for key in ("localRating", "opponentRating"):
+        if key in review or key in supplied or review.get(key + "Conflict") is True:
+            continue
+        value = existing.get(key)
+        if (isinstance(value, (int, Decimal)) and not isinstance(value, bool)
+                and value >= 0 and value == int(value)):
+            review[key] = int(value)
+    return review
+
+
 def put_match(device_id, match_id, event):
     body = read_json(event)
     review = body.get("review")
@@ -213,6 +281,11 @@ def put_match(device_id, match_id, event):
     if not isinstance(reducer_version, int) or reducer_version < 0:
         raise ValueError("invalid_reducer_version")
 
+    existing = matches.get_item(
+        Key={"deviceId": device_id, "matchId": match_id},
+        ConsistentRead=True,
+    ).get("Item") or {}
+    review = preserve_starting_ratings(review, body.get("summary"), existing)
     encoded = json.dumps(review, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     compressed = gzip.compress(encoded, compresslevel=6)
     object_key = f"devices/{device_id}/matches/{hashlib.sha256(match_id.encode()).hexdigest()}.json.gz"
@@ -228,10 +301,6 @@ def put_match(device_id, match_id, event):
     )
 
     summary = match_summary(review, body.get("summary"))
-    existing = matches.get_item(
-        Key={"deviceId": device_id, "matchId": match_id},
-        ConsistentRead=True,
-    ).get("Item") or {}
     fields = clean({
         "deviceId": device_id,
         "matchId": match_id,
@@ -256,8 +325,8 @@ def put_match(device_id, match_id, event):
     names.update(removed)
     expression += ", historyStartedAt = if_not_exists(historyStartedAt, :anchor)"
     if removed:
-        # Keep the old replacement semantics for corrected/missing summary data.
-        # Preserving a stale Elo after a correction would change ranked eligibility.
+        # Missing result/derived fields and explicitly cleared ratings still disappear.
+        # Only omitted starting ratings were retained above, for the same players.
         expression += " REMOVE " + ", ".join(removed)
     item = matches.update_item(
         Key={"deviceId": device_id, "matchId": match_id},

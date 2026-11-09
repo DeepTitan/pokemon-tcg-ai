@@ -5,7 +5,9 @@ import { ArrowClockwise } from '@phosphor-icons/react/ArrowClockwise';
 import { DownloadSimple } from '@phosphor-icons/react/DownloadSimple';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { check, type DownloadEvent, type Update } from '@tauri-apps/plugin-updater';
-import { getTrackerEnvironment, isTauri } from './tauri.js';
+import { getTrackerEnvironment, isTauri, repairTrace } from './tauri.js';
+
+import { runTraceRepair } from './repair-flow.js';
 
 const POLL_MS = 30 * 60 * 1000;
 const DISMISSED_KEY = 'trace/dismissed-update-v1';
@@ -36,6 +38,9 @@ export function UpdateNotice({ matchInProgress = false, settingsOpen = false, co
   const checkingRef = useRef(false);
   const operationRef = useRef(false);
   const updateRef = useRef<Update | null>(null);
+  const [repairing, setRepairing] = useState(false);
+  const [repairMessage, setRepairMessage] = useState<string | null>(null);
+  const repairRef = useRef(false);
   const [checking, setChecking] = useState(false);
   const [checkMessage, setCheckMessage] = useState('Trace checks for updates automatically. You can check here anytime.');
   const [dismissed, setDismissed] = useState(false);
@@ -52,7 +57,7 @@ export function UpdateNotice({ matchInProgress = false, settingsOpen = false, co
   }, [matchInProgress]);
 
   const refresh = useCallback(async (manual = false) => {
-    if (!isTauri() || checkingRef.current || operationRef.current || ['downloaded', 'installing', 'ready', 'restarting'].includes(phaseRef.current)) return;
+    if (!isTauri() || (!manual && repairRef.current) || checkingRef.current || operationRef.current || ['downloaded', 'installing', 'ready', 'restarting'].includes(phaseRef.current)) return 'busy' as const;
     checkingRef.current = true;
     setChecking(true);
     if (manual) setMessage(null);
@@ -68,14 +73,17 @@ export function UpdateNotice({ matchInProgress = false, settingsOpen = false, co
         setProgress(null);
         setMessage(null);
         setCheckMessage(`Trace ${next.version} is available.`);
+        return 'available' as const;
       } else {
         setPhase('available');
         setMessage(null);
         setCheckMessage('You’re up to date.');
+        return 'current' as const;
       }
     } catch (error) {
       console.warn('Trace update check failed', error);
       if (manual) setCheckMessage(updateErrorMessage(error, 'Could not check for updates. Try again.'));
+      return 'failed' as const;
     } finally {
       checkingRef.current = false;
       setChecking(false);
@@ -181,13 +189,36 @@ export function UpdateNotice({ matchInProgress = false, settingsOpen = false, co
               ? 'Try again'
               : 'Install update';
 
-  const compactControls = <div className="connect-update-control"><button type="button" disabled={!isTauri() || checking || busy || phase === 'ready' || phase === 'downloaded'} onClick={() => void refresh(true)}>{checking ? 'Checking…' : 'Check for updates'}</button>{isTauri() && <span role="status">{message || (update ? `Trace ${update.version} available` : checkMessage)}</span>}</div>;
+  const fixTrace = async () => {
+    if (repairRef.current || operationRef.current || checkingRef.current) return;
+    repairRef.current = true;
+    setRepairing(true);
+    setRepairMessage('Checking for updates…');
+    try {
+      setRepairMessage(await runTraceRepair({ checkUpdate: () => refresh(true), repair: repairTrace, status: setRepairMessage }));
+    } catch (error) {
+      setRepairMessage(updateErrorMessage(error, 'Repair could not finish. Try again.'));
+    } finally {
+      repairRef.current = false;
+      setRepairing(false);
+    }
+  };
+
+  const compactControls = <div className="connect-update-control"><button type="button" disabled={!isTauri() || repairing || checking || busy || phase === 'ready' || phase === 'downloaded'} onClick={() => void refresh(true)}>{checking ? 'Checking…' : 'Check for updates'}</button>{isTauri() && <span role="status">{message || (update ? `Trace ${update.version} available` : checkMessage)}</span>}</div>;
   const settings = settingsTarget && createPortal(compactSettings ? compactControls : <section className="settings-updates">
+    <div className="settings-repair">
+      <strong>Having trouble?</strong>
+      <p>Check updates, reconnect capture, and retry uploads. Your saved matches stay safe.</p>
+      <button className="settings-update-primary" type="button" disabled={!isTauri() || repairing || checking || busy} onClick={() => void fixTrace()}>
+        <ArrowClockwise size={17} weight="bold" />{repairing ? 'Fixing Trace…' : 'Fix Trace'}
+      </button>
+      {repairMessage && <p role="status" aria-live="polite">{repairMessage}</p>}
+    </div>
     <p role="status">{!isTauri() ? 'Updates are available in the installed Trace app.' : checking ? 'Checking for updates…' : message || checkMessage}</p>
-    <button className={update ? undefined : 'settings-update-primary'} type="button" disabled={!isTauri() || checking || busy || phase === 'ready' || phase === 'downloaded'} onClick={() => void refresh(true)}>
+    <button className={update ? undefined : 'settings-update-primary'} type="button" disabled={!isTauri() || repairing || checking || busy || phase === 'ready' || phase === 'downloaded'} onClick={() => void refresh(true)}>
       <ArrowClockwise size={17} weight="bold" />{checking ? 'Checking…' : 'Check for updates'}
     </button>
-    {update && <button className="settings-update-primary" type="button" disabled={busy || checking || matchInProgress} onClick={() => void action()}>{actionLabel}</button>}
+    {update && <button className="settings-update-primary" type="button" disabled={busy || checking || repairing || matchInProgress} onClick={() => void action()}>{actionLabel}</button>}
     {update && matchInProgress && <p className="settings-update-hint">Finish your game and quit TCG Live before installing or restarting Trace.</p>}
   </section>, settingsTarget);
   return <>{settings}{update && !dismissed && !settingsOpen && (
@@ -203,7 +234,7 @@ export function UpdateNotice({ matchInProgress = false, settingsOpen = false, co
       <button className="update-notice-dismiss" type="button" onClick={dismiss} disabled={busy || checking} aria-label="Dismiss update">
         <X size={15} weight="bold" />
       </button>
-      <button className="update-notice-action" type="button" onClick={() => void action()} disabled={busy || checking || matchInProgress}>
+      <button className="update-notice-action" type="button" onClick={() => void action()} disabled={busy || checking || repairing || matchInProgress}>
         {actionLabel}
       </button>
       {phase === 'downloading' && progress != null && <span className="update-notice-progress" style={{ width: `${progress}%` }} />}

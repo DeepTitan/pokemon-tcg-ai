@@ -212,11 +212,20 @@ class FreemiumTests(unittest.TestCase):
         self.review.update(localRating=1800, opponentRating=1750)
         self.upload()
         self.assertEqual(self.item()['localRating'], 1800)
-        for field in ('localRating', 'opponentRating', 'winner'):
-            self.review.pop(field, None)
+        self.review.update(localRating=None, opponentRating=None)
+        self.review.pop('winner', None)
         self.upload()
         for field in ('localRating', 'opponentRating', 'winner'):
             self.assertNotIn(field, self.item())
+
+    def test_partial_upload_preserves_observed_starting_scores(self):
+        self.review.update(localRating=1800, opponentRating=1750)
+        self.upload()
+        self.review.pop('localRating')
+        self.review.pop('opponentRating')
+        self.upload()
+        self.assertEqual(self.item()['localRating'], 1800)
+        self.assertEqual(self.item()['opponentRating'], 1750)
 
     def test_undated_legacy_upload_does_not_refresh_access(self):
         legacy = app.matches.items[(self.device, self.match)]

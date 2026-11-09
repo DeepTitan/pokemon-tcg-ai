@@ -852,8 +852,13 @@ impl MatchStorage {
             > 0)
     }
 
-    #[cfg(test)]
-    fn cloud_sync_counts(&self) -> Result<(i64, i64), String> {
+    pub(crate) fn retry_cloud_uploads(&self) -> Result<(), String> {
+        self.connection()?.execute("UPDATE cloud_sync_outbox SET next_attempt_at=0", [])
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
+    pub(crate) fn cloud_sync_counts(&self) -> Result<(i64, i64), String> {
         let connection = self.connection()?;
         let outbox = connection
             .query_row("SELECT COUNT(*) FROM cloud_sync_outbox", [], |row| {
@@ -1483,14 +1488,8 @@ mod tests {
             .unwrap());
         assert!(storage.pending_cloud_reviews(10).unwrap().is_empty());
 
-        storage
-            .connection()
-            .unwrap()
-            .execute(
-                "UPDATE cloud_sync_outbox SET next_attempt_at=0 WHERE match_id='completed-match'",
-                [],
-            )
-            .unwrap();
+        storage.retry_cloud_uploads().unwrap();
+        assert_eq!(storage.load_review("completed-match").unwrap().unwrap(), revised);
         let retry = storage.pending_cloud_reviews(10).unwrap();
         assert_eq!(retry[0].attempt_count, 1);
         assert!(storage
