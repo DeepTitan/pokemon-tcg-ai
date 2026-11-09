@@ -965,3 +965,26 @@ assert.equal(final?.turns[2].gameOperationNumber, 2);
 assert.match(final?.turns[2].events[0].text || '', /Game over.*Opponent won.*concession/);
 
 console.log('live-operation-reducer: multi-phase damage, knockout, prizes, and endgame reconstructed successfully');
+
+// The protocol reuses EndTurn for opening placement confirmation.
+const setupAssembler = new LiveReviewAssembler(catalog);
+setupAssembler.ingest(operation);
+const setupReview = setupAssembler.ingest({ ...operation, operationId: 'setup-confirm', messageIndex: 9001,
+  operation: {
+    playerOperation: { operationType: 6, accountID: 'player-1' },
+    updatedEntities: [{ entityID: 'player-entity-1', entityMetaData: { PlayerSetupState: [{ value: 1 }] } }],
+    actionModifications: [{ $type: 'MatchLogic.SetMetaDataModification, MatchLogic', actionModificationID: 'setup-ready',
+      setMetaDataDeltas: [{ cardAddress: { entityID: 'player-entity-1', pos: 3 }, metaDataKey: 1, value: 1 }] }],
+  },
+});
+const setupFrame = setupReview!.turns.at(-1)!;
+assert.equal(setupFrame.events[0].action, 'setup-complete');
+assert.equal(setupFrame.events[0].kind, 'setup');
+assert.equal(setupFrame.events[0].text, 'Isaiah: completed setup');
+assert.equal(setupFrame.events[0].facts?.find(f => f.label === 'Action')?.value, 'Complete setup');
+assert.match(setupFrame.label, /^Setup/);
+const actualEnd = setupAssembler.ingest({ ...operation, operationId: 'real-end', messageIndex: 9002,
+  operation: { playerOperation: { operationType: 6, accountID: 'player-1' } },
+})!.turns.at(-1)!;
+assert.equal(actualEnd.events[0].action, 'end-turn', 'Cumulative setup readiness must not relabel a real turn');
+assert.equal(actualEnd.events[0].kind, 'system');

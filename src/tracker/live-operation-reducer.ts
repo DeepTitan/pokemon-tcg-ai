@@ -1,3 +1,4 @@
+import { normalizeSetupTurn } from './setup-action-model.js';
 import { capturedDecklists } from './captured-decklists.js';
 import type {
   CapturedOperation,
@@ -822,6 +823,7 @@ function naturalList(values: string[]): string {
 }
 
 interface OperationAssembly {
+  setupCompletedBy?: Set<string>;
   id: string;
   turnIndex?: number;
   promotionTurnIndex?: number;
@@ -1744,6 +1746,24 @@ export class LiveReviewAssembler {
 
     const originId = text(assembledOperation.playerOperation, 'originEntityID', 'originEntityId');
     const modifications = list(operation, 'actionModifications', 'ActionModifications').map(record).filter(Boolean) as Entity[];
+    // A numeric metadata key is ambiguous without the named, same-packet
+    // PlayerSetupState observation. Do not use cumulative readiness snapshots.
+    for (const modification of modifications) {
+      if (modificationType(modification) !== 'SetMetaDataModification') continue;
+      for (const candidate of list(modification, 'setMetaDataDeltas', 'SetMetaDataDeltas')) {
+        const delta = record(candidate);
+        const address = record(value(delta, 'cardAddress', 'CardAddress'));
+        const pos = number(address, 'pos', 'Pos');
+        if (number(delta, 'metaDataKey', 'MetaDataKey') !== 1 || number(delta, 'value', 'Value') !== 1
+          || (pos !== 3 && pos !== 4)) continue;
+        const id = text(address, 'entityID', 'entityId');
+        const entity = updatedEntities(operation).find(entity => entityId(entity) === id);
+        const metadata = record(value(entity ?? null, 'entityMetaData', 'EntityMetaData'));
+        if (id && list(metadata, 'PlayerSetupState').some(entry => number(record(entry), 'value', 'Value') === 1)) {
+          (assembledOperation.setupCompletedBy ??= new Set()).add(id);
+        }
+      }
+    }
     const operationEndsTurn = modifications.some((modification) => modificationType(modification) === 'EndTurnModification');
     const cardMovements = new Map<string, CardMovement>();
     const recordedCounterUpdates = new Map<string, number>();
@@ -2268,6 +2288,8 @@ export class LiveReviewAssembler {
         id: `${operationId}:primary`, turnIndex, actor, sourceEntityId: assembledOriginId, cardId: originInfo?.id,
         cardFormat: originInfo?.format, cardType: originInfo?.cardType,
         text: primaryText, detail: false, kind: primaryKind,
+        ...(opType === 'End turn' && actorSide && assembledOperation.setupCompletedBy?.has(playerIds[actorSide]!)
+          ? { action: 'setup-complete' as const } : {}),
       });
     }
 
@@ -2568,6 +2590,7 @@ export class LiveReviewAssembler {
       .filter(({ key, event }) => Boolean(event) && !promotionEventKeys.has(key))
       .sort((left, right) => eventRank(left.key) - eventRank(right.key) || left.index - right.index)
       .map(({ event }) => event);
+    Object.assign(turn, normalizeSetupTurn(turn));
     const resolvesKnockouts = attackResolved && assembledOperation.knockoutTargets.size > 0;
     const attackStageSnapshot = resolvesKnockouts && assembledOperation.snapshotBefore
       ? {

@@ -50,6 +50,8 @@ export interface ReviewProtocolGroup {
 }
 
 export interface TrackerEvent {
+  /** Semantic action; protocol EndTurn can also mean opening setup confirmation. */
+  action?: 'setup-complete' | 'end-turn';
   id: string;
   turnIndex: number;
   actor?: string;

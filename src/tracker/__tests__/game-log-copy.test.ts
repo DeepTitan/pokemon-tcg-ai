@@ -5,7 +5,7 @@ import type { ReviewEventFact, ReviewSelection, TrackedTurn, TrackerEvent, Track
 const emptySnapshot = { players: {}, stadium: null };
 
 function fact(label: string, value: string, index: number): ReviewEventFact {
-  return { id: `fact-${index}`, kind: 'system', label, value };
+  return { id: `fact-${index}`, kind: label === 'Cards moved' ? 'movement' : 'system', label, value };
 }
 
 function event(id: string, text: string, kind: TrackerEventKind, actor = 'Isaiah', facts: Array<[string, string]> = []): TrackerEvent {
@@ -239,3 +239,12 @@ assert.deepEqual(visibleFacts.map(({ label, value }) => [label, value]), [
 ]);
 
 console.log('game-log-copy: player language, Recon Directive candidates, selection outcomes, metadata filtering, and energy names');
+
+const setupConfirmation = presentTurnEvents(turn([
+  event('setup:primary', 'Isaiah: End turn', 'system', 'Isaiah', [
+    ['Action', 'End turn'], ['Cards moved', "6 hidden cards: Isaiah's Deck → Isaiah's Prize"],
+  ]),
+]));
+assert.equal(setupConfirmation[0].kind, 'setup');
+assert.equal(setupConfirmation[0].text, 'Isaiah: completed setup');
+assert.equal(setupConfirmation[0].action, 'setup-complete');

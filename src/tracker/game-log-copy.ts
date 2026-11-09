@@ -1,3 +1,4 @@
+import { normalizeSetupTurn } from './setup-action-model.js';
 import type { ReviewEventFact, ReviewSelection, TrackedTurn, TrackerEvent, TrackerEventKind } from './types.js';
 
 const ENERGY_NAMES: Record<string, string> = {
@@ -396,6 +397,7 @@ function eventKindForSelection(turn: TrackedTurn, event: TrackerEvent): TrackerE
  * only controls what players see, so old matches improve without reprocessing.
  */
 export function presentTurnEvents(turn: TrackedTurn): TrackerEvent[] {
+  turn = normalizeSetupTurn(turn);
   const seen = new Set<string>();
   return turn.events.flatMap((event) => {
     if (event.detail) return [];

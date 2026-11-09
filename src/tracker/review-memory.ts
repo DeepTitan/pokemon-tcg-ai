@@ -1,3 +1,4 @@
+import { normalizeSetupTurn } from './setup-action-model.js';
 import type { MatchReview } from './types.js';
 
 /**
@@ -8,6 +9,7 @@ import type { MatchReview } from './types.js';
  * later edit from silently changing other frames that reference the same data.
  */
 export function compactStoredReview(review: MatchReview): MatchReview {
+  review = { ...review, turns: review.turns.map(normalizeSetupTurn) };
   const interned = new Map<string, { node: object; id: number }>();
   const ids = new WeakMap<object, number>();
   function visit(value: unknown): unknown {
