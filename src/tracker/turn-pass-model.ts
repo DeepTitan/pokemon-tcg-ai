@@ -1,3 +1,4 @@
+import { isSetupTurn } from './setup-action-model.js';
 import type { TrackedTurn, TrackerEvent } from './types.js';
 
 export type TurnPassReason = 'passed' | 'timeout';
@@ -38,7 +39,7 @@ function passReason(event: TrackerEvent): TurnPassReason | null {
  * introduced.
  */
 export function turnPassForTurn(turn: TrackedTurn, players: readonly string[]): TurnPass | null {
-  if (turn.events.some((event) => event.kind === 'attack')) return null;
+  if (isSetupTurn(turn) || turn.events.some((event) => event.kind === 'attack')) return null;
 
   for (const event of turn.events) {
     const reason = passReason(event);

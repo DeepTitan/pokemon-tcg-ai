@@ -196,6 +196,8 @@ export interface TrackerBoardSnapshot {
 }
 
 export interface TrackedTurn {
+  /** Captured opening sequence, distinct from canonical turn-counter defaults. */
+  reviewPhase?: 'setup';
   index: number;
   label: string;
   gameOperationNumber?: number;

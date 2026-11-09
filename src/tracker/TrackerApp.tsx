@@ -46,6 +46,7 @@ import { damageChangesForTurn, type PokemonDamageChange } from './damage-change-
 import { positionChangesForTurn, type PokemonPositionChange } from './position-change-model.js';
 import { buildKeyMoments } from './key-moment-navigation.js';
 import { turnPassForTurn } from './turn-pass-model.js';
+import { normalizeSetupReview } from './setup-action-model.js';
 import { deriveReviewTurnStatus, type PlayerTurnStatus } from './turn-status-model.js';
 import { capturedAtIso, collectCardSourceIds, finalizeReviewForClientExit, matchSummaryFromReview, operationKey, recordingSummaryFromOperation, REDUCER_VERSION } from './match-storage.js';
 import { initialClientLifecycleState, observeClientLifecycle } from './client-lifecycle-model.js';
@@ -149,7 +150,7 @@ const TRAINER_ART = [
 function loadReviews(): MatchReview[] {
   try {
     const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-    return Array.isArray(parsed) ? parsed.filter((review) => review?.source !== 'live-network') : [];
+    return Array.isArray(parsed) ? parsed.filter((review) => review?.source !== 'live-network').map(normalizeSetupReview) : [];
   } catch {
     return [];
   }
@@ -386,7 +387,7 @@ function isSupportingActionEvent(event: TurnChoiceFrame['events'][number]): bool
   return !/^made (?:a|an) (?:damage|entity) selection\b/i.test(event.text);
 }
 
-function ChoiceStage({ boardName, frames, currentReviewIndex, catalog, onOpen }: { boardName: string; frames: TurnChoiceFrame[]; currentReviewIndex: number; catalog: ReadonlyMap<string, CardInfo>; onOpen: (card: TrackedCard) => void }) {
+function ChoiceStage({ boardName, frames, currentReviewIndex, catalog, onOpen, isSetup }: { isSetup?: boolean; boardName: string; frames: TurnChoiceFrame[]; currentReviewIndex: number; catalog: ReadonlyMap<string, CardInfo>; onOpen: (card: TrackedCard) => void }) {
   const [showTurn, setShowTurn] = useState(false);
   const currentFrame = frames.find((frame) => frame.reviewIndex === currentReviewIndex);
   useEffect(() => setShowTurn(false), [currentReviewIndex]);
@@ -400,10 +401,10 @@ function ChoiceStage({ boardName, frames, currentReviewIndex, catalog, onOpen }:
   const primaryEvent = focusedEvents[0] || currentFrame.events[0];
   const supportingCopy = focusedEvents.slice(1).map((event) => event.text).join(' · ');
   const canSeeTurn = frames.some((frame) => frame.reviewIndex !== currentReviewIndex && frame.cards.length > 0);
-  return <aside className={`choice-stage has-current ${showTurn ? 'show-turn' : 'show-action'} ${choices.length ? '' : 'story-only'}`} aria-label={`${boardName} ${showTurn ? 'cards this turn' : 'current action'}`}>
+  return <aside className={`choice-stage has-current ${showTurn ? 'show-turn' : 'show-action'} ${choices.length ? '' : 'story-only'}`} aria-label={`${boardName} ${showTurn ? isSetup ? 'cards during setup' : 'cards this turn' : 'current action'}`}>
     <div className="choice-stage-heading">
-      <span>{showTurn ? 'This turn' : 'This action'}</span>
-      {canSeeTurn && <button type="button" className="see-turn-button" aria-pressed={showTurn} onClick={() => setShowTurn((value) => !value)}>{showTurn ? 'See action' : 'See turn'}</button>}
+      <span>{showTurn ? isSetup ? 'Setup' : 'This turn' : 'This action'}</span>
+      {canSeeTurn && <button type="button" className="see-turn-button" aria-pressed={showTurn} onClick={() => setShowTurn((value) => !value)}>{showTurn ? 'See action' : isSetup ? 'See setup' : 'See turn'}</button>}
     </div>
     <div className="choice-stage-story">
       {primaryEvent && <span className="primary"><EventIcon kind={primaryEvent.kind} size={14} text={primaryEvent.text} /><strong>{primaryEvent.text}</strong></span>}
@@ -524,7 +525,7 @@ export function PlayerField({ board, decklist, deckAccess, canonical, pendingCar
     : pokemon?.id || fallback;
   const bench = <div className="bench-row" aria-label={`${board.name} bench`}>{benches.map((pokemon, index) => <PokemonSlot key={motionKey(pokemon, `empty-${index}`)} pokemon={pokemon} catalog={catalog} defeated={isDefeated(pokemon)} attacking={pokemon?.id === attackerId} damageChange={pokemon ? damageChanges.get(pokemon.id) : undefined} positionChange={pokemon ? positionChanges.get(pokemon.id) : undefined} onOpen={onOpenPokemon} />)}</div>;
   const stadiumHere = Boolean(stadiumName) && (stadiumOwner ? stadiumOwner === board.name : !opponent);
-  const active = <div className={`active-lane ${stadiumHere ? 'has-stadium-zone' : ''}`}><span>Active</span>{stadiumHere && <StadiumMarker card={stadiumCard} name={stadiumName} owner={stadiumOwner} catalog={catalog} localPlayer={localPlayerName} opponent={opponentName} onOpen={onOpenCard} />}<PokemonSlot key={motionKey(board.active, 'empty-active')} pokemon={board.active} catalog={catalog} active defeated={isDefeated(board.active)} attacking={board.active?.id === attackerId} damageChange={board.active ? damageChanges.get(board.active.id) : undefined} positionChange={board.active ? positionChanges.get(board.active.id) : undefined} onOpen={onOpenPokemon} /><ChoiceStage boardName={board.name} frames={choiceFrames} currentReviewIndex={currentReviewIndex} catalog={catalog} onOpen={onOpenChoice} /></div>;
+  const active = <div className={`active-lane ${stadiumHere ? 'has-stadium-zone' : ''}`}><span>Active</span>{stadiumHere && <StadiumMarker card={stadiumCard} name={stadiumName} owner={stadiumOwner} catalog={catalog} localPlayer={localPlayerName} opponent={opponentName} onOpen={onOpenCard} />}<PokemonSlot key={motionKey(board.active, 'empty-active')} pokemon={board.active} catalog={catalog} active defeated={isDefeated(board.active)} attacking={board.active?.id === attackerId} damageChange={board.active ? damageChanges.get(board.active.id) : undefined} positionChange={board.active ? positionChanges.get(board.active.id) : undefined} onOpen={onOpenPokemon} /><ChoiceStage isSetup={status.isSetup} boardName={board.name} frames={choiceFrames} currentReviewIndex={currentReviewIndex} catalog={catalog} onOpen={onOpenChoice} /></div>;
   const openZone = (label: string, cards: Card[], note: string) => onOpenZone(`${board.name} · ${label}`, note, cards, visibility);
   const prizeKnowledge = (!opponent && providedPrizeKnowledge) || derivePrizeKnowledge({ deck: decklist, player: canonical, pendingCards, board, visibility, catalog,
     local: !opponent, stadium: stadiumCard, stadiumOwner });
@@ -544,7 +545,9 @@ export function PlayerField({ board, decklist, deckAccess, canonical, pendingCar
         {handoff && handoff !== 'receiving' && <div key={`pass-impact:${currentReviewIndex}:${handoff}`} className={`pass-impact ${handoff}`} aria-hidden="true"><span className="pass-impact-streak" /><b>{handoff === 'timed-out' ? 'TIME EXPIRED' : 'TURN PASSED'}</b><span className="pass-impact-arrow">{opponent ? '↓' : '↑'}</span></div>}
         <div className="player-identity"><img src={avatar} alt="" /><div><span>{opponent ? 'Opponent' : 'You'}</span><strong key={`${currentReviewIndex}:${handoff || 'normal'}`} className={handoff ? `header-handoff ${handoff}` : undefined}><span className="header-player-name">{board.name}</span>{handoff && <span className="header-handoff-message" role="status">{handoff === 'receiving' ? opponent ? 'Opponent’s turn next' : 'Your turn next' : handoff === 'timed-out' ? 'Time expired →' : 'Passed turn →'}</span>}</strong></div>{(!opponent || deckAccess?.visible) && <PlayerDecklist name={board.name} deck={decklist} catalog={catalog} {...deckAccess} onInspectCard={(cardId) => { const info = catalog.get(cardId); onOpenCard(cardInfoToEngineCard(info, cardId, info?.name || cardId, cardId)); }} />}{opponent && <OpponentHandSummary boardName={board.name} count={handCount} onOpen={openHand} />}</div>
         <div className="turn-statuses" aria-label={`${board.name} turn status`}>
-          <span className="status-slot turn-slot">{handoff === 'passing' || handoff === 'timed-out'
+          <span className="status-slot turn-slot">{status.isSetup
+            ? <span className="status-pill turn-number-pill" aria-label="Opening setup"><b>Setup</b></span>
+            : handoff === 'passing' || handoff === 'timed-out'
             ? <span className={`status-pill turn-handoff-pill ${handoff}`} aria-label={`Turn ${turnNumber} ${handoff === 'timed-out' ? 'ended when the timer expired' : 'ended without an attack'}`}><span>Turn {turnNumber}</span><b>{handoff === 'timed-out' ? 'Timed out' : 'Passed'}</b></span>
             : handoff === 'receiving'
               ? <span className="status-pill turn-handoff-pill receiving" aria-label={`${board.name}'s turn is next`}><Play size={9} weight="fill" /><b>Next turn</b></span>
@@ -1025,6 +1028,7 @@ export default function TrackerApp() {
   }, [upsertSummary]);
 
   const displayReview = useCallback((review: MatchReview, followLatest = false) => {
+    review = normalizeSetupReview(review);
     const follows = followLatest || selectedIdRef.current == null || selectedIdRef.current === review.id;
     if (selectedIdRef.current == null || followLatest) {
       selectedIdRef.current = review.id;

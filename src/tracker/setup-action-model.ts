@@ -33,3 +33,35 @@ export function normalizeSetupTurn(turn: TrackedTurn): TrackedTurn {
     fact.label === 'Action' && fact.value === 'End turn' ? { ...fact, value: 'Complete setup' } : fact) }));
   return { ...turn, events, ...(setup ? { label: `Setup · Action ${turn.index}`, choiceLabel: 'Completed setup' } : {}) };
 }
+
+export function isSetupTurn(turn: TrackedTurn): boolean {
+  return turn.reviewPhase === 'setup' || /^Setup(?:\s+·|$)/.test(turn.label)
+    || turn.events.some(event => normalizeSetupAction(event).action === 'setup-complete');
+}
+
+/** Opening confirmation evidence anchors the prefix. Never classify an arbitrary
+ * partial capture as setup just because it has a low turn number. */
+export function normalizeSetupReview<T extends { turns: TrackedTurn[] }>(review: T): T {
+  const turns = review.turns.map(normalizeSetupTurn);
+  const completed = new Set<string>();
+  let anchored = false;
+  let setupEnd = -1;
+  for (let index = 0; index < turns.length; index++) {
+    const turn = turns[index];
+    if (turn.events.some(event => ['attack', 'ability', 'trainer', 'energy', 'tool', 'stadium'].includes(event.kind))) break;
+    if (turn.events.some(event => event.id.endsWith(':primary') && event.text === 'Start turn')) anchored = true;
+    for (const event of turn.events) {
+      if (event.action === 'setup-complete') {
+        anchored = true;
+        if (event.actor) completed.add(event.actor);
+      }
+    }
+    setupEnd = index;
+    if (completed.size >= 2) break;
+    // A real pass is gameplay, even when it is the very first action.
+    if (turn.events.some(event => event.action === 'end-turn')) { setupEnd = index - 1; break; }
+  }
+  return { ...review, turns: turns.map((turn, index) => anchored && index <= setupEnd
+    ? { ...turn, reviewPhase: 'setup', label: `Setup · Action ${turn.index}` }
+    : turn) };
+}

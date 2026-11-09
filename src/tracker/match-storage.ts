@@ -3,7 +3,7 @@ import { GamePhase } from '../engine/types.js';
 import { ratingFieldsForReview } from './rating-model.js';
 
 // Rebuild saved reviews with distinct setup confirmations and turn endings.
-export const REDUCER_VERSION = 24;
+export const REDUCER_VERSION = 25;
 
 export function matchSummaryFromReview(review: MatchReview, operationCount = 0): MatchSummary {
   return {

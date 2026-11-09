@@ -1,7 +1,9 @@
+import { isSetupTurn } from './setup-action-model.js';
 import type { PokemonInPlay } from '../engine/types.js';
 import type { CanonicalReviewState, MatchReview, ReviewAppliedEffect, TrackedTurn, TrackerEvent } from './types.js';
 
 export interface PlayerTurnStatus {
+  isSetup?: boolean;
   isCurrentTurn: boolean;
   supporterUsed: boolean;
   stadiumUsed: boolean;
@@ -105,11 +107,13 @@ export function deriveReviewTurnStatus(
   canonical: CanonicalReviewState,
 ): ReviewTurnStatus {
   const selectedTurn = review.turns[selectedIndex];
-  const currentPlayer = actorForTurn(selectedTurn)
+  const isSetup = isSetupTurn(selectedTurn);
+  const currentPlayer = isSetup ? undefined : actorForTurn(selectedTurn)
     || canonical.playerNames[canonical.state.currentPlayer];
   const stadiumName = canonical.state.stadium?.name || selectedTurn.snapshot.stadium || undefined;
   const segment = turnSegment(review, selectedIndex, currentPlayer);
   const players = Object.fromEntries(review.players.map((player) => [player, {
+    isSetup,
     isCurrentTurn: player === currentPlayer,
     supporterUsed: segment.some((turn) => turn.events.some((event) => (
       actorForEvent(event, review.players) === player && supporterEvent(event)

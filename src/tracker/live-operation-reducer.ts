@@ -1,4 +1,4 @@
-import { normalizeSetupTurn } from './setup-action-model.js';
+import { normalizeSetupTurn, normalizeSetupReview } from './setup-action-model.js';
 import { capturedDecklists } from './captured-decklists.js';
 import type {
   CapturedOperation,
@@ -2667,6 +2667,7 @@ export class LiveReviewAssembler {
       promotionTurn.snapshot = snapshot;
       promotionTurn.canonical = canonical;
     }
+    assembly.review.turns = normalizeSetupReview(assembly.review).turns;
     return assembly.review;
   }
 }
