@@ -7,7 +7,7 @@ export interface CaptureIndicator {
   tone: CaptureIndicatorTone;
 }
 
-function hasLiveCapture(environment: TrackerEnvironment): boolean {
+export function hasLiveCapture(environment: TrackerEnvironment): boolean {
   const { capture } = environment;
   return environment.clientRunning && capture.enabled && capture.observerRunning
     && capture.routeActive && capture.clientAttached;

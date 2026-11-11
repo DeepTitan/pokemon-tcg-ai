@@ -1,4 +1,5 @@
 import type { CaptureStatus, TrackerEnvironment } from './types.js';
+import { hasLiveCapture } from './capture-status-model.js';
 
 export type SetupPhase = 'initial' | 'checking' | 'update' | 'updating' | 'restart' | 'restarting' | 'close-live' | 'approval' | 'connecting' | 'startup' | 'failed' | 'ready';
 export interface SetupState { phase: SetupPhase; message: string; }
@@ -9,6 +10,18 @@ export const setupLabel = (phase: SetupPhase) => ({
   restart: 'Restart Trace', restarting: 'Restarting…', 'close-live': 'Check again',
   approval: 'Waiting for approval…', connecting: 'Connecting…', startup: 'Finishing setup…', failed: 'Try again', ready: 'Done',
 })[phase];
+
+// Decide once, after the first real native status arrives. Background polling
+// must never turn a transient permission failure into blocking onboarding.
+export function shouldOfferInitialSetup(environment: TrackerEnvironment, acknowledged: boolean): boolean {
+  return !acknowledged && !environment.clientRunning;
+}
+
+export function shouldDismissRecoveredSetup(state: SetupState, environment: TrackerEnvironment): boolean {
+  // A live route outweighs a failed permission probe. Leave an explicit update
+  // or in-flight setup operation alone until it settles.
+  return ['initial', 'close-live', 'failed', 'ready'].includes(state.phase) && hasLiveCapture(environment);
+}
 
 interface SetupUpdate { download(): Promise<void>; install(): Promise<void>; close(): Promise<void>; }
 interface Dependencies {
@@ -48,8 +61,14 @@ export function createSetupFlow(deps: Dependencies, notify: (state: SetupState) 
   };
   const blocked = async () => {
     const environment = await deps.environment();
+    if (disposed) return true;
+    if (hasLiveCapture(environment)) {
+      deps.capture(environment.capture);
+      set('ready', 'Trace is already connected and recording. You can keep playing and reviewing your match.');
+      return true;
+    }
     if (environment.clientRunning) {
-      set('close-live', 'Finish your match, then quit Pokémon TCG Live to continue.');
+      set('close-live', 'You can continue reviewing now. If recording still needs setup after your match, quit Pokémon TCG Live and try again.');
       return true;
     }
     return false;
@@ -68,6 +87,7 @@ export function createSetupFlow(deps: Dependencies, notify: (state: SetupState) 
           return;
         }
         if (!update) update = await deps.check();
+        if (disposed) return;
         if (update) {
           if (!applyUpdate) { set('update', 'Update Trace to continue.'); return; }
           set('updating', 'Downloading the signed update…');
@@ -76,15 +96,18 @@ export function createSetupFlow(deps: Dependencies, notify: (state: SetupState) 
           if (await blocked()) return;
           set('updating', 'Installing the signed update…');
           await update.install();
+          if (disposed) return;
           installed = true;
           set('restart', 'Restart Trace to finish the update, then continue setup.');
           return;
         }
         if (await blocked()) return;
         const environment = await deps.environment();
+        if (disposed) return;
         if (!environment.capture.permissionReady) {
           set('approval', 'Approve the system setup prompt to continue.');
           const permission = await deps.permission();
+          if (disposed) return;
           if (!permission.permissionReady) throw new Error('Capture permission was not approved. Try again and approve the system prompt.');
           set('checking', 'Approval received. Checking the game before connecting…');
         }
@@ -96,7 +119,7 @@ export function createSetupFlow(deps: Dependencies, notify: (state: SetupState) 
           if (disposed) return;
           deps.capture(capture);
           if (capture.waitingForMatchEnd) {
-            set('close-live', 'Finish your match, then quit Pokémon TCG Live to continue.');
+            set('close-live', 'You can continue reviewing now. If recording still needs setup after your match, quit Pokémon TCG Live and try again.');
             return;
           }
           if (capture.lastError || !capture.enabled || !capture.observerRunning) {
@@ -109,14 +132,16 @@ export function createSetupFlow(deps: Dependencies, notify: (state: SetupState) 
           await (deps.waitForRetry?.() ?? new Promise(resolve => setTimeout(resolve, 500)));
           if (disposed) return;
           const next = await deps.environment();
+          if (disposed) return;
           capture = next.capture;
           if (next.clientRunning && !capture.routeActive) {
-            set('close-live', 'Finish your match, then quit Pokémon TCG Live to continue.');
+            set('close-live', 'You can continue reviewing now. If recording still needs setup after your match, quit Pokémon TCG Live and try again.');
             return;
           }
         }
         set('startup', 'Turning on automatic recording…');
         await deps.background();
+        if (disposed) return;
         set('ready', 'You’re all set. Open Pokémon TCG Live and play. Trace will record in the background, even with this window closed.');
       } catch (error) {
         console.warn(`Trace setup (${state.phase}):`, error);

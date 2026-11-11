@@ -26,6 +26,7 @@ import { readArchiveSearchIndex, searchArchive } from './archive-search.js';
 import { ArchiveUpgradeModal, type UpgradePreview } from './ArchiveUpgradeModal.js';
 import { InfiniteArchiveList } from './InfiniteArchiveList.js';
 import { CaptureSetupModal } from './CaptureSetupModal.js';
+import { shouldOfferInitialSetup } from './setup-flow.js';
 import {
   getMembershipStatus, openMembershipAccount, loadOpponentDecklist, loadOpponentDeckPreview, getRecentMatchOperations, getTraceVersion, getTrackerEnvironment, initializeTrackerStorage, isTauri, listMatchSummaries,
   importLegacyReviews, listRawMatchIds, loadMatchOperations, loadMatchReview, onMatchOperation, persistMatchReview,
@@ -737,11 +738,6 @@ export default function TrackerApp() {
     window.addEventListener('focus', refresh);
     return () => { active = false; clearInterval(timer); window.removeEventListener('focus', refresh); };
   }, [refreshMembership, sharedMode]);
-  useEffect(() => {
-    if (sharedMode || !isTauri()) return;
-    try { if (localStorage.getItem(CAPTURE_DISCLOSURE_KEY) !== 'acknowledged') setShowSetup(true); }
-    catch { setShowSetup(true); }
-  }, [sharedMode]);
   const [archiveOpen, setArchiveOpen] = useState(() => !sharedMode);
   const [sharedAccessOpen, setSharedAccessOpen] = useState(() => {
     if (!sharedMode) return false;
@@ -1099,9 +1095,12 @@ export default function TrackerApp() {
           clientLifecycleRef.current = observation.state;
           if (observation.clientExited) finalizeActiveMatchForClientExit();
           setEnvironment(next);
-          if (isTauri() && !next.capture.permissionReady && !setupPrompted.current) {
+          if (isTauri() && !sharedMode && !setupPrompted.current) {
             setupPrompted.current = true;
-            setShowSetup(true);
+            let acknowledged = false;
+            try { acknowledged = localStorage.getItem(CAPTURE_DISCLOSURE_KEY) === 'acknowledged'; }
+            catch { /* First-run setup remains available without browser storage. */ }
+            if (shouldOfferInitialSetup(next, acknowledged)) setShowSetup(true);
           }
         }
       } catch { /* Browser preview has no native process access. */ }
@@ -1465,11 +1464,17 @@ export default function TrackerApp() {
     finally { setBusy(false); }
   }, [environment.capture.permissionReady, environment.capture.enabled]);
 
+  const dismissSetup = useCallback(() => {
+    setupPrompted.current = true;
+    setSafetyDismissed(true);
+    setShowSetup(false);
+  }, []);
+
   const closeSetup = useCallback(() => {
     try { localStorage.setItem(CAPTURE_DISCLOSURE_KEY, 'acknowledged'); }
     catch { /* Disclosure persistence is best-effort. */ }
-    setShowSetup(false);
-  }, []);
+    dismissSetup();
+  }, [dismissSetup]);
 
   const openSettings = useCallback(() => {
     setPlaying(false);
@@ -1769,7 +1774,7 @@ export default function TrackerApp() {
       {!timelineOpen && <button className="panel-restore-button timeline-restore-button" type="button" aria-label="Open game log" aria-expanded="false" title="Open game log" onClick={() => setTimelineOpen(true)}><List size={22} weight="bold" /></button>}
 
       {!sharedMode && environment.capture.waitingForMatchEnd && !safetyDismissed && !showSetup && !showSettings && <div className="capture-safety-backdrop"><section className="capture-safety-dialog" role="alertdialog" aria-modal="true" aria-labelledby="capture-safety-title" aria-describedby="capture-safety-description"><div className="capture-safety-icon" aria-hidden="true"><ShieldCheck size={33} weight="fill" /><i /></div><span>Safe connection</span><h2 id="capture-safety-title">TCG Live is already connected</h2><p id="capture-safety-description">Trace can’t safely tell whether a match is active. It won’t interrupt your connection or install an update.</p><div className="capture-safety-waiting"><i aria-hidden="true" /><span><strong>In a match? Finish playing first.</strong><small>Already on Home? Quit TCG Live, leave Trace open until it says Ready, then reopen TCG Live.</small></span></div><div className="modal-actions"><button type="button" onClick={() => setSafetyDismissed(true)}>Continue reviewing</button><button type="button" onClick={openSettings}>Open Settings</button></div></section></div>}
-      {!sharedMode && showSetup && <CaptureSetupModal onClose={closeSetup} onCapture={capture => setEnvironment(current => ({ ...current, capture }))} />}
+      {!sharedMode && showSetup && <CaptureSetupModal onClose={closeSetup} onDismiss={dismissSetup} environment={environment} onCapture={capture => setEnvironment(current => ({ ...current, capture }))} />}
       {!sharedMode && upgrade && <ArchiveUpgradeModal onRefresh={refreshMembership} feature={upgrade.feature} preview={upgradePreview} onClose={() => setUpgrade(null)} onLink={() => { upgradeAfterLink.current = upgrade.summary || null; setUpgrade(null); openSettings(); }} />}
       {!sharedMode && showSettings && <UpdateSettingsModal onClose={() => setShowSettings(false)} version={appVersion}>{isTauri() && <><BackgroundSettings environment={environment} />{accountSettings}</>}</UpdateSettingsModal>}
       {shareUrl && <div className="modal-backdrop share-modal-backdrop"><div className="share-modal" role="dialog" aria-modal="true" aria-labelledby="share-match-title"><div className="modal-title"><div><span>Ready to send</span><h2 id="share-match-title">Share this match</h2></div><button type="button" onClick={() => setShareUrl(null)} aria-label="Close share dialog"><X size={21} weight="bold" /></button></div><p>Anyone with this link can click through the replay in their browser.</p><div className="share-link-row"><input value={shareUrl} readOnly aria-label="Share link" onFocus={(event) => event.currentTarget.select()} /><button className="primary" type="button" onClick={() => void copyShareUrl(shareUrl)}><Copy size={16} weight="bold" />Copy link</button></div></div></div>}

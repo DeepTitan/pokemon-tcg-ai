@@ -5,8 +5,8 @@ import type { KeyMoment } from './key-moment-navigation.js';
 import { check } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { getTrackerEnvironment, isTauri, requestCapturePermission, startTracking, setLaunchAtLogin } from './tauri.js';
-import type { CaptureStatus } from './types.js';
-import { createSetupFlow, initialSetup, setupBusy, setupLabel, type SetupState } from './setup-flow.js';
+import type { CaptureStatus, TrackerEnvironment } from './types.js';
+import { createSetupFlow, shouldDismissRecoveredSetup, initialSetup, setupBusy, setupLabel, type SetupState } from './setup-flow.js';
 
 const FRAMES = [
   { label: 'Draw a card', Icon: CardsThree }, { label: 'Play a Pokémon', Icon: CardsThree },
@@ -76,7 +76,7 @@ function KeyboardGuide() {
   </section>;
 }
 
-export function CaptureSetupModal({ onClose, onCapture }: { onClose: () => void; onCapture: (capture: CaptureStatus) => void }) {
+export function CaptureSetupModal({ onClose, onDismiss, onCapture, environment }: { onClose: () => void; onDismiss: () => void; onCapture: (capture: CaptureStatus) => void; environment: TrackerEnvironment }) {
   const [state, setState] = useState(initialSetup);
   const flow = useRef<ReturnType<typeof createSetupFlow>>();
   const captureCallback = useRef(onCapture);
@@ -99,10 +99,19 @@ export function CaptureSetupModal({ onClose, onCapture }: { onClose: () => void;
     flow.current = controller;
     return () => controller.dispose();
   }, []);
-  return <CaptureSetupView state={state} onClose={onClose} onAction={() => void flow.current?.run()} />;
+  const captureRecovered = shouldDismissRecoveredSetup(state, environment);
+  useEffect(() => {
+    if (!captureRecovered) return;
+    flow.current?.dispose();
+    onDismiss();
+  }, [captureRecovered, onDismiss]);
+  return <CaptureSetupView state={state} onClose={onClose} onDismiss={() => {
+    flow.current?.dispose();
+    onDismiss();
+  }} onAction={() => void flow.current?.run()} />;
 }
 
-export function CaptureSetupView({ state, onClose, onAction }: { state: SetupState; onClose: () => void; onAction: () => void }) {
+export function CaptureSetupView({ state, onClose, onDismiss = onClose, onAction }: { state: SetupState; onClose: () => void; onDismiss?: () => void; onAction: () => void }) {
   const busy = setupBusy(state.phase);
   const dialog = useRef<HTMLElement>(null);
   useEffect(() => {
@@ -111,7 +120,7 @@ export function CaptureSetupView({ state, onClose, onAction }: { state: SetupSta
     return () => { if (previous instanceof HTMLElement && previous.isConnected) previous.focus({ preventScroll: true }); };
   }, []);
   return <div className="modal-backdrop capture-onboarding-backdrop"><section ref={dialog} className="setup-modal capture-onboarding" role="dialog" aria-modal="true" aria-labelledby="capture-setup-title" aria-describedby="capture-setup-description" tabIndex={-1} onKeyDown={event => {
-    if (event.key === 'Escape') { event.preventDefault(); if (state.phase === 'ready') onClose(); }
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); if (state.phase === 'ready') onClose(); else onDismiss(); }
     if (event.key !== 'Tab') return;
     const buttons = Array.from(dialog.current?.querySelectorAll<HTMLElement>('button:not(:disabled)') || []);
     const first = buttons[0]; const last = buttons.at(-1);
@@ -121,6 +130,6 @@ export function CaptureSetupView({ state, onClose, onAction }: { state: SetupSta
     <header className="capture-onboarding-header"><img src="/tracker-assets/trace-mascot.png" alt="" /><div><span>Your Trace</span><h2 id="capture-setup-title">{state.phase === 'ready' ? 'Trace is ready' : 'Set up Trace'}</h2></div></header>
     <p id="capture-setup-description" className="capture-onboarding-intro" role={state.phase === 'failed' ? 'alert' : 'status'} aria-live="polite">{state.message}</p>
     {state.phase === 'ready' ? <><h3 className="setup-demo-heading">How to review your games</h3><KeyboardGuide /></> : <><p>Trace will start in the background when you sign in and keep recording when you close its window. You can pause recording or turn off startup in Settings.</p><p className="capture-privacy-disclosure">By connecting, Trace securely sends and stores captured match data, including player names and game actions.</p></>}
-    <div className="connect-actions setup-single-action"><button className="primary connect-capture-button" type="button" disabled={busy} onClick={state.phase === 'ready' ? onClose : onAction}>{busy && <CircleNotch size={16} className="capture-connect-spinner" />}{setupLabel(state.phase)}</button></div>
+    <div className="connect-actions setup-single-action"><button className="primary connect-capture-button" type="button" disabled={busy} onClick={state.phase === 'ready' ? onClose : onAction}>{busy && <CircleNotch size={16} className="capture-connect-spinner" />}{setupLabel(state.phase)}</button>{state.phase !== 'ready' && <button type="button" onClick={onDismiss}>Continue reviewing</button>}</div>
   </section></div>;
 }

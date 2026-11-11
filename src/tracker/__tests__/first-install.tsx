@@ -6,9 +6,13 @@ import { mockIPC, mockWindows, mockConvertFileSrc } from '@tauri-apps/api/mocks'
 import { emit } from '@tauri-apps/api/event';
 import type { CaptureStatus } from '../types.js';
 
-localStorage.removeItem('trace/cloud-backup-disclosure-v1');
+const scenario = new URLSearchParams(location.search).get('scenario');
+if (scenario === 'existing') localStorage.setItem('trace/cloud-backup-disclosure-v1', 'acknowledged');
+else localStorage.removeItem('trace/cloud-backup-disclosure-v1');
 localStorage.removeItem('trace/reviews-sqlite-v1');
 const capture: CaptureStatus = { permissionReady: false, enabled: false, observerRunning: false, routeActive: false, clientAttached: false, waitingForMatchEnd: false, matchInProgress: false, frameCount: 0, operationCount: 0, lastError: null, observerPort: 8899 };
+let clientRunning = scenario === 'connected';
+if (clientRunning) Object.assign(capture, { enabled: true, observerRunning: true, routeActive: true, clientAttached: true, matchInProgress: true });
 const background = { launchAtLogin: false, recordingEnabled: true, supported: true, lastError: null as string | null };
 let approve: (() => void) | null = null;
 let cancel: (() => void) | null = null;
@@ -21,7 +25,7 @@ const recover = async () => {
 mockWindows('main'); mockConvertFileSrc('macos');
 mockIPC(async (command) => {
   switch (command) {
-    case 'tracker_environment': return { clientInstalled: true, clientRunning: false, pid: null, captureMode: 'existing-client', capture: status() };
+    case 'tracker_environment': return { clientInstalled: true, clientRunning, pid: null, captureMode: 'existing-client', capture: status() };
     case 'capture_status': return status();
     case 'background_status': return { ...background };
     case 'plugin:app|version': return '0.1.103+first-install-test';
@@ -51,6 +55,8 @@ const { default: TrackerApp } = await import('../TrackerApp.js');
 function Controls() {
   return <nav aria-label="Synthetic installer controls" style={{position:'fixed',top:0,left:0,right:0,zIndex:5000,padding:8,background:'#fff',display:'flex',gap:8,fontSize:12}}>
     <span>Test profile · No game or OS changes</span>
+    <button onClick={() => { clientRunning = true; }}>Open game</button>
+    <button onClick={() => { clientRunning = true; Object.assign(capture, { enabled: true, observerRunning: true, routeActive: true, clientAttached: true, permissionReady: false }); }}>Record with failed permission probe</button>
     <button onClick={() => approve?.()}>Approve setup</button>
     <button onClick={() => cancel?.()}>Cancel approval</button>
     <button onClick={() => { capture.routeActive = true; }}>Recorder ready</button>

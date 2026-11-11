@@ -3,7 +3,7 @@ import { createSetupFlow, setupLabel, type SetupState } from '../setup-flow.js';
 import type { TrackerEnvironment } from '../types.js';
 
 function fixture() {
-  const environment = { clientRunning: false, capture: { permissionReady: false, enabled: true, observerRunning: true, routeActive: true, waitingForMatchEnd: false, lastError: null } } as TrackerEnvironment;
+  const environment = { clientRunning: false, capture: { permissionReady: false, enabled: true, observerRunning: true, routeActive: true, clientAttached: false, waitingForMatchEnd: false, lastError: null } } as TrackerEnvironment;
   const states: SetupState[] = [];
   const calls: string[] = [];
   const deps = {
@@ -140,3 +140,57 @@ assert.equal(setupLabel('ready'), 'Done');
   assert.equal(f.states.at(-1)?.phase, 'ready');
 }
 console.log('setup-flow: first install, approval, connection readiness, retries, and update safety passed.');
+
+// A permission probe can fail while the existing route is still recording.
+for (const permissionReady of [false, true]) {
+  const f = fixture();
+  Object.assign(f.environment, { clientRunning: true });
+  Object.assign(f.environment.capture, { clientAttached: true, permissionReady });
+  await f.create().run();
+  assert.equal(f.states.at(-1)?.phase, 'ready');
+  assert.match(f.states.at(-1)!.message, /already connected and recording/);
+  assert.deepEqual(f.calls, ['capture'], 'do not update, restart, request permissions, or restart capture');
+}
+{
+  const { shouldOfferInitialSetup, shouldDismissRecoveredSetup, initialSetup } = await import('../setup-flow.js');
+  const f = fixture();
+  assert.equal(shouldOfferInitialSetup(f.environment, false), true, 'first installation still offers setup');
+  assert.equal(shouldOfferInitialSetup(f.environment, true), false, 'an existing user is not blocked by a failed probe');
+  f.environment.clientRunning = true;
+  assert.equal(shouldOfferInitialSetup(f.environment, false), false, 'never cover an open game with onboarding');
+  assert.equal(shouldDismissRecoveredSetup(initialSetup, f.environment), false, 'running game alone does not prove recording');
+  f.environment.capture.clientAttached = true;
+  assert.equal(shouldDismissRecoveredSetup({ phase: 'close-live', message: 'stale' }, f.environment), true);
+  for (const phase of ['initial', 'close-live', 'failed', 'ready'] as const) {
+    assert.equal(shouldDismissRecoveredSetup({ phase, message: '' }, f.environment), true, `dismiss recovered ${phase} automatically`);
+  }
+  for (const phase of ['checking', 'approval', 'connecting', 'startup', 'update', 'updating', 'restart', 'restarting'] as const) {
+    assert.equal(shouldDismissRecoveredSetup({ phase, message: '' }, f.environment), false, `let ${phase} settle before dismissal`);
+  }
+  for (const flag of ['enabled', 'observerRunning', 'routeActive', 'clientAttached'] as const) {
+    const environment = { ...f.environment, capture: { ...f.environment.capture, [flag]: false } };
+    assert.equal(shouldDismissRecoveredSetup(initialSetup, environment), false, `${flag} is required to prove recording recovered`);
+  }
+  f.environment.capture.routeActive = false;
+  assert.equal(shouldDismissRecoveredSetup(initialSetup, f.environment), false, 'a broken route must not claim recording is ready');
+}
+for (const boundary of ['environment', 'check', 'permission'] as const) {
+  const f = fixture();
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  if (boundary === 'environment') f.deps.environment = async () => { await pending; return f.environment; };
+  if (boundary === 'check') f.deps.check = async () => {
+    await pending;
+    return { download: async () => f.calls.push('download'), install: async () => f.calls.push('install'), close: async () => f.calls.push('close') };
+  };
+  if (boundary === 'permission') f.deps.permission = async () => { await pending; return { ...f.environment.capture, permissionReady: true }; };
+  const flow = f.create();
+  const running = flow.run();
+  await new Promise(resolve => setImmediate(resolve));
+  flow.dispose(); release(); await running;
+  assert.ok(!f.calls.includes('start'), `dismiss during ${boundary} must not start recording later`);
+  assert.ok(!f.calls.includes('background'));
+  assert.ok(!f.calls.includes('install'));
+  if (boundary === 'check') assert.ok(f.calls.includes('close'), 'release the downloaded-update resource after dismissal');
+}
+console.log('setup recovery: active recording, first-run gating, recovered status, and dismissal during pending operations passed.');

@@ -7,7 +7,7 @@ const updater = readFileSync(new URL('../UpdateNotice.tsx', import.meta.url), 'u
 assert.equal((app.match(/<UpdateNotice /g) || []).length, 1);
 assert.match(app, /const updateNotice = <UpdateNotice matchInProgress=\{environment.clientRunning\} settingsOpen=\{showSettings\}/);
 assert.match(app, /!sharedMode && !showSetup && updateNotice/);
-assert.match(app, /<CaptureSetupModal onClose=\{closeSetup\} onCapture=/);
+assert.match(app, /<CaptureSetupModal onClose=\{closeSetup\} onDismiss=\{dismissSetup\} environment=\{environment\} onCapture=/);
 assert.doesNotMatch(app, /aria-label="Animated replay frames"/);
 assert.match(app, /onClick=\{toggleFrameAnimations\}/);
 assert.match(app, /!safetyDismissed && !showSetup/);
