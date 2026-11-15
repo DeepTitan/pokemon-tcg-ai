@@ -81,6 +81,7 @@ import './tracker.css';
 import './ArchiveUpgradeModal.css';
 import { PlayerDecklist } from './PlayerDecklist.js';
 import { BoardZoomViewport } from './BoardZoomViewport.js';
+import { useAutoInterfaceScale } from './useAutoInterfaceScale.js';
 import { replayShortcut, replayShortcutFrame } from './replay-shortcuts.js';
 import { SharedAccessRail } from './SharedAccessRail.js';
 import { readSharedAccessOpen, storeSharedAccessOpen } from './shared-access.js';
@@ -684,6 +685,7 @@ function MatchLoadingSkeleton() {
 }
 
 export default function TrackerApp() {
+  useAutoInterfaceScale();
   const sharedReplayId = useMemo(() => sharedReplayIdFromPath(window.location.pathname), []);
   const sharedMode = sharedReplayId != null;
   const initial = useMemo(() => sharedMode ? [] : initialReviews(), [sharedMode]);
